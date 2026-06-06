@@ -1,0 +1,72 @@
+{
+  "version": "0.1.0",
+  "source": "examples/html-input/css-positioned-dashboard.html",
+  "measuredAt": "2026-06-05T00:00:00.000Z",
+  "slideSize": {
+    "preset": "wide",
+    "width": 13.333,
+    "height": 7.5,
+    "unit": "in"
+  },
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "elements": [
+    {
+      "id": "title",
+      "kind": "text",
+      "tagName": "h1",
+      "selector": "[data-pptx-id=\"title\"]",
+      "x": 0.938,
+      "y": 0.438,
+      "w": 11.458,
+      "h": 0.604,
+      "px": { "x": 90, "y": 42, "w": 1100, "h": 58 }
+    },
+    {
+      "id": "subtitle",
+      "kind": "text",
+      "tagName": "p",
+      "selector": "[data-pptx-id=\"subtitle\"]",
+      "x": 0.938,
+      "y": 1.125,
+      "w": 9.375,
+      "h": 0.375,
+      "px": { "x": 90, "y": 108, "w": 900, "h": 36 }
+    },
+    {
+      "id": "card-dau",
+      "kind": "card",
+      "tagName": "div",
+      "selector": "[data-pptx-id=\"card-dau\"]",
+      "x": 0.938,
+      "y": 1.875,
+      "w": 5.625,
+      "h": 1.667,
+      "px": { "x": 90, "y": 180, "w": 540, "h": 160 }
+    },
+    {
+      "id": "card-conversion",
+      "kind": "card",
+      "tagName": "div",
+      "selector": "[data-pptx-id=\"card-conversion\"]",
+      "x": 6.771,
+      "y": 1.875,
+      "w": 5.625,
+      "h": 1.667,
+      "px": { "x": 650, "y": 180, "w": 540, "h": 160 }
+    },
+    {
+      "id": "channel-table",
+      "kind": "table",
+      "tagName": "table",
+      "selector": "[data-pptx-id=\"channel-table\"]",
+      "x": 0.938,
+      "y": 3.958,
+      "w": 11.458,
+      "h": 2.917,
+      "px": { "x": 90, "y": 380, "w": 1100, "h": 280 }
+    }
+  ]
+}

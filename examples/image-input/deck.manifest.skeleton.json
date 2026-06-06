@@ -1,0 +1,87 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../design-systems/business-neutral/DESIGN.md",
+    "name": "business-neutral",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "产品能力概览",
+    "language": "zh-CN",
+    "size": {
+      "preset": "wide",
+      "width": 13.333,
+      "height": 7.5,
+      "unit": "in"
+    }
+  },
+  "assets": [
+    {
+      "id": "source-slide",
+      "src": "business-slide.png",
+      "role": "reference",
+      "note": "Reference screenshot; remove from final manifest unless needed as cropped asset."
+    }
+  ],
+  "slides": [
+    {
+      "id": "slide-001",
+      "type": "content",
+      "title": "产品能力概览",
+      "notes": "Skeleton from image hints — host agent must replace placeholders and add missing objects.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [
+        {
+          "type": "text",
+          "id": "title-placeholder",
+          "text": "<HOST_AGENT: extract title text>",
+          "x": 0.7,
+          "y": 0.05,
+          "w": 11.933,
+          "h": 0.9,
+          "style": {
+            "typography": "{typography.title}",
+            "color": "{colors.text}",
+            "align": "left"
+          },
+          "editability": "native-text",
+          "sourceRegion": "band-1"
+        },
+        {
+          "type": "shape",
+          "id": "card-left-placeholder",
+          "shape": "roundRect",
+          "x": 0.7,
+          "y": 1.3569,
+          "w": 5.8665,
+          "h": 0.2306,
+          "style": {
+            "component": "{components.content-card}"
+          },
+          "editability": "native-shape",
+          "sourceRegion": "band-2"
+        },
+        {
+          "type": "text",
+          "id": "card-left-text-placeholder",
+          "text": "<HOST_AGENT: extract card text>",
+          "x": 0.95,
+          "y": 1.5069,
+          "w": 5.4665,
+          "h": 0.5,
+          "style": {
+            "typography": "{typography.body}",
+            "color": "{colors.text}",
+            "align": "left"
+          },
+          "editability": "native-text",
+          "sourceRegion": "band-2"
+        }
+      ]
+    }
+  ],
+  "_skeleton": true
+}

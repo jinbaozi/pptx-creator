@@ -1,0 +1,55 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../design-systems/business-neutral/DESIGN.md",
+    "name": "Business Neutral",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "AI Platform Roadshow",
+    "language": "zh-CN",
+    "size": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-001",
+      "type": "cover",
+      "title": "AI Platform Roadshow",
+      "notes": "Cover slide",
+      "background": { "type": "solid", "color": "{colors.background}" },
+      "elements": [
+        {
+          "type": "text",
+          "id": "title",
+          "text": "AI 平台建设路线图",
+          "x": 0.7,
+          "y": 0.8,
+          "w": 11.8,
+          "h": 0.8,
+          "style": { "typography": "{typography.title}", "color": "{colors.text}", "align": "left" }
+        },
+        {
+          "type": "shape",
+          "id": "hero-card",
+          "shape": "roundRect",
+          "x": 0.7,
+          "y": 2.1,
+          "w": 11.8,
+          "h": 2.8,
+          "style": { "component": "{components.hero-card}" }
+        },
+        {
+          "type": "text",
+          "id": "subtitle",
+          "text": "从试点到规模化运营的三阶段路径",
+          "x": 1.0,
+          "y": 2.5,
+          "w": 10.8,
+          "h": 0.5,
+          "style": { "typography": "{typography.subtitle}", "color": "{colors.primary}", "align": "left" }
+        }
+      ]
+    }
+  ]
+}

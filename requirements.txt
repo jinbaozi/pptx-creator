@@ -1,0 +1,9 @@
+# Python helpers for pptx-creator (M1.3+)
+# Install: pip install -r requirements.txt
+Pillow>=10.0.0
+
+# Optional for local OCR (M1.5); host-agent vision works without Tesseract
+pytesseract>=0.3.10
+
+# Optional for PDF page input. Without this, pdf:hints returns status=deferred.
+PyMuPDF>=1.24.0

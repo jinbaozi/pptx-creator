@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/design-profile.schema.json",
+  "title": "Parsed DESIGN.md Profile",
+  "type": "object",
+  "required": ["source", "name", "tokens", "sections", "warnings"],
+  "properties": {
+    "source": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "tokens": { "type": "object" },
+    "sections": { "type": "object" },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}

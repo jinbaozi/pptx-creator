@@ -1,0 +1,300 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../design-systems/dashboard-data/DESIGN.md",
+    "name": "Dashboard Data",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "运营数据看板",
+    "language": "zh-CN",
+    "size": {
+      "preset": "wide",
+      "width": 13.333,
+      "height": 7.5,
+      "unit": "in"
+    }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-001",
+      "type": "dashboard",
+      "title": "运营数据看板",
+      "notes": "2026 Q1 核心指标一页概览",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [
+        {
+          "type": "text",
+          "id": "title-001",
+          "text": "运营数据看板",
+          "x": 0.7,
+          "y": 0.55,
+          "w": 11.933,
+          "h": 0.75,
+          "style": {
+            "typography": "{typography.title}",
+            "color": "{colors.text}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "subtitle-002",
+          "text": "2026 Q1 核心指标概览",
+          "x": 0.7,
+          "y": 1.45,
+          "w": 11.933,
+          "h": 0.45,
+          "style": {
+            "typography": "{typography.subtitle}",
+            "color": "{colors.textMuted}"
+          }
+        },
+        {
+          "type": "shape",
+          "id": "card-003",
+          "shape": "roundRect",
+          "x": 0.7,
+          "y": 2.15,
+          "w": 5.7415,
+          "h": 1.55,
+          "style": {
+            "component": "{components.content-card}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-title-004",
+          "text": "日活用户",
+          "x": 0.8999999999999999,
+          "y": 2.35,
+          "w": 5.3415,
+          "h": 0.35,
+          "style": {
+            "typography": "{typography.heading}",
+            "color": "{colors.primary}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-metric-005",
+          "text": "128,400",
+          "x": 0.8999999999999999,
+          "y": 2.7800000000000002,
+          "w": 5.3415,
+          "h": 0.55,
+          "style": {
+            "typography": "{typography.metric}",
+            "color": "{colors.text}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-body-006",
+          "text": "环比 +12%",
+          "x": 0.8999999999999999,
+          "y": 3.3800000000000003,
+          "w": 5.3415,
+          "h": 0.32,
+          "style": {
+            "typography": "{typography.caption}",
+            "color": "{colors.textMuted}"
+          }
+        },
+        {
+          "type": "shape",
+          "id": "card-007",
+          "shape": "roundRect",
+          "x": 6.891500000000001,
+          "y": 2.15,
+          "w": 5.7415,
+          "h": 1.55,
+          "style": {
+            "component": "{components.content-card}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-title-008",
+          "text": "转化率",
+          "x": 7.091500000000001,
+          "y": 2.35,
+          "w": 5.3415,
+          "h": 0.35,
+          "style": {
+            "typography": "{typography.heading}",
+            "color": "{colors.primary}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-metric-009",
+          "text": "4.8%",
+          "x": 7.091500000000001,
+          "y": 2.7800000000000002,
+          "w": 5.3415,
+          "h": 0.55,
+          "style": {
+            "typography": "{typography.metric}",
+            "color": "{colors.text}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-body-010",
+          "text": "环比 +0.3pt",
+          "x": 7.091500000000001,
+          "y": 3.3800000000000003,
+          "w": 5.3415,
+          "h": 0.32,
+          "style": {
+            "typography": "{typography.caption}",
+            "color": "{colors.textMuted}"
+          }
+        },
+        {
+          "type": "shape",
+          "id": "card-011",
+          "shape": "roundRect",
+          "x": 0.7,
+          "y": 4.15,
+          "w": 5.7415,
+          "h": 1.55,
+          "style": {
+            "component": "{components.content-card}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-title-012",
+          "text": "客单价",
+          "x": 0.8999999999999999,
+          "y": 4.3500000000000005,
+          "w": 5.3415,
+          "h": 0.35,
+          "style": {
+            "typography": "{typography.heading}",
+            "color": "{colors.primary}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-metric-013",
+          "text": "¥286",
+          "x": 0.8999999999999999,
+          "y": 4.78,
+          "w": 5.3415,
+          "h": 0.55,
+          "style": {
+            "typography": "{typography.metric}",
+            "color": "{colors.text}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-body-014",
+          "text": "环比 +5%",
+          "x": 0.8999999999999999,
+          "y": 5.380000000000001,
+          "w": 5.3415,
+          "h": 0.32,
+          "style": {
+            "typography": "{typography.caption}",
+            "color": "{colors.textMuted}"
+          }
+        },
+        {
+          "type": "shape",
+          "id": "card-015",
+          "shape": "roundRect",
+          "x": 6.891500000000001,
+          "y": 4.15,
+          "w": 5.7415,
+          "h": 1.55,
+          "style": {
+            "component": "{components.content-card}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-title-016",
+          "text": "留存率",
+          "x": 7.091500000000001,
+          "y": 4.3500000000000005,
+          "w": 5.3415,
+          "h": 0.35,
+          "style": {
+            "typography": "{typography.heading}",
+            "color": "{colors.primary}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-metric-017",
+          "text": "62%",
+          "x": 7.091500000000001,
+          "y": 4.78,
+          "w": 5.3415,
+          "h": 0.55,
+          "style": {
+            "typography": "{typography.metric}",
+            "color": "{colors.text}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-body-018",
+          "text": "环比 -1pt",
+          "x": 7.091500000000001,
+          "y": 5.380000000000001,
+          "w": 5.3415,
+          "h": 0.32,
+          "style": {
+            "typography": "{typography.caption}",
+            "color": "{colors.textMuted}"
+          }
+        },
+        {
+          "type": "table",
+          "id": "table-019",
+          "x": 0.7,
+          "y": 6.05,
+          "w": 11.933,
+          "h": 1.0500000000000003,
+          "rows": [
+            [
+              "自然搜索",
+              "45,200",
+              "5.2%"
+            ],
+            [
+              "付费广告",
+              "32,100",
+              "3.1%"
+            ],
+            [
+              "社交推荐",
+              "18,900",
+              "6.8%"
+            ]
+          ],
+          "style": {
+            "borderColor": "{colors.border}",
+            "color": "{colors.text}",
+            "fill": "{colors.background}",
+            "headerFill": "{colors.surfaceAlt}",
+            "fontSize": 12
+          },
+          "headers": [
+            "渠道",
+            "访问量",
+            "转化率"
+          ]
+        }
+      ]
+    }
+  ]
+}

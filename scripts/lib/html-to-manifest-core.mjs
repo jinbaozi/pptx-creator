@@ -1,0 +1,533 @@
+import { relative, resolve } from "node:path";
+import { parse } from "node-html-parser";
+import { buildMeasurementLookup, getMeasurementBox, mergeMeasurementsIntoManifest } from "./html-measurement-core.mjs";
+
+export { mergeMeasurementsIntoManifest };
+
+export const SLIDE_SIZE = { preset: "wide", width: 13.333, height: 7.5, unit: "in" };
+export const MARGIN = 0.7;
+export const CONTENT_WIDTH = SLIDE_SIZE.width - MARGIN * 2;
+
+const TYPOGRAPHY = {
+  h1: "{typography.title}",
+  h2: "{typography.heading}",
+  h3: "{typography.heading}",
+  subtitle: "{typography.subtitle}",
+  body: "{typography.body}",
+  metric: "{typography.metric}",
+  caption: "{typography.caption}"
+};
+
+let elementCounter = 0;
+
+function nextId(prefix) {
+  elementCounter += 1;
+  return `${prefix}-${String(elementCounter).padStart(3, "0")}`;
+}
+
+function resetIds() {
+  elementCounter = 0;
+}
+
+function textContent(node) {
+  return node.text.replace(/\s+/g, " ").trim();
+}
+
+function parseCoord(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+export function parseCoords(node) {
+  const x = parseCoord(node.getAttribute("data-x"));
+  const y = parseCoord(node.getAttribute("data-y"));
+  const w = parseCoord(node.getAttribute("data-w"));
+  const h = parseCoord(node.getAttribute("data-h"));
+  if (x === null || y === null || w === null || h === null) return null;
+  return { x, y, w, h };
+}
+
+function designSystemSource(id, options = {}) {
+  const fallback = `../../design-systems/${id}/DESIGN.md`;
+  if (!options.packageRoot || !options.manifestDir) return fallback;
+  const designPath = resolve(options.packageRoot, `design-systems/${id}/DESIGN.md`);
+  return relative(options.manifestDir, designPath).replace(/\\/g, "/");
+}
+
+function designSystemName(id) {
+  const names = {
+    "business-neutral": "Business Neutral",
+    "warm-editorial": "Warm Editorial",
+    "paper-minimal": "Paper Minimal",
+    "dark-tech": "Dark Tech",
+    "ai-infra": "AI Infra",
+    "product-roadshow": "Product Roadshow",
+    "developer-docs": "Developer Docs",
+    "dashboard-data": "Dashboard Data",
+    "premium-black": "Premium Black",
+    "chinese-government": "Chinese Government"
+  };
+  return names[id] ?? "Business Neutral";
+}
+
+function textElement(id, text, box, typographyKey, color = "{colors.text}", extra = {}) {
+  return {
+    type: "text",
+    id,
+    text,
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+    style: { typography: TYPOGRAPHY[typographyKey] ?? TYPOGRAPHY.body, color, ...extra.style }
+  };
+}
+
+function shapeElement(id, box, component = "{components.content-card}") {
+  return {
+    type: "shape",
+    id,
+    shape: "roundRect",
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+    style: { component }
+  };
+}
+
+function tableElement(id, tableNode, box) {
+  const headers = [];
+  const rows = [];
+  const thead = tableNode.querySelector("thead");
+  const tbody = tableNode.querySelector("tbody");
+  if (thead) {
+    const headerCells = thead.querySelectorAll("th");
+    if (headerCells.length > 0) {
+      headers.push(...headerCells.map((cell) => textContent(cell)));
+    } else {
+      const rowCells = thead.querySelectorAll("td");
+      if (rowCells.length > 0) headers.push(...rowCells.map((cell) => textContent(cell)));
+    }
+  }
+  const bodyRows = tbody ? tbody.querySelectorAll("tr") : tableNode.querySelectorAll("tr");
+  for (const row of bodyRows) {
+    const cells = row.querySelectorAll("td");
+    if (cells.length === 0) continue;
+    rows.push(cells.map((cell) => textContent(cell)));
+  }
+  if (headers.length === 0 && rows.length > 0) {
+    headers.push(...rows.shift());
+  }
+  const element = {
+    type: "table",
+    id,
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+    rows,
+    style: {
+      borderColor: "{colors.border}",
+      color: "{colors.text}",
+      fill: "{colors.background}",
+      headerFill: "{colors.surfaceAlt}",
+      fontSize: 12
+    }
+  };
+  if (headers.length > 0) element.headers = headers;
+  return element;
+}
+
+function lineElement(id, box, preserveHeight = false) {
+  return {
+    type: "line",
+    id,
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: preserveHeight ? box.h : 0.02,
+    style: { color: "{colors.border}", width: 1.5 }
+  };
+}
+
+function isSimpleSvgLinePath(d) {
+  return (
+    typeof d === "string" &&
+    /^\s*M\s*-?\d+(?:\.\d+)?(?:\s+|,)\s*-?\d+(?:\.\d+)?\s+L\s*-?\d+(?:\.\d+)?(?:\s+|,)\s*-?\d+(?:\.\d+)?\s*$/i.test(d)
+  );
+}
+
+function svgPathLineElements(slideNode) {
+  const elements = [];
+  const paths = slideNode.querySelectorAll("svg path[d]");
+  for (const path of paths) {
+    const d = path.getAttribute("d");
+    if (!isSimpleSvgLinePath(d)) continue;
+    const svg = path.parentNode;
+    if (!svg || String(svg.tagName).toLowerCase() !== "svg") continue;
+    const coords = parseCoords(svg);
+    if (!coords) continue;
+    const id = path.getAttribute("id") ?? path.getAttribute("data-id") ?? nextId("svg-line");
+    elements.push(lineElement(id, coords, true));
+  }
+  return elements;
+}
+
+export function layoutCards(cards, cols, startY, slideHeight) {
+  const colCount = Math.max(1, cols);
+  const gap = 0.45;
+  const availableWidth = CONTENT_WIDTH - gap * (colCount - 1);
+  const cardWidth = availableWidth / colCount;
+  const rows = Math.ceil(cards.length / colCount);
+  const remaining = slideHeight - startY - 0.5;
+  const cardHeight = Math.min(1.55, (remaining - gap * (rows - 1)) / rows);
+  const positioned = [];
+
+  cards.forEach((card, index) => {
+    const row = Math.floor(index / colCount);
+    const col = index % colCount;
+    const x = MARGIN + col * (cardWidth + gap);
+    const y = startY + row * (cardHeight + gap);
+    positioned.push({ card, box: { x, y, w: cardWidth, h: cardHeight } });
+  });
+
+  const bottomY = startY + rows * cardHeight + Math.max(0, rows - 1) * gap;
+  return { items: positioned, bottomY };
+}
+
+function cardInnerElements(cardNode, outerBox, shapeId = nextId("card")) {
+  const elements = [];
+  elements.push(shapeElement(shapeId, outerBox, "{components.content-card}"));
+
+  const padding = 0.2;
+  let cursorY = outerBox.y + padding;
+  const innerW = outerBox.w - padding * 2;
+  const innerX = outerBox.x + padding;
+
+  const heading = cardNode.querySelector("h3") ?? cardNode.querySelector("h2");
+  if (heading) {
+    const h = 0.35;
+    elements.push(
+      textElement(nextId("card-title"), textContent(heading), { x: innerX, y: cursorY, w: innerW, h }, "h3", "{colors.primary}")
+    );
+    cursorY += h + 0.08;
+  }
+
+  const metric = cardNode.querySelector(".metric, [data-metric]");
+  if (metric) {
+    const h = 0.55;
+    elements.push(
+      textElement(nextId("card-metric"), textContent(metric), { x: innerX, y: cursorY, w: innerW, h }, "metric", "{colors.text}")
+    );
+    cursorY += h + 0.05;
+  }
+
+  const paragraphs = cardNode.querySelectorAll("p").filter((p) => {
+    const cls = p.getAttribute("class") ?? "";
+    return !cls.split(/\s+/).includes("metric") && !p.getAttribute("data-metric");
+  });
+  for (const paragraph of paragraphs) {
+    const h = 0.32;
+    elements.push(
+      textElement(nextId("card-body"), textContent(paragraph), { x: innerX, y: cursorY, w: innerW, h }, "caption", "{colors.textMuted}")
+    );
+    cursorY += h + 0.05;
+  }
+
+  return elements;
+}
+
+function convertKindElement(node, lookup) {
+  const kind = node.getAttribute("data-pptx-kind");
+  const id = node.getAttribute("data-pptx-id") ?? node.getAttribute("data-id") ?? nextId(kind ?? "element");
+  const coords =
+    getMeasurementBox(lookup, id) ??
+    parseCoords(node) ??
+    null;
+  if (!coords) return [];
+
+  if (kind === "text") {
+    return [
+      textElement(
+        id,
+        textContent(node),
+        coords,
+        node.getAttribute("data-typography") ?? "body",
+        node.getAttribute("data-color") ?? "{colors.text}"
+      )
+    ];
+  }
+  if (kind === "shape") {
+    return [shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}")];
+  }
+  if (kind === "card") {
+    return cardInnerElements(node, coords, id);
+  }
+  if (kind === "table") {
+    return [tableElement(id, node, coords)];
+  }
+  if (kind === "line") {
+    return [lineElement(id, coords)];
+  }
+  if (kind === "image") {
+    const src = node.getAttribute("src") ?? node.getAttribute("data-src");
+    return src ? [{ type: "image", id, src, ...coords }] : [];
+  }
+  return [];
+}
+
+function convertSlide(slideNode, slideIndex, options = {}) {
+  const lookup = options.measurementLookup ?? null;
+  const elements = [];
+  let cursorY = 0.55;
+  const slideId = `slide-${String(slideIndex + 1).padStart(3, "0")}`;
+
+  const kindNodes = slideNode.querySelectorAll("[data-pptx-kind]");
+  if (kindNodes.length > 0 && lookup) {
+    for (const node of kindNodes) {
+      elements.push(...convertKindElement(node, lookup));
+    }
+    return {
+      id: slideId,
+      type: slideNode.getAttribute("data-type") ?? "content",
+      title:
+        slideNode.getAttribute("data-title") ??
+        (() => {
+          const titleNode = slideNode.querySelector("h1, [data-pptx-kind='text'][data-typography='h1']");
+          return titleNode ? textContent(titleNode) : "";
+        })(),
+      notes: slideNode.getAttribute("data-notes") ?? "",
+      background: { type: "solid", color: "{colors.background}" },
+      elements
+    };
+  }
+
+  const explicitNodes = slideNode.querySelectorAll("[data-pptx-type]");
+  if (explicitNodes.length > 0) {
+    for (const node of explicitNodes) {
+      const coords = parseCoords(node);
+      if (!coords) continue;
+      const pptxType = node.getAttribute("data-pptx-type");
+      const id = node.getAttribute("data-id") ?? nextId(pptxType);
+      if (pptxType === "text") {
+        elements.push(textElement(id, textContent(node), coords, node.getAttribute("data-typography") ?? "body"));
+      } else if (pptxType === "shape") {
+        elements.push(shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}"));
+      } else if (pptxType === "table") {
+        elements.push(tableElement(id, node, coords));
+      } else if (pptxType === "line") {
+        elements.push(lineElement(id, coords));
+      } else if (pptxType === "image") {
+        const src = node.getAttribute("src") ?? node.getAttribute("data-src");
+        if (src) {
+          elements.push({ type: "image", id, src, ...coords });
+        }
+      }
+    }
+    return {
+      id: slideId,
+      type: slideNode.getAttribute("data-type") ?? "content",
+      title: slideNode.getAttribute("data-title") ?? "",
+      notes: slideNode.getAttribute("data-notes") ?? "",
+      background: { type: "solid", color: "{colors.background}" },
+      elements
+    };
+  }
+
+  const h1 = slideNode.querySelector("h1");
+  if (h1) {
+    const titleId = h1.getAttribute("data-pptx-id") ?? nextId("title");
+    const coords = getMeasurementBox(lookup, titleId) ?? parseCoords(h1);
+    const box = coords ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: 0.75 };
+    elements.push(textElement(titleId, textContent(h1), box, "h1", "{colors.text}"));
+    cursorY = box.y + box.h + 0.15;
+  }
+
+  const subtitle = slideNode.querySelector(".subtitle, p.subtitle, [data-subtitle]");
+  if (subtitle) {
+    const box = parseCoords(subtitle) ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: 0.45 };
+    elements.push(textElement(nextId("subtitle"), textContent(subtitle), box, "subtitle", "{colors.textMuted}"));
+    cursorY = box.y + box.h + 0.25;
+  }
+
+  const cardsContainer = slideNode.querySelector(".cards, [data-cards]");
+  if (cardsContainer) {
+    const cols = Number(cardsContainer.getAttribute("data-cols") ?? "2") || 2;
+    const cards = cardsContainer.querySelectorAll(".card, [data-card]");
+    const { items, bottomY } = layoutCards([...cards], cols, cursorY, SLIDE_SIZE.height);
+    for (const { card, box } of items) {
+      const explicit = parseCoords(card);
+      elements.push(...cardInnerElements(card, explicit ?? box));
+    }
+    cursorY = bottomY + 0.35;
+  }
+
+  const standaloneCards = slideNode.childNodes.filter(
+    (node) =>
+      node.tagName === "DIV" &&
+      ((node.getAttribute("class") ?? "").split(/\s+/).includes("card") || node.getAttribute("data-card") !== undefined)
+  );
+  if (!cardsContainer && standaloneCards.length > 0) {
+    const { items, bottomY } = layoutCards([...standaloneCards], 2, cursorY, SLIDE_SIZE.height);
+    for (const { card, box } of items) {
+      elements.push(...cardInnerElements(card, box));
+    }
+    cursorY = bottomY + 0.35;
+  }
+
+  const table = slideNode.querySelector("table");
+  if (table) {
+    const coords = parseCoords(table);
+    const box = coords ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: Math.min(1.8, SLIDE_SIZE.height - cursorY - 0.4) };
+    elements.push(tableElement(nextId("table"), table, box));
+    cursorY = box.y + box.h + 0.2;
+  }
+
+  const hr = slideNode.querySelector("hr");
+  if (hr) {
+    const coords = parseCoords(hr);
+    const box = coords ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: 0.02 };
+    elements.push(lineElement(nextId("line"), box));
+  }
+
+  const images = slideNode.querySelectorAll("img");
+  for (const img of images) {
+    const src = img.getAttribute("src");
+    if (!src) continue;
+    const coords = parseCoords(img);
+    if (!coords) continue;
+    elements.push({ type: "image", id: nextId("image"), src, ...coords });
+  }
+
+  elements.push(...svgPathLineElements(slideNode));
+
+  const lists = slideNode.childNodes.filter((node) => node.tagName === "UL" || node.tagName === "OL");
+  for (const list of lists) {
+    const items = list.querySelectorAll("li");
+    const lines = [...items].map((item) => `• ${textContent(item)}`).join("\n");
+    const box = parseCoords(list) ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: Math.min(2.0, items.length * 0.35) };
+    elements.push(textElement(nextId("list"), lines, box, "body"));
+    cursorY = box.y + box.h + 0.2;
+  }
+
+  return {
+    id: slideId,
+    type: slideNode.getAttribute("data-type") ?? "content",
+    title: h1 ? textContent(h1) : slideNode.getAttribute("data-title") ?? "",
+    notes: slideNode.getAttribute("data-notes") ?? "",
+    background: { type: "solid", color: "{colors.background}" },
+    elements
+  };
+}
+
+function canAutoPaginateCards(slideNode, options = {}) {
+  if (options.autoPaginate === false || options.measurementLookup) return false;
+  if (slideNode.querySelectorAll("[data-pptx-kind], [data-pptx-type]").length > 0) return false;
+  const cardsContainer = slideNode.querySelector(".cards, [data-cards]");
+  if (!cardsContainer) return false;
+  const cards = cardsContainer.querySelectorAll(".card, [data-card]");
+  const cardsPerSlide = Number(cardsContainer.getAttribute("data-cards-per-slide") ?? options.cardsPerSlide ?? "4") || 4;
+  return cards.length > cardsPerSlide;
+}
+
+function convertAutoPaginatedCards(slideNode, startIndex, options = {}) {
+  const cardsContainer = slideNode.querySelector(".cards, [data-cards]");
+  const cards = cardsContainer ? [...cardsContainer.querySelectorAll(".card, [data-card]")] : [];
+  const cardsPerSlide = Number(cardsContainer?.getAttribute("data-cards-per-slide") ?? options.cardsPerSlide ?? "4") || 4;
+  const cols = Number(cardsContainer?.getAttribute("data-cols") ?? "2") || 2;
+  const chunks = [];
+  for (let i = 0; i < cards.length; i += cardsPerSlide) {
+    chunks.push(cards.slice(i, i + cardsPerSlide));
+  }
+
+  const h1 = slideNode.querySelector("h1");
+  const subtitle = slideNode.querySelector(".subtitle, p.subtitle, [data-subtitle]");
+
+  return chunks.map((chunk, pageIndex) => {
+    const elements = [];
+    let cursorY = 0.55;
+    const slideId = `slide-${String(startIndex + pageIndex + 1).padStart(3, "0")}`;
+
+    if (h1) {
+      elements.push(textElement(nextId("title"), textContent(h1), { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: 0.75 }, "h1", "{colors.text}"));
+      cursorY += 0.9;
+    }
+
+    if (subtitle) {
+      elements.push(textElement(nextId("subtitle"), textContent(subtitle), { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: 0.45 }, "subtitle", "{colors.textMuted}"));
+      cursorY += 0.7;
+    }
+
+    const { items } = layoutCards(chunk, cols, cursorY, SLIDE_SIZE.height);
+    for (const { card, box } of items) {
+      elements.push(...cardInnerElements(card, box));
+    }
+
+    return {
+      id: slideId,
+      type: slideNode.getAttribute("data-type") ?? "content",
+      title: h1 ? textContent(h1) : slideNode.getAttribute("data-title") ?? "",
+      notes: slideNode.getAttribute("data-notes") ?? `Auto-paginated card page ${pageIndex + 1} of ${chunks.length}`,
+      background: { type: "solid", color: "{colors.background}" },
+      elements
+    };
+  });
+}
+
+export function convertHtmlToManifest(html, options = {}) {
+  resetIds();
+  const measurementLookup = options.measurements ? buildMeasurementLookup(options.measurements) : null;
+  const root = parse(html, { lowerCaseTagName: false });
+  const deckNode =
+    root.querySelector(".pptx-deck") ??
+    root.querySelector("[data-pptx-deck]") ??
+    root.querySelector("body") ??
+    root;
+
+  const designId = options.designSystem ?? deckNode.getAttribute("data-design-system") ?? "business-neutral";
+  const deckTitle =
+    options.deckTitle ??
+    deckNode.getAttribute("data-deck-title") ??
+    root.querySelector("title")?.text?.trim() ??
+    "Untitled Deck";
+  const language = options.language ?? deckNode.getAttribute("data-language") ?? "zh-CN";
+
+  const slideNodes = deckNode.querySelectorAll(".pptx-slide, [data-slide]");
+  const sourceSlides = slideNodes.length > 0 ? [...slideNodes] : [deckNode];
+  const slides = [];
+  for (const slideNode of sourceSlides) {
+    if (canAutoPaginateCards(slideNode, { ...options, measurementLookup })) {
+      slides.push(...convertAutoPaginatedCards(slideNode, slides.length, options));
+    } else {
+      slides.push(
+        convertSlide(slideNode, slides.length, {
+          measurementLookup
+        })
+      );
+    }
+  }
+
+  const manifest = {
+    version: "0.1.1",
+    designSystem: {
+      source: options.designSystemSource ?? designSystemSource(designId, options),
+      name: options.designSystemName ?? designSystemName(designId),
+      mode: options.designMode ?? "balanced"
+    },
+    deck: {
+      title: deckTitle,
+      language,
+      size: { ...SLIDE_SIZE }
+    },
+    assets: options.assets ?? [],
+    slides
+  };
+
+  if (options.measurements) {
+    mergeMeasurementsIntoManifest(manifest, options.measurements);
+  }
+
+  return manifest;
+}

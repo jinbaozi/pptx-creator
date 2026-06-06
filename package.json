@@ -1,0 +1,40 @@
+{
+  "name": "pptx-creator",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "parse:design": "node scripts/parse-design-md.mjs",
+    "validate:design": "node scripts/validate-design-md.mjs",
+    "html:manifest": "node scripts/html-to-manifest.mjs",
+    "html:measure": "node scripts/measure-html.mjs",
+    "image:inspect": "node scripts/run-python.mjs scripts/inspect-image.py",
+    "image:hints": "node scripts/run-python.mjs scripts/image-to-manifest-hints.py",
+    "image:ocr": "node scripts/run-python.mjs scripts/ocr-image.py",
+    "image:palette": "node scripts/run-python.mjs scripts/extract-palette.py",
+    "image:crop": "node scripts/run-python.mjs scripts/crop-assets.py",
+    "pdf:hints": "node scripts/run-python.mjs scripts/pdf-to-page-hints.py",
+    "template:import": "node scripts/import-template.mjs",
+    "accessibility:check": "node scripts/analyze-accessibility.mjs",
+    "openxml:repair": "node scripts/openxml-repair.mjs",
+    "preview:render": "node scripts/run-python.mjs scripts/render-preview.py",
+    "preview:compare": "node scripts/run-python.mjs scripts/compare-preview.py",
+    "visual:regression": "node scripts/run-visual-regression.mjs",
+    "batch": "node scripts/run-batch-pipeline.mjs",
+    "pipeline": "node scripts/run-deck-pipeline.mjs",
+    "render": "node scripts/render-pptx.mjs",
+    "test": "vitest run",
+    "test:py": "node scripts/run-python.mjs -m unittest discover -s tests -p \"*_test.py\""
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "node-html-parser": "^6.1.13",
+    "pptxgenjs": "^3.12.0",
+    "yaml": "^2.0.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.52.0",
+    "vitest": "^1.6.0"
+  }
+}

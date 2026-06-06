@@ -1,0 +1,295 @@
+{
+  "version": "0.1.0",
+  "sourceImage": "business-slide.png",
+  "image": {
+    "path": "business-slide.png",
+    "widthPx": 1920,
+    "heightPx": 1080,
+    "format": "PNG",
+    "mode": "RGB",
+    "hasAlpha": false,
+    "aspectRatio": 1.7778,
+    "orientation": "landscape"
+  },
+  "slideMapping": {
+    "preset": "wide",
+    "widthIn": 13.333,
+    "heightIn": 7.5,
+    "unit": "in",
+    "pxPerInX": 144.0036,
+    "pxPerInY": 144.0
+  },
+  "palette": [
+    {
+      "hex": "#EFF6FF",
+      "rgb": [
+        239,
+        246,
+        255
+      ],
+      "share": 0.5383
+    },
+    {
+      "hex": "#FCFDFF",
+      "rgb": [
+        252,
+        253,
+        255
+      ],
+      "share": 0.1833
+    },
+    {
+      "hex": "#2362EB",
+      "rgb": [
+        35,
+        98,
+        235
+      ],
+      "share": 0.1662
+    },
+    {
+      "hex": "#EEF6FF",
+      "rgb": [
+        238,
+        246,
+        255
+      ],
+      "share": 0.0799
+    },
+    {
+      "hex": "#F0F6FF",
+      "rgb": [
+        240,
+        246,
+        255
+      ],
+      "share": 0.0317
+    },
+    {
+      "hex": "#5D8CF0",
+      "rgb": [
+        93,
+        140,
+        240
+      ],
+      "share": 0.0006
+    }
+  ],
+  "layoutHints": {
+    "regions": [
+      {
+        "id": "band-1",
+        "label": "header",
+        "dominantColor": "#2565F0",
+        "pixelBox": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 1920.0,
+          "h": 181.0
+        },
+        "inchBox": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 13.333,
+          "h": 1.2569
+        },
+        "suggestedElements": [
+          "text:title",
+          "shape:background"
+        ]
+      },
+      {
+        "id": "band-2",
+        "label": "content",
+        "dominantColor": "#FAFAFA",
+        "pixelBox": {
+          "x": 0.0,
+          "y": 181.0,
+          "w": 1920.0,
+          "h": 62.0
+        },
+        "inchBox": {
+          "x": 0.0,
+          "y": 1.2569,
+          "w": 13.333,
+          "h": 0.4306
+        },
+        "suggestedElements": [
+          "shape:card",
+          "text:body",
+          "table"
+        ]
+      },
+      {
+        "id": "band-3",
+        "label": "footer",
+        "dominantColor": "#F0FAFA",
+        "pixelBox": {
+          "x": 0.0,
+          "y": 243.0,
+          "w": 1920.0,
+          "h": 358.0
+        },
+        "inchBox": {
+          "x": 0.0,
+          "y": 1.6875,
+          "w": 13.333,
+          "h": 2.4861
+        },
+        "suggestedElements": [
+          "text:caption"
+        ]
+      },
+      {
+        "id": "band-4",
+        "label": "section",
+        "dominantColor": "#FAFAFA",
+        "pixelBox": {
+          "x": 0.0,
+          "y": 601.0,
+          "w": 1920.0,
+          "h": 42.0
+        },
+        "inchBox": {
+          "x": 0.0,
+          "y": 4.1736,
+          "w": 13.333,
+          "h": 0.2917
+        },
+        "suggestedElements": [
+          "shape:card",
+          "text:body",
+          "table"
+        ]
+      },
+      {
+        "id": "band-5",
+        "label": "section",
+        "dominantColor": "#F0FAFA",
+        "pixelBox": {
+          "x": 0.0,
+          "y": 643.0,
+          "w": 1920.0,
+          "h": 358.0
+        },
+        "inchBox": {
+          "x": 0.0,
+          "y": 4.4653,
+          "w": 13.333,
+          "h": 2.4861
+        },
+        "suggestedElements": [
+          "shape:card",
+          "text:body",
+          "table"
+        ]
+      }
+    ],
+    "coordinateRule": "inch = pixel / pxPerIn; origin top-left; slide size from slideMapping"
+  },
+  "ocr": {
+    "status": "deferred",
+    "engine": null,
+    "note": "Tesseract not found on PATH. Host agent should use vision capabilities to extract text and coordinates, or install Tesseract for M1.4+ local OCR.",
+    "textBlocks": []
+  },
+  "designSystemSuggestion": {
+    "id": "business-neutral",
+    "reason": "default fallback for generic business slides"
+  },
+  "manifestSkeleton": {
+    "version": "0.1.1",
+    "designSystem": {
+      "source": "../../design-systems/business-neutral/DESIGN.md",
+      "name": "business-neutral",
+      "mode": "balanced"
+    },
+    "deck": {
+      "title": "产品能力概览",
+      "language": "zh-CN",
+      "size": {
+        "preset": "wide",
+        "width": 13.333,
+        "height": 7.5,
+        "unit": "in"
+      }
+    },
+    "assets": [
+      {
+        "id": "source-slide",
+        "src": "business-slide.png",
+        "role": "reference",
+        "note": "Reference screenshot; remove from final manifest unless needed as cropped asset."
+      }
+    ],
+    "slides": [
+      {
+        "id": "slide-001",
+        "type": "content",
+        "title": "产品能力概览",
+        "notes": "Skeleton from image hints — host agent must replace placeholders and add missing objects.",
+        "background": {
+          "type": "solid",
+          "color": "{colors.background}"
+        },
+        "elements": [
+          {
+            "type": "text",
+            "id": "title-placeholder",
+            "text": "<HOST_AGENT: extract title text>",
+            "x": 0.7,
+            "y": 0.05,
+            "w": 11.933,
+            "h": 0.9,
+            "style": {
+              "typography": "{typography.title}",
+              "color": "{colors.text}",
+              "align": "left"
+            },
+            "editability": "native-text",
+            "sourceRegion": "band-1"
+          },
+          {
+            "type": "shape",
+            "id": "card-left-placeholder",
+            "shape": "roundRect",
+            "x": 0.7,
+            "y": 1.3569,
+            "w": 5.8665,
+            "h": 0.2306,
+            "style": {
+              "component": "{components.content-card}"
+            },
+            "editability": "native-shape",
+            "sourceRegion": "band-2"
+          },
+          {
+            "type": "text",
+            "id": "card-left-text-placeholder",
+            "text": "<HOST_AGENT: extract card text>",
+            "x": 0.95,
+            "y": 1.5069,
+            "w": 5.4665,
+            "h": 0.5,
+            "style": {
+              "typography": "{typography.body}",
+              "color": "{colors.text}",
+              "align": "left"
+            },
+            "editability": "native-text",
+            "sourceRegion": "band-2"
+          }
+        ]
+      }
+    ],
+    "_skeleton": true
+  },
+  "hostAgentTasks": [
+    "Inventory visible objects (text, cards, tables, lines, icons, photos).",
+    "Replace manifestSkeleton placeholder text with extracted content.",
+    "Assign editability class per object (native-text, native-shape, cropped-image).",
+    "Refine inch coordinates using layoutHints.regions as starting points.",
+    "Remove reference asset from manifest unless a region is rasterized.",
+    "Validate with python scripts/validate-manifest.py and render."
+  ]
+}
