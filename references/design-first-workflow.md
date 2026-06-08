@@ -38,3 +38,7 @@ Replica mode may bypass design-first artifacts and write `deck.manifest.json` di
 - Prefer native PPTX text, shapes, tables, charts, and lines.
 - Do not lower editability to hide layout problems.
 - Report rasterized regions honestly.
+
+## Multi-Direction Exploration
+
+For creative decks, run direction exploration before full deck generation. The explorer creates three direction folders, each with a direction contract and scorecard. The approved direction should be copied into the full deck generation path and recorded in `run.json`.
