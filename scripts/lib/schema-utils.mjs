@@ -174,3 +174,16 @@ export function validateJsonSchema(value, schema) {
   validateValue(value, schema, "$", errors);
   return { valid: errors.length === 0, errors };
 }
+
+export async function readJson(relativePath) {
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  return JSON.parse(await readFile(resolve(relativePath), "utf8"));
+}
+
+export function validateSchema(schema, value, name = "value") {
+  const { valid, errors } = validateJsonSchema(value, schema);
+  if (!valid) {
+    throw new Error(`${name} fails schema: ${errors.map(e => `${e.path} ${e.message}`).join("; ")}`);
+  }
+}

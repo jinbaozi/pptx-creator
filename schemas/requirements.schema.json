@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PPTX Creator Requirements Artifact",
+  "type": "object",
+  "required": ["version", "audience", "objective", "sourceFacts", "mustInclude", "mustAvoid", "tone", "confidenceNotes"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "audience": { "type": "string", "minLength": 1 },
+    "objective": { "type": "string", "minLength": 1 },
+    "sourceFacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "mustInclude": { "type": "array", "items": { "type": "string" } },
+    "mustAvoid": { "type": "array", "items": { "type": "string" } },
+    "tone": { "type": "string", "minLength": 1 },
+    "confidenceNotes": { "type": "array", "items": { "type": "string" } }
+  }
+}
