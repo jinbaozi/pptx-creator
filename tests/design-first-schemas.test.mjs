@@ -33,3 +33,12 @@ describe("design-first schemas", () => {
     expect(() => assertSlideDesignSpecs(spec)).toThrow(/layoutType/);
   });
 });
+
+describe("visual review and repair schemas", () => {
+  it("ships visual review and repair patch schemas", () => {
+    expect(fs.existsSync("schemas/visual-review.schema.json")).toBe(true);
+    expect(fs.existsSync("schemas/repair-patch.schema.json")).toBe(true);
+    expect(fs.existsSync("references/visual-critic-rubric.md")).toBe(true);
+    expect(fs.existsSync("references/repair-patch-spec.md")).toBe(true);
+  });
+});

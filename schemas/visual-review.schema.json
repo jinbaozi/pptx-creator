@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/visual-review.schema.json",
+  "title": "Visual Review",
+  "type": "object",
+  "required": ["deckScore", "slides"],
+  "properties": {
+    "deckScore": { "type": "number", "minimum": 0, "maximum": 100 },
+    "mode": { "type": "string", "enum": ["creative", "replica"] },
+    "slides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "score", "scores", "issues", "recommendedRepairs"],
+        "properties": {
+          "id": { "type": "string" },
+          "score": { "type": "number", "minimum": 0, "maximum": 100 },
+          "scores": { "type": "object" },
+          "issues": { "type": "array" },
+          "recommendedRepairs": { "type": "array" }
+        }
+      }
+    }
+  }
+}

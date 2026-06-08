@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/repair-patch.schema.json",
+  "title": "Repair Patch",
+  "type": "object",
+  "required": ["attempt", "patches"],
+  "properties": {
+    "attempt": { "type": "number", "minimum": 1 },
+    "patches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slideId", "operation", "targetElementId", "changes"],
+        "properties": {
+          "slideId": { "type": "string" },
+          "operation": {
+            "type": "string",
+            "enum": ["move", "resize", "updateStyle", "updateText", "splitText", "splitSlide", "increaseSpacing", "reduceDensity", "replaceLayoutType"]
+          },
+          "targetElementId": { "type": "string" },
+          "changes": { "type": "object" }
+        }
+      }
+    }
+  }
+}
