@@ -1,0 +1,35 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../design-systems/business-neutral/DESIGN.md",
+    "name": "Business Neutral",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "Archetype Example",
+    "language": "en-US",
+    "size": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-example",
+      "type": "cover",
+      "title": "Example headline",
+      "notes": "",
+      "background": { "type": "solid", "color": "#FFFFFF" },
+      "elements": [
+        {
+          "type": "text",
+          "id": "headline",
+          "x": 0.7,
+          "y": 0.5,
+          "w": 11.8,
+          "h": 0.6,
+          "text": "Example headline",
+          "style": { "fontSize": 28, "bold": true, "color": "#111827" }
+        }
+      ]
+    }
+  ]
+}

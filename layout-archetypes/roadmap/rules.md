@@ -1,0 +1,6 @@
+- Keep one clear claim in the headline.
+- Keep body text concise enough for editable text boxes.
+- Prefer native PowerPoint shapes, lines, tables, and charts.
+- Do not rasterize the full slide.
+- Chinese labels should avoid long unbroken phrases.
+- If content exceeds the constraints, split the slide or choose another archetype.

@@ -1,0 +1,9 @@
+{
+  "requiredSlots": ["headline", "steps"],
+  "optionalSlots": ["body", "visual", "takeaway", "footnote"],
+  "constraints": {
+    "preferredEditableLevel": 5,
+    "maxTextBlocks": 6,
+    "density": "medium"
+  }
+}
