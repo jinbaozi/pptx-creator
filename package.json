@@ -24,6 +24,7 @@
     "visual:critic": "node scripts/run-visual-critic.mjs",
     "repair:apply": "node scripts/apply-repair-patch.mjs",
     "design:first": "node scripts/compile-design-first.mjs",
+    "pipeline:design-first": "node scripts/run-design-first-pipeline.mjs",
     "batch": "node scripts/run-batch-pipeline.mjs",
     "pipeline": "node scripts/run-deck-pipeline.mjs",
     "render": "node scripts/render-pptx.mjs",
