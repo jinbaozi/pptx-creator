@@ -15,7 +15,7 @@
           "slideId": { "type": "string" },
           "operation": {
             "type": "string",
-            "enum": ["move", "resize", "updateStyle", "updateText", "splitText", "splitSlide", "increaseSpacing", "reduceDensity", "replaceLayoutType"]
+            "enum": ["move", "resize", "updateStyle", "adjustStyle", "updateText", "splitText", "splitSlide", "increaseSpacing", "reduceDensity", "replaceLayoutType"]
           },
           "targetElementId": { "type": "string" },
           "changes": { "type": "object" }
