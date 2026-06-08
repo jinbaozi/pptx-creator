@@ -30,7 +30,8 @@
     "pipeline": "node scripts/run-deck-pipeline.mjs",
     "render": "node scripts/render-pptx.mjs",
     "test": "vitest run",
-    "test:py": "node scripts/run-python.mjs -m unittest discover -s tests -p \"*_test.py\""
+    "test:py": "node scripts/run-python.mjs -m unittest discover -s tests -p \"*_test.py\"",
+    "workbench:test": "vitest run tests/workbench.test.mjs"
   },
   "dependencies": {
     "jszip": "^3.10.1",

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pptx-creator Visual Workbench</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">pptx-creator</p>
+          <h1>Visual Workbench</h1>
+        </div>
+        <label class="run-loader">
+          <span>Run JSON</span>
+          <input id="run-file" type="file" accept="application/json" />
+        </label>
+      </header>
+      <section class="summary" data-panel="summary">
+        <h2>Run Summary</h2>
+        <pre id="run-summary">Load a run.json file to inspect generated artifacts.</pre>
+      </section>
+      <section class="grid">
+        <article class="panel" data-panel="directions">
+          <h2>Directions</h2>
+          <div id="directions"></div>
+        </article>
+        <article class="panel" data-panel="slides">
+          <h2>Slide Previews</h2>
+          <div id="previews"></div>
+        </article>
+        <article class="panel" data-panel="reviews">
+          <h2>Reviews</h2>
+          <div id="reviews"></div>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -823,6 +823,10 @@ Rules:
 
 The design-first pipeline is the foundation for higher-quality creative decks. Future roadmap items include a Visual Workbench for browser-based preview, direction selection, repair comparison, and export, plus Screenshot-Level Vision Model Review for slide PNG evaluation with a vision-capable model.
 
+### Visual Workbench
+
+Open `workbench/index.html` in a browser and load a generated `run.json` file to inspect run status, direction candidates, preview paths, and review artifacts. The first workbench is read-only and does not edit PPTX files.
+
 ### Tests
 
 JavaScript tests:
