@@ -33,6 +33,22 @@ describe("visual critic", () => {
     expect(review.slides[0].issues.some((issue) => issue.type === "bounds")).toBe(true);
   });
 
+  it("flags oversized empty decorative containers that dominate a slide", () => {
+    const manifest = sampleManifest();
+    manifest.slides[0].elements = [
+      { type: "shape", id: "paper-frame", shape: "roundRect", x: 0.45, y: 0.35, w: 12.45, h: 6.85, style: { fill: "#FFFDF7", line: "#292524" } },
+      { type: "text", id: "title", x: 0.9, y: 0.8, w: 6, h: 0.5, text: "Title", style: { fontSize: 24 } }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "creative" });
+    expect(review.slides[0].issues.some((issue) => issue.type === "dominant-empty-container")).toBe(true);
+    expect(review.slides[0].recommendedRepairs).toContainEqual({
+      action: "removeElement",
+      target: "paper-frame",
+      params: { reason: "oversized empty decorative container" }
+    });
+  });
+
   it("writes visual review through the CLI", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-review-"));
     const manifestPath = path.join(dir, "deck.manifest.json");
@@ -45,7 +61,7 @@ describe("visual critic", () => {
 });
 
 describe("repair patch", () => {
-  it("applies move, resize, updateStyle, and updateText patches", () => {
+  it("applies move, resize, updateStyle, updateText, and removeElement patches", () => {
     const manifest = sampleManifest();
     const patched = applyRepairPatch(manifest, {
       attempt: 1,
@@ -53,7 +69,8 @@ describe("repair patch", () => {
         { slideId: "slide-001", operation: "move", targetElementId: "tiny", changes: { x: 1, y: 1 } },
         { slideId: "slide-001", operation: "resize", targetElementId: "tiny", changes: { w: 5, h: 0.6 } },
         { slideId: "slide-001", operation: "updateStyle", targetElementId: "tiny", changes: { fontSize: 12 } },
-        { slideId: "slide-001", operation: "updateText", targetElementId: "tiny", changes: { text: "Readable" } }
+        { slideId: "slide-001", operation: "updateText", targetElementId: "tiny", changes: { text: "Readable" } },
+        { slideId: "slide-001", operation: "removeElement", targetElementId: "bad-bounds", changes: {} }
       ]
     });
     const el = patched.slides[0].elements.find((item) => item.id === "tiny");
@@ -63,6 +80,7 @@ describe("repair patch", () => {
     expect(el.h).toBe(0.6);
     expect(el.style.fontSize).toBe(12);
     expect(el.text).toBe("Readable");
+    expect(patched.slides[0].elements.some((item) => item.id === "bad-bounds")).toBe(false);
   });
 
   it("rejects patches for missing elements", () => {

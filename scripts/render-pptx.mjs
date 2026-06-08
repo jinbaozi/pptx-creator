@@ -316,10 +316,14 @@ function addIcon(slide, element, design) {
     return { shape: 2, text: 0 };
   }
   if (element.name === "arrow-right") {
-    slide.addShape("line", { x: x + w * 0.1, y: y + h * 0.5, w: w * 0.75, h: 0, line });
-    slide.addShape("line", { x: x + w * 0.62, y: y + h * 0.28, w: w * 0.23, h: h * 0.22, line });
-    slide.addShape("line", { x: x + w * 0.62, y: y + h * 0.72, w: w * 0.23, h: -h * 0.22, line });
-    return { shape: 3, text: 0 };
+    slide.addShape("line", {
+      x: x + w * 0.1,
+      y: y + h * 0.5,
+      w: w * 0.8,
+      h: 0,
+      line: { ...line, endArrowType: "triangle" }
+    });
+    return { shape: 1, text: 0 };
   }
 
   slide.addShape("ellipse", {

@@ -1,4 +1,4 @@
-const SUPPORTED = new Set(["move", "resize", "updateStyle", "updateText"]);
+const SUPPORTED = new Set(["move", "resize", "updateStyle", "updateText", "removeElement"]);
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -26,6 +26,12 @@ export function applyRepairPatch(manifest, repairPatch) {
       throw new Error(`Unsupported repair operation: ${patch.operation}`);
     }
     const slide = findSlide(next, patch.slideId);
+    if (patch.operation === "removeElement") {
+      const index = slide.elements?.findIndex((item) => item.id === patch.targetElementId) ?? -1;
+      if (index < 0) throw new Error(`Cannot apply patch: missing element ${patch.targetElementId}`);
+      slide.elements.splice(index, 1);
+      continue;
+    }
     const element = findElement(slide, patch.targetElementId);
     const changes = patch.changes || {};
     if (patch.operation === "move") {

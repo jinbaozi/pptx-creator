@@ -12,6 +12,7 @@ function scoreSlide(slide, deckSize) {
   const issues = [];
   const repairs = [];
   const elements = slide.elements || [];
+  const slideArea = Math.max(1, number(deckSize.width, DEFAULT_SIZE.width) * number(deckSize.height, DEFAULT_SIZE.height));
   for (const el of elements) {
     const x = number(el.x);
     const y = number(el.y);
@@ -29,6 +30,27 @@ function scoreSlide(slide, deckSize) {
         target: el.id,
         params: { fitToSlide: true }
       });
+    }
+    if (el.type === "shape") {
+      const areaRatio = (w * h) / slideArea;
+      const isDecorativeBackground =
+        areaRatio >= 0.7 &&
+        !el.text &&
+        !el.role &&
+        !/background|backdrop|canvas/i.test(String(el.id ?? ""));
+      if (isDecorativeBackground) {
+        addIssue(issues, {
+          severity: "medium",
+          type: "dominant-empty-container",
+          message: `Shape ${el.id} is an oversized empty decorative container that can dominate the slide.`,
+          target: el.id
+        });
+        repairs.push({
+          action: "removeElement",
+          target: el.id,
+          params: { reason: "oversized empty decorative container" }
+        });
+      }
     }
     if (el.type === "text") {
       const fontSize = number(el.style?.fontSize, 16);

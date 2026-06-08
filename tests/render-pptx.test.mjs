@@ -93,6 +93,30 @@ describe("render-pptx", () => {
     expect(await slideXml(pptxPath)).toContain("i");
   });
 
+  it("renders arrow-right icons without negative line extents", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-arrow-icon-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements.push({
+      type: "icon",
+      name: "arrow-right",
+      id: "arrow-icon",
+      x: 6.0,
+      y: 4.5,
+      w: 0.6,
+      h: 0.35,
+      style: { color: "{colors.primary}" }
+    });
+    const manifest = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
+
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifest, pptxPath], { cwd: root });
+
+    const xml = await slideXml(pptxPath);
+    expect(xml).not.toMatch(/<a:ext[^>]*\s(?:cx|cy)="-/);
+  });
+
   it("renders diagram elements as editable native shapes and text", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-diagram-"));
     const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));

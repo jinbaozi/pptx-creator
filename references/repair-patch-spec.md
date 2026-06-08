@@ -8,6 +8,7 @@ Supported operations:
 - resize
 - updateStyle
 - updateText
+- removeElement
 - splitText
 - splitSlide
 - increaseSpacing
