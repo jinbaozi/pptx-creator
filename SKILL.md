@@ -82,6 +82,8 @@ Then read `output/editable-report.md`, `output/qa-report.md`, and `references/qa
 
 Prompt templates: `references/prompt-library.md`.
 
+Creative decks should use the design-first workflow in `references/design-first-workflow.md`. The host agent first plans story, visual direction, and slide-level design specs, then compiles those artifacts into the existing manifest renderer.
+
 ## Agent adapters
 
 For host-specific setup and reporting expectations, read the matching adapter:

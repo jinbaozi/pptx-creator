@@ -208,6 +208,8 @@ final.pptx
 - `references/prompt-library.md`
 - `examples/text-input/`
 
+设计优先（design-first）创意 PPTX 在渲染之前会先生成三份中间产物：`deck.storyboard.json`、`deck.design-direction.json` 和 `slide-design-specs.json`。这样在编译为 manifest 之前，故事、视觉方向和页面结构都已显式表达。
+
 #### HTML 输入
 
 语义 HTML：
@@ -628,6 +630,8 @@ See:
 - `references/workflow.md`
 - `references/prompt-library.md`
 - `examples/text-input/`
+
+Design-first creative decks use three intermediate artifacts before rendering: `deck.storyboard.json`, `deck.design-direction.json`, and `slide-design-specs.json`. This keeps story, visual direction, and page composition explicit before the manifest is compiled.
 
 #### HTML
 

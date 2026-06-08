@@ -68,4 +68,24 @@ describe("M3 agent productization docs", () => {
       expect(content).toContain("PPTX_CREATOR_PYTHON");
     }
   });
+
+  it("documents design-first creative deck workflow", async () => {
+    const files = [
+      "AGENT.md",
+      "SKILL.md",
+      "references/workflow.md",
+      "references/design-first-workflow.md",
+      "README.md"
+    ];
+    for (const file of files) {
+      const text = await readFile(join(root, file), "utf8");
+      expect(text).toMatch(/design-first/i);
+    }
+    const workflow = await readFile(join(root, "references/design-first-workflow.md"), "utf8");
+    expect(workflow).toMatch(/deck\.storyboard\.json/);
+    expect(workflow).toMatch(/deck\.design-direction\.json/);
+    expect(workflow).toMatch(/slide-design-specs\.json/);
+    expect(workflow).toMatch(/Replica mode/i);
+    expect(workflow).toMatch(/Creative mode/i);
+  });
 });

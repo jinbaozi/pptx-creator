@@ -102,6 +102,8 @@ User content
 
 See `examples/text-input/README.md` and `references/prompt-library.md`.
 
+For polished creative decks, route text input through design-first mode: `deck.storyboard.json` -> `deck.design-direction.json` -> `slide-design-specs.json` -> `deck.manifest.json` -> PPTX -> visual review and repair.
+
 ## HTML input
 
 ### Semantic auto-layout (M1.2)

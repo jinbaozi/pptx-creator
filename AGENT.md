@@ -41,6 +41,8 @@ node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
    - `output/output-manifest.json`
 8. Respond with the PPTX path, editability level, rasterized regions, dependency gaps, and important sources used.
 
+For creative text-to-PPTX work, use design-first mode before authoring the final manifest: write `deck.storyboard.json`, `deck.design-direction.json`, and `slide-design-specs.json`, then compile them into `deck.manifest.json`. For strict Replica mode, preserve source fidelity and do not beautify the source design.
+
 ## Web Search and Source Policy
 
 Web search is available to the host agent throughout the PPTX creation process. Use it as an optional quality amplifier, not as a mandatory ceremony.
