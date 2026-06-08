@@ -3,6 +3,10 @@ import path from "node:path";
 import { loadDesignFirstArtifacts } from "./lib/design-first-loader.mjs";
 import { compileDesignFirstManifest } from "./lib/manifest-compiler.mjs";
 
+function readOptionalJson(filePath) {
+  return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, "utf8")) : null;
+}
+
 function parseArgs(argv) {
   const [inputDir, outputPath, ...rest] = argv;
   if (!inputDir || !outputPath) {
@@ -19,6 +23,9 @@ function parseArgs(argv) {
 
 const { inputDir, outputPath, options } = parseArgs(process.argv.slice(2));
 const artifacts = loadDesignFirstArtifacts(inputDir);
+const baseDir = path.resolve(inputDir);
+options.uiSpec = readOptionalJson(path.join(baseDir, "ui-spec.json"));
+options.componentSpecs = readOptionalJson(path.join(baseDir, "component-specs.json"));
 const manifest = compileDesignFirstManifest(artifacts, options);
 fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });
 fs.writeFileSync(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
