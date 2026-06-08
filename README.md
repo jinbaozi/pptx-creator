@@ -827,6 +827,14 @@ The design-first pipeline is the foundation for higher-quality creative decks. F
 
 Open `workbench/index.html` in a browser and load a generated `run.json` file to inspect run status, direction candidates, preview paths, and review artifacts. The first workbench is read-only and does not edit PPTX files.
 
+### Visual Roadmap Tools
+
+- Source and Asset Registry: `npm run registry:validate -- output/sources.json output/assets/asset-registry.json`
+- Multi-Direction Exploration: `npm run explore:directions -- examples/design-first/kycc-roadshow/deck.storyboard.json output/visual-roadmap-next`
+- Run Index: `npm run run:index -- output/visual-roadmap-next kycc-roadshow creative "kycc roadshow"`
+- Screenshot-Level Vision Review: `npm run vision:review -- output/visual-roadmap-next --provider mock`
+- Native Components: manifests may use richer `chart` kinds and semantic `diagram` elements; both render as editable native PPTX objects.
+
 ### Tests
 
 JavaScript tests:

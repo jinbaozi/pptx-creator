@@ -80,10 +80,24 @@ describe("theme packs, layouts, backend selection, and richer charts", () => {
     expect(await readFile(join(outputDir, "qa-report.md"), "utf8")).toContain("Layouts used: dashboard");
   }, 60000);
 
-  it("keeps the deck schema aligned with supported chart kinds", async () => {
+  it("keeps the deck schema aligned with supported component kinds", async () => {
     const schema = JSON.parse(await readFile(join(root, "schemas/deck.schema.json"), "utf8"));
     const kindEnum = schema.properties.slides.items.properties.elements.items.properties.kind.enum;
 
-    expect(kindEnum).toEqual(["bar", "line", "pie", "stackedBar", "horizontalBar", "groupedBar", "kpiGroup", "sparkline"]);
+    expect(kindEnum).toEqual([
+      "bar",
+      "line",
+      "pie",
+      "stackedBar",
+      "horizontalBar",
+      "groupedBar",
+      "kpiGroup",
+      "sparkline",
+      "layeredArchitecture",
+      "compilerPipeline",
+      "capabilityStack",
+      "swimlane",
+      "matrixMap"
+    ]);
   });
 });

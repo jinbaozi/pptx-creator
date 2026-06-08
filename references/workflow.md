@@ -210,7 +210,10 @@ Do not rasterize the full reference slide unless the user explicitly accepts low
 After preview PNGs are generated, run:
 
 ```powershell
-npm run vision:review -- output --provider mock
+npm run explore:directions -- examples/design-first/kycc-roadshow/deck.storyboard.json output/visual-roadmap-next
+npm run pipeline:design-first -- examples/design-first/kycc-roadshow output/visual-roadmap-next --emit-run-index --validate-registry --run-id kycc-roadshow --input-summary "kycc roadshow"
+npm run vision:review -- output/visual-roadmap-next --provider mock
+npm run run:index -- output/visual-roadmap-next kycc-roadshow creative "kycc roadshow"
 ```
 
 This creates `output/vision-review.json` using the same schema expected from a future vision-capable model provider. The mock provider is for local plumbing and tests; provider-backed review must keep the same output contract and must not edit PPTX files directly.

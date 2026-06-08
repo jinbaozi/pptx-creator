@@ -46,6 +46,45 @@ function scoreSlide(slide, deckSize) {
         });
       }
     }
+    if (el.type === "chart") {
+      const data = Array.isArray(el.data) ? el.data : [];
+      const labelBudget = Math.max(1, Math.floor(w / 0.45));
+      if (data.length > labelBudget) {
+        addIssue(issues, {
+          severity: "medium",
+          type: "chart-label-density",
+          message: `Chart ${el.id} has more labels than the available width supports.`,
+          target: el.id
+        });
+      }
+      if (!el.description) {
+        addIssue(issues, {
+          severity: "medium",
+          type: "chart-description",
+          message: `Chart ${el.id} is missing a plain-language description.`,
+          target: el.id
+        });
+      }
+    }
+    if (el.type === "diagram") {
+      if (!el.description) {
+        addIssue(issues, {
+          severity: "medium",
+          type: "diagram-description",
+          message: `Diagram ${el.id} is missing a plain-language description.`,
+          target: el.id
+        });
+      }
+      const layers = el.layers ?? el.lanes;
+      if (["layeredArchitecture", "compilerPipeline", "capabilityStack", "swimlane"].includes(el.kind) && (!Array.isArray(layers) || layers.length === 0)) {
+        addIssue(issues, {
+          severity: "high",
+          type: "diagram-empty-layers",
+          message: `Diagram ${el.id} has no layers or lanes.`,
+          target: el.id
+        });
+      }
+    }
   }
   if (!elements.some((el) => el.type === "text")) {
     addIssue(issues, {

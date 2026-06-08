@@ -20,4 +20,12 @@ describe("vision review CLI", () => {
     expect(review.slides[0].slideId).toBe("slide-001");
     expect(review.slides[0].findings[0].source).toBe("vision-model");
   });
+
+  it("writes an empty mock review when previews are not available yet", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-vision-review-empty-"));
+    await execFileAsync(process.execPath, ["scripts/run-vision-review.mjs", dir, "--provider", "mock"]);
+    const review = JSON.parse(await readFile(join(dir, "vision-review.json"), "utf8"));
+    expect(review.reviewer.provider).toBe("mock");
+    expect(review.slides).toEqual([]);
+  });
 });

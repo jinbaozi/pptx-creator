@@ -4,6 +4,18 @@ Copy and adapt these prompts in the host agent. Replace `{theme_name}` and paths
 
 Web search source policy: host agents may search autonomously, keep source URLs, and localize remote assets under `output/assets/`.
 
+## Visual Roadmap Metadata Rules
+
+```text
+For creative decks, create or preserve source metadata:
+1. Record source URLs for external claims in sources.json.
+2. Mark external assets as visual-reference, embedded-asset, icon-source, font-reference, replica-source, or user-provided.
+3. Generate multiple design directions when the task benefits from visual exploration, then choose one approved direction before full-deck generation.
+4. Save remote assets locally before rendering and reference only local paths in deck.manifest.json.
+5. Use screenshot-level vision review as structured QA feedback only. Do not let VLM feedback directly edit PPTX files.
+6. For strict replica mode, VLM feedback may flag fidelity issues but must not redesign the source layout, colors, typography, or content.
+```
+
 ## 通用联网增强规则
 
 ```text

@@ -7,7 +7,7 @@ const outputDir = resolve(args[0] ?? "output");
 const provider = valueAfter(args, "--provider") ?? "mock";
 
 const previewDir = join(outputDir, "previews");
-const previews = (await readdir(previewDir)).filter((name) => name.endsWith(".png")).sort();
+const previews = await listPreviewFiles(previewDir);
 
 let review;
 if (provider === "mock") {
@@ -46,4 +46,13 @@ function createMockReview(previews) {
 function valueAfter(args, flag) {
   const index = args.indexOf(flag);
   return index >= 0 ? args[index + 1] : null;
+}
+
+async function listPreviewFiles(previewDir) {
+  try {
+    return (await readdir(previewDir)).filter((name) => name.endsWith(".png")).sort();
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
 }
