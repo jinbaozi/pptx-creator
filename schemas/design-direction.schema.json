@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/design-direction.schema.json",
+  "title": "Deck Design Direction",
+  "type": "object",
+  "required": ["style", "tone", "palette", "typography", "layoutStrategy", "avoid"],
+  "properties": {
+    "style": { "type": "string", "minLength": 1 },
+    "tone": { "type": "array", "items": { "type": "string" } },
+    "palette": {
+      "type": "object",
+      "required": ["background", "surface", "primary", "accent", "text"],
+      "properties": {
+        "background": { "type": "string" },
+        "surface": { "type": "string" },
+        "primary": { "type": "string" },
+        "accent": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "required": ["title", "body"],
+      "properties": {
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "number": { "type": "string" }
+      }
+    },
+    "layoutStrategy": { "type": "string" },
+    "avoid": { "type": "array", "items": { "type": "string" } }
+  }
+}

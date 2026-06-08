@@ -1,0 +1,18 @@
+{
+  "style": "business-tech-roadshow",
+  "tone": ["premium", "technical", "precise"],
+  "palette": {
+    "background": "#07111F",
+    "surface": "#101C2E",
+    "primary": "#35D0FF",
+    "accent": "#7CFFB2",
+    "text": "#E8F1FF"
+  },
+  "typography": {
+    "title": "bold modern sans",
+    "body": "clean sans",
+    "number": "tabular sans"
+  },
+  "layoutStrategy": "12-column grid, diagram-led pages, strong hierarchy, controlled density",
+  "avoid": ["dense bullets", "generic decorative gradients", "full-slide raster screenshots"]
+}
