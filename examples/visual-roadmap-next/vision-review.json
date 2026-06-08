@@ -1,0 +1,37 @@
+{
+  "reviewer": {
+    "type": "vision-model",
+    "provider": "openai",
+    "model": "configured-by-host",
+    "createdAt": "2026-06-08T10:00:00+08:00"
+  },
+  "deckScore": 84,
+  "slides": [
+    {
+      "slideId": "slide-004",
+      "score": 81,
+      "findings": [
+        {
+          "id": "vlm-slide-004-001",
+          "severity": "warning",
+          "category": "hierarchy",
+          "message": "Main pipeline diagram is visually dominant, but the takeaway text competes with it.",
+          "evidence": {
+            "region": { "x": 9.2, "y": 5.4, "w": 2.4, "h": 0.7 },
+            "observation": "right-bottom callout has similar color intensity as primary nodes"
+          },
+          "suggestedRepair": {
+            "operation": "adjustStyle",
+            "target": "takeaway-callout",
+            "changes": { "fill": "#102033", "opacity": 0.86 }
+          }
+        }
+      ]
+    },
+    {
+      "slideId": "slide-007",
+      "score": 87,
+      "findings": []
+    }
+  ]
+}

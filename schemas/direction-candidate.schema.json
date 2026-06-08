@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/direction-candidate.schema.json",
+  "title": "Design Direction Candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "label", "tone", "palette", "typography", "layoutStrategy", "sampleSlides"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "label": { "type": "string", "minLength": 1 },
+    "tone": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "palette": {
+      "type": "object",
+      "required": ["background", "surface", "primary", "accent", "text"],
+      "properties": {
+        "background": { "type": "string" },
+        "surface": { "type": "string" },
+        "primary": { "type": "string" },
+        "accent": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "required": ["title", "body"],
+      "properties": {
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "number": { "type": "string" }
+      }
+    },
+    "layoutStrategy": { "type": "string", "minLength": 1 },
+    "sampleSlides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "role"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "role": { "type": "string", "minLength": 1 },
+          "manifest": { "type": "string" },
+          "preview": { "type": "string" }
+        }
+      }
+    },
+    "avoid": { "type": "array", "items": { "type": "string" } },
+    "metadata": { "type": "object" }
+  }
+}

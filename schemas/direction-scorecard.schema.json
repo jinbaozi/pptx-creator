@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/direction-scorecard.schema.json",
+  "title": "Direction Scorecard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["directionId", "scores", "total", "recommendation"],
+  "properties": {
+    "directionId": { "type": "string", "minLength": 1 },
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storyFit", "visualVariety", "readability", "diagramStrength", "editability", "sourceSafety"],
+      "properties": {
+        "storyFit": { "type": "number" },
+        "visualVariety": { "type": "number" },
+        "readability": { "type": "number" },
+        "diagramStrength": { "type": "number" },
+        "editability": { "type": "number" },
+        "sourceSafety": { "type": "number" }
+      }
+    },
+    "total": { "type": "number", "minimum": 0, "maximum": 100 },
+    "recommendation": {
+      "type": "string",
+      "enum": ["approve", "revise", "reject"]
+    },
+    "notes": { "type": "string" },
+    "vlmScore": { "type": "number", "minimum": 0, "maximum": 100 },
+    "metadata": { "type": "object" }
+  }
+}

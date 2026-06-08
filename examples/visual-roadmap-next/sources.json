@@ -1,0 +1,24 @@
+{
+  "createdAt": "2026-06-08T10:00:00+08:00",
+  "items": [
+    {
+      "id": "source-001",
+      "kind": "fact",
+      "title": "GNU Compiler Collection documentation",
+      "url": "https://gcc.gnu.org/onlinedocs/",
+      "accessedAt": "2026-06-08T10:00:00+08:00",
+      "usedFor": ["compiler compatibility explanation"],
+      "trustLevel": "primary",
+      "notes": "Used for general GCC terminology only."
+    },
+    {
+      "id": "source-002",
+      "kind": "fact",
+      "title": "Clang compiler pipeline overview",
+      "url": "https://clang.llvm.org/docs/InternalsManual.html",
+      "accessedAt": "2026-06-08T10:05:00+08:00",
+      "usedFor": ["compiler pipeline diagram"],
+      "trustLevel": "primary"
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/chart.schema.json",
+  "title": "Native Chart Element",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "kind", "data", "style", "description"],
+  "properties": {
+    "type": { "type": "string", "const": "chart" },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "bar",
+        "horizontalBar",
+        "stackedBar",
+        "groupedBar",
+        "line",
+        "area",
+        "pie",
+        "waterfall",
+        "kpi",
+        "sparkline",
+        "radar"
+      ]
+    },
+    "id": { "type": "string" },
+    "x": { "type": "number" },
+    "y": { "type": "number" },
+    "w": { "type": "number", "exclusiveMinimum": 0 },
+    "h": { "type": "number", "exclusiveMinimum": 0 },
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "value"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1 },
+          "value": { "type": "number" },
+          "series": {
+            "type": "object",
+            "additionalProperties": { "type": "number" }
+          },
+          "color": { "type": "string" }
+        }
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["palette"],
+      "properties": {
+        "palette": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "showLegend": { "type": "boolean" },
+        "showValues": { "type": "boolean" },
+        "axis": {
+          "type": "string",
+          "enum": ["none", "minimal", "full"]
+        }
+      }
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "metadata": { "type": "object" }
+  }
+}

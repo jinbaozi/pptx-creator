@@ -1,0 +1,15 @@
+{
+  "directionId": "direction-001",
+  "scores": {
+    "storyFit": 18,
+    "visualVariety": 17,
+    "readability": 19,
+    "diagramStrength": 18,
+    "editability": 16,
+    "sourceSafety": 20
+  },
+  "total": 90,
+  "recommendation": "approve",
+  "notes": "Strong technical credibility; high diagram strength due to layered architecture grammar.",
+  "vlmScore": 86
+}

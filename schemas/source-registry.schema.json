@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/source-registry.schema.json",
+  "title": "Source Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["createdAt", "items"],
+  "properties": {
+    "createdAt": { "type": "string", "minLength": 1 },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "title", "usedFor", "trustLevel"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "url": { "type": "string" },
+          "accessedAt": { "type": "string" },
+          "usedFor": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "trustLevel": {
+            "type": "string",
+            "enum": ["primary", "secondary", "unverified"]
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "metadata": { "type": "object" }
+  }
+}

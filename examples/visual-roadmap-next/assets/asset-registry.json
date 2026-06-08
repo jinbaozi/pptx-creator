@@ -1,0 +1,32 @@
+{
+  "createdAt": "2026-06-08T10:00:00+08:00",
+  "assets": [
+    {
+      "id": "asset-001",
+      "kind": "image",
+      "sourceUrl": "https://example.com/reference.png",
+      "localPath": "assets/reference.png",
+      "usedInSlides": ["slide-003"],
+      "license": {
+        "status": "allowed-with-attribution",
+        "label": "CC BY 4.0",
+        "attribution": "Example Author"
+      },
+      "usage": "visual-reference",
+      "finalDeckUse": "not-embedded"
+    },
+    {
+      "id": "asset-002",
+      "kind": "icon",
+      "sourceUrl": "https://example.com/icons/compiler.svg",
+      "localPath": "assets/icons/compiler.svg",
+      "usedInSlides": ["slide-002", "slide-004"],
+      "license": {
+        "status": "allowed",
+        "label": "MIT"
+      },
+      "usage": "icon-source",
+      "finalDeckUse": "recreated-locally"
+    }
+  ]
+}

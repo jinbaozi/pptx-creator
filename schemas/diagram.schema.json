@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/diagram.schema.json",
+  "title": "Semantic Diagram Element",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "kind", "geometry", "style"],
+  "properties": {
+    "type": { "type": "string", "const": "diagram" },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "layeredArchitecture",
+        "compilerPipeline",
+        "dependencyGraph",
+        "swimlane",
+        "capabilityStack",
+        "matrixMap",
+        "feedbackLoop",
+        "funnel",
+        "timeline",
+        "systemBoundary"
+      ]
+    },
+    "id": { "type": "string" },
+    "geometry": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "type": "number", "exclusiveMinimum": 0 },
+        "h": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "nodes"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1 },
+          "nodes": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "group": { "type": "string" }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 },
+          "label": { "type": "string" }
+        }
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "theme": { "type": "string" },
+        "connector": {
+          "type": "string",
+          "enum": ["straight", "orthogonal", "curved"]
+        },
+        "density": {
+          "type": "string",
+          "enum": ["sparse", "medium", "dense"]
+        }
+      }
+    },
+    "description": { "type": "string" },
+    "metadata": { "type": "object" }
+  }
+}

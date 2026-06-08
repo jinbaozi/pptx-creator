@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/vision-review.schema.json",
+  "title": "Vision Model Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reviewer", "deckScore", "slides"],
+  "properties": {
+    "reviewer": {
+      "type": "object",
+      "required": ["type", "provider", "model", "createdAt"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "deckScore": { "type": "number", "minimum": 0, "maximum": 100 },
+    "slides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slideId", "score", "findings"],
+        "properties": {
+          "slideId": { "type": "string", "minLength": 1 },
+          "score": { "type": "number", "minimum": 0, "maximum": 100 },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "severity", "category", "message"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "severity": {
+                  "type": "string",
+                  "enum": ["info", "warning", "error"]
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "hierarchy",
+                    "layout",
+                    "contrast",
+                    "density",
+                    "consistency",
+                    "polish",
+                    "editability",
+                    "sourceFidelity"
+                  ]
+                },
+                "message": { "type": "string", "minLength": 1 },
+                "evidence": {
+                  "type": "object",
+                  "properties": {
+                    "region": {
+                      "type": "object",
+                      "required": ["x", "y", "w", "h"],
+                      "properties": {
+                        "x": { "type": "number" },
+                        "y": { "type": "number" },
+                        "w": { "type": "number" },
+                        "h": { "type": "number" }
+                      }
+                    },
+                    "observation": { "type": "string" }
+                  }
+                },
+                "suggestedRepair": {
+                  "type": "object",
+                  "required": ["operation", "target", "changes"],
+                  "properties": {
+                    "operation": { "type": "string", "minLength": 1 },
+                    "target": { "type": "string", "minLength": 1 },
+                    "changes": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "metadata": { "type": "object" }
+  }
+}

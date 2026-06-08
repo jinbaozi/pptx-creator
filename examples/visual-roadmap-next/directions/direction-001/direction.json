@@ -1,0 +1,39 @@
+{
+  "id": "direction-001",
+  "label": "Business Tech Roadshow",
+  "tone": ["confident", "technical", "premium"],
+  "palette": {
+    "background": "#0B1B2B",
+    "surface": "#102841",
+    "primary": "#36C5F0",
+    "accent": "#FFCF5A",
+    "text": "#F4F7FA"
+  },
+  "typography": {
+    "title": "Inter Tight",
+    "body": "Inter",
+    "number": "Inter Tight"
+  },
+  "layoutStrategy": "diagram-led, single focal point per slide, generous negative space",
+  "sampleSlides": [
+    {
+      "id": "slide-001",
+      "role": "cover",
+      "manifest": "sample.deck.manifest.json",
+      "preview": "previews/slide-001.png"
+    },
+    {
+      "id": "slide-004",
+      "role": "architecture",
+      "manifest": "sample.deck.manifest.json",
+      "preview": "previews/slide-004.png"
+    },
+    {
+      "id": "slide-007",
+      "role": "metrics",
+      "manifest": "sample.deck.manifest.json",
+      "preview": "previews/slide-007.png"
+    }
+  ],
+  "avoid": ["cluttered hero", "low contrast text on dark", "raster screenshots"]
+}

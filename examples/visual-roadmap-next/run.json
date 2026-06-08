@@ -1,0 +1,29 @@
+{
+  "runId": "2026-06-08-kycc-roadshow",
+  "mode": "creative",
+  "status": "ready-for-review",
+  "input": {
+    "type": "text",
+    "summary": "kycc GCC-compatible C compiler roadshow"
+  },
+  "artifacts": {
+    "storyboard": "deck.storyboard.json",
+    "designDirection": "deck.design-direction.json",
+    "slideDesignSpecs": "slide-design-specs.json",
+    "manifest": "deck.manifest.json",
+    "pptx": "final.pptx",
+    "previews": ["previews/slide-001.png"],
+    "reviews": ["visual-review.json", "vision-review.json"],
+    "sources": "sources.json",
+    "assetRegistry": "assets/asset-registry.json"
+  },
+  "directions": [
+    {
+      "id": "direction-001",
+      "label": "Business Tech Roadshow",
+      "status": "approved",
+      "score": 90,
+      "path": "directions/direction-001/direction.json"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/asset-registry.schema.json",
+  "title": "Asset Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assets"],
+  "properties": {
+    "createdAt": { "type": "string" },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "usage", "finalDeckUse"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
+          "sourceUrl": { "type": "string" },
+          "localPath": { "type": "string" },
+          "usedInSlides": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "license": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "status": { "type": "string", "minLength": 1 },
+              "label": { "type": "string" },
+              "attribution": { "type": "string" }
+            }
+          },
+          "usage": {
+            "type": "string",
+            "enum": [
+              "fact-source",
+              "visual-reference",
+              "embedded-asset",
+              "font-reference",
+              "icon-source",
+              "replica-source"
+            ]
+          },
+          "finalDeckUse": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "metadata": { "type": "object" }
+  }
+}
