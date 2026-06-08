@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { reviewManifest } from "../scripts/lib/visual-critic.mjs";
+import { applyRepairPatch } from "../scripts/lib/repair-patch.mjs";
 
 function sampleManifest() {
   return {
@@ -40,5 +41,37 @@ describe("visual critic", () => {
     execFileSync("node", ["scripts/run-visual-critic.mjs", manifestPath, reviewPath], { stdio: "pipe" });
     const review = JSON.parse(fs.readFileSync(reviewPath, "utf8"));
     expect(review.slides[0].issues.length).toBeGreaterThan(0);
+  });
+});
+
+describe("repair patch", () => {
+  it("applies move, resize, updateStyle, and updateText patches", () => {
+    const manifest = sampleManifest();
+    const patched = applyRepairPatch(manifest, {
+      attempt: 1,
+      patches: [
+        { slideId: "slide-001", operation: "move", targetElementId: "tiny", changes: { x: 1, y: 1 } },
+        { slideId: "slide-001", operation: "resize", targetElementId: "tiny", changes: { w: 5, h: 0.6 } },
+        { slideId: "slide-001", operation: "updateStyle", targetElementId: "tiny", changes: { fontSize: 12 } },
+        { slideId: "slide-001", operation: "updateText", targetElementId: "tiny", changes: { text: "Readable" } }
+      ]
+    });
+    const el = patched.slides[0].elements.find((item) => item.id === "tiny");
+    expect(el.x).toBe(1);
+    expect(el.y).toBe(1);
+    expect(el.w).toBe(5);
+    expect(el.h).toBe(0.6);
+    expect(el.style.fontSize).toBe(12);
+    expect(el.text).toBe("Readable");
+  });
+
+  it("rejects patches for missing elements", () => {
+    const manifest = sampleManifest();
+    expect(() => applyRepairPatch(manifest, {
+      attempt: 1,
+      patches: [
+        { slideId: "slide-001", operation: "move", targetElementId: "missing", changes: { x: 1 } }
+      ]
+    })).toThrow(/missing/);
   });
 });
