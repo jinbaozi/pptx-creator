@@ -81,18 +81,30 @@
                 "src": { "type": "string" },
                 "headers": { "type": "array", "items": { "type": "string" } },
                 "rows": { "type": "array" },
-                "kind": { "type": "string", "enum": ["bar", "line", "pie"] },
+                "kind": {
+                  "type": "string",
+                  "enum": ["bar", "line", "pie", "stackedBar", "horizontalBar", "groupedBar", "kpiGroup", "sparkline"]
+                },
                 "name": { "type": "string", "enum": ["check", "x", "info", "arrow-right"] },
                 "data": {
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "required": ["label", "value"],
+                    "required": ["label"],
                     "properties": {
                       "label": { "type": "string" },
                       "value": { "type": "number" },
+                      "series": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": { "type": "number" }
+                      },
                       "color": { "type": "string" }
-                    }
+                    },
+                    "anyOf": [
+                      { "required": ["value"] },
+                      { "required": ["series"] }
+                    ]
                   }
                 },
                 "style": { "type": "object" }

@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 HEX = "0123456789abcdefABCDEF"
+CHART_KINDS = {"bar", "line", "pie", "stackedBar", "horizontalBar", "groupedBar", "kpiGroup", "sparkline"}
 
 
 def fail(message: str) -> None:
@@ -91,13 +92,19 @@ def validate_element(element: dict, slide_id: str, width: float, height: float, 
     if element["type"] == "table":
         require(isinstance(element.get("rows"), list), f"{slide_id}/{element['id']}: rows are required")
     if element["type"] == "chart":
-        require(element.get("kind") in {"bar", "line", "pie"}, f"{slide_id}/{element['id']}: chart.kind must be bar, line, or pie")
+        require(element.get("kind") in CHART_KINDS, f"{slide_id}/{element['id']}: chart.kind must be one of {', '.join(sorted(CHART_KINDS))}")
         data = element.get("data")
         require(isinstance(data, list) and data, f"{slide_id}/{element['id']}: chart.data is required")
         for index, point in enumerate(data):
             require(isinstance(point, dict), f"{slide_id}/{element['id']}: chart.data[{index}] must be an object")
             require(isinstance(point.get("label"), str) and point["label"], f"{slide_id}/{element['id']}: chart.data[{index}].label is required")
-            require(isinstance(point.get("value"), (int, float)), f"{slide_id}/{element['id']}: chart.data[{index}].value must be numeric")
+            if "series" in point:
+                require(isinstance(point["series"], dict) and point["series"], f"{slide_id}/{element['id']}: chart.data[{index}].series must be a non-empty object")
+                for series_name, series_value in point["series"].items():
+                    require(isinstance(series_name, str) and series_name, f"{slide_id}/{element['id']}: chart.data[{index}].series keys must be non-empty strings")
+                    require(isinstance(series_value, (int, float)), f"{slide_id}/{element['id']}: chart.data[{index}].series.{series_name} must be numeric")
+            else:
+                require(isinstance(point.get("value"), (int, float)), f"{slide_id}/{element['id']}: chart.data[{index}].value must be numeric")
     if element["type"] == "icon":
         require(element.get("name") in {"check", "x", "info", "arrow-right"}, f"{slide_id}/{element['id']}: unsupported icon name")
     if "style" in element:

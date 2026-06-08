@@ -104,7 +104,7 @@ class ValidateManifestTest(TestCase):
 
     def test_accepts_chart_elements(self):
         data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
-        for index, kind in enumerate(["bar", "line", "pie"]):
+        for index, kind in enumerate(["bar", "line", "pie", "horizontalBar", "kpiGroup", "sparkline"]):
             data["slides"][0]["elements"].append(
                 {
                     "type": "chart",
@@ -123,6 +123,31 @@ class ValidateManifestTest(TestCase):
             )
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "chart.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_accepts_series_chart_elements(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        for index, kind in enumerate(["stackedBar", "groupedBar"]):
+            data["slides"][0]["elements"].append(
+                {
+                    "type": "chart",
+                    "kind": kind,
+                    "id": f"series-chart-{kind}",
+                    "x": 1.0 + index * 2.2,
+                    "y": 4.0,
+                    "w": 2.0,
+                    "h": 2.0,
+                    "data": [
+                        {"label": "Phase 1", "series": {"Dev": 30, "Test": 10}},
+                        {"label": "Phase 2", "series": {"Dev": 20, "Test": 20}}
+                    ],
+                    "style": {"palette": ["#36C5F0", "#7CFFB2"]}
+                }
+            )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "series-chart.json"
             path.write_text(json.dumps(data), encoding="utf-8")
             result = self.run_validator(path)
         self.assertEqual(result.returncode, 0, result.stderr)

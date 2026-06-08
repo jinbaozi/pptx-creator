@@ -26,7 +26,7 @@ M1.1 supports:
 - `table`
 - `line`
 
-v0.2 supports native-rendered `chart` elements with `kind: "bar"`. v0.3 also supports `line` and `pie`:
+v0.2 supports native-rendered `chart` elements with `kind: "bar"`. v0.3 also supports `line` and `pie`. The visual roadmap extension also accepts `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`; these newer kinds expand into editable primitive text, shape, and line elements before rendering:
 
 ```json
 {
@@ -46,6 +46,29 @@ v0.2 supports native-rendered `chart` elements with `kind: "bar"`. v0.3 also sup
 ```
 
 The renderer expands charts into native PPT shapes and editable labels. `pie` currently renders as editable proportional bars plus percent labels for reliable cross-suite editing.
+
+Stacked and grouped charts use `series` values:
+
+```json
+{
+  "type": "chart",
+  "kind": "stackedBar",
+  "id": "chart-workload",
+  "x": 0.8,
+  "y": 1.5,
+  "w": 5.6,
+  "h": 3.4,
+  "data": [
+    { "label": "Phase 1", "series": { "Dev": 30, "Test": 12, "Delivery": 8 } },
+    { "label": "Phase 2", "series": { "Dev": 24, "Test": 18, "Delivery": 10 } }
+  ],
+  "style": {
+    "palette": ["#36C5F0", "#7CFFB2", "#FFCF5A"],
+    "showLegend": true,
+    "showValues": true
+  }
+}
+```
 
 v0.2 also supports native-rendered `icon` elements:
 

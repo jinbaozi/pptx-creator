@@ -84,6 +84,6 @@ describe("theme packs, layouts, backend selection, and richer charts", () => {
     const schema = JSON.parse(await readFile(join(root, "schemas/deck.schema.json"), "utf8"));
     const kindEnum = schema.properties.slides.items.properties.elements.items.properties.kind.enum;
 
-    expect(kindEnum).toEqual(["bar", "line", "pie"]);
+    expect(kindEnum).toEqual(["bar", "line", "pie", "stackedBar", "horizontalBar", "groupedBar", "kpiGroup", "sparkline"]);
   });
 });

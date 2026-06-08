@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import pptxgen from "pptxgenjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
+import { expandChartElement } from "./lib/chart-renderer.mjs";
 
 const SHAPES = { rect: "rect", roundRect: "roundRect", ellipse: "ellipse" };
 
@@ -368,6 +369,13 @@ function addBackground(slide, background, manifest, design, baseDir) {
   }
 }
 
+function expandRenderableElements(elements) {
+  return elements.flatMap((element) => {
+    if (element.type === "chart") return expandChartElement(element);
+    return [element];
+  });
+}
+
 function renderElement(slide, element, design, baseDir, counters) {
   if (element.type === "text") {
     counters.text += 1;
@@ -503,7 +511,7 @@ async function main() {
     const slide = pptx.addSlide();
     const counters = { text: 0, shape: 0, image: 0, table: 0 };
     addBackground(slide, sourceSlide.background, manifest, design, baseDir);
-    for (const element of sourceSlide.elements) renderElement(slide, element, design, baseDir, counters);
+    for (const element of expandRenderableElements(sourceSlide.elements ?? [])) renderElement(slide, element, design, baseDir, counters);
     countersBySlide.push(counters);
   }
 
