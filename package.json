@@ -24,6 +24,7 @@
     "visual:critic": "node scripts/run-visual-critic.mjs",
     "repair:apply": "node scripts/apply-repair-patch.mjs",
     "registry:validate": "node scripts/validate-registry.mjs",
+    "run:index": "node scripts/build-run-index.mjs",
     "design:first": "node scripts/compile-design-first.mjs",
     "pipeline:design-first": "node scripts/run-design-first-pipeline.mjs",
     "explore:directions": "node scripts/run-direction-exploration.mjs",

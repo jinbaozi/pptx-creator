@@ -20,15 +20,15 @@
     "artifacts": {
       "type": "object",
       "properties": {
-        "storyboard": { "type": "string" },
-        "designDirection": { "type": "string" },
-        "slideDesignSpecs": { "type": "string" },
-        "manifest": { "type": "string" },
-        "pptx": { "type": "string" },
+        "storyboard": { "type": ["string", "null"] },
+        "designDirection": { "type": ["string", "null"] },
+        "slideDesignSpecs": { "type": ["string", "null"] },
+        "manifest": { "type": ["string", "null"] },
+        "pptx": { "type": ["string", "null"] },
         "previews": { "type": "array", "items": { "type": "string" } },
         "reviews": { "type": "array", "items": { "type": "string" } },
-        "sources": { "type": "string" },
-        "assetRegistry": { "type": "string" }
+        "sources": { "type": ["string", "null"] },
+        "assetRegistry": { "type": ["string", "null"] }
       }
     },
     "directions": {
