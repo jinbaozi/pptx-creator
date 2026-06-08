@@ -1,6 +1,6 @@
 import { readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { normalizeVisionReview } from "./lib/vision-review.mjs";
+import { normalizeVisionReview, runVisionReview } from "./lib/vision-review.mjs";
 
 const args = process.argv.slice(2);
 const outputDir = resolve(args[0] ?? "output");
@@ -9,39 +9,22 @@ const provider = valueAfter(args, "--provider") ?? "mock";
 const previewDir = join(outputDir, "previews");
 const previews = await listPreviewFiles(previewDir);
 
-let review;
-if (provider === "mock") {
-  review = createMockReview(previews);
-} else {
-  throw new Error(`provider ${provider} is not configured in this CLI. Use --provider mock until a host agent supplies model integration.`);
-}
+const result = await runVisionReview({
+  screenshots: previews,
+  manifest: null,
+  provider,
+  options: { outputDir }
+});
 
-await writeFile(join(outputDir, "vision-review.json"), `${JSON.stringify(normalizeVisionReview(review), null, 2)}\n`);
+const fileReview = {
+  reviewer: result.reviewer,
+  deckScore: result.deckScore,
+  slides: result.slides,
+  ...(result.metadata ? { metadata: result.metadata } : {})
+};
+
+await writeFile(join(outputDir, "vision-review.json"), `${JSON.stringify(normalizeVisionReview(fileReview), null, 2)}\n`);
 console.log(`wrote ${join(outputDir, "vision-review.json")}`);
-
-function createMockReview(previews) {
-  return {
-    reviewer: {
-      type: "vision-model",
-      provider: "mock",
-      model: "mock-vlm",
-      createdAt: new Date().toISOString()
-    },
-    deckScore: 80,
-    slides: previews.map((preview, index) => ({
-      slideId: preview.replace(/\.png$/, ""),
-      score: 80,
-      findings: [
-        {
-          id: `mock-${index + 1}`,
-          severity: "info",
-          category: "polish",
-          message: "Mock review completed for screenshot-level review plumbing."
-        }
-      ]
-    }))
-  };
-}
 
 function valueAfter(args, flag) {
   const index = args.indexOf(flag);
