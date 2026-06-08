@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { loadDesignFirstArtifacts } from "../scripts/lib/design-first-loader.mjs";
+import { resolveArchetypeForSlide } from "../scripts/lib/archetype-resolver.mjs";
 
 const archetypes = [
   "cover",
@@ -32,5 +34,38 @@ describe("layout archetype packages", () => {
       expect(schema.requiredSlots.length, `${name} requiredSlots count`).toBeGreaterThan(0);
       expect(schema.constraints, `${name} constraints`).toBeTruthy();
     }
+  });
+});
+
+describe("archetype resolver", () => {
+  it("loads design-first artifacts from a directory", () => {
+    const artifacts = loadDesignFirstArtifacts("examples/design-first/kycc-roadshow");
+    expect(artifacts.storyboard.title).toBe("kycc Roadshow Deck");
+    expect(artifacts.designDirection.style).toBe("business-tech-roadshow");
+    expect(artifacts.slideDesignSpecs.slides.length).toBe(3);
+  });
+
+  it("resolves a slide layout package", () => {
+    const artifacts = loadDesignFirstArtifacts("examples/design-first/kycc-roadshow");
+    const resolved = resolveArchetypeForSlide(artifacts.slideDesignSpecs.slides[2], "layout-archetypes");
+    expect(resolved.name).toBe("architecture-layered");
+    expect(resolved.schema.requiredSlots).toContain("layers");
+  });
+
+  it("rejects a slide missing required archetype slots", () => {
+    const slide = {
+      id: "slide-bad",
+      layoutType: "architecture-layered",
+      intent: "bad example",
+      mainIdea: "missing layers",
+      visualPlan: {
+        focalPoint: "headline",
+        density: "medium",
+        visualWeight: { headline: 100 }
+      },
+      contentSlots: [{ slot: "headline", role: "claim", content: "Only headline" }],
+      editableTarget: 5
+    };
+    expect(() => resolveArchetypeForSlide(slide, "layout-archetypes")).toThrow(/layers/);
   });
 });
