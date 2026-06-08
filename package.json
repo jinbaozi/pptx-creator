@@ -25,6 +25,7 @@
     "repair:apply": "node scripts/apply-repair-patch.mjs",
     "registry:validate": "node scripts/validate-registry.mjs",
     "run:index": "node scripts/build-run-index.mjs",
+    "vision:review": "node scripts/run-vision-review.mjs",
     "design:first": "node scripts/compile-design-first.mjs",
     "pipeline:design-first": "node scripts/run-design-first-pipeline.mjs",
     "explore:directions": "node scripts/run-direction-exploration.mjs",

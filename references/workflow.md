@@ -205,6 +205,16 @@ Do not rasterize the full reference slide unless the user explicitly accepts low
 3. Re-run pipeline (max 3 auto-fix attempts before asking the user).
 4. Never silently skip missing assets or out-of-bounds elements.
 
+## Screenshot-Level Vision Review
+
+After preview PNGs are generated, run:
+
+```powershell
+npm run vision:review -- output --provider mock
+```
+
+This creates `output/vision-review.json` using the same schema expected from a future vision-capable model provider. The mock provider is for local plumbing and tests; provider-backed review must keep the same output contract and must not edit PPTX files directly.
+
 ## QA before responding
 
 Read `references/qa-rubric.md` and confirm slide count, editability level, and dependency gaps are reported to the user.
