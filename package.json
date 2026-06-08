@@ -21,6 +21,7 @@
     "preview:render": "node scripts/run-python.mjs scripts/render-preview.py",
     "preview:compare": "node scripts/run-python.mjs scripts/compare-preview.py",
     "visual:regression": "node scripts/run-visual-regression.mjs",
+    "visual:critic": "node scripts/run-visual-critic.mjs",
     "batch": "node scripts/run-batch-pipeline.mjs",
     "pipeline": "node scripts/run-deck-pipeline.mjs",
     "render": "node scripts/render-pptx.mjs",
