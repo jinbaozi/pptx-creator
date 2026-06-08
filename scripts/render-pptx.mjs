@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import pptxgen from "pptxgenjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
 import { expandChartElement } from "./lib/chart-renderer.mjs";
+import { expandDiagramElement } from "./lib/diagram-compiler.mjs";
 
 const SHAPES = { rect: "rect", roundRect: "roundRect", ellipse: "ellipse" };
 
@@ -372,6 +373,7 @@ function addBackground(slide, background, manifest, design, baseDir) {
 function expandRenderableElements(elements) {
   return elements.flatMap((element) => {
     if (element.type === "chart") return expandChartElement(element);
+    if (element.type === "diagram") return expandDiagramElement(element);
     return [element];
   });
 }

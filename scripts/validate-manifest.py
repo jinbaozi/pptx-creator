@@ -6,6 +6,7 @@ from pathlib import Path
 
 HEX = "0123456789abcdefABCDEF"
 CHART_KINDS = {"bar", "line", "pie", "stackedBar", "horizontalBar", "groupedBar", "kpiGroup", "sparkline"}
+DIAGRAM_KINDS = {"layeredArchitecture", "compilerPipeline", "capabilityStack", "swimlane", "matrixMap"}
 
 
 def fail(message: str) -> None:
@@ -76,7 +77,7 @@ def require_local_file(src: object, manifest_path: Path, label: str) -> None:
 
 
 def validate_element(element: dict, slide_id: str, width: float, height: float, manifest_path: Path) -> None:
-    require(element.get("type") in {"text", "shape", "image", "table", "line", "chart", "icon"}, f"{slide_id}: unsupported element type")
+    require(element.get("type") in {"text", "shape", "image", "table", "line", "chart", "icon", "diagram"}, f"{slide_id}: unsupported element type")
     require(isinstance(element.get("id"), str) and element["id"], f"{slide_id}: element id is required")
     for key in ["x", "y", "w", "h"]:
         require(isinstance(element.get(key), (int, float)), f"{slide_id}/{element['id']}: {key} must be numeric")
@@ -107,6 +108,18 @@ def validate_element(element: dict, slide_id: str, width: float, height: float, 
                 require(isinstance(point.get("value"), (int, float)), f"{slide_id}/{element['id']}: chart.data[{index}].value must be numeric")
     if element["type"] == "icon":
         require(element.get("name") in {"check", "x", "info", "arrow-right"}, f"{slide_id}/{element['id']}: unsupported icon name")
+    if element["type"] == "diagram":
+        require(element.get("kind") in DIAGRAM_KINDS, f"{slide_id}/{element['id']}: diagram.kind must be one of {', '.join(sorted(DIAGRAM_KINDS))}")
+        if element.get("kind") in {"layeredArchitecture", "compilerPipeline", "capabilityStack", "swimlane"}:
+            layers = element.get("layers", element.get("lanes"))
+            require(isinstance(layers, list) and layers, f"{slide_id}/{element['id']}: diagram layers are required")
+            for index, layer in enumerate(layers):
+                require(isinstance(layer, dict), f"{slide_id}/{element['id']}: diagram layer {index} must be an object")
+                require(isinstance(layer.get("label"), str) and layer["label"], f"{slide_id}/{element['id']}: diagram layer {index} label is required")
+                require(isinstance(layer.get("nodes"), list), f"{slide_id}/{element['id']}: diagram layer {index} nodes must be an array")
+        if element.get("kind") == "matrixMap":
+            require(isinstance(element.get("rows"), list) and element["rows"], f"{slide_id}/{element['id']}: matrixMap rows are required")
+            require(isinstance(element.get("columns"), list) and element["columns"], f"{slide_id}/{element['id']}: matrixMap columns are required")
     if "style" in element:
         require(isinstance(element["style"], dict), f"{slide_id}/{element['id']}: style must be an object")
 

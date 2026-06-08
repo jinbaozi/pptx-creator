@@ -70,7 +70,7 @@
               "type": "object",
               "required": ["type", "id", "x", "y", "w", "h"],
               "properties": {
-                "type": { "type": "string", "enum": ["text", "shape", "image", "table", "line", "chart", "icon"] },
+                "type": { "type": "string", "enum": ["text", "shape", "image", "table", "line", "chart", "icon", "diagram"] },
                 "id": { "type": "string" },
                 "x": { "type": "number" },
                 "y": { "type": "number" },
@@ -83,7 +83,21 @@
                 "rows": { "type": "array" },
                 "kind": {
                   "type": "string",
-                  "enum": ["bar", "line", "pie", "stackedBar", "horizontalBar", "groupedBar", "kpiGroup", "sparkline"]
+                  "enum": [
+                    "bar",
+                    "line",
+                    "pie",
+                    "stackedBar",
+                    "horizontalBar",
+                    "groupedBar",
+                    "kpiGroup",
+                    "sparkline",
+                    "layeredArchitecture",
+                    "compilerPipeline",
+                    "capabilityStack",
+                    "swimlane",
+                    "matrixMap"
+                  ]
                 },
                 "name": { "type": "string", "enum": ["check", "x", "info", "arrow-right"] },
                 "data": {
@@ -107,7 +121,30 @@
                     ]
                   }
                 },
-                "style": { "type": "object" }
+                "style": { "type": "object" },
+                "layers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["label", "nodes"],
+                    "properties": {
+                      "label": { "type": "string" },
+                      "nodes": { "type": "array", "items": { "type": "string" } }
+                    }
+                  }
+                },
+                "lanes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["label", "nodes"],
+                    "properties": {
+                      "label": { "type": "string" },
+                      "nodes": { "type": "array", "items": { "type": "string" } }
+                    }
+                  }
+                },
+                "columns": { "type": "array", "items": { "type": "string" } }
               }
             }
           }

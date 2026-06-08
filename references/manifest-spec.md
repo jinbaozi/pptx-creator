@@ -87,6 +87,28 @@ v0.2 also supports native-rendered `icon` elements:
 
 Supported icon names: `check`, `x`, `info`, and `arrow-right`. The renderer expands icons into native PPT lines, shapes, and editable text.
 
+The visual roadmap extension supports semantic `diagram` elements. Diagrams compile to editable native shapes, lines, and text before rendering:
+
+```json
+{
+  "type": "diagram",
+  "kind": "layeredArchitecture",
+  "id": "diagram-architecture",
+  "x": 0.7,
+  "y": 1.2,
+  "w": 11.0,
+  "h": 5.2,
+  "layers": [
+    { "label": "Frontend", "nodes": ["Lexer", "Parser", "Semantic Analysis"] },
+    { "label": "Middle End", "nodes": ["IR", "Constant Propagation", "DCE", "CSE"] },
+    { "label": "Backend", "nodes": ["Codegen", "Assembler", "Link Driver"] }
+  ],
+  "style": { "theme": "business-tech", "connector": "orthogonal" }
+}
+```
+
+Supported diagram kinds are `layeredArchitecture`, `compilerPipeline`, `capabilityStack`, `swimlane`, and `matrixMap`.
+
 M1.2 adds `scripts/html-to-manifest.mjs` to generate manifests from semantic HTML. See `references/html-to-pptx.md`.
 
 M1.3 adds image inspection helpers that produce `image-hints.json` and `deck.manifest.skeleton.json` for host-agent completion. See `references/image-to-pptx.md`. Skeleton manifests may include `_skeleton: true` and placeholder text — remove before final validation.

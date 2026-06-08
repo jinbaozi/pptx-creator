@@ -171,3 +171,28 @@ class ValidateManifestTest(TestCase):
             path.write_text(json.dumps(data), encoding="utf-8")
             result = self.run_validator(path)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_accepts_diagram_elements(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["slides"][0]["elements"].append(
+            {
+                "type": "diagram",
+                "kind": "layeredArchitecture",
+                "id": "architecture-diagram",
+                "x": 0.8,
+                "y": 1.0,
+                "w": 10.0,
+                "h": 4.5,
+                "layers": [
+                    {"label": "Frontend", "nodes": ["Lexer", "Parser"]},
+                    {"label": "Middle End", "nodes": ["IR", "Optimize"]},
+                    {"label": "Backend", "nodes": ["Codegen", "Assemble"]}
+                ],
+                "style": {"theme": "business-tech"}
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "diagram.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)

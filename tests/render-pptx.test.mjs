@@ -93,6 +93,36 @@ describe("render-pptx", () => {
     expect(await slideXml(pptxPath)).toContain("i");
   });
 
+  it("renders diagram elements as editable native shapes and text", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-diagram-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements.push({
+      type: "diagram",
+      kind: "layeredArchitecture",
+      id: "diagram-001",
+      x: 0.8,
+      y: 1.2,
+      w: 10.5,
+      h: 4.5,
+      layers: [
+        { label: "Frontend", nodes: ["Lexer", "Parser"] },
+        { label: "Middle End", nodes: ["IR", "Optimize"] },
+        { label: "Backend", nodes: ["Codegen", "Assemble"] }
+      ],
+      style: { theme: "business-tech" }
+    });
+    const manifest = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
+
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifest, pptxPath], { cwd: root });
+
+    const xml = await slideXml(pptxPath);
+    expect(xml).toContain("Frontend");
+    expect(xml).toContain("Optimize");
+  });
+
   it("rejects remote image URLs with a clear localization error", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-remote-image-"));
     const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
