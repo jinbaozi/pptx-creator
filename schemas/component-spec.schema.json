@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/component-spec.schema.json",
+  "title": "Component Spec",
+  "type": "object",
+  "required": ["version", "slides"],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "components"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "type", "editability", "region"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "type": { "type": "string", "minLength": 1 },
+                "editability": { "type": "string", "minLength": 1 },
+                "region": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
