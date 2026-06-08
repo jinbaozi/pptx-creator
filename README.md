@@ -8,22 +8,6 @@
 
 项目核心原则：**先生成结构化 manifest，再确定性渲染 PPTX**。脚本不会调用 LLM API，也不会自行编造内容。
 
-## 最近 23 次提交带来的主要能力
-
-- 发布核心 `pptx-creator` skill、Agent 使用规范、适配器、内置设计系统和基础 pipeline。
-- 增加 Design-first 创作流程：`storyboard -> design direction -> slide design specs -> deck manifest -> PPTX`。
-- 增加布局原型包、设计系统解析、manifest 编译器、视觉评审与修复契约。
-- 增加规则化 visual critic、repair patch、bounded repair loop 和自动修复 CLI。
-- 增强设计方向探索，支持多方向候选、scorecard 和 run index。
-- 增加 Visual Workbench 工作台外壳，用于浏览生成产物和后续可视化评审。
-- 增加 Source Registry 和 Asset Registry，用于记录来源、素材、授权和可追溯信息。
-- 增加原生可编辑图表：`bar`、`line`、`pie`、`stackedBar`、`horizontalBar`、`groupedBar`、`kpiGroup`、`sparkline`。
-- 增加语义图解编译器：`layeredArchitecture`、`compilerPipeline`、`capabilityStack`、`swimlane`、`matrixMap`。
-- 增加 Screenshot-Level Vision Model Review 的 mock CLI 和 review 合并逻辑，为后续接入真实视觉模型预留契约。
-- 增强整体 metadata flow：registry 校验、run index、设计方向探索、design-first pipeline flags 和报告联动。
-- 修复可编辑渲染质量问题：箭头改为 PPT 原生箭头线，visual critic 会拦截超大空白装饰容器，并支持 `removeElement` 修复。
-- 默认忽略 `docs/`，避免将本地设计文档、计划文档等生成内容提交到仓库。
-
 ## 适用场景
 
 - 从文本、Markdown 或结构化内容生成商务路演、技术汇报、产品说明、培训课件和研究报告。
@@ -37,15 +21,20 @@
 | 能力 | 说明 |
 | --- | --- |
 | 文本到 PPTX | 宿主 Agent 根据原始内容生成故事线、页面结构、文案和 `deck.manifest.json`，再由 pipeline 渲染。 |
-| Design-first 创作 | 在 manifest 之前显式生成 storyboard、design direction、slide design specs，让故事、视觉方向和页面设计可审查。 |
+| Design-first 创作 | 通过 `storyboard -> design direction -> slide design specs -> deck manifest -> PPTX` 的流程，让故事、视觉方向和页面设计在渲染前可审查。 |
+| 布局原型与编译 | 内置 layout archetypes、设计系统解析和 manifest 编译器，把设计规格转换成确定性的 PPTX manifest。 |
+| 多方向设计探索 | 生成多个设计方向候选、scorecard 和 run index，帮助 Agent 在完整出稿前选择更合适的视觉路线。 |
 | HTML 到 PPTX | 支持语义 HTML、CSS 定位 HTML、DOM 测量、远程图片本地化和多页转换。 |
 | 图片/PDF 输入 | 提供图片检查、颜色提取、OCR、裁剪、PDF 页面 hints 等辅助脚本，由 Agent 重建可编辑对象。 |
 | 可编辑渲染 | 优先输出 PPT 原生文本、形状、线条、表格、图表、图标和语义图解。 |
-| 图表与图解 | 图表和架构图会展开成可编辑 PPT 原生对象，而不是整页图片。 |
+| 图表与图解 | 支持 `bar`、`line`、`pie`、`stackedBar`、`horizontalBar`、`groupedBar`、`kpiGroup`、`sparkline` 等图表，以及 `layeredArchitecture`、`compilerPipeline`、`capabilityStack`、`swimlane`、`matrixMap` 等语义图解，均会展开成可编辑 PPT 原生对象。 |
 | 设计系统 | 使用 `DESIGN.md` 提供颜色、字体、组件、布局规则和导出规则。 |
-| 质量检查 | 包含 manifest 校验、可编辑性报告、QA 报告、WPS 兼容性、可访问性、OpenXML 检查、visual critic、视觉回归。 |
+| 视觉评审与修复 | 包含规则化 visual critic、visual review 契约、repair patch、bounded repair loop 和自动修复 CLI；会拦截小字号、越界、过密图表、缺少描述、空图解层和超大空白装饰容器等问题。 |
+| Screenshot-Level Vision Model Review | 提供 mock CLI、review 合并逻辑和稳定输出契约，为后续接入真实截图级视觉模型评审预留接口。 |
+| 质量检查 | 包含 manifest 校验、可编辑性报告、QA 报告、WPS 兼容性、可访问性、OpenXML 检查、视觉回归和截图级视觉评审。 |
 | Registry | 支持来源 registry 和素材 registry，记录事实来源、素材来源、授权状态和使用位置。 |
-| Workbench | 提供本地可视化工作台外壳，用于浏览方向、报告和生成产物。 |
+| Metadata Flow | 将 registry 校验、run index、方向探索、design-first pipeline flags 和报告产物串联，便于批量生成、审计和复盘。 |
+| Visual Workbench | 提供本地可视化工作台外壳，用于浏览设计方向、报告和生成产物。 |
 
 ## 安装部署
 

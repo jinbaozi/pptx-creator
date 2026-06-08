@@ -8,22 +8,6 @@
 
 Core principle: **author a structured manifest first, then render PPTX deterministically**. Package scripts do not call LLM APIs and do not invent content.
 
-## What Changed in the Latest 23 Commits
-
-- Published the core `pptx-creator` skill, Agent guide, adapters, built-in design systems, and baseline pipeline.
-- Added the design-first creative workflow: `storyboard -> design direction -> slide design specs -> deck manifest -> PPTX`.
-- Added layout archetype packages, design system parsing, manifest compilation, visual review contracts, and repair contracts.
-- Added a rule-based visual critic, repair patches, bounded repair loops, and repair CLI support.
-- Added multi-direction design exploration with candidate directions, scorecards, and run indexes.
-- Added the Visual Workbench shell for browsing generated artifacts and future visual review workflows.
-- Added Source Registry and Asset Registry validation for traceable facts, assets, licenses, and usage.
-- Expanded native editable charts: `bar`, `line`, `pie`, `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`.
-- Added semantic diagram compilation: `layeredArchitecture`, `compilerPipeline`, `capabilityStack`, `swimlane`, and `matrixMap`.
-- Added a mock Screenshot-Level Vision Model Review CLI and review merge logic, preserving the contract for future provider-backed vision review.
-- Integrated metadata flow across registry validation, run indexes, direction exploration, design-first pipeline flags, and reports.
-- Improved editable rendering quality: right arrows now use native PowerPoint arrowheads, oversized empty decorative containers are flagged, and `removeElement` repair is supported.
-- Ignored `docs/` by default to prevent local planning/spec artifacts from being committed.
-
 ## Use Cases
 
 - Generate business roadshows, technical briefings, product decks, training decks, and research reports from text or Markdown.
@@ -37,15 +21,20 @@ Core principle: **author a structured manifest first, then render PPTX determini
 | Capability | Description |
 | --- | --- |
 | Text to PPTX | The host agent turns raw content into an outline, slide plan, copy, and `deck.manifest.json`; the pipeline renders the deck. |
-| Design-first creation | Story, visual direction, and slide design are represented before manifest rendering. |
+| Design-first creation | Uses `storyboard -> design direction -> slide design specs -> deck manifest -> PPTX` so story, visual direction, and slide design can be reviewed before rendering. |
+| Layout archetypes and compilation | Built-in layout archetypes, design system parsing, and manifest compilation turn design specs into deterministic PPTX manifests. |
+| Multi-direction exploration | Generates candidate visual directions, scorecards, and run indexes so agents can choose a stronger direction before producing the full deck. |
 | HTML to PPTX | Supports semantic HTML, CSS-positioned HTML, DOM measurement, remote image localization, and multi-slide conversion. |
 | Image/PDF input | Provides image inspection, palette extraction, OCR, cropping, and PDF page hint helpers. |
 | Editable rendering | Prefers native PowerPoint text, shapes, lines, tables, charts, icons, and semantic diagrams. |
-| Charts and diagrams | Charts and diagrams expand into editable PowerPoint primitives instead of full-slide images. |
+| Charts and diagrams | Supports charts such as `bar`, `line`, `pie`, `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`, plus semantic diagrams such as `layeredArchitecture`, `compilerPipeline`, `capabilityStack`, `swimlane`, and `matrixMap`; all expand into editable PowerPoint primitives. |
 | Design systems | `DESIGN.md` files define colors, typography, components, layout rules, and export rules. |
-| Quality checks | Manifest validation, editability reports, QA reports, WPS compatibility, accessibility, OpenXML inspection, visual critic, and visual regression. |
+| Visual review and repair | Includes rule-based visual critic, visual review contracts, repair patches, bounded repair loops, and repair CLI support; it flags small text, bounds issues, dense chart labels, missing descriptions, empty diagram layers, and oversized empty decorative containers. |
+| Screenshot-Level Vision Model Review | Provides a mock CLI, review merge logic, and stable output contract for future provider-backed screenshot-level vision review. |
+| Quality checks | Manifest validation, editability reports, QA reports, WPS compatibility, accessibility, OpenXML inspection, visual regression, and screenshot-level vision review. |
 | Registries | Source and asset registries track facts, materials, license status, and usage. |
-| Workbench | A local visual workbench shell for browsing directions, reports, and generated artifacts. |
+| Metadata flow | Connects registry validation, run indexes, direction exploration, design-first pipeline flags, and generated reports for batch generation, auditability, and review. |
+| Visual Workbench | A local visual workbench shell for browsing directions, reports, and generated artifacts. |
 
 ## Installation
 
