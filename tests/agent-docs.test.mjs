@@ -109,4 +109,15 @@ describe("M3 agent productization docs", () => {
       expect(content).toMatch(/Screenshot-Level Vision Model Review/i);
     }
   });
+
+  it("documents the design artifact pipeline and review deliverables in both READMEs", async () => {
+    const readme = await readFile(join(root, "README.md"), "utf8");
+    const englishReadme = await readFile(join(root, "README.en.md"), "utf8");
+    for (const content of [readme, englishReadme]) {
+      expect(content).toMatch(/design artifacts?/i);
+      expect(content).toMatch(/preview artifacts?/i);
+      expect(content).toMatch(/screenshot-level review/i);
+      expect(content).toMatch(/editable PPTX/i);
+    }
+  });
 });

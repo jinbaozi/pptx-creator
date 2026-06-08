@@ -112,7 +112,7 @@ npm run design:first -- examples/design-first/kycc-roadshow output/design-first/
 npm run pipeline:design-first -- examples/design-first/kycc-roadshow output/design-first --emit-run-index --validate-registry --run-id kycc-roadshow --input-summary "kycc roadshow"
 ```
 
-核心中间产物：
+核心中间产物（design artifacts）：
 
 ```text
 deck.storyboard.json
@@ -123,6 +123,8 @@ final.pptx
 visual-review.json
 run.json
 ```
+
+设计产物（design artifacts）由 storyboard、design direction、slide design specs、UI component spec、preview artifacts 等组成，按 schema 落盘后由编译器转成确定性的 `deck.manifest.json`，再渲染为可在 PowerPoint/WPS 中继续编辑的 editable PPTX。preview artifacts 用于离线查看设计走向，screenshot-level review 走 mock provider 边界，未来可平替为真实视觉模型。
 
 多方向探索：
 

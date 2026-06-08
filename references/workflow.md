@@ -34,12 +34,25 @@ Every completed run should produce:
 
 ```text
 output/
-  final.pptx
+  final.pptx                  # editable PPTX
   deck.manifest.json
   editable-report.md
   qa-report.md
   compatibility-report.md
-  output-manifest.json   # via package-output.py
+  output-manifest.json        # via package-output.py
+```
+
+Design artifacts (when running design-first mode):
+
+```text
+output/deck.storyboard.json
+output/deck.design-direction.json
+output/slide-design-specs.json
+output/ui-component-spec.json
+output/preview/               # preview artifacts
+output/visual-review.json
+output/vision-review.json
+output/run.json
 ```
 
 Optional when dependencies exist:
@@ -56,6 +69,18 @@ output/accessibility-report.md
 output/openxml-repair-report.json
 output/template-summary.json
 ```
+
+### Mock vs. real vision review provider boundary
+
+The screenshot-level review CLI defaults to `--provider mock`. The mock provider produces the same `vision-review.json` schema a real vision-capable provider must honor. Provider-backed review must not mutate `final.pptx` directly; it only reports findings and may feed the bounded repair loop.
+
+### Strict replica boundary
+
+Strict HTML, image, or PDF replica work must keep the original background, layout, typography, color, content, tone, and effects intact. Replica mode may bypass design artifacts and design-direction exploration when source fidelity is the primary objective. Creative-mode exploration must not be applied on top of a strict replica.
+
+### Visual Workbench artifact inspection
+
+The local Visual Workbench shell browses design artifacts, preview artifacts, repair patches, and review reports under `output/`. It does not own rendering: the deterministic pipeline still writes the editable PPTX. screenshot-level review results appear alongside other review outputs but never replace the deterministic render step.
 
 ## Quick pipeline (any input type)
 

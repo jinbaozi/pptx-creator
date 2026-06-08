@@ -112,7 +112,7 @@ npm run design:first -- examples/design-first/kycc-roadshow output/design-first/
 npm run pipeline:design-first -- examples/design-first/kycc-roadshow output/design-first --emit-run-index --validate-registry --run-id kycc-roadshow --input-summary "kycc roadshow"
 ```
 
-Core artifacts:
+Core design artifacts:
 
 ```text
 deck.storyboard.json
@@ -123,6 +123,8 @@ final.pptx
 visual-review.json
 run.json
 ```
+
+Design artifacts (storyboard, design direction, slide design specs, UI component spec, preview artifacts) are written to disk under a JSON schema and compiled into a deterministic `deck.manifest.json`, which renders to an editable PPTX that remains editable in PowerPoint or WPS. preview artifacts are used to inspect design direction offline, and screenshot-level review defaults to a mock provider boundary that can later be swapped for a real vision-capable provider.
 
 Explore multiple visual directions:
 
