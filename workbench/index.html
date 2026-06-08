@@ -22,21 +22,53 @@
         <h2>Run Summary</h2>
         <pre id="run-summary">Load a run.json file to inspect generated artifacts.</pre>
       </section>
+      <nav class="tabs" role="tablist" aria-label="Artifact categories">
+        <button type="button" class="tab is-active" data-tab="requirements" role="tab" aria-selected="true">Requirements</button>
+        <button type="button" class="tab" data-tab="ui-spec" role="tab" aria-selected="false">UI Spec</button>
+        <button type="button" class="tab" data-tab="component-specs" role="tab" aria-selected="false">Component Specs</button>
+        <button type="button" class="tab" data-tab="preview-artifacts" role="tab" aria-selected="false">Previews</button>
+        <button type="button" class="tab" data-tab="vision-review" role="tab" aria-selected="false">Vision Review</button>
+        <button type="button" class="tab" data-tab="repair-patch" role="tab" aria-selected="false">Repair Patch</button>
+      </nav>
       <section class="grid">
+        <article class="panel" data-panel="requirements">
+          <h2>Requirements</h2>
+          <div id="requirements" class="panel-body"></div>
+        </article>
+        <article class="panel" data-panel="ui-spec">
+          <h2>UI Spec</h2>
+          <div id="ui-spec" class="panel-body"></div>
+        </article>
+        <article class="panel" data-panel="component-specs">
+          <h2>Component Specs</h2>
+          <div id="component-specs" class="panel-body"></div>
+        </article>
+        <article class="panel" data-panel="preview-artifacts">
+          <h2>Preview Artifacts</h2>
+          <div id="preview-artifacts" class="panel-body"></div>
+        </article>
+        <article class="panel" data-panel="vision-review">
+          <h2>Vision Review</h2>
+          <div id="vision-review" class="panel-body"></div>
+        </article>
+        <article class="panel" data-panel="repair-patch">
+          <h2>Repair Patch</h2>
+          <div id="repair-patch" class="panel-body"></div>
+        </article>
         <article class="panel" data-panel="directions">
           <h2>Directions</h2>
-          <div id="directions"></div>
+          <div id="directions" class="panel-body"></div>
         </article>
         <article class="panel" data-panel="slides">
           <h2>Slide Previews</h2>
-          <div id="previews"></div>
+          <div id="previews" class="panel-body"></div>
         </article>
         <article class="panel" data-panel="reviews">
           <h2>Reviews</h2>
-          <div id="reviews"></div>
+          <div id="reviews" class="panel-body"></div>
         </article>
       </section>
     </main>
-    <script type="module" src="./app.js"></script>
+    <script src="./app.js"></script>
   </body>
 </html>
