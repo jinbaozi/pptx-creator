@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/design-tokens.schema.json",
+  "title": "Design Tokens",
+  "type": "object",
+  "required": ["version", "color", "typography", "spacing"],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "color": {
+      "type": "object",
+      "required": ["background", "text", "primary"],
+      "properties": {
+        "background": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "primary": { "type": "string", "minLength": 1 },
+        "accent": { "type": "string" },
+        "surface": { "type": "string" }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "required": ["heading", "body"],
+      "properties": {
+        "heading": { "type": "string", "minLength": 1 },
+        "body": { "type": "string", "minLength": 1 }
+      }
+    },
+    "spacing": {
+      "type": "object",
+      "required": ["slidePadding"],
+      "properties": {
+        "slidePadding": { "type": "number" }
+      }
+    }
+  }
+}

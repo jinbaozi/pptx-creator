@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/preview-artifacts.schema.json",
+  "title": "Preview Artifacts",
+  "type": "object",
+  "required": ["version", "files", "generatedFrom"],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "generatedFrom": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "files": {
+      "type": "object",
+      "required": ["index.html", "styles.css", "components.jsx", "data.jsx"],
+      "properties": {
+        "index.html": { "type": "string", "minLength": 1 },
+        "styles.css": { "type": "string", "minLength": 1 },
+        "components.jsx": { "type": "string", "minLength": 1 },
+        "data.jsx": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
