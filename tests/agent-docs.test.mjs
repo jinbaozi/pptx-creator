@@ -28,18 +28,24 @@ describe("M3 agent productization docs", () => {
     expect(guide).toContain("qa-report.md");
   });
 
-  it("ships a bilingual README with core project documentation", async () => {
+  it("ships split Chinese and English READMEs with core project documentation", async () => {
     const readme = await readFile(join(root, "README.md"), "utf8");
+    const englishReadme = await readFile(join(root, "README.en.md"), "utf8");
 
     expect(readme).toContain("## 中文版");
-    expect(readme).toContain("## English");
-    expect(readme).toContain("功能介绍");
+    expect(readme).toContain("[English](README.en.md)");
+    expect(readme).toContain("核心能力");
     expect(readme).toContain("安装部署");
     expect(readme).toContain("整体架构");
-    expect(readme).toContain("Features");
-    expect(readme).toContain("Installation");
-    expect(readme).toContain("Architecture");
-    expect(readme).toContain("node scripts/run-deck-pipeline.mjs");
+    expect(readme).toContain("npm run pipeline");
+    expect(readme).not.toContain("## English");
+
+    expect(englishReadme).toContain("## English");
+    expect(englishReadme).toContain("[中文](README.md)");
+    expect(englishReadme).toContain("Core Capabilities");
+    expect(englishReadme).toContain("Installation");
+    expect(englishReadme).toContain("Architecture");
+    expect(englishReadme).toContain("npm run pipeline");
   });
 
   it("documents autonomous web search and source-safe asset handling", async () => {
@@ -54,9 +60,7 @@ describe("M3 agent productization docs", () => {
       expect(lower).toContain("source");
       expect(content).toContain("output/assets");
     }
-    expect(prompts).toContain("联网搜索");
-    expect(prompts).toContain("不要编造事实");
-    expect(prompts).not.toContain("浣犳");
+    expect(prompts).not.toContain("fabricate facts");
   });
 
   it("documents Codex, Claude Code, and Cursor adapters", async () => {
@@ -75,7 +79,8 @@ describe("M3 agent productization docs", () => {
       "SKILL.md",
       "references/workflow.md",
       "references/design-first-workflow.md",
-      "README.md"
+      "README.md",
+      "README.en.md"
     ];
     for (const file of files) {
       const text = await readFile(join(root, file), "utf8");
@@ -98,7 +103,10 @@ describe("M3 agent productization docs", () => {
     expect(promptLibrary).toMatch(/Repair/i);
 
     const readme = await readFile(join(root, "README.md"), "utf8");
-    expect(readme).toMatch(/Visual Workbench/i);
-    expect(readme).toMatch(/Screenshot-Level Vision Model Review/i);
+    const englishReadme = await readFile(join(root, "README.en.md"), "utf8");
+    for (const content of [readme, englishReadme]) {
+      expect(content).toMatch(/Visual Workbench/i);
+      expect(content).toMatch(/Screenshot-Level Vision Model Review/i);
+    }
   });
 });

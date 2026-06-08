@@ -1,48 +1,55 @@
 # pptx-creator
 
-`pptx-creator` is a portable agent skill and deterministic rendering toolkit for producing beautiful, mostly editable PowerPoint files from text, HTML, images, PDFs, and host-agent-authored deck manifests.
-
-`pptx-creator` 是一个面向智能体的可移植 PPTX 生成工具包。它将大模型或宿主 Agent 生成的 `deck.manifest.json` 渲染为尽量可编辑的 PowerPoint 文件，并支持文本生成、HTML 转换、图片/截图复刻、PDF 页面输入、视觉回归和质量检查。
-
----
+**中文** | [English](README.en.md)
 
 ## 中文版
 
-### 功能介绍
+`pptx-creator` 是一个面向 Agent 的可编辑 PPTX 生成工具包。它让大模型或宿主 Agent 负责理解、策划、写作、设计与必要的联网检索，让本项目的确定性脚本负责校验、转换、渲染、打包和质量检查，最终输出可在 PowerPoint/WPS 中继续编辑的 `.pptx` 文件。
 
-`pptx-creator` 的目标是让 Agent 负责理解、策划、写作和设计，让脚本负责确定性校验与渲染。最终输出的是可在 PowerPoint/WPS 中继续编辑的 `.pptx`，而不是简单的整页截图。
+项目核心原则：**先生成结构化 manifest，再确定性渲染 PPTX**。脚本不会调用 LLM API，也不会自行编造内容。
 
-核心能力：
+## 最近 23 次提交带来的主要能力
 
-- **文本到 PPTX**：宿主 Agent 根据原始文本生成大纲、页面结构、文案和 `deck.manifest.json`，再由工具渲染成 PPTX。
-- **HTML 到可编辑 PPTX**：支持语义 HTML、CSS 定位 HTML、DOM 测量、远程图片本地化和多页 HTML。
-- **图片/截图复刻**：提供图片尺寸、色板、布局带、对象提示、OCR、裁切资产等辅助工具，由 Agent 重建可编辑对象。
-- **PDF 页面输入**：将 PDF 页面渲染为 PNG 参考图，再进入图片到 PPTX 的提示流程。
-- **设计系统驱动**：所有视觉样式由 `DESIGN.md` 提供，包括颜色、字体、组件、布局和导出规则。
-- **原生可编辑对象优先**：支持文本框、形状、线条、表格、图片、图表和基础图标。
-- **内置主题包**：提供商务、科技、数据看板、政府汇报、产品路演、金融董事会等场景风格。
-- **联网增强策略**：宿主 Agent 可自行判断是否联网搜索事实、素材、视觉参考和行业内容，并记录来源与版权/商标限制。
-- **质量检查**：包含 manifest 校验、PPTX 渲染报告、可编辑性报告、WPS 兼容性报告、OpenXML 检查、可访问性检查和视觉回归。
-- **跨 Agent 使用**：提供 Codex、Claude Code、Cursor 等宿主适配说明。
+- 发布核心 `pptx-creator` skill、Agent 使用规范、适配器、内置设计系统和基础 pipeline。
+- 增加 Design-first 创作流程：`storyboard -> design direction -> slide design specs -> deck manifest -> PPTX`。
+- 增加布局原型包、设计系统解析、manifest 编译器、视觉评审与修复契约。
+- 增加规则化 visual critic、repair patch、bounded repair loop 和自动修复 CLI。
+- 增强设计方向探索，支持多方向候选、scorecard 和 run index。
+- 增加 Visual Workbench 工作台外壳，用于浏览生成产物和后续可视化评审。
+- 增加 Source Registry 和 Asset Registry，用于记录来源、素材、授权和可追溯信息。
+- 增加原生可编辑图表：`bar`、`line`、`pie`、`stackedBar`、`horizontalBar`、`groupedBar`、`kpiGroup`、`sparkline`。
+- 增加语义图解编译器：`layeredArchitecture`、`compilerPipeline`、`capabilityStack`、`swimlane`、`matrixMap`。
+- 增加 Screenshot-Level Vision Model Review 的 mock CLI 和 review 合并逻辑，为后续接入真实视觉模型预留契约。
+- 增强整体 metadata flow：registry 校验、run index、设计方向探索、design-first pipeline flags 和报告联动。
+- 修复可编辑渲染质量问题：箭头改为 PPT 原生箭头线，visual critic 会拦截超大空白装饰容器，并支持 `removeElement` 修复。
+- 默认忽略 `docs/`，避免将本地设计文档、计划文档等生成内容提交到仓库。
 
-适合场景：
+## 适用场景
 
-- 业务汇报、路演 PPT、技术架构说明、产品版本说明、课程讲义、数据看板、投融资材料、政务/公共部门汇报。
-- 将已有 HTML 页面、图片型幻灯片、PDF 页面重建为更可编辑的 PPTX。
-- 让大模型完成内容策划和页面设计，同时用确定性脚本保证输出结构稳定。
+- 从文本、Markdown 或结构化内容生成商务路演、技术汇报、产品说明、培训课件和研究报告。
+- 将语义 HTML 或 CSS 定位 HTML 转换为可编辑 PPTX。
+- 将截图、图片型幻灯片或 PDF 页面重建为尽量可编辑的 PPTX。
+- 让 Agent 结合设计系统、联网检索、素材 registry 和质量检查，生成更可靠的交付物。
+- 批量生成 PPTX，并输出可编辑性、兼容性、可访问性、视觉回归等报告。
 
-### 设计原则
+## 核心能力
 
-- **Manifest first**：`deck.manifest.json` 是 Agent 推理和渲染器之间的契约。
-- **Design-system guided**：生成前必须选择或读取 `DESIGN.md`。
-- **Editable first**：优先使用 PPT 原生对象，只有照片、复杂纹理、复杂图标、阴影和不可拆分区域才使用图片。
-- **Deterministic scripts**：脚本不调用 LLM API，不自行发明内容；所有内容判断由宿主 Agent 完成。
-- **Source-safe assets**：远程素材必须保存到本地 `output/assets/` 后再进入 manifest。
-- **Honest reporting**：如果依赖缺失或区域被图像化，必须在报告或最终回复中说明。
+| 能力 | 说明 |
+| --- | --- |
+| 文本到 PPTX | 宿主 Agent 根据原始内容生成故事线、页面结构、文案和 `deck.manifest.json`，再由 pipeline 渲染。 |
+| Design-first 创作 | 在 manifest 之前显式生成 storyboard、design direction、slide design specs，让故事、视觉方向和页面设计可审查。 |
+| HTML 到 PPTX | 支持语义 HTML、CSS 定位 HTML、DOM 测量、远程图片本地化和多页转换。 |
+| 图片/PDF 输入 | 提供图片检查、颜色提取、OCR、裁剪、PDF 页面 hints 等辅助脚本，由 Agent 重建可编辑对象。 |
+| 可编辑渲染 | 优先输出 PPT 原生文本、形状、线条、表格、图表、图标和语义图解。 |
+| 图表与图解 | 图表和架构图会展开成可编辑 PPT 原生对象，而不是整页图片。 |
+| 设计系统 | 使用 `DESIGN.md` 提供颜色、字体、组件、布局规则和导出规则。 |
+| 质量检查 | 包含 manifest 校验、可编辑性报告、QA 报告、WPS 兼容性、可访问性、OpenXML 检查、visual critic、视觉回归。 |
+| Registry | 支持来源 registry 和素材 registry，记录事实来源、素材来源、授权状态和使用位置。 |
+| Workbench | 提供本地可视化工作台外壳，用于浏览方向、报告和生成产物。 |
 
-### 安装部署
+## 安装部署
 
-#### 1. 环境要求
+### 环境要求
 
 必需：
 
@@ -52,66 +59,41 @@
 
 建议：
 
+- PowerPoint 或 WPS，用于人工检查最终 `.pptx`
 - Windows PowerShell、macOS Terminal 或 Linux shell
-- PowerPoint 或 WPS，用于人工打开和检查最终 PPTX
 
 可选：
 
-- Playwright Chromium：用于 CSS 定位 HTML 的 DOM 测量。
-- Tesseract OCR：用于本地 OCR。
-- LibreOffice：用于 PPTX 预览渲染和视觉回归。
-- PyMuPDF：用于 PDF 页面渲染。
+- Playwright Chromium：用于 CSS 定位 HTML 的 DOM 测量和 Workbench 测试
+- Tesseract OCR：用于本地 OCR
+- LibreOffice：用于 PPTX 预览渲染和视觉回归
+- PyMuPDF：用于 PDF 页面渲染
 
-#### 2. 安装 Node 依赖
+### 安装依赖
 
 ```bash
 npm install
-```
-
-主要 Node 依赖：
-
-- `pptxgenjs`：生成 PPTX。
-- `jszip`：读取和检查 PPTX/OpenXML 包。
-- `node-html-parser`：解析 HTML。
-- `yaml`：解析 `DESIGN.md` frontmatter。
-- `playwright`：开发依赖，用于 HTML DOM 测量。
-- `vitest`：JavaScript 测试框架。
-
-#### 3. 安装 Python 依赖
-
-```bash
 pip install -r requirements.txt
-```
-
-主要 Python 依赖：
-
-- `Pillow`：图片读取、裁切、色板分析。
-- `pytesseract`：可选 OCR 封装，需要系统安装 Tesseract。
-- `PyMuPDF`：可选 PDF 页面渲染。
-
-#### 4. 安装 Playwright 浏览器
-
-```bash
 npx playwright install chromium
-```
-
-仅在需要 `measure-html.mjs` 或 Playwright 集成测试时必需。
-
-#### 5. 初始化示例文件
-
-```bash
 node scripts/setup.mjs
 ```
 
-### 快速开始
+如需指定 Python：
+
+```powershell
+$env:PPTX_CREATOR_PYTHON="C:\Path\To\python.exe"
+npm run setup
+```
+
+## 快速开始
 
 运行内置文本示例：
 
 ```bash
-node scripts/run-deck-pipeline.mjs examples/text-input/deck.manifest.json output
+npm run pipeline -- examples/text-input/deck.manifest.json output
 ```
 
-成功后会生成：
+成功后输出：
 
 ```text
 output/
@@ -123,7 +105,7 @@ output/
   output-manifest.json
 ```
 
-分步运行：
+分步执行：
 
 ```bash
 node scripts/validate-design-md.mjs design-systems/business-neutral/DESIGN.md
@@ -132,7 +114,83 @@ node scripts/render-pptx.mjs examples/text-input/deck.manifest.json output/final
 python scripts/package-output.py output
 ```
 
-### 整体架构
+## Design-first 创作流程
+
+适合从文本生成更精美、更有变化的商务或技术 PPT：
+
+```bash
+npm run design:first -- examples/design-first/kycc-roadshow output/design-first/deck.manifest.json
+npm run pipeline:design-first -- examples/design-first/kycc-roadshow output/design-first --emit-run-index --validate-registry --run-id kycc-roadshow --input-summary "kycc roadshow"
+```
+
+核心中间产物：
+
+```text
+deck.storyboard.json
+deck.design-direction.json
+slide-design-specs.json
+deck.manifest.json
+final.pptx
+visual-review.json
+run.json
+```
+
+多方向探索：
+
+```bash
+npm run explore:directions -- examples/design-first/kycc-roadshow/deck.storyboard.json output/directions
+```
+
+## HTML、图片和 PDF 输入
+
+语义 HTML：
+
+```bash
+npm run html:manifest -- input.html output/deck.manifest.json
+npm run pipeline -- output/deck.manifest.json output
+```
+
+CSS 定位 HTML：
+
+```bash
+npm run html:measure -- input.html output/layout-measurements.json
+node scripts/html-to-manifest.mjs input.html output/deck.manifest.json --measurements output/layout-measurements.json
+npm run pipeline -- output/deck.manifest.json output
+```
+
+图片或截图：
+
+```bash
+npm run image:inspect -- reference.png
+npm run image:hints -- reference.png output/image-hints.json
+npm run image:ocr -- reference.png -o output/ocr.json
+npm run image:palette -- reference.png output/palette.json
+npm run image:crop -- reference.png crops.json output/assets
+```
+
+PDF 页面：
+
+```bash
+npm run pdf:hints -- source.pdf output/pdf-pages -o output/pdf-page-hints.json
+```
+
+PDF 支持是页面级 hints：最终仍应由 Agent 重建可编辑文本、形状、表格和图表，而不是直接整页栅格化。
+
+## 质量检查与修复
+
+```bash
+npm run accessibility:check -- output/deck.manifest.json output/accessibility-report.md
+npm run openxml:repair -- output/final.pptx output/openxml-repair-report.json
+npm run visual:critic -- output/deck.manifest.json output/visual-review.json --mode creative
+npm run repair:apply -- output/deck.manifest.json output/repair-patch.json output/deck.repaired.json
+npm run visual:regression -- output/deck.manifest.json output
+npm run vision:review -- output --provider mock
+npm run run:index -- output run-001 creative "deck summary"
+```
+
+`visual:critic` 会检查越界、小字号、过密图表、缺少图表/图解描述、空图解层，以及影响美观的超大空白装饰容器。
+
+## 整体架构
 
 ```text
 User input
@@ -140,26 +198,34 @@ User input
         |
         v
 Host Agent
-  Planner: audience, story, outline, slide plan
-  Writer: claims, copy, tables, charts, speaker notes
-  Designer: DESIGN.md selection, layout, visual system
-  Researcher: optional web search, source tracking, asset discovery
+  Planner      -> audience, outline, storyline
+  Writer       -> claims, copy, tables, chart data, speaker notes
+  Designer     -> DESIGN.md, layouts, components, visual direction
+  Researcher   -> optional web search, sources, asset discovery
+  Critic       -> review, repair patch, quality gates
+        |
+        v
+Design-first artifacts
+  deck.storyboard.json
+  deck.design-direction.json
+  slide-design-specs.json
         |
         v
 deck.manifest.json
   version, designSystem, deck, assets, slides, elements
         |
         v
-Deterministic helpers
+Deterministic scripts
   validate-manifest.py
-  parse-design-md.mjs
+  compile-design-first.mjs
   html-to-manifest.mjs
   measure-html.mjs
   image/pdf hint scripts
+  registry/run-index/visual review helpers
         |
         v
 Renderer
-  render-pptx.mjs with PptxGenJS
+  render-pptx.mjs + PptxGenJS
         |
         v
 Reports and QA
@@ -167,720 +233,98 @@ Reports and QA
   qa-report.md
   compatibility-report.md
   accessibility-report.md
-  openxml-repair-report.json
+  visual-review.json
+  vision-review.json
   visual-regression-report.json
         |
         v
 final.pptx
 ```
 
-架构分层：
+## 目录结构
 
-| 层级 | 职责 | 代表文件 |
-| --- | --- | --- |
-| Agent 规范 | 定义宿主 Agent 如何使用工具 | `SKILL.md`, `AGENT.md`, `adapters/*.md` |
-| 参考文档 | 描述 workflow、manifest、HTML、图片、QA 规则 | `references/*.md` |
-| 设计系统 | 提供可复用视觉 token 和导出规则 | `design-systems/*/DESIGN.md` |
-| Manifest | PPTX 内容和布局契约 | `schemas/deck.schema.json`, `examples/*/deck.manifest.json` |
-| 转换工具 | HTML、图片、PDF、模板等输入转提示或 manifest | `scripts/html-to-manifest.mjs`, `scripts/pdf-to-page-hints.py`, `scripts/import-template.mjs` |
-| 渲染器 | 将 manifest 渲染为 PPTX | `scripts/render-pptx.mjs` |
-| 管线 | 校验、渲染、打包、批量、视觉回归 | `scripts/run-deck-pipeline.mjs`, `scripts/run-batch-pipeline.mjs`, `scripts/run-visual-regression.mjs` |
-| 测试 | JS/Python 回归测试 | `tests/*.mjs`, `tests/*_test.py` |
-
-### 输入流程
-
-#### 文本 / Markdown 输入
-
-文本输入由宿主 Agent 生成页面大纲、文案和 manifest：
-
-```text
-用户内容
-  -> Agent 可选联网核验事实、补充术语、寻找视觉参考
-  -> Agent 选择 DESIGN.md
-  -> Agent 编写 deck.manifest.json
-  -> run-deck-pipeline.mjs
-  -> 读取报告并回复用户
-```
-
-参考：
-
-- `references/workflow.md`
-- `references/prompt-library.md`
-- `examples/text-input/`
-
-设计优先（design-first）创意 PPTX 在渲染之前会先生成三份中间产物：`deck.storyboard.json`、`deck.design-direction.json` 和 `slide-design-specs.json`。这样在编译为 manifest 之前，故事、视觉方向和页面结构都已显式表达。
-
-#### HTML 输入
-
-语义 HTML：
-
-```bash
-node scripts/html-to-manifest.mjs input.html output/deck.manifest.json
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-CSS 定位 HTML：
-
-```bash
-node scripts/measure-html.mjs input.html output/layout-measurements.json
-node scripts/html-to-manifest.mjs input.html output/deck.manifest.json --measurements output/layout-measurements.json
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-说明：
-
-- `.pptx-slide` 可表示单页。
-- `[data-pptx-kind]` 和 `[data-pptx-id]` 可标记需要测量的元素。
-- HTML 中的远程图片会被本地化到输出目录的 `assets/` 下。
-- 严格 1:1 复刻时，外部素材只能用于补齐缺失资源，不得改变原始视觉。
-
-#### 图片 / 截图输入
-
-```bash
-python scripts/inspect-image.py reference.png
-python scripts/image-to-manifest-hints.py reference.png output/image-hints.json
-python scripts/ocr-image.py reference.png -o output/ocr.json
-python scripts/extract-palette.py reference.png output/palette.json
-python scripts/crop-assets.py reference.png crops.json output/assets
-```
-
-宿主 Agent 根据提示和视觉盘点完成 manifest，再运行管线：
-
-```bash
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-#### PDF 页面输入
-
-```bash
-node scripts/run-python.mjs scripts/pdf-to-page-hints.py source.pdf output/pdf-pages -o output/pdf-page-hints.json
-```
-
-如果 PyMuPDF 未安装，该命令会返回 `status: deferred`，宿主 Agent 应诚实报告依赖缺口。
-
-#### 模板导入
-
-```bash
-node scripts/import-template.mjs template.pptx output/template-summary.json
-```
-
-该命令提取 PPTX 模板中的 slide/layout/master/theme 计数和主题色摘要。它不会克隆品牌资产。
-
-### 常用命令
-
-| 任务 | 命令 |
+| 路径 | 作用 |
 | --- | --- |
-| 初始化 | `node scripts/setup.mjs` |
-| 校验设计系统 | `node scripts/validate-design-md.mjs design-systems/business-neutral/DESIGN.md` |
-| 校验 manifest | `python scripts/validate-manifest.py output/deck.manifest.json` |
-| 渲染 PPTX | `node scripts/render-pptx.mjs output/deck.manifest.json output/final.pptx` |
-| 一键管线 | `node scripts/run-deck-pipeline.mjs output/deck.manifest.json output` |
-| HTML 转 manifest | `node scripts/html-to-manifest.mjs input.html output/deck.manifest.json` |
-| HTML DOM 测量 | `node scripts/measure-html.mjs input.html output/layout-measurements.json` |
-| 图片提示 | `node scripts/run-python.mjs scripts/image-to-manifest-hints.py reference.png output/image-hints.json` |
-| PDF 页面提示 | `node scripts/run-python.mjs scripts/pdf-to-page-hints.py source.pdf output/pdf-pages -o output/pdf-page-hints.json` |
-| 批量运行 | `node scripts/run-batch-pipeline.mjs batch.json output/batch` |
-| 视觉回归 | `node scripts/run-visual-regression.mjs output/deck.manifest.json output --reference-dir baselines` |
-| 可访问性检查 | `node scripts/analyze-accessibility.mjs output/deck.manifest.json output/accessibility-report.md` |
-| OpenXML 检查 | `node scripts/openxml-repair.mjs output/final.pptx output/openxml-repair-report.json` |
+| `SKILL.md` | Agent Skill 入口说明。 |
+| `AGENT.md` | 宿主 Agent 使用规范。 |
+| `adapters/` | Codex、Claude Code、Cursor 等宿主适配说明。 |
+| `design-systems/` | 内置通用设计系统。 |
+| `layout-archetypes/` | 设计优先流程使用的页面布局原型。 |
+| `schemas/` | deck、storyboard、design direction、registry、repair、review 等 JSON Schema。 |
+| `scripts/` | 转换、渲染、校验、修复、回归和工作台脚本。 |
+| `scripts/lib/` | 可复用核心逻辑。 |
+| `references/` | workflow、manifest、HTML/image/PDF、QA 和 prompt 参考。 |
+| `examples/` | 文本、HTML、图片、design-first 和 visual-roadmap 示例。 |
+| `workbench/` | 本地可视化工作台前端。 |
+| `tests/` | JavaScript 与 Python 回归测试。 |
 
-### Manifest 概览
+## 内置设计系统
 
-最小结构：
+常用设计系统包括：
 
-```json
-{
-  "version": "0.1.1",
-  "designSystem": {
-    "source": "../../design-systems/business-neutral/DESIGN.md",
-    "name": "Business Neutral",
-    "mode": "balanced"
-  },
-  "deck": {
-    "title": "Example Deck",
-    "language": "zh-CN",
-    "size": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" }
-  },
-  "assets": [],
-  "slides": [
-    {
-      "id": "slide-001",
-      "type": "content",
-      "title": "Example",
-      "notes": "",
-      "background": { "type": "solid", "color": "{colors.background}" },
-      "elements": [
-        {
-          "type": "text",
-          "id": "title-001",
-          "text": "Example",
-          "x": 0.8,
-          "y": 0.6,
-          "w": 8.0,
-          "h": 0.7,
-          "style": { "typography": "{typography.title}", "color": "{colors.text}" }
-        }
-      ]
-    }
-  ]
-}
-```
+- `business-neutral`
+- `warm-editorial`
+- `paper-minimal`
+- `dark-tech`
+- `ai-infra`
+- `product-roadshow`
+- `developer-docs`
+- `dashboard-data`
+- `premium-black`
+- `chinese-government`
+- `enterprise-blueprint`
+- `executive-crimson`
+- `finance-boardroom`
 
-支持元素：
+用户提供的 `DESIGN.md` 优先级最高。内置系统是安全基线，不是品牌模板，不应加入真实 logo、商标素材或商业字体。
 
-- `text`
-- `shape`
-- `line`
-- `image`
-- `table`
-- `chart`，支持 `bar`、`line`、`pie`
-- `icon`，支持 `check`、`x`、`info`、`arrow-right`
+## 常用 npm scripts
 
-### 内置设计系统
-
-| 设计系统 | 适用场景 |
+| 命令 | 说明 |
 | --- | --- |
-| `business-neutral` | 企业汇报、技术方案、产品总结 |
-| `warm-editorial` | 课程、白皮书、研究报告、内容型页面 |
-| `paper-minimal` | 中文讲义、学术材料、纸面风格课件 |
-| `dark-tech` | AI、云、安全、基础设施、开发者工具 |
-| `ai-infra` | 模型平台、AI 基础设施、推理系统、工具链路演 |
-| `developer-docs` | 技术文档、架构解释、API/平台说明 |
-| `dashboard-data` | 数据分析、监控、运营复盘 |
-| `premium-black` | 高端封面、硬科技发布、电影感品牌页 |
-| `enterprise-blueprint` | 咨询风企业战略和转型汇报 |
-| `executive-crimson` | 正式领导汇报、审计、里程碑总结 |
-| `finance-boardroom` | KPI 复盘、投资备忘录、董事会分析 |
-| `chinese-government` | 政务、公共部门、操作系统、正式汇报 |
-| `product-roadshow` | 产品发布、路演、商业计划书、销售材料 |
+| `npm run setup` | 初始化示例和环境报告。 |
+| `npm run pipeline` | 校验 manifest、渲染 PPTX、打包输出。 |
+| `npm run pipeline:design-first` | 运行 design-first 端到端流程。 |
+| `npm run explore:directions` | 生成多方向设计候选。 |
+| `npm run render` | 仅从 manifest 渲染 PPTX。 |
+| `npm run html:manifest` | HTML 转 manifest。 |
+| `npm run html:measure` | 测量 CSS 定位 HTML。 |
+| `npm run image:hints` | 图片转重建 hints。 |
+| `npm run pdf:hints` | PDF 页面转 hints。 |
+| `npm run visual:critic` | 规则化视觉评审。 |
+| `npm run vision:review` | mock 截图级视觉评审。 |
+| `npm run registry:validate` | 校验来源和素材 registry。 |
+| `npm run run:index` | 生成 run index。 |
+| `npm test` | JavaScript 测试。 |
+| `npm run test:py` | Python 测试。 |
 
-用户提供的 `DESIGN.md` 优先级最高。内置设计系统只是通用场景基线，不代表真实品牌模板，不应自动加入 Logo、商标素材或商业字体。
-
-### 输出报告
-
-一键管线会生成：
-
-- `final.pptx`：最终 PPTX。
-- `deck.manifest.json`：渲染使用的 manifest 副本。
-- `editable-report.md`：页数、原生文本数量、图像化对象数量、可编辑性等级。
-- `qa-report.md`：设计系统、渲染状态、布局摘要和风险。
-- `compatibility-report.md`：WPS/PowerPoint 可移植性风险。
-- `output-manifest.json`：打包摘要。
-
-可选报告：
-
-- `accessibility-report.md`
-- `openxml-repair-report.json`
-- `visual-regression-report.json`
-- `preview/`
-- `layout-measurements.json`
-- `image-hints.json`
-- `pdf-page-hints.json`
-- `ocr.json`
-- `template-summary.json`
-
-### 联网搜索和素材策略
-
-宿主 Agent 可以全程联网搜索相关内容、资料、素材和视觉参考。搜索由 Agent 自行判断，不是强制步骤。
-
-推荐搜索：
-
-- 事实、日期、标准、技术版本、行业背景可能不稳定。
-- 页面需要更好的素材、视觉参考、图标方向或版式灵感。
-- 用户明确允许或要求联网搜索。
-
-限制：
-
-- 不要编造事实、指标、案例、引用或来源。
-- 搜索得到的重要事实和素材应保留来源 URL。
-- 不要滥用 Logo、商标、版权图片、商业字体或品牌专属素材。
-- 远程图片必须先保存到本地，manifest 只引用本地相对路径。
-- 严格 1:1 复刻任务不能因为外部参考改变原始设计。
-
-### Visual Ceiling Roadmap
-
-The design-first pipeline is the foundation for higher-quality creative decks. Future roadmap items include a Visual Workbench for browser-based preview, direction selection, repair comparison, and export, plus Screenshot-Level Vision Model Review for slide PNG evaluation with a vision-capable model.
-
-### 测试与验证
-
-运行 JavaScript 测试：
+## 测试
 
 ```bash
 npm test
-```
-
-运行 Python 测试：
-
-```bash
 npm run test:py
 ```
 
-语法检查示例：
+## 输出与可编辑性
 
-```bash
-node --check scripts/render-pptx.mjs
-```
+默认目标是 Level 4 或 Level 5：
 
-Playwright 集成测试默认可跳过；本地需要时可安装 Chromium 后运行相关测试。
+- Level 5：主要对象均为 PPT 原生对象。
+- Level 4：文本和主视觉结构可编辑，复杂照片/纹理可作为图片。
+- Level 3：文本可编辑，但较多视觉对象为图片。
+- Level 1-2：主要用于严格截图复刻或用户明确接受低编辑性的场景。
 
-### 故障排查
+本项目不应把整页截图包装成“可编辑 PPTX”。
 
-| 问题 | 处理方式 |
-| --- | --- |
-| `Python not found` | 设置 `PPTX_CREATOR_PYTHON` 或安装 Python 3.10+ |
-| 图片路径缺失 | 确认 manifest 中 `image.src` 是相对 manifest 的本地路径 |
-| 远程图片渲染失败 | 先保存到 `output/assets/`，再引用本地路径 |
-| PDF hints 返回 `status: deferred` | 安装 `PyMuPDF` |
-| OCR 不可用 | 安装系统 Tesseract，并安装 `pytesseract` |
-| 预览或视觉回归 deferred | 安装 LibreOffice |
-| 文本溢出 | 缩短文案、增加文本框高度、拆页，不要用整页截图掩盖 |
-| 可编辑性低 | 将文本、表格、几何图形从图片替换为 PPT 原生对象 |
+## 联网检索与素材策略
 
-### 目录结构
+宿主 Agent 可以自行判断是否联网检索，以提升事实准确性、术语质量、视觉参考、素材质量和来源追踪。使用外部资料时必须：
 
-```text
-pptx-creator/
-  adapters/              # Codex, Claude Code, Cursor 使用说明
-  design-systems/        # 内置 DESIGN.md 设计系统
-  examples/              # 文本、HTML、图片输入示例
-  references/            # 工作流、manifest、HTML、图片、QA 参考文档
-  schemas/               # deck manifest JSON schema
-  scripts/               # 渲染、转换、检查、批量、视觉回归工具
-  scripts/lib/           # JS/Python 工具库
-  tests/                 # Vitest 和 Python unittest
-  AGENT.md               # 宿主 Agent 操作指南
-  SKILL.md               # Agent skill 描述
-  README.md              # 本文档
-```
+- 不编造事实、指标、案例或引用。
+- 尊重版权、授权、商标、logo 和字体限制。
+- 将远程素材本地化到输出目录后再写入 manifest。
+- 在最终回复、QA 记录或 registry 中保留关键来源。
 
----
+## 许可证
 
-## English
-
-### Features
-
-`pptx-creator` separates reasoning from rendering. The host agent plans the story, writes content, chooses layout, and authors `deck.manifest.json`; deterministic scripts validate the manifest and render a mostly editable PowerPoint file.
-
-Key features:
-
-- **Text to PPTX**: generate an outline, slide structure, copy, and manifest from raw text.
-- **HTML to editable PPTX**: convert semantic HTML or CSS-positioned HTML into editable slide elements.
-- **Image and screenshot reconstruction**: inspect images, extract palettes, create layout hints, run optional OCR, and crop complex assets.
-- **PDF page input**: render PDF pages into PNG references and reuse the image-to-PPTX hint workflow.
-- **DESIGN.md driven styling**: every deck is guided by design tokens, component rules, and export rules.
-- **Editable-native rendering**: prefer PowerPoint text boxes, shapes, lines, tables, charts, and simple icons.
-- **Built-in design systems**: business, technology, dashboard, government, product roadshow, finance, and editorial styles.
-- **Optional web research**: host agents may search for facts, source material, visual references, and assets when it improves quality.
-- **Quality reports**: editability, QA, WPS compatibility, accessibility, OpenXML inspection, visual regression, and packaging reports.
-- **Cross-agent support**: adapter notes for Codex, Claude Code, and Cursor.
-
-### Design Principles
-
-- **Manifest first**: `deck.manifest.json` is the contract between agent reasoning and deterministic rendering.
-- **Design-system guided**: every run should select or read a `DESIGN.md`.
-- **Editable first**: use native PowerPoint objects whenever possible.
-- **Deterministic scripts**: package scripts do not call LLM APIs or invent content.
-- **Source-safe assets**: remote assets must be saved locally before rendering.
-- **Honest reporting**: missing dependencies and rasterized regions are reported clearly.
-
-### Installation
-
-#### Requirements
-
-Required:
-
-- Node.js 20+
-- npm
-- Python 3.10+
-
-Recommended:
-
-- PowerPoint or WPS for final manual inspection
-
-Optional:
-
-- Playwright Chromium for DOM measurement
-- Tesseract OCR for local OCR
-- LibreOffice for preview rendering and visual regression
-- PyMuPDF for PDF page rendering
-
-#### Install Node dependencies
-
-```bash
-npm install
-```
-
-Main Node dependencies:
-
-- `pptxgenjs` for PPTX generation
-- `jszip` for PPTX/OpenXML package inspection
-- `node-html-parser` for HTML parsing
-- `yaml` for `DESIGN.md` frontmatter parsing
-- `playwright` for DOM measurement
-- `vitest` for JavaScript tests
-
-#### Install Python dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-Main Python dependencies:
-
-- `Pillow` for image analysis and cropping
-- `pytesseract` for optional OCR
-- `PyMuPDF` for optional PDF rendering
-
-#### Install Playwright Chromium
-
-```bash
-npx playwright install chromium
-```
-
-#### Initialize examples
-
-```bash
-node scripts/setup.mjs
-```
-
-### Quick Start
-
-Run the sample deck pipeline:
-
-```bash
-node scripts/run-deck-pipeline.mjs examples/text-input/deck.manifest.json output
-```
-
-Expected output:
-
-```text
-output/
-  final.pptx
-  deck.manifest.json
-  editable-report.md
-  qa-report.md
-  compatibility-report.md
-  output-manifest.json
-```
-
-Run the same flow step by step:
-
-```bash
-node scripts/validate-design-md.mjs design-systems/business-neutral/DESIGN.md
-python scripts/validate-manifest.py examples/text-input/deck.manifest.json
-node scripts/render-pptx.mjs examples/text-input/deck.manifest.json output/final.pptx
-python scripts/package-output.py output
-```
-
-### Architecture
-
-```text
-User input
-  text / markdown / HTML / image / PDF / mixed references
-        |
-        v
-Host Agent
-  Planner: audience, story, outline, slide plan
-  Writer: claims, copy, tables, charts, speaker notes
-  Designer: DESIGN.md selection, layout, visual system
-  Researcher: optional web search, source tracking, asset discovery
-        |
-        v
-deck.manifest.json
-        |
-        v
-Deterministic helpers
-  validation, parsing, HTML conversion, DOM measurement, image/PDF hints
-        |
-        v
-Renderer
-  render-pptx.mjs with PptxGenJS
-        |
-        v
-Reports and QA
-        |
-        v
-final.pptx
-```
-
-Layers:
-
-| Layer | Responsibility | Files |
-| --- | --- | --- |
-| Agent contract | How host agents use the package | `SKILL.md`, `AGENT.md`, `adapters/*.md` |
-| References | Workflow, manifest, HTML, image, and QA guidance | `references/*.md` |
-| Design systems | Reusable design tokens and export rules | `design-systems/*/DESIGN.md` |
-| Manifest | Slide content and layout contract | `schemas/deck.schema.json`, `examples/*/deck.manifest.json` |
-| Conversion tools | HTML, image, PDF, and template inputs | `scripts/html-to-manifest.mjs`, `scripts/pdf-to-page-hints.py`, `scripts/import-template.mjs` |
-| Renderer | Manifest to PPTX | `scripts/render-pptx.mjs` |
-| Pipelines | Validation, rendering, packaging, batch, visual regression | `scripts/run-deck-pipeline.mjs`, `scripts/run-batch-pipeline.mjs`, `scripts/run-visual-regression.mjs` |
-| Tests | JavaScript and Python regression tests | `tests/*.mjs`, `tests/*_test.py` |
-
-### Workflows
-
-#### Text or Markdown
-
-```text
-User content
-  -> optional web research
-  -> choose DESIGN.md
-  -> author deck.manifest.json
-  -> run-deck-pipeline.mjs
-  -> read reports and respond
-```
-
-See:
-
-- `references/workflow.md`
-- `references/prompt-library.md`
-- `examples/text-input/`
-
-Design-first creative decks use three intermediate artifacts before rendering: `deck.storyboard.json`, `deck.design-direction.json`, and `slide-design-specs.json`. This keeps story, visual direction, and page composition explicit before the manifest is compiled.
-
-#### HTML
-
-Semantic HTML:
-
-```bash
-node scripts/html-to-manifest.mjs input.html output/deck.manifest.json
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-CSS-positioned HTML:
-
-```bash
-node scripts/measure-html.mjs input.html output/layout-measurements.json
-node scripts/html-to-manifest.mjs input.html output/deck.manifest.json --measurements output/layout-measurements.json
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-Notes:
-
-- `.pptx-slide` marks a slide.
-- `[data-pptx-kind]` and `[data-pptx-id]` mark measurable elements.
-- Remote images in HTML are localized under `assets/`.
-- For strict 1:1 replicas, outside references must not alter the original design.
-
-#### Image or Screenshot
-
-```bash
-python scripts/inspect-image.py reference.png
-python scripts/image-to-manifest-hints.py reference.png output/image-hints.json
-python scripts/ocr-image.py reference.png -o output/ocr.json
-python scripts/extract-palette.py reference.png output/palette.json
-python scripts/crop-assets.py reference.png crops.json output/assets
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-#### PDF Pages
-
-```bash
-node scripts/run-python.mjs scripts/pdf-to-page-hints.py source.pdf output/pdf-pages -o output/pdf-page-hints.json
-```
-
-If PyMuPDF is missing, the command returns `status: deferred`.
-
-#### Template Import
-
-```bash
-node scripts/import-template.mjs template.pptx output/template-summary.json
-```
-
-This summarizes slide, layout, master, theme, and color information. It does not clone brand assets.
-
-### Common Commands
-
-| Task | Command |
-| --- | --- |
-| Setup | `node scripts/setup.mjs` |
-| Validate design system | `node scripts/validate-design-md.mjs design-systems/business-neutral/DESIGN.md` |
-| Validate manifest | `python scripts/validate-manifest.py output/deck.manifest.json` |
-| Render PPTX | `node scripts/render-pptx.mjs output/deck.manifest.json output/final.pptx` |
-| Run pipeline | `node scripts/run-deck-pipeline.mjs output/deck.manifest.json output` |
-| HTML to manifest | `node scripts/html-to-manifest.mjs input.html output/deck.manifest.json` |
-| Measure HTML | `node scripts/measure-html.mjs input.html output/layout-measurements.json` |
-| Image hints | `node scripts/run-python.mjs scripts/image-to-manifest-hints.py reference.png output/image-hints.json` |
-| PDF hints | `node scripts/run-python.mjs scripts/pdf-to-page-hints.py source.pdf output/pdf-pages -o output/pdf-page-hints.json` |
-| Batch pipeline | `node scripts/run-batch-pipeline.mjs batch.json output/batch` |
-| Visual regression | `node scripts/run-visual-regression.mjs output/deck.manifest.json output --reference-dir baselines` |
-| Accessibility check | `node scripts/analyze-accessibility.mjs output/deck.manifest.json output/accessibility-report.md` |
-| OpenXML check | `node scripts/openxml-repair.mjs output/final.pptx output/openxml-repair-report.json` |
-
-### Manifest Overview
-
-Minimal structure:
-
-```json
-{
-  "version": "0.1.1",
-  "designSystem": {
-    "source": "../../design-systems/business-neutral/DESIGN.md",
-    "name": "Business Neutral",
-    "mode": "balanced"
-  },
-  "deck": {
-    "title": "Example Deck",
-    "language": "en-US",
-    "size": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" }
-  },
-  "assets": [],
-  "slides": [
-    {
-      "id": "slide-001",
-      "type": "content",
-      "title": "Example",
-      "notes": "",
-      "background": { "type": "solid", "color": "{colors.background}" },
-      "elements": [
-        {
-          "type": "text",
-          "id": "title-001",
-          "text": "Example",
-          "x": 0.8,
-          "y": 0.6,
-          "w": 8.0,
-          "h": 0.7,
-          "style": { "typography": "{typography.title}", "color": "{colors.text}" }
-        }
-      ]
-    }
-  ]
-}
-```
-
-Supported element types:
-
-- `text`
-- `shape`
-- `line`
-- `image`
-- `table`
-- `chart` with `bar`, `line`, or `pie`
-- `icon` with `check`, `x`, `info`, or `arrow-right`
-
-### Built-in Design Systems
-
-| Design system | Use case |
-| --- | --- |
-| `business-neutral` | Enterprise briefings, technical proposals, product summaries |
-| `warm-editorial` | Courses, whitepapers, research reports |
-| `paper-minimal` | Chinese handouts, academic material, lecture decks |
-| `dark-tech` | AI, cloud, security, infrastructure, developer tools |
-| `ai-infra` | Model platforms, AI infrastructure, inference systems |
-| `developer-docs` | Technical docs, architecture explainers, API/platform decks |
-| `dashboard-data` | Analytics, observability, monitoring, operations reviews |
-| `premium-black` | Premium covers, hard-tech launches, cinematic brand pages |
-| `enterprise-blueprint` | Enterprise strategy and transformation decks |
-| `executive-crimson` | Formal leadership reports, audits, milestone summaries |
-| `finance-boardroom` | KPI reviews, investment memos, boardroom analysis |
-| `chinese-government` | Government, public sector, operating systems, formal reports |
-| `product-roadshow` | Product launches, roadshows, business plans, sales decks |
-
-User-provided `DESIGN.md` files override built-ins. Built-ins are generic scenario baselines, not real-brand templates.
-
-### Reports
-
-Pipeline output:
-
-- `final.pptx`: generated presentation
-- `deck.manifest.json`: manifest copy used for rendering
-- `editable-report.md`: slide count, native text count, rasterized object count, editability level
-- `qa-report.md`: design system, render status, layouts, risks
-- `compatibility-report.md`: WPS/PowerPoint portability risks
-- `output-manifest.json`: package summary
-
-Optional output:
-
-- `accessibility-report.md`
-- `openxml-repair-report.json`
-- `visual-regression-report.json`
-- `preview/`
-- `layout-measurements.json`
-- `image-hints.json`
-- `pdf-page-hints.json`
-- `ocr.json`
-- `template-summary.json`
-
-### Web Search and Assets
-
-Host agents may search the web for content, source material, visual references, and assets. Search is optional and agent-decided.
-
-Use search when:
-
-- facts, dates, standards, versions, or market context may be current or uncertain;
-- better visual references, image素材, or layout inspiration would improve the deck;
-- the user explicitly allows or requests web search.
-
-Rules:
-
-- Do not invent facts, metrics, examples, citations, or sources.
-- Keep important source URLs.
-- Respect copyright, licenses, trademarks, logos, brand assets, and commercial fonts.
-- Save remote assets locally before rendering.
-- Do not alter strict 1:1 replicas with outside references.
-
-### Visual Ceiling Roadmap
-
-The design-first pipeline is the foundation for higher-quality creative decks. Future roadmap items include a Visual Workbench for browser-based preview, direction selection, repair comparison, and export, plus Screenshot-Level Vision Model Review for slide PNG evaluation with a vision-capable model.
-
-### Visual Workbench
-
-Open `workbench/index.html` in a browser and load a generated `run.json` file to inspect run status, direction candidates, preview paths, and review artifacts. The first workbench is read-only and does not edit PPTX files.
-
-### Visual Roadmap Tools
-
-- Source and Asset Registry: `npm run registry:validate -- output/sources.json output/assets/asset-registry.json`
-- Multi-Direction Exploration: `npm run explore:directions -- examples/design-first/kycc-roadshow/deck.storyboard.json output/visual-roadmap-next`
-- Run Index: `npm run run:index -- output/visual-roadmap-next kycc-roadshow creative "kycc roadshow"`
-- Screenshot-Level Vision Review: `npm run vision:review -- output/visual-roadmap-next --provider mock`
-- Native Components: manifests may use richer `chart` kinds and semantic `diagram` elements; both render as editable native PPTX objects.
-
-### Tests
-
-JavaScript tests:
-
-```bash
-npm test
-```
-
-Python tests:
-
-```bash
-npm run test:py
-```
-
-Syntax check example:
-
-```bash
-node --check scripts/render-pptx.mjs
-```
-
-### Troubleshooting
-
-| Problem | Fix |
-| --- | --- |
-| `Python not found` | Install Python 3.10+ or set `PPTX_CREATOR_PYTHON` |
-| Missing image path | Ensure `image.src` is a local path relative to the manifest |
-| Remote image render failure | Save it under `output/assets/` and reference the local path |
-| PDF hints are deferred | Install `PyMuPDF` |
-| OCR unavailable | Install system Tesseract and `pytesseract` |
-| Preview or visual regression deferred | Install LibreOffice |
-| Text overflow | Shorten copy, resize text boxes, or split slides |
-| Low editability | Replace raster regions with native text, tables, and shapes |
-
-### Project Structure
-
-```text
-pptx-creator/
-  adapters/              # Codex, Claude Code, Cursor notes
-  design-systems/        # Built-in DESIGN.md profiles
-  examples/              # Text, HTML, and image examples
-  references/            # Workflow, manifest, HTML, image, QA references
-  schemas/               # Deck manifest JSON schema
-  scripts/               # Rendering, conversion, QA, batch, visual tools
-  scripts/lib/           # Shared JS/Python helpers
-  tests/                 # Vitest and Python unittest suites
-  AGENT.md               # Host-agent operating guide
-  SKILL.md               # Agent skill metadata and rules
-  README.md              # This document
-```
+MIT
