@@ -88,4 +88,17 @@ describe("M3 agent productization docs", () => {
     expect(workflow).toMatch(/Replica mode/i);
     expect(workflow).toMatch(/Creative mode/i);
   });
+
+  it("documents design-first agent roles and future visual roadmap", async () => {
+    const promptLibrary = await readFile(join(root, "references/prompt-library.md"), "utf8");
+    expect(promptLibrary).toMatch(/Planner/i);
+    expect(promptLibrary).toMatch(/Art Director/i);
+    expect(promptLibrary).toMatch(/Slide Designer/i);
+    expect(promptLibrary).toMatch(/Critic/i);
+    expect(promptLibrary).toMatch(/Repair/i);
+
+    const readme = await readFile(join(root, "README.md"), "utf8");
+    expect(readme).toMatch(/Visual Workbench/i);
+    expect(readme).toMatch(/Screenshot-Level Vision Model Review/i);
+  });
 });

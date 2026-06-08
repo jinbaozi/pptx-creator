@@ -397,6 +397,10 @@ node scripts/import-template.mjs template.pptx output/template-summary.json
 - 远程图片必须先保存到本地，manifest 只引用本地相对路径。
 - 严格 1:1 复刻任务不能因为外部参考改变原始设计。
 
+### Visual Ceiling Roadmap
+
+The design-first pipeline is the foundation for higher-quality creative decks. Future roadmap items include a Visual Workbench for browser-based preview, direction selection, repair comparison, and export, plus Screenshot-Level Vision Model Review for slide PNG evaluation with a vision-capable model.
+
 ### 测试与验证
 
 运行 JavaScript 测试：
@@ -814,6 +818,10 @@ Rules:
 - Respect copyright, licenses, trademarks, logos, brand assets, and commercial fonts.
 - Save remote assets locally before rendering.
 - Do not alter strict 1:1 replicas with outside references.
+
+### Visual Ceiling Roadmap
+
+The design-first pipeline is the foundation for higher-quality creative decks. Future roadmap items include a Visual Workbench for browser-based preview, direction selection, repair comparison, and export, plus Screenshot-Level Vision Model Review for slide PNG evaluation with a vision-capable model.
 
 ### Tests
 

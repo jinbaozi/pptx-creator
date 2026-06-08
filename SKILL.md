@@ -84,6 +84,8 @@ Prompt templates: `references/prompt-library.md`.
 
 Creative decks should use the design-first workflow in `references/design-first-workflow.md`. The host agent first plans story, visual direction, and slide-level design specs, then compiles those artifacts into the existing manifest renderer.
 
+Design-first creative decks use Planner, Art Director, Slide Designer, Critic, and Repair roles. These roles may be performed by the host agent in sequence.
+
 ## Agent adapters
 
 For host-specific setup and reporting expectations, read the matching adapter:

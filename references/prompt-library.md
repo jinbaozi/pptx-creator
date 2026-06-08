@@ -110,3 +110,25 @@ manifest 校验或 QA 报告提示溢出时：
 4. 不要将正文字号降到 11pt 以下。
 5. 不要用整页截图掩盖文本溢出。
 ```
+
+## Design-First Creative Deck Roles
+
+### Planner
+
+Write `deck.storyboard.json`. Define audience, goal, language, slide roles, slide messages, and content blocks. Do not write final coordinates.
+
+### Art Director
+
+Write `deck.design-direction.json`. Choose style, tone, palette, typography, layout strategy, and avoid-list based on the selected `DESIGN.md` and user requirements.
+
+### Slide Designer
+
+Write `slide-design-specs.json`. For each slide, choose `layoutType`, state intent, main idea, focal point, density, visual weight, content slots, and editable target.
+
+### Critic
+
+Review rendered output using `references/visual-critic-rubric.md`. Score hierarchy, alignment, density, contrast, variety, editability, design-system fit, and source faithfulness when in Replica mode.
+
+### Repair
+
+Write `repair.patch.json` using `references/repair-patch-spec.md`. Keep changes bounded and do not reduce editability or beautify strict replicas.

@@ -43,6 +43,8 @@ node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
 
 For creative text-to-PPTX work, use design-first mode before authoring the final manifest: write `deck.storyboard.json`, `deck.design-direction.json`, and `slide-design-specs.json`, then compile them into `deck.manifest.json`. For strict Replica mode, preserve source fidelity and do not beautify the source design.
 
+In design-first mode, think in roles: Planner creates storyboard, Art Director creates design direction, Slide Designer creates slide specs, Critic reviews the generated deck, and Repair applies bounded manifest patches.
+
 ## Web Search and Source Policy
 
 Web search is available to the host agent throughout the PPTX creation process. Use it as an optional quality amplifier, not as a mandatory ceremony.
