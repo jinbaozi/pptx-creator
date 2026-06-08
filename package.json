@@ -28,6 +28,7 @@
     "vision:review": "node scripts/run-vision-review.mjs",
     "design:first": "node scripts/compile-design-first.mjs",
     "pipeline:design-first": "node scripts/run-design-first-pipeline.mjs",
+    "pipeline:artifacts": "node scripts/run-design-artifact-pipeline.mjs",
     "explore:directions": "node scripts/run-direction-exploration.mjs",
     "batch": "node scripts/run-batch-pipeline.mjs",
     "pipeline": "node scripts/run-deck-pipeline.mjs",
