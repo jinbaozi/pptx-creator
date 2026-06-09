@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,7 +8,7 @@ import { loadDesignFirstArtifacts } from "../scripts/lib/design-first-loader.mjs
 
 describe("manifest compiler", () => {
   it("compiles design-first artifacts into a valid manifest shape", () => {
-    const artifacts = loadDesignFirstArtifacts("examples/design-first/kycc-roadshow");
+    const artifacts = loadDesignFirstArtifacts("examples/design-first/compiler-roadshow");
     const manifest = compileDesignFirstManifest(artifacts, {
       designSystemSource: "design-systems/product-roadshow/DESIGN.md",
       designSystemName: "Product Roadshow"
@@ -24,7 +24,7 @@ describe("manifest compiler", () => {
     const output = path.join(dir, "deck.manifest.json");
     execFileSync("node", [
       "scripts/compile-design-first.mjs",
-      "examples/design-first/kycc-roadshow",
+      "examples/design-first/compiler-roadshow",
       output,
       "--design-system",
       "design-systems/product-roadshow/DESIGN.md",
@@ -35,3 +35,4 @@ describe("manifest compiler", () => {
     expect(manifest.slides.length).toBe(3);
   });
 });
+

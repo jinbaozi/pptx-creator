@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { loadDesignFirstArtifacts } from "../scripts/lib/design-first-loader.mjs";
@@ -39,14 +39,14 @@ describe("layout archetype packages", () => {
 
 describe("archetype resolver", () => {
   it("loads design-first artifacts from a directory", () => {
-    const artifacts = loadDesignFirstArtifacts("examples/design-first/kycc-roadshow");
-    expect(artifacts.storyboard.title).toBe("kycc Roadshow Deck");
+    const artifacts = loadDesignFirstArtifacts("examples/design-first/compiler-roadshow");
+    expect(artifacts.storyboard.title).toBe("Compiler Roadshow Deck");
     expect(artifacts.designDirection.style).toBe("business-tech-roadshow");
     expect(artifacts.slideDesignSpecs.slides.length).toBe(3);
   });
 
   it("resolves a slide layout package", () => {
-    const artifacts = loadDesignFirstArtifacts("examples/design-first/kycc-roadshow");
+    const artifacts = loadDesignFirstArtifacts("examples/design-first/compiler-roadshow");
     const resolved = resolveArchetypeForSlide(artifacts.slideDesignSpecs.slides[2], "layout-archetypes");
     expect(resolved.name).toBe("architecture-layered");
     expect(resolved.schema.requiredSlots).toContain("layers");
@@ -69,3 +69,4 @@ describe("archetype resolver", () => {
     expect(() => resolveArchetypeForSlide(slide, "layout-archetypes")).toThrow(/layers/);
   });
 });
+

@@ -1,4 +1,4 @@
-# Claude Design-like Visual Generation Upgrade Implementation Plan
+﻿# Claude Design-like Visual Generation Upgrade Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -53,7 +53,7 @@ import { readJson, validateSchema } from "../scripts/lib/schema-utils.mjs";
 describe("requirements extractor", () => {
   it("extracts a deterministic requirements artifact from plain text", async () => {
     const requirements = extractRequirements({
-      inputText: "Build a business technology roadshow deck for kycc, a Rust-based GCC-compatible C compiler.",
+      inputText: "Build a business technology roadshow deck for compiler sample, a Rust-based GCC-compatible C compiler.",
       options: {
         audience: "technical executives",
         tone: "business technology roadshow"
@@ -605,4 +605,5 @@ git commit -m "docs: document design artifact pipeline"
 - Real screenshot-level review is represented as an interface first, with mock mode as default.
 - Visual Workbench and screenshot-level review remain explicit ToDo items until fully implemented.
 - PPTX output remains editable-first, with rasterization used only when explicitly reported.
+
 

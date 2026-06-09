@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { createDirectionCandidates, rankDirections, selectRepresentativeSlides } from "../scripts/lib/direction-explorer.mjs";
 
 describe("direction exploration", () => {
   it("creates three visually distinct candidate directions", () => {
-    const directions = createDirectionCandidates({ title: "kycc Roadshow", audience: "technical buyers" });
+    const directions = createDirectionCandidates({ title: "Compiler Roadshow", audience: "technical buyers" });
     expect(directions).toHaveLength(3);
     expect(new Set(directions.map((direction) => direction.id)).size).toBe(3);
     expect(new Set(directions.map((direction) => direction.layoutStrategy)).size).toBe(3);
@@ -30,3 +30,4 @@ describe("direction exploration", () => {
     expect(ranked[0].directionId).toBe("direction-002");
   });
 });
+

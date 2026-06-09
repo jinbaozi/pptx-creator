@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -8,22 +8,22 @@ import {
 } from "../scripts/lib/schema-utils.mjs";
 
 const root = path.resolve(".");
-const exampleDir = path.join(root, "examples", "design-first", "kycc-roadshow");
+const exampleDir = path.join(root, "examples", "design-first", "compiler-roadshow");
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(path.join(exampleDir, file), "utf8"));
 }
 
 describe("design-first schemas", () => {
-  it("accepts the kycc storyboard example", () => {
+  it("accepts the compiler sample storyboard example", () => {
     expect(() => assertStoryboard(readJson("deck.storyboard.json"))).not.toThrow();
   });
 
-  it("accepts the kycc design direction example", () => {
+  it("accepts the compiler sample design direction example", () => {
     expect(() => assertDesignDirection(readJson("deck.design-direction.json"))).not.toThrow();
   });
 
-  it("accepts the kycc slide design specs example", () => {
+  it("accepts the compiler sample slide design specs example", () => {
     expect(() => assertSlideDesignSpecs(readJson("slide-design-specs.json"))).not.toThrow();
   });
 
@@ -42,3 +42,4 @@ describe("visual review and repair schemas", () => {
     expect(fs.existsSync("references/repair-patch-spec.md")).toBe(true);
   });
 });
+

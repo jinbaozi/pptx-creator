@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { extractRequirements } from "../scripts/lib/requirements-extractor.mjs";
 import { readJson, validateSchema } from "../scripts/lib/schema-utils.mjs";
 
 describe("requirements extractor", () => {
   it("extracts a deterministic requirements artifact from plain text", async () => {
     const requirements = extractRequirements({
-      inputText: "Build a business technology roadshow deck for kycc, a Rust-based GCC-compatible C compiler.",
+      inputText: "Build a business technology roadshow deck for compiler sample, a Rust-based GCC-compatible C compiler.",
       options: {
         audience: "technical executives",
         tone: "business technology roadshow"
@@ -28,3 +28,4 @@ describe("requirements extractor", () => {
     expect(() => validateSchema(schema, requirements, "requirements")).not.toThrow();
   });
 });
+

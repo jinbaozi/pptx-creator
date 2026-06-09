@@ -25,7 +25,7 @@ Core principle: **author a structured manifest first, then render PPTX determini
 | Layout archetypes and compilation | Built-in layout archetypes, design system parsing, and manifest compilation turn design specs into deterministic PPTX manifests. |
 | Multi-direction exploration | Generates candidate visual directions, scorecards, and run indexes so agents can choose a stronger direction before producing the full deck. |
 | HTML to PPTX | Supports semantic HTML, CSS-positioned HTML, DOM measurement, remote image localization, and multi-slide conversion. |
-| Image/PDF input | Provides image inspection, palette extraction, OCR, cropping, and PDF page hint helpers. |
+| Image/PDF input | Provides image inspection, palette extraction, OCR, cropping, image replica analysis, layer planning, and PDF page hint helpers. |
 | Editable rendering | Prefers native PowerPoint text, shapes, lines, tables, charts, icons, and semantic diagrams. |
 | Charts and diagrams | Supports charts such as `bar`, `line`, `pie`, `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`, plus semantic diagrams such as `layeredArchitecture`, `compilerPipeline`, `capabilityStack`, `swimlane`, and `matrixMap`; all expand into editable PowerPoint primitives. |
 | Design systems | `DESIGN.md` files define colors, typography, components, layout rules, and export rules. |
@@ -108,8 +108,8 @@ python scripts/package-output.py output
 Use this for polished business, product, technical, roadshow, research, or training decks:
 
 ```bash
-npm run design:first -- examples/design-first/kycc-roadshow output/design-first/deck.manifest.json
-npm run pipeline:design-first -- examples/design-first/kycc-roadshow output/design-first --emit-run-index --validate-registry --run-id kycc-roadshow --input-summary "kycc roadshow"
+npm run design:first -- examples/design-first/compiler-roadshow output/design-first/deck.manifest.json
+npm run pipeline:design-first -- examples/design-first/compiler-roadshow output/design-first --emit-run-index --validate-registry --run-id compiler-roadshow --input-summary "Compiler Roadshow"
 ```
 
 Core design artifacts:
@@ -129,7 +129,7 @@ Design artifacts (storyboard, design direction, slide design specs, UI component
 Explore multiple visual directions:
 
 ```bash
-npm run explore:directions -- examples/design-first/kycc-roadshow/deck.storyboard.json output/directions
+npm run explore:directions -- examples/design-first/compiler-roadshow/deck.storyboard.json output/directions
 ```
 
 ## HTML, Image, and PDF Inputs
@@ -154,6 +154,8 @@ Image or screenshot:
 ```bash
 npm run image:inspect -- reference.png
 npm run image:hints -- reference.png output/image-hints.json
+npm run image:replica:analyze -- reference.png output/image-replica-analysis.json
+npm run image:replica:plan -- output/image-replica-analysis.json output/replica-layer-plan.json
 npm run image:ocr -- reference.png -o output/ocr.json
 npm run image:palette -- reference.png output/palette.json
 npm run image:crop -- reference.png crops.json output/assets
@@ -281,6 +283,8 @@ User-provided `DESIGN.md` files have the highest priority. Built-ins are safe ge
 | `npm run html:manifest` | Convert HTML to manifest. |
 | `npm run html:measure` | Measure CSS-positioned HTML. |
 | `npm run image:hints` | Convert image input into reconstruction hints. |
+| `npm run image:replica:analyze` | Emit image replica analysis JSON with layout regions, object candidates, detector status, and quality targets. |
+| `npm run image:replica:plan` | Build a layer plan from replica analysis, separating reference, background repair, editable text/shapes, and cropped fallback layers. |
 | `npm run pdf:hints` | Convert PDF pages into reconstruction hints. |
 | `npm run visual:critic` | Run deterministic visual review. |
 | `npm run vision:review` | Run mock screenshot-level vision review. |

@@ -11,6 +11,8 @@
     "html:measure": "node scripts/measure-html.mjs",
     "image:inspect": "node scripts/run-python.mjs scripts/inspect-image.py",
     "image:hints": "node scripts/run-python.mjs scripts/image-to-manifest-hints.py",
+    "image:replica:analyze": "node scripts/run-python.mjs scripts/image-replica-analyze.py",
+    "image:replica:plan": "node scripts/run-python.mjs scripts/image-replica-plan.py",
     "image:ocr": "node scripts/run-python.mjs scripts/ocr-image.py",
     "image:palette": "node scripts/run-python.mjs scripts/extract-palette.py",
     "image:crop": "node scripts/run-python.mjs scripts/crop-assets.py",

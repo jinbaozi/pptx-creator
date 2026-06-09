@@ -25,7 +25,7 @@
 | 布局原型与编译 | 内置 layout archetypes、设计系统解析和 manifest 编译器，把设计规格转换成确定性的 PPTX manifest。 |
 | 多方向设计探索 | 生成多个设计方向候选、scorecard 和 run index，帮助 Agent 在完整出稿前选择更合适的视觉路线。 |
 | HTML 到 PPTX | 支持语义 HTML、CSS 定位 HTML、DOM 测量、远程图片本地化和多页转换。 |
-| 图片/PDF 输入 | 提供图片检查、颜色提取、OCR、裁剪、PDF 页面 hints 等辅助脚本，由 Agent 重建可编辑对象。 |
+| 图片/PDF 输入 | 提供图片检查、颜色提取、OCR、裁剪、图片复刻分析、图层规划、PDF 页面 hints 等辅助脚本，由 Agent 重建可编辑对象。 |
 | 可编辑渲染 | 优先输出 PPT 原生文本、形状、线条、表格、图表、图标和语义图解。 |
 | 图表与图解 | 支持 `bar`、`line`、`pie`、`stackedBar`、`horizontalBar`、`groupedBar`、`kpiGroup`、`sparkline` 等图表，以及 `layeredArchitecture`、`compilerPipeline`、`capabilityStack`、`swimlane`、`matrixMap` 等语义图解，均会展开成可编辑 PPT 原生对象。 |
 | 设计系统 | 使用 `DESIGN.md` 提供颜色、字体、组件、布局规则和导出规则。 |
@@ -108,8 +108,8 @@ python scripts/package-output.py output
 适合从文本生成更精美、更有变化的商务或技术 PPT：
 
 ```bash
-npm run design:first -- examples/design-first/kycc-roadshow output/design-first/deck.manifest.json
-npm run pipeline:design-first -- examples/design-first/kycc-roadshow output/design-first --emit-run-index --validate-registry --run-id kycc-roadshow --input-summary "kycc roadshow"
+npm run design:first -- examples/design-first/compiler-roadshow output/design-first/deck.manifest.json
+npm run pipeline:design-first -- examples/design-first/compiler-roadshow output/design-first --emit-run-index --validate-registry --run-id compiler-roadshow --input-summary "Compiler Roadshow"
 ```
 
 核心中间产物（design artifacts）：
@@ -129,7 +129,7 @@ run.json
 多方向探索：
 
 ```bash
-npm run explore:directions -- examples/design-first/kycc-roadshow/deck.storyboard.json output/directions
+npm run explore:directions -- examples/design-first/compiler-roadshow/deck.storyboard.json output/directions
 ```
 
 ## HTML、图片和 PDF 输入
@@ -154,6 +154,8 @@ npm run pipeline -- output/deck.manifest.json output
 ```bash
 npm run image:inspect -- reference.png
 npm run image:hints -- reference.png output/image-hints.json
+npm run image:replica:analyze -- reference.png output/image-replica-analysis.json
+npm run image:replica:plan -- output/image-replica-analysis.json output/replica-layer-plan.json
 npm run image:ocr -- reference.png -o output/ocr.json
 npm run image:palette -- reference.png output/palette.json
 npm run image:crop -- reference.png crops.json output/assets
@@ -281,6 +283,8 @@ final.pptx
 | `npm run html:manifest` | HTML 转 manifest。 |
 | `npm run html:measure` | 测量 CSS 定位 HTML。 |
 | `npm run image:hints` | 图片转重建 hints。 |
+| `npm run image:replica:analyze` | 输出图片复刻分析 JSON，包含版面区域、对象候选、检测器状态和质量目标。 |
+| `npm run image:replica:plan` | 从复刻分析 JSON 生成图层规划，明确参考层、背景修补层、可编辑文本/形状层和裁剪兜底层。 |
 | `npm run pdf:hints` | PDF 页面转 hints。 |
 | `npm run visual:critic` | 规则化视觉评审。 |
 | `npm run vision:review` | mock 截图级视觉评审。 |

@@ -1,25 +1,25 @@
 {
-  "title": "kycc Roadshow Deck",
+  "title": "Compiler Roadshow Deck",
   "audience": "technical reviewers and business decision makers",
-  "goal": "explain kycc's need, architecture, capabilities, technical advantages, and user value",
+  "goal": "explain the need, architecture, capabilities, technical advantages, and user value of a modern C compiler component",
   "language": "zh-CN",
   "slides": [
     {
       "id": "slide-001",
       "role": "cover",
-      "message": "kycc is a Rust-based GCC-compatible C compiler built from scratch",
+      "message": "A Rust-based GCC-compatible C compiler can provide a complete and controllable compilation pipeline",
       "contentBlocks": ["positioning", "core highlights", "one-sentence value"]
     },
     {
       "id": "slide-002",
       "role": "problem-solution",
-      "message": "A self-contained compiler pipeline reduces toolchain dependency and improves controllability of C compilation workflows",
+      "message": "A self-contained compiler pipeline reduces external toolchain dependency and improves controllability of C compilation workflows",
       "contentBlocks": ["background drivers", "pain points", "solution summary"]
     },
     {
       "id": "slide-003",
       "role": "architecture-layered",
-      "message": "kycc follows a classic frontend, middle-end, backend compiler architecture",
+      "message": "The component follows a classic frontend, middle-end, and backend compiler architecture",
       "contentBlocks": ["frontend", "middle-end", "backend", "driver"]
     }
   ]

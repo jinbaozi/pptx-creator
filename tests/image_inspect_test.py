@@ -10,6 +10,8 @@ sys.path.insert(0, str(LIB))
 
 from image_inspect_core import (  # noqa: E402
     build_manifest_hints,
+    build_replica_analysis,
+    build_replica_layer_plan,
     detect_layout_bands,
     extract_palette,
     image_metadata,
@@ -27,6 +29,8 @@ SAMPLE_IMAGE = SAMPLE_DIR / "business-slide.png"
 GENERATOR = ROOT / "scripts" / "generate-sample-slide.py"
 INSPECT_CLI = ROOT / "scripts" / "inspect-image.py"
 HINTS_CLI = ROOT / "scripts" / "image-to-manifest-hints.py"
+REPLICA_ANALYZE_CLI = ROOT / "scripts" / "image-replica-analyze.py"
+REPLICA_PLAN_CLI = ROOT / "scripts" / "image-replica-plan.py"
 
 
 def ensure_sample_image() -> None:
@@ -117,6 +121,32 @@ class ImageInspectCoreTest(unittest.TestCase):
         self.assertGreaterEqual(len(skeleton["slides"][0]["elements"]), 1)
         self.assertIn("hostAgentTasks", hints)
 
+    def test_build_replica_analysis_emits_object_candidates(self):
+        analysis = build_replica_analysis(SAMPLE_IMAGE, deck_title="Image Replica Upgrade")
+        self.assertEqual(analysis["version"], "0.2.0")
+        self.assertEqual(analysis["kind"], "image-replica-analysis")
+        self.assertEqual(analysis["sourceImage"], "business-slide.png")
+        self.assertIn("slideMapping", analysis)
+        self.assertGreaterEqual(len(analysis["objectCandidates"]), 2)
+        self.assertIn("detectors", analysis)
+        self.assertEqual(analysis["detectors"]["layoutBands"]["status"], "ok")
+        self.assertIn(analysis["detectors"]["ocr"]["status"], {"deferred", "available"})
+        self.assertLessEqual(analysis["qualityTargets"]["textBoxMaxOffsetPx"], 4)
+
+    def test_build_replica_layer_plan_prioritizes_editable_text_and_shapes(self):
+        analysis = build_replica_analysis(SAMPLE_IMAGE, deck_title="Image Replica Upgrade")
+        plan = build_replica_layer_plan(analysis)
+        self.assertEqual(plan["version"], "0.2.0")
+        self.assertEqual(plan["kind"], "replica-layer-plan")
+        self.assertEqual(plan["sourceImage"], "business-slide.png")
+        self.assertGreaterEqual(len(plan["layers"]), 3)
+        layer_ids = {layer["id"] for layer in plan["layers"]}
+        self.assertIn("source-reference", layer_ids)
+        self.assertIn("editable-text", layer_ids)
+        self.assertIn("editable-shapes", layer_ids)
+        self.assertGreaterEqual(plan["editabilityTarget"]["level"], 4)
+        self.assertIn("repairLoop", plan)
+
 
 class ImageInspectCliTest(unittest.TestCase):
     @classmethod
@@ -157,6 +187,34 @@ class ImageInspectCliTest(unittest.TestCase):
         core = inspect_image(SAMPLE_IMAGE)
         self.assertEqual(cli["image"]["widthPx"], core["image"]["widthPx"])
         self.assertEqual(len(cli["palette"]), len(core["palette"]))
+
+    def test_image_replica_analyze_cli_writes_file(self):
+        out = SAMPLE_DIR / "_test-replica-analysis.json"
+        try:
+            result = self.run_cli(REPLICA_ANALYZE_CLI, str(SAMPLE_IMAGE), str(out), "--deck-title", "Image Replica Upgrade")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            data = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(data["kind"], "image-replica-analysis")
+            self.assertGreaterEqual(len(data["objectCandidates"]), 2)
+        finally:
+            if out.exists():
+                out.unlink()
+
+    def test_image_replica_plan_cli_writes_file(self):
+        analysis_out = SAMPLE_DIR / "_test-replica-analysis.json"
+        plan_out = SAMPLE_DIR / "_test-replica-plan.json"
+        try:
+            analyze = self.run_cli(REPLICA_ANALYZE_CLI, str(SAMPLE_IMAGE), str(analysis_out))
+            self.assertEqual(analyze.returncode, 0, analyze.stderr)
+            plan = self.run_cli(REPLICA_PLAN_CLI, str(analysis_out), str(plan_out))
+            self.assertEqual(plan.returncode, 0, plan.stderr)
+            data = json.loads(plan_out.read_text(encoding="utf-8"))
+            self.assertEqual(data["kind"], "replica-layer-plan")
+            self.assertIn("layers", data)
+        finally:
+            for path in (analysis_out, plan_out):
+                if path.exists():
+                    path.unlink()
 
 
 if __name__ == "__main__":

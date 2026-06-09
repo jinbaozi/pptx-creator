@@ -1,6 +1,6 @@
-# Image to PPTX (M1.3)
+# Image to PPTX
 
-M1.3 adds deterministic image inspection helpers. Host agents still own visual understanding, text extraction, and editability decisions; scripts supply measurements and structured hints.
+Image replication uses deterministic helpers plus host-agent visual reasoning. Scripts supply measurements, structured hints, replica analysis, and layer planning. Host agents still own visual understanding, exact text verification, component reconstruction, and final editability decisions.
 
 ## When to use
 
@@ -20,11 +20,16 @@ M1.3 adds deterministic image inspection helpers. Host agents still own visual u
 Reference image
   -> python scripts/inspect-image.py <image>           # quick metadata
   -> python scripts/image-to-manifest-hints.py <image> <hints.json>
-  -> host agent reads hints + visually inventories objects
+  -> python scripts/image-replica-analyze.py <image> <analysis.json>
+  -> python scripts/image-replica-plan.py <analysis.json> <layer-plan.json>
+  -> host agent reads hints + analysis + layer plan, then inventories objects
   -> host agent writes deck.manifest.json (from manifestSkeleton)
   -> python scripts/validate-manifest.py deck.manifest.json
   -> node scripts/render-pptx.mjs deck.manifest.json output/final.pptx
+  -> python scripts/compare-preview.py <image> <rendered-slide.png> -o <visual-report.json>
 ```
+
+Use `image-to-manifest-hints.py` for a lightweight first pass. Use `image-replica-analyze.py` and `image-replica-plan.py` when the task requires higher fidelity, stricter editability reporting, or later visual repair loops.
 
 ## Object inventory (host agent)
 
@@ -94,6 +99,34 @@ Full hints for manifest authoring:
 python scripts/image-to-manifest-hints.py examples/image-input/business-slide.png examples/image-input/image-hints.json
 ```
 
+### `image-replica-analyze.py`
+
+Structured replica analysis for higher-accuracy reconstruction:
+
+- `sourceImage`, `image`, `slideMapping`, and `palette`
+- `regions`: coarse layout bands with pixel and inch boxes
+- `objectCandidates`: first-pass candidates such as background bands, title text, and content groups
+- `detectors`: status for metadata, palette, layout bands, OCR, and planned geometry detection
+- `qualityTargets`: text offset, shape offset, color, coverage, and visual similarity thresholds
+
+```powershell
+python scripts/image-replica-analyze.py reference.png output/image-replica-analysis.json
+```
+
+### `image-replica-plan.py`
+
+Layer planning from analysis JSON:
+
+- `source-reference`: alignment and diff reference, not the delivered editable layer
+- `background-repair`: clean background or native filled bands
+- `editable-shapes`: native rectangles, rounded rectangles, lines, arrows, and table grids
+- `editable-text`: OCR-confirmed PowerPoint text boxes
+- `cropped-assets`: limited raster fallback for photos, dense icons, logos, textures, or unsupported effects
+
+```powershell
+python scripts/image-replica-plan.py output/image-replica-analysis.json output/replica-layer-plan.json
+```
+
 ## OCR (M1.5)
 
 ```powershell
@@ -135,3 +168,5 @@ See `examples/image-input/`:
 | Simple business slide | Level 3–4 (text + cards native) |
 
 Report rasterized regions in `editable-report.md` with reasons.
+
+For stricter replicas, use the thresholds emitted in `image-replica-analysis.json`: text boxes should stay within a small pixel offset, simple shapes should remain close to source bounds, palette colors should be sampled from the source, and the rendered PPTX screenshot should be compared against the original before delivery.

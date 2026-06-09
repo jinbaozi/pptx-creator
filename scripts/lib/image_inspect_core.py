@@ -21,6 +21,7 @@ SLIDE_PRESETS: dict[str, dict[str, float | str]] = {
 }
 
 HINTS_VERSION = "0.1.0"
+REPLICA_VERSION = "0.2.0"
 MANIFEST_VERSION = "0.1.1"
 
 
@@ -421,6 +422,181 @@ def build_manifest_hints(
             "Remove reference asset from manifest unless a region is rasterized.",
             "Validate with python scripts/validate-manifest.py and render.",
         ],
+    }
+
+
+def _candidate(
+    *,
+    candidate_id: str,
+    candidate_type: str,
+    region: dict[str, Any],
+    editable_as: str,
+    confidence: float,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "id": candidate_id,
+        "type": candidate_type,
+        "sourceRegion": region["id"],
+        "pixelBox": region["pixelBox"],
+        "inchBox": region["inchBox"],
+        "editableAs": editable_as,
+        "confidence": round(confidence, 3),
+        "reason": reason,
+    }
+
+
+def build_object_candidates(regions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Create deterministic first-pass editable object candidates from layout bands."""
+    candidates: list[dict[str, Any]] = []
+    for region in regions:
+        label = region["label"]
+        candidates.append(
+            _candidate(
+                candidate_id=f"{region['id']}-background",
+                candidate_type="background-band",
+                region=region,
+                editable_as="native-shape",
+                confidence=0.72,
+                reason="Detected as a dominant-color horizontal band; rebuild as a native filled shape.",
+            )
+        )
+        if label == "header":
+            candidates.append(
+                _candidate(
+                    candidate_id=f"{region['id']}-title-text",
+                    candidate_type="title-text",
+                    region=region,
+                    editable_as="native-text",
+                    confidence=0.58,
+                    reason="Header band usually contains title text; confirm with OCR or vision review.",
+                )
+            )
+        elif label in {"content", "section"}:
+            candidates.append(
+                _candidate(
+                    candidate_id=f"{region['id']}-content-group",
+                    candidate_type="content-group",
+                    region=region,
+                    editable_as="native-shape",
+                    confidence=0.52,
+                    reason="Content band may contain cards, tables, diagrams, or body text; split in the next pass.",
+                )
+            )
+    return candidates
+
+
+def build_replica_analysis(
+    image_path: Path,
+    *,
+    preset: str = "wide",
+    palette_count: int = 8,
+    deck_title: str | None = None,
+) -> dict[str, Any]:
+    image_path = image_path.resolve()
+    img = load_image(image_path)
+    meta = image_metadata(image_path, img, relative_to=image_path.parent)
+    mapping = slide_mapping(preset, meta)
+    palette = extract_palette(img, palette_count)
+    regions = detect_layout_bands(img, mapping)
+    return {
+        "version": REPLICA_VERSION,
+        "kind": "image-replica-analysis",
+        "sourceImage": image_path.name,
+        "deckTitle": deck_title or image_path.stem.replace("-", " ").title(),
+        "image": meta,
+        "slideMapping": mapping,
+        "palette": palette,
+        "regions": regions,
+        "objectCandidates": build_object_candidates(regions),
+        "detectors": {
+            "imageMetadata": {"status": "ok", "engine": "pillow"},
+            "colorPalette": {"status": "ok", "engine": "pillow-mediancut", "count": len(palette)},
+            "layoutBands": {"status": "ok", "engine": "dominant-row-color", "count": len(regions)},
+            "ocr": ocr_status(),
+            "geometryPrimitives": {
+                "status": "planned",
+                "engine": "opencv-or-vision-provider",
+                "targets": ["rect", "roundRect", "line", "arrow", "ellipse", "table-grid"],
+            },
+        },
+        "qualityTargets": {
+            "textBoxMaxOffsetPx": 4,
+            "shapeMaxOffsetPx": 6,
+            "colorDeltaEMax": 3,
+            "minStructuralCoverage": 0.9,
+            "minVisualSimilarity": 0.96,
+        },
+        "nextPasses": [
+            "Run OCR or a vision model to replace text candidates with exact text blocks.",
+            "Detect primitive geometry for cards, dividers, arrows, and diagram connectors.",
+            "Render PPTX preview and compare against source image before final delivery.",
+        ],
+    }
+
+
+def build_replica_layer_plan(analysis: dict[str, Any]) -> dict[str, Any]:
+    if analysis.get("kind") != "image-replica-analysis":
+        _fail("expected image-replica-analysis input")
+    candidates = analysis.get("objectCandidates", [])
+    native_text = [item["id"] for item in candidates if item.get("editableAs") == "native-text"]
+    native_shapes = [item["id"] for item in candidates if item.get("editableAs") == "native-shape"]
+    return {
+        "version": REPLICA_VERSION,
+        "kind": "replica-layer-plan",
+        "sourceImage": analysis["sourceImage"],
+        "deckTitle": analysis.get("deckTitle", "Image Replica"),
+        "slideMapping": analysis["slideMapping"],
+        "editabilityTarget": {
+            "level": 4,
+            "summary": "Native text and common geometric shapes should be editable; complex photos and textured regions may remain cropped images.",
+        },
+        "layers": [
+            {
+                "id": "source-reference",
+                "role": "visual-reference",
+                "visibility": "hidden-or-removed-before-final",
+                "objects": [analysis["sourceImage"]],
+                "policy": "Use for alignment, diffing, and emergency crop fallback; do not deliver as the only visible layer.",
+            },
+            {
+                "id": "background-repair",
+                "role": "clean-background",
+                "visibility": "visible",
+                "objects": native_shapes,
+                "policy": "Rebuild flat bands and simple panels as native shapes; use cropped/inpainted assets for complex texture only.",
+            },
+            {
+                "id": "editable-shapes",
+                "role": "native-geometry",
+                "visibility": "visible",
+                "objects": native_shapes,
+                "policy": "Map rectangles, rounded rectangles, lines, arrows, and table grids to native PPTX elements.",
+            },
+            {
+                "id": "editable-text",
+                "role": "native-text",
+                "visibility": "visible",
+                "objects": native_text,
+                "policy": "OCR-confirmed text must be rebuilt as PowerPoint text boxes with inferred font, color, and alignment.",
+            },
+            {
+                "id": "cropped-assets",
+                "role": "raster-fallback",
+                "visibility": "visible-when-needed",
+                "objects": [],
+                "policy": "Use only for photos, logos, dense icons, decorations, or unsupported effects; report every rasterized region.",
+            },
+        ],
+        "repairLoop": {
+            "maxIterations": 3,
+            "compare": ["pixel-diff", "text-bbox-offset", "color-delta", "element-coverage"],
+            "patchTargets": ["x", "y", "w", "h", "fontSize", "color", "zOrder", "arrowhead", "crop"],
+        },
+        "handoff": {
+            "manifestInput": "Use objectCandidates as the source for deck.manifest.json elements.",
+            "reviewOutput": "Write replica-visual-report.json after rendering and comparison.",
+        },
     }
 
 

@@ -1,4 +1,4 @@
-# PPTX Creator Workflow
+﻿# PPTX Creator Workflow
 
 Host agents perform all reasoning. Scripts validate, convert, measure, and render deterministically.
 
@@ -10,13 +10,13 @@ material quality, or visual polish. The agent decides case by case.
 Search is recommended when:
 
 - facts, dates, standards, market context, product information, or technical claims may be current or uncertain;
-- a deck needs stronger visual references, diagrams, icon directions, image素材, or layout inspiration;
-- the user explicitly permits or asks for联网搜索相关内容、素材、案例、竞品、术语或视觉风格;
+- a deck needs stronger visual references, diagrams, icon directions, image绱犳潗, or layout inspiration;
+- the user explicitly permits or asks for鑱旂綉鎼滅储鐩稿叧鍐呭銆佺礌鏉愩€佹渚嬨€佺珵鍝併€佹湳璇垨瑙嗚椋庢牸;
 - external documentation can improve the correctness of architecture, process, business value, or comparison slides.
 
 Search should be skipped or limited when:
 
-- the user forbids联网;
+- the user forbids鑱旂綉;
 - the provided source material is enough;
 - the task is a strict 1:1 HTML/image/PDF replica and outside references would alter the original design.
 
@@ -118,7 +118,7 @@ python scripts/package-output.py output
 
 ```text
 User content
-  -> host agent optionally searches for facts, terminology, examples, visuals, and素材
+  -> host agent optionally searches for facts, terminology, examples, visuals, and绱犳潗
   -> host agent selects DESIGN.md
   -> host agent builds slide outline + deck.manifest.json
   -> run-deck-pipeline.mjs
@@ -235,10 +235,10 @@ Do not rasterize the full reference slide unless the user explicitly accepts low
 After preview PNGs are generated, run:
 
 ```powershell
-npm run explore:directions -- examples/design-first/kycc-roadshow/deck.storyboard.json output/visual-roadmap-next
-npm run pipeline:design-first -- examples/design-first/kycc-roadshow output/visual-roadmap-next --emit-run-index --validate-registry --run-id kycc-roadshow --input-summary "kycc roadshow"
+npm run explore:directions -- examples/design-first/compiler-roadshow/deck.storyboard.json output/visual-roadmap-next
+npm run pipeline:design-first -- examples/design-first/compiler-roadshow output/visual-roadmap-next --emit-run-index --validate-registry --run-id compiler-roadshow --input-summary "Compiler Roadshow"
 npm run vision:review -- output/visual-roadmap-next --provider mock
-npm run run:index -- output/visual-roadmap-next kycc-roadshow creative "kycc roadshow"
+npm run run:index -- output/visual-roadmap-next compiler-roadshow creative "Compiler Roadshow"
 ```
 
 This creates `output/vision-review.json` using the same schema expected from a future vision-capable model provider. The mock provider is for local plumbing and tests; provider-backed review must keep the same output contract and must not edit PPTX files directly.
@@ -247,3 +247,4 @@ This creates `output/vision-review.json` using the same schema expected from a f
 
 Read `references/qa-rubric.md` and confirm slide count, editability level, and dependency gaps are reported to the user.
 Also read `compatibility-report.md` when WPS or cross-suite portability matters.
+

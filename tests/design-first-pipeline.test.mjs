@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +9,7 @@ describe("design-first pipeline", () => {
     const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-design-first-pipeline-"));
     execFileSync("node", [
       "scripts/run-design-first-pipeline.mjs",
-      "examples/design-first/kycc-roadshow",
+      "examples/design-first/compiler-roadshow",
       outputDir,
       "--design-system",
       "design-systems/product-roadshow/DESIGN.md",
@@ -26,3 +26,4 @@ describe("design-first pipeline", () => {
     expect(review.deckScore).toBeGreaterThan(0);
   });
 });
+

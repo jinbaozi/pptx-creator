@@ -1,0 +1,70 @@
+{
+  "slides": [
+    {
+      "id": "slide-001",
+      "layoutType": "cover",
+      "intent": "introduce a modern compiler component as a premium technical roadshow topic",
+      "mainIdea": "Rust-built GCC-compatible C compiler with a complete pipeline",
+      "visualPlan": {
+        "focalPoint": "large product category and pipeline motif",
+        "density": "low",
+        "visualWeight": { "title": 55, "subtitle": 25, "motif": 20 }
+      },
+      "contentSlots": [
+        { "slot": "headline", "role": "claim", "content": "Modern C Compiler Component" },
+        { "slot": "subtitle", "role": "positioning", "content": "Rust-based GCC-compatible compilation pipeline" }
+      ],
+      "editableTarget": 5
+    },
+    {
+      "id": "slide-002",
+      "layoutType": "problem-solution",
+      "intent": "explain why the compiler component is needed",
+      "mainIdea": "A self-contained C compiler pipeline improves engineering control over compilation, optimization, assembly, and linking",
+      "visualPlan": {
+        "focalPoint": "problem-to-solution contrast",
+        "density": "medium",
+        "visualWeight": { "problem": 40, "solution": 40, "takeaway": 20 }
+      },
+      "contentSlots": [
+        { "slot": "headline", "role": "claim", "content": "R&D Background: Why a Self-Contained Compiler Matters" },
+        {
+          "slot": "problems",
+          "role": "evidence",
+          "content": [
+            "External toolchain dependencies are hard to control",
+            "Cross-architecture adaptation creates integration complexity",
+            "Optimization and diagnostics need a unified entry point",
+            "Compilation pipelines need observability and extensibility"
+          ]
+        },
+        { "slot": "solution", "role": "answer", "content": "Build an end-to-end C compiler pipeline from preprocessing to link driving" }
+      ],
+      "editableTarget": 5
+    },
+    {
+      "id": "slide-003",
+      "layoutType": "architecture-layered",
+      "intent": "show the compiler architecture as an editable layered diagram",
+      "mainIdea": "Frontend is target-independent, middle-end optimizes IR, backend emits architecture-specific assembly and objects",
+      "visualPlan": {
+        "focalPoint": "three-stage compiler pipeline",
+        "density": "medium",
+        "visualWeight": { "diagram": 65, "text": 25, "annotation": 10 }
+      },
+      "contentSlots": [
+        { "slot": "headline", "role": "claim", "content": "Core Technical Path: Three-Stage Compiler Pipeline" },
+        {
+          "slot": "layers",
+          "role": "main-visual",
+          "content": [
+            { "name": "Frontend", "items": ["Preprocess", "Lex", "Parse", "Semantic analysis", "AST"] },
+            { "name": "Middle-end", "items": ["IR", "Constant propagation", "DCE", "CSE"] },
+            { "name": "Backend", "items": ["Code generation", "Assembler", "Link driver"] }
+          ]
+        }
+      ],
+      "editableTarget": 5
+    }
+  ]
+}

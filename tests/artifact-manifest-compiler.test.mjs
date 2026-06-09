@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { compileDesignFirstManifest } from "../scripts/lib/manifest-compiler.mjs";
 import { loadDesignFirstArtifacts } from "../scripts/lib/design-first-loader.mjs";
 import { compileUiSpec } from "../scripts/lib/ui-spec-compiler.mjs";
 import { compileComponentSpecs } from "../scripts/lib/component-spec-compiler.mjs";
 
 function buildArtifactsWithArchitectureHint() {
-  const artifacts = loadDesignFirstArtifacts("examples/design-first/kycc-roadshow");
+  const artifacts = loadDesignFirstArtifacts("examples/design-first/compiler-roadshow");
   const uiSpec = compileUiSpec({ storyboard: artifacts.storyboard, designDirection: artifacts.designDirection });
   const componentSpecs = compileComponentSpecs({ uiSpec });
   const archIndex = uiSpec.slides.findIndex((s) => s.id === "slide-003");
@@ -64,7 +64,7 @@ describe("artifact-aware manifest compiler", () => {
   });
 
   it("preserves generic compilation when uiSpec and componentSpecs are omitted", () => {
-    const artifacts = loadDesignFirstArtifacts("examples/design-first/kycc-roadshow");
+    const artifacts = loadDesignFirstArtifacts("examples/design-first/compiler-roadshow");
     const manifest = compileDesignFirstManifest(artifacts, {
       designSystemSource: "design-systems/product-roadshow/DESIGN.md",
       designSystemName: "Product Roadshow"
@@ -73,3 +73,4 @@ describe("artifact-aware manifest compiler", () => {
     expect(manifest.slides[0].elements.some((el) => el.type === "text")).toBe(true);
   });
 });
+
