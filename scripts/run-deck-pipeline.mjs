@@ -101,10 +101,18 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     }
   }
 
+  // Hoisted manifest read — shared by preflight-fonts and consistency-report.
+  let manifestJson;
+  try {
+    manifestJson = JSON.parse(await readFile(resolvedManifest, "utf8"));
+  } catch {
+    manifestJson = null;
+  }
+
   // preflight-fonts: populate intermediate.fontNames / .fontFallback
   let preflightResult;
   try {
-    const manifestJson = JSON.parse(await readFile(resolvedManifest, "utf8"));
+    if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
     let design = null;
     if (manifestJson.designSystem && manifestJson.designSystem.source) {
       const baseDir = dirname(resolvedManifest);
@@ -148,7 +156,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
 
   // consistency-report: always emitted (previewDiff deferred when LO missing)
   try {
-    const manifestJson = JSON.parse(await readFile(resolvedManifest, "utf8"));
+    if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
     const { json, md } = buildConsistencyReport(manifestJson, intermediate, { inputType, inputSource });
     await writeFile(join(resolvedOutput, "consistency-report.json"), json + "\n", "utf8");
     await writeFile(join(resolvedOutput, "consistency-report.md"), md + "\n", "utf8");

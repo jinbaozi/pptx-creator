@@ -30,7 +30,7 @@
 //   node scripts/image-to-manifest.mjs --mode auto --input ref.png --output output/auto
 
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { dirname, extname, resolve } from "node:path";
+import { basename, dirname, extname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -238,7 +238,7 @@ async function runReplicaFlow({ imagePath, outputDir, preset, paletteCount, deck
 }
 
 function deriveSlideId(imagePath, fallbackIndex) {
-  const base = imagePath.split("/").pop() ?? `slide-${fallbackIndex}`;
+  const base = basename(imagePath) || `slide-${fallbackIndex}`;
   const stem = base.replace(/\.[^.]+$/, "");
   return `slide-${stem || fallbackIndex}`;
 }
@@ -258,7 +258,7 @@ function buildSlideSkeleton({ imagePath, slideIndex, mode, data, hints }) {
       notes:
         slideFromHints.notes ??
         `Skeleton from ${mode} flow for ${imagePath}. Host agent must replace placeholders.`,
-      sourceImage: imagePath.split("/").pop()
+      sourceImage: basename(imagePath)
     };
   }
   // Fallback: synthesize a minimal slide when the upstream didn't emit a skeleton.
@@ -269,14 +269,14 @@ function buildSlideSkeleton({ imagePath, slideIndex, mode, data, hints }) {
     notes: `Skeleton from ${mode} flow for ${imagePath}.`,
     background: { type: "solid", color: "{colors.background}" },
     elements: [],
-    sourceImage: imagePath.split("/").pop()
+    sourceImage: basename(imagePath)
   };
 }
 
 function mergeMultiImageManifest({ mode, images, slideRecords, designSystem, deckSize, deckTitle }) {
   const slides = slideRecords.map(({ slide, imagePath }, idx) => ({
     ...slide,
-    id: `slide-${String(idx + 1).padStart(3, "0")}-${imagePath.split("/").pop()?.replace(/\.[^.]+$/, "") ?? idx}`
+    id: `slide-${String(idx + 1).padStart(3, "0")}-${basename(imagePath).replace(/\.[^.]+$/, "") ?? idx}`
   }));
   return {
     version: "0.1.1",
@@ -288,7 +288,7 @@ function mergeMultiImageManifest({ mode, images, slideRecords, designSystem, dec
     },
     assets: images.map((imagePath, idx) => ({
       id: `source-slide-${String(idx + 1).padStart(3, "0")}`,
-      src: imagePath.split("/").pop(),
+      src: basename(imagePath),
       role: "reference",
       note: `Reference screenshot ${idx + 1}; remove from final manifest unless needed as cropped asset.`
     })),
@@ -304,7 +304,7 @@ function mergeMultiImageManifest({ mode, images, slideRecords, designSystem, dec
 }
 
 function singleImageManifest({ mode, imagePath, slide, designSystem, deckSize, deckTitle, ocrConfidence }) {
-  const fileName = imagePath.split("/").pop();
+  const fileName = basename(imagePath);
   return {
     version: "0.1.1",
     designSystem,
@@ -417,7 +417,7 @@ async function main() {
     options.deckTitle ??
     (inputIsDirectory && shouldMulti
       ? "Image Batch Deck"
-      : inputPath.split("/").pop()?.replace(/\.[^.]+$/, "")?.replace(/[-_]/g, " ") ?? "Image Deck");
+      : basename(inputPath).replace(/\.[^.]+$/, "").replace(/[-_]/g, " ") || "Image Deck");
 
   if (inputIsDirectory && shouldMulti) {
     const images = await listImages(inputPath);

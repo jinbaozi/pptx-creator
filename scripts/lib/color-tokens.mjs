@@ -233,7 +233,7 @@ export function resolveTokens(extractedColors, designTokens, options = {}) {
       }
     }
 
-    const weightMatch = /^\s*$/.test(origin) ? 1 : 1;
+    const weightMatch = 1;
     totalWeight += weightMatch;
 
     if (nearest.deltaE <= threshold) {
@@ -248,7 +248,6 @@ export function resolveTokens(extractedColors, designTokens, options = {}) {
       weightedMatchSum += weightMatch * confidence;
     } else {
       unmapped.push({ extractedHex: normalizedHex, origin });
-      weightedMatchSum += 0;
     }
   }
 

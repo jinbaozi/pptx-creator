@@ -23,7 +23,7 @@ const renderers = {
   directions: renderDirections,
   slides: renderSlidePreviews,
   reviews: renderReviews,
-  "consistency-report": renderConsistencyReport
+  "consistency-report": renderConsistencyReportHtml
 };
 
 input?.addEventListener("change", async (event) => {
@@ -61,7 +61,7 @@ async function loadConsistencyReportFromFetch() {
       return;
     }
     const report = await response.json();
-    panel.innerHTML = renderConsistencyReport(report);
+    panel.innerHTML = renderConsistencyReportHtml(report);
   } catch (error) {
     if (panel.dataset.manualOverride === "true") return;
     panel.innerHTML = renderConsistencyEmpty(error?.message ?? "fetch failed");
@@ -280,10 +280,6 @@ function renderConsistencyReportHtml(report) {
 }
 
 // --- consistency report (traffic-light UI) -----------------------------------
-
-function renderConsistencyReport(report) {
-  return renderConsistencyReportHtml(report);
-}
 
 function renderConsistencyEmpty(reason) {
   const message = reason

@@ -111,7 +111,6 @@ describe("font-preflight", () => {
   });
 
   it("falls back to magic-byte or unavailable when fontkit import fails", async () => {
-    // Force the dynamic import inside preflightFonts to throw.
     const manifest = sampleManifest({ title: "FakeFont-7", body: "FakeFont-7", element: "FakeFont-7" });
     const designAllMissing = {
       tokens: {
@@ -121,25 +120,14 @@ describe("font-preflight", () => {
         }
       }
     };
-    const realImport = globalThis.import;
-    try {
-      // Replace import() with one that always rejects for "fontkit".
-      globalThis.import = (specifier) => {
-        if (typeof specifier === "string" && specifier === "fontkit") {
-          return Promise.reject(new Error("mocked: fontkit not installed"));
-        }
-        return realImport(specifier);
-      };
-
-      const result = await preflightFonts(manifest, designAllMissing);
-      expect(["magic-byte", "unavailable"]).toContain(result.source);
-      expect(result.availability["FakeFont-7"]).toBe("missing");
-      expect(result.fallback).toEqual([
-        expect.objectContaining({ requested: "FakeFont-7", fallback: "system-default" })
-      ]);
-    } finally {
-      globalThis.import = realImport;
-    }
+    const result = await preflightFonts(manifest, designAllMissing, {
+      loadFontkit: async () => ({ error: new Error("mocked: fontkit not installed") })
+    });
+    expect(["magic-byte", "unavailable"]).toContain(result.source);
+    expect(result.availability["FakeFont-7"]).toBe("missing");
+    expect(result.fallback).toEqual([
+      expect.objectContaining({ requested: "FakeFont-7", fallback: "system-default" })
+    ]);
   });
 
   it("returns empty availability + no fallback for an empty manifest", async () => {

@@ -179,7 +179,7 @@ function normalizeInputType(value) {
   return "unknown";
 }
 
-function buildDefaultFloorViolation(intermediate, editabilityLevel) {
+function buildDefaultFloorViolation(editabilityLevel) {
   // Schema-compatible shape: floorViolation is arrays of strings (element IDs
   // or short reason tokens). Rich details (recoverable/gap) live on the
   // separate `computeFloorViolation` helper for callers that want them.
@@ -286,7 +286,6 @@ export function buildConsistencyReport(manifest, intermediate, options = {}) {
     : [];
 
   const editabilityFloor = options.editabilityFloor ?? buildDefaultFloorViolation(
-    intermediateSafe,
     editabilityLevel
   );
 

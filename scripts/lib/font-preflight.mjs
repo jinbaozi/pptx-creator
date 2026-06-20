@@ -226,8 +226,8 @@ function enumerateWithMagicBytes(fontFiles) {
  *
  * @param {object} manifest   Decoded `deck.manifest.json`.
  * @param {object} [design]   Decoded `DESIGN.md` (provides tokens).
- * @param {object} [options]  Optional `{ fonts?: Set<string>, files?: string[] }`
- *                            overrides for testing.
+ * @param {object} [options]  Optional `{ fonts?: Set<string>, files?: string[],
+ *                            loadFontkit?: () => Promise<object> }` overrides.
  * @returns {Promise<{
  *   availability: Record<string, "present" | "missing">,
  *   fallback: Array<{ requested: string, fallback: string }>,
@@ -250,7 +250,7 @@ export async function preflightFonts(manifest, design, options = {}) {
   }
 
   // Prefer fontkit; fall back to magic-byte detection.
-  const fontkit = await loadFontkit();
+  const fontkit = await (options.loadFontkit ?? loadFontkit)();
   let availableNames = new Set();
   let source;
   if (fontkit && typeof fontkit.openSync === "function" && !fontkit.error) {

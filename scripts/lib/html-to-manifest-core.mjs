@@ -47,9 +47,9 @@ export function detectLayoutMode(slideNode, options = {}) {
 function regionKey(box) {
   const halfW = CONTENT_WIDTH / 2;
   const halfH = SLIDE_SIZE.height / 2;
-  const col = box.x < halfW ? "tl" : box.x < halfW * 2 ? "tr" : "tl";
-  const row = box.y < halfH ? "t" : "b";
-  return `${row}${col === "tl" ? "l" : "r"}`;
+  const col = box.x < halfW ? 0 : 1;
+  const row = box.y < halfH ? 0 : 1;
+  return `${row}-${col}`;
 }
 
 function attachSourceCoordinate(element, sourceCoordinates, recordedRegions) {

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { convertHtmlToManifest } from "./lib/html-to-manifest-core.mjs";
@@ -125,6 +125,9 @@ function parseArgs(argv) {
 export async function writeManifestFromHtml(inputPath, outputPath, options = {}) {
   const html = await readFile(inputPath, "utf8");
   const resolvedOutput = resolve(outputPath);
+  const manifestDir = dirname(resolvedOutput);
+  await mkdir(manifestDir, { recursive: true });
+  const canonicalManifestDir = await realpath(manifestDir);
   let measurements = options.measurements ?? null;
   if (typeof measurements === "string") {
     measurements = JSON.parse(await readFile(resolve(measurements), "utf8"));
@@ -133,15 +136,14 @@ export async function writeManifestFromHtml(inputPath, outputPath, options = {})
     ...options,
     measurements,
     packageRoot: options.packageRoot ?? packageRoot,
-    manifestDir: dirname(resolvedOutput),
+    manifestDir: canonicalManifestDir,
     returnMetadata: true
   });
   const manifest = result.manifest ?? result;
-  await localizeRemoteAssets(manifest, dirname(resolvedOutput), options);
-  await mkdir(dirname(resolvedOutput), { recursive: true });
+  await localizeRemoteAssets(manifest, manifestDir, options);
   await writeFile(resolvedOutput, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   // Always write inputHints.json alongside the manifest.
-  const inputHintsPath = resolve(dirname(resolvedOutput), "inputHints.json");
+  const inputHintsPath = resolve(manifestDir, "inputHints.json");
   const inputHints = result.inputHints ?? { viewportSize: { w: 1280, h: 720 }, imageDimensions: [], detectedPalette: [], ocrAvailability: "deferred" };
   await writeFile(inputHintsPath, `${JSON.stringify(inputHints, null, 2)}\n`, "utf8");
   return { manifest, layoutPaths: result.layoutPaths ?? [], sourceCoordinates: result.sourceCoordinates ?? [], inputHints };
