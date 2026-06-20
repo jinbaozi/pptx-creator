@@ -11,6 +11,7 @@ export async function buildRunIndex(outputDir, options) {
     pptx: await exists(root, "final.pptx"),
     previews: await listFiles(root, "previews", ".png"),
     reviews: await listReviewFiles(root),
+    consistencyReport: await exists(root, "consistency-report.json"),
     sources: await exists(root, "sources.json"),
     assetRegistry: await exists(root, join("assets", "asset-registry.json"))
   };
@@ -53,7 +54,7 @@ async function listFiles(root, folder, extension) {
 }
 
 async function listReviewFiles(root) {
-  const names = ["visual-review.json", "vision-review.json", "merged-review.json"];
+  const names = ["visual-review.json", "vision-review.json", "merged-review.json", "consistency-report.json", "consistency-report.md"];
   const present = [];
   for (const name of names) {
     if (await exists(root, name)) present.push(name);

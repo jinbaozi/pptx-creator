@@ -1,0 +1,96 @@
+{
+  "version": "1.0",
+  "threshold": 0.7,
+  "clearanceTarget": 0.9,
+  "fixtures": [
+    {
+      "name": "text-heavy.png",
+      "size": [
+        200,
+        200
+      ],
+      "blockDistribution": [
+        {
+          "text": "SALES",
+          "confidence": 0.92
+        },
+        {
+          "text": "GROWTH",
+          "confidence": 0.88
+        },
+        {
+          "text": "QUARTERLY",
+          "confidence": 0.81
+        },
+        {
+          "text": "REPORT",
+          "confidence": 0.95
+        },
+        {
+          "text": "FY 2025",
+          "confidence": 0.79
+        }
+      ],
+      "totalBlocks": 5,
+      "confidentBlocks": 5,
+      "clearance": 1.0,
+      "meetsFloor": true
+    },
+    {
+      "name": "mixed.png",
+      "size": [
+        200,
+        200
+      ],
+      "blockDistribution": [
+        {
+          "text": "Heading",
+          "confidence": 0.91
+        },
+        {
+          "text": "Body text",
+          "confidence": 0.83
+        },
+        {
+          "text": "Caption",
+          "confidence": 0.76
+        },
+        {
+          "text": "Footnote",
+          "confidence": 0.71
+        }
+      ],
+      "totalBlocks": 4,
+      "confidentBlocks": 4,
+      "clearance": 1.0,
+      "meetsFloor": true
+    },
+    {
+      "name": "sparse.png",
+      "size": [
+        160,
+        160
+      ],
+      "blockDistribution": [
+        {
+          "text": "Title",
+          "confidence": 0.93
+        },
+        {
+          "text": "Sub",
+          "confidence": 0.78
+        }
+      ],
+      "totalBlocks": 2,
+      "confidentBlocks": 2,
+      "clearance": 1.0,
+      "meetsFloor": true
+    }
+  ],
+  "aggregate": {
+    "totalBlocks": 11,
+    "confidentBlocks": 11,
+    "clearance": 1.0,
+    "meetsFloor": true
+  }
+}

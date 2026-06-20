@@ -9,7 +9,8 @@ const panels = {
   "component-specs": document.querySelector("#component-specs"),
   "preview-artifacts": document.querySelector("#preview-artifacts"),
   "vision-review": document.querySelector("#vision-review"),
-  "repair-patch": document.querySelector("#repair-patch")
+  "repair-patch": document.querySelector("#repair-patch"),
+  "consistency-report": document.querySelector("#consistency-report-panel")
 };
 
 const renderers = {
@@ -21,7 +22,8 @@ const renderers = {
   "repair-patch": renderRepairPatch,
   directions: renderDirections,
   slides: renderSlidePreviews,
-  reviews: renderReviews
+  reviews: renderReviews,
+  "consistency-report": renderConsistencyReport
 };
 
 input?.addEventListener("change", async (event) => {
@@ -30,6 +32,41 @@ input?.addEventListener("change", async (event) => {
   const run = JSON.parse(await file.text());
   renderRun(run);
 });
+
+// Auto-load consistency-report.json on page load (workbench is served alongside
+// /output/). When the file is missing, the panel shows a guidance message.
+document.addEventListener("DOMContentLoaded", () => {
+  loadConsistencyReportFromFetch();
+});
+
+if (typeof window !== "undefined" && document.readyState !== "loading") {
+  loadConsistencyReportFromFetch();
+}
+
+async function loadConsistencyReportFromFetch() {
+  const panel = panels["consistency-report"];
+  if (!panel || !window.fetch) return;
+  // If a test or caller has already populated the panel (manual override),
+  // skip the auto-fetch — manual wins.
+  if (panel.dataset.manualOverride === "true") return;
+  try {
+    const response = await fetch("./output/consistency-report.json", { cache: "no-store" });
+    if (panel.dataset.manualOverride === "true") return;
+    if (response.status === 404) {
+      panel.innerHTML = renderConsistencyEmpty();
+      return;
+    }
+    if (!response.ok) {
+      panel.innerHTML = renderConsistencyEmpty(`HTTP ${response.status}`);
+      return;
+    }
+    const report = await response.json();
+    panel.innerHTML = renderConsistencyReport(report);
+  } catch (error) {
+    if (panel.dataset.manualOverride === "true") return;
+    panel.innerHTML = renderConsistencyEmpty(error?.message ?? "fetch failed");
+  }
+}
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => activateTab(tab.dataset.tab));
@@ -205,4 +242,154 @@ function escapeHtml(value) {
 // Expose for tests and ad-hoc inspection.
 if (typeof window !== "undefined") {
   window.renderRun = renderRun;
+  // renderConsistencyReport mutates the panel directly (sets innerHTML and
+  // marks manualOverride so the auto-fetch on DOMContentLoaded cannot clobber
+  // a manual render).
+  window.renderConsistencyReport = function (report) {
+    const panel = panels["consistency-report"];
+    if (!panel) return null;
+    panel.dataset.manualOverride = "true";
+    const html = renderConsistencyReportHtml(report);
+    panel.innerHTML = html;
+    return html;
+  };
+  window.evaluateConsistencyCells = evaluateConsistencyCells;
+}
+
+function renderConsistencyReportHtml(report) {
+  if (!report || typeof report !== "object") {
+    return renderConsistencyEmpty();
+  }
+  const cells = evaluateConsistencyCells(report);
+  const meta = `
+    <p class="meta">input ${escapeHtml(report.inputType ?? "unknown")} · source ${escapeHtml(String(report.inputSource ?? "n/a"))}</p>
+  `;
+  const grid = `
+    <div class="consistency-grid">
+      ${cells.map((cell) => `
+        <div class="cell ${cell.tone}" role="button" tabindex="0" data-cell="${escapeHtml(cell.key)}" aria-expanded="false">
+          <span class="cell-label">${escapeHtml(cell.label)}</span>
+          <span class="cell-value">${escapeHtml(cell.display)}</span>
+        </div>
+      `).join("")}
+    </div>
+    <div id="consistency-cell-detail" class="cell-detail" hidden></div>
+  `;
+  queueMicrotask(() => bindConsistencyCellHandlers(cells));
+  return meta + grid;
+}
+
+// --- consistency report (traffic-light UI) -----------------------------------
+
+function renderConsistencyReport(report) {
+  return renderConsistencyReportHtml(report);
+}
+
+function renderConsistencyEmpty(reason) {
+  const message = reason
+    ? `Run \`npm run pipeline\` first. (${escapeHtml(reason)})`
+    : "Run `npm run pipeline` first to generate <code>output/consistency-report.json</code>.";
+  return `<div class="consistency-empty">${message}</div>`;
+}
+
+function evaluateConsistencyCells(report) {
+  const drift = numericOrNull(report.coordinateDriftPx);
+  const palette = numericOrNull(report.paletteMatch);
+  const level = numericOrNull(report.editabilityLevel);
+  const floor = report.editabilityFloor ?? {};
+  const fontFallback = Array.isArray(report.fontFallback) ? report.fontFallback : [];
+  const rasterized = Array.isArray(report.rasterizedRegions) ? report.rasterizedRegions : [];
+  const preview = report.previewDiff ?? { status: "deferred" };
+
+  return [
+    cell("editabilityLevel", "Editability", level === null ? "n/a" : `L${level}`, toneForLevel(level)),
+    cell("coordinateDriftPx", "Coord drift (px)", drift === null ? "not measured" : String(drift), toneForDrift(drift)),
+    cell("fontFallback", "Font fallback", fontFallback.length === 0 ? "none" : `${fontFallback.length} fallback(s)`, fontFallback.length === 0 ? "pass" : "fail"),
+    cell("paletteMatch", "Palette match", palette === null ? "not measured" : palette.toFixed(2), toneForPalette(palette)),
+    cell("rasterizedRegions", "Rasterized", rasterized.length === 0 ? "none" : `${rasterized.length} region(s)`, rasterized.length === 0 ? "pass" : "warn"),
+    cell("editabilityFloor", "Floor", describeFloor(floor), toneForFloor(floor)),
+    cell("previewDiff", "Preview diff", preview.status === "ok" ? `ok (${(preview.perSlide ?? []).length})` : "deferred", preview.status === "ok" ? "pass" : "warn"),
+    cell("inputType", "Input type", report.inputType ?? "unknown", "pass")
+  ];
+}
+
+function cell(key, label, display, tone) {
+  return { key, label, display, tone, raw: { key, label, display, tone } };
+}
+
+function toneForLevel(value) {
+  if (value === null) return "warn";
+  if (value >= 4) return "pass";
+  if (value === 3) return "warn";
+  return "fail";
+}
+
+function toneForDrift(value) {
+  if (value === null) return "warn";
+  if (value <= 1) return "pass";
+  if (value <= 3) return "warn";
+  return "fail";
+}
+
+function toneForPalette(value) {
+  if (value === null) return "warn";
+  if (value >= 0.85) return "pass";
+  if (value >= 0.7) return "warn";
+  return "fail";
+}
+
+function toneForFloor(floor) {
+  if (!floor) return "warn";
+  if (floor.satisfied === true) return "pass";
+  if (floor.satisfied === "with-justification") return "warn";
+  return "fail";
+}
+
+function describeFloor(floor) {
+  if (!floor) return "n/a";
+  const level = floor.level ?? "n/a";
+  const satisfied = floor.satisfied;
+  if (satisfied === true) return `L${level} satisfied`;
+  if (satisfied === "with-justification") return `L${level} with justification`;
+  return `L${level} violated`;
+}
+
+function numericOrNull(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function bindConsistencyCellHandlers(cells) {
+  const panel = panels["consistency-report"];
+  if (!panel) return;
+  const detail = panel.querySelector("#consistency-cell-detail");
+  panel.querySelectorAll(".cell").forEach((node) => {
+    const key = node.dataset.cell;
+    const handler = () => {
+      const cell = cells.find((entry) => entry.key === key);
+      if (!cell || !detail) return;
+      const isExpanded = node.getAttribute("aria-expanded") === "true";
+      const next = !isExpanded;
+      panel.querySelectorAll(".cell").forEach((other) => other.setAttribute("aria-expanded", "false"));
+      node.setAttribute("aria-expanded", next ? "true" : "false");
+      if (next) {
+        detail.hidden = false;
+        detail.textContent = formatCellDetail(cell, key);
+      } else {
+        detail.hidden = true;
+        detail.textContent = "";
+      }
+    };
+    node.addEventListener("click", handler);
+    node.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        handler();
+      }
+    });
+  });
+}
+
+function formatCellDetail(cell, key) {
+  const payload = cell.raw;
+  return JSON.stringify({ key, label: payload.label, display: payload.display, tone: payload.tone }, null, 2);
 }

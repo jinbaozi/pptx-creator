@@ -14,6 +14,7 @@
     "image:replica:analyze": "node scripts/run-python.mjs scripts/image-replica-analyze.py",
     "image:replica:plan": "node scripts/run-python.mjs scripts/image-replica-plan.py",
     "image:ocr": "node scripts/run-python.mjs scripts/ocr-image.py",
+    "calibration:generate": "node scripts/run-python.mjs scripts/generate-calibration-fixtures.py",
     "image:palette": "node scripts/run-python.mjs scripts/extract-palette.py",
     "image:crop": "node scripts/run-python.mjs scripts/crop-assets.py",
     "pdf:hints": "node scripts/run-python.mjs scripts/pdf-to-page-hints.py",

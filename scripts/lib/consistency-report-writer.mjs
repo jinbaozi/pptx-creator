@@ -76,6 +76,120 @@ export const DIMENSION_SECTIONS = [
 
 const NOT_MEASURED = "_not measured_";
 
+// Default editability floors per input type (R14 differentiation + U10 floor).
+// Image inputs default to L3 because OCR+raster often prevents L4 even when
+// adapters perform perfectly; HTML/design-first default to L4 because the
+// source is already semantic.
+export const DEFAULT_EDITABILITY_FLOOR = Object.freeze({
+  html: 4,
+  image: 3,
+  "design-first": 4,
+  unknown: 4
+});
+
+export const OCR_CONFIDENCE_FLOOR_DEFAULT = 0.7;
+export const OCR_CLEARANCE_TARGET = 0.9;
+
+/**
+ * Compute editability-floor violation. Pure function.
+ *
+ * @param {object} manifest  Deck manifest (only `deck.editabilityFloor` is read).
+ * @param {object} intermediate  Render intermediate (editabilityLevel, editabilityCounter, sourceCausal).
+ * @param {object} options
+ *   - inputType: 'html' | 'image' | 'design-first' | 'unknown'
+ *   - allowSourceFloorViolation: boolean (default true) — when false, source-causal
+ *     gaps also return `satisfied: false`.
+ *
+ * @returns {{level:number, floor:number, satisfied: boolean|'with-justification',
+ *            floorViolation:{pipelineCausal:object[], sourceCausal:object[]}}}
+ *
+ * The manifest may RAISE the floor (`deck.editabilityFloor`) but cannot lower it.
+ */
+export function computeFloorViolation(manifest, intermediate, options = {}) {
+  const inputType = normalizeInputType(options.inputType);
+  const defaultFloor = DEFAULT_EDITABILITY_FLOOR[inputType] ?? DEFAULT_EDITABILITY_FLOOR.unknown;
+
+  const manifestFloorRaw = manifest?.deck?.editabilityFloor;
+  const manifestFloor = typeof manifestFloorRaw === "number" && Number.isFinite(manifestFloorRaw) && manifestFloorRaw > 0
+    ? manifestFloorRaw
+    : 0;
+  const floor = Math.max(defaultFloor, manifestFloor);
+
+  const intermediateSafe = intermediate ?? {};
+  const editabilityLevel = typeof intermediateSafe.editabilityLevel === "number"
+    ? intermediateSafe.editabilityLevel
+    : computeEditabilityLevel(intermediateSafe.editabilityCounter ?? {});
+
+  if (editabilityLevel >= floor) {
+    return {
+      level: editabilityLevel,
+      floor,
+      satisfied: true,
+      floorViolation: { pipelineCausal: [], sourceCausal: [] }
+    };
+  }
+
+  const gap = floor - editabilityLevel;
+  const allowSource = options.allowSourceFloorViolation !== false; // default true
+  const isSourceCausal =
+    intermediateSafe.sourceCausal === true ||
+    intermediateSafe.rasterFallback === true ||
+    inputType === "image";
+
+  if (isSourceCausal) {
+    const sourceViolations = [
+      {
+        reason: "source-caused-raster-fallback",
+        recoverable: false,
+        level: editabilityLevel,
+        floor,
+        gap
+      }
+    ];
+    return {
+      level: editabilityLevel,
+      floor,
+      satisfied: allowSource ? "with-justification" : false,
+      floorViolation: { pipelineCausal: [], sourceCausal: sourceViolations }
+    };
+  }
+
+  return {
+    level: editabilityLevel,
+    floor,
+    satisfied: false,
+    floorViolation: {
+      pipelineCausal: [
+        {
+          reason: "adapter-under-perform",
+          recoverable: true,
+          level: editabilityLevel,
+          floor,
+          gap
+        }
+      ],
+      sourceCausal: []
+    }
+  };
+}
+
+function normalizeInputType(value) {
+  if (typeof value !== "string") return "unknown";
+  if (value in DEFAULT_EDITABILITY_FLOOR) return value;
+  return "unknown";
+}
+
+function buildDefaultFloorViolation(intermediate, editabilityLevel) {
+  // Schema-compatible shape: floorViolation is arrays of strings (element IDs
+  // or short reason tokens). Rich details (recoverable/gap) live on the
+  // separate `computeFloorViolation` helper for callers that want them.
+  const safeLevel = typeof editabilityLevel === "number" ? editabilityLevel : 1;
+  return {
+    level: safeLevel,
+    floorViolation: { pipelineCausal: [], sourceCausal: [] }
+  };
+}
+
 /**
  * Recursively sort object keys for deterministic JSON output. Arrays keep
  * their input order — semantic ordering matters there.
@@ -171,10 +285,10 @@ export function buildConsistencyReport(manifest, intermediate, options = {}) {
     ? intermediateSafe.rasterizedRegions
     : [];
 
-  const editabilityFloor = options.editabilityFloor ?? {
-    level: editabilityLevel,
-    floorViolation: { pipelineCausal: [], sourceCausal: [] }
-  };
+  const editabilityFloor = options.editabilityFloor ?? buildDefaultFloorViolation(
+    intermediateSafe,
+    editabilityLevel
+  );
 
   const preview = intermediateSafe.preview ?? {};
   const previewDiff = previewDiffShape(preview, options.previewDiff);
