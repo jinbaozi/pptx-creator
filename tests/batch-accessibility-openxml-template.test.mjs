@@ -34,6 +34,89 @@ describe("batch, accessibility, template import, and OpenXML repair", () => {
     await access(join(outputDir, "text", "final.pptx"));
   }, 60000);
 
+  it("emits a batch-level consistency-report aggregating per-deck reports", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-batch-consistency-"));
+    const textManifest = join(root, "examples/text-input/deck.manifest.json");
+    const htmlManifest = join(root, "examples/html-input/deck.manifest.json");
+    const batchFile = join(outputDir, "batch.json");
+    await writeFile(
+      batchFile,
+      `\uFEFF${JSON.stringify(
+        {
+          jobs: [
+            { id: "text", manifest: textManifest, outputDir: join(outputDir, "text") },
+            { id: "html", manifest: htmlManifest, outputDir: join(outputDir, "html") }
+          ]
+        },
+        null,
+        2
+      )}`,
+      "utf8"
+    );
+
+    const report = await runBatchPipeline(batchFile, outputDir);
+
+    expect(report.status).toBe("passed");
+    expect(report.jobs).toHaveLength(2);
+    // Each job's per-deck report must exist.
+    await access(join(outputDir, "text", "consistency-report.json"));
+    await access(join(outputDir, "html", "consistency-report.json"));
+    // The batch aggregate must exist and validate against the schema.
+    const aggregatePath = join(outputDir, "consistency-report.batch.json");
+    await access(aggregatePath);
+    const aggregate = JSON.parse(await readFile(aggregatePath, "utf8"));
+    expect(aggregate).toMatchObject({
+      version: expect.any(String),
+      createdAt: expect.any(String),
+      batch: {
+        totalDecks: 2,
+        passedDecks: expect.any(Number),
+        failedDecks: expect.any(Number)
+      },
+      editabilityDistribution: expect.objectContaining({
+        "1": expect.any(Number),
+        "2": expect.any(Number),
+        "3": expect.any(Number),
+        "4": expect.any(Number),
+        "5": expect.any(Number)
+      }),
+      averageCoordinateDriftPx: expect.any(Number),
+      fontFallbackRate: expect.any(Number),
+      paletteMatch: expect.any(Number)
+    });
+    expect(aggregate.perDeckReports).toHaveLength(2);
+    expect(aggregate.perDeckReports.every((p) => typeof p === "string" && p.length > 0)).toBe(true);
+  }, 90000);
+
+  it("continues processing remaining jobs when one job throws", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-batch-resilience-"));
+    const goodManifest = join(root, "examples/text-input/deck.manifest.json");
+    const batchFile = join(outputDir, "batch.json");
+    await writeFile(
+      batchFile,
+      `\uFEFF${JSON.stringify(
+        {
+          jobs: [
+            { id: "good", manifest: goodManifest, outputDir: join(outputDir, "good") },
+            { id: "bad", manifest: join(outputDir, "does-not-exist.json"), outputDir: join(outputDir, "bad") }
+          ]
+        },
+        null,
+        2
+      )}`,
+      "utf8"
+    );
+
+    const report = await runBatchPipeline(batchFile, outputDir);
+
+    expect(report.total).toBe(2);
+    expect(report.passed).toBe(1);
+    expect(report.failed).toBe(1);
+    expect(report.status).toBe("failed");
+    // The good job's per-deck report is still present.
+    await access(join(outputDir, "good", "consistency-report.json"));
+  }, 60000);
+
   it("reports accessibility risks from a deck manifest", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-a11y-"));
     const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));

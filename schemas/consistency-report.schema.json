@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/consistency-report.schema.json",
+  "title": "Per-Deck Consistency Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["inputType", "inputSource"],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "inputType": {
+      "type": "string",
+      "enum": ["html", "image", "design-first"]
+    },
+    "inputSource": { "type": "string", "minLength": 1 },
+    "editabilityLevel": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "coordinateDriftPx": { "type": "number", "minimum": 0 },
+    "fontFallback": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["element", "requested", "fallback"],
+        "properties": {
+          "element": { "type": "string", "minLength": 1 },
+          "requested": { "type": "string", "minLength": 1 },
+          "fallback": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "paletteMatch": { "type": "number", "minimum": 0, "maximum": 1 },
+    "rasterizedRegions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slideId", "elementId", "areaPct", "reason", "recoverable"],
+        "properties": {
+          "slideId": { "type": "string", "minLength": 1 },
+          "elementId": { "type": "string", "minLength": 1 },
+          "areaPct": { "type": "number", "minimum": 0, "maximum": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "recoverable": { "type": "boolean" }
+        }
+      }
+    },
+    "qualityTargets": { "type": "object" },
+    "editabilityFloor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "floorViolation"],
+      "properties": {
+        "level": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "floorViolation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pipelineCausal", "sourceCausal"],
+          "properties": {
+            "pipelineCausal": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "sourceCausal": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "previewDiff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ok", "deferred"]
+        },
+        "perSlide": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "ok" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["perSlide"]
+          }
+        }
+      ]
+    }
+  }
+}

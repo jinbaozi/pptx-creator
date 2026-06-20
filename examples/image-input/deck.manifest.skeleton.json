@@ -83,5 +83,6 @@
       ]
     }
   ],
-  "_skeleton": true
+  "_skeleton": true,
+  "_generator.notes": "Image-input skeleton. After host agent fills placeholders, pipeline emits per-deck consistency-report.json + .md (inputType=image)."
 }

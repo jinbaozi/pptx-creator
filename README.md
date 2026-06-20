@@ -238,9 +238,9 @@ final.pptx
 
 | 路径 | 作用 |
 | --- | --- |
-| `SKILL.md` | Agent Skill 入口说明。 |
-| `AGENT.md` | 宿主 Agent 使用规范。 |
-| `adapters/` | Codex、Claude Code、Cursor 等宿主适配说明。 |
+| `SKILL.md` | 通用 Agent Skill 入口、核心契约和按需路由。 |
+| `agents/openai.yaml` | Codex/OpenAI 界面元数据；不参与运行时逻辑。 |
+| `references/` | 按输入类型和任务阶段渐进加载的详细流程。 |
 | `design-systems/` | 内置通用设计系统。 |
 | `layout-archetypes/` | 设计优先流程使用的页面布局原型。 |
 | `schemas/` | deck、storyboard、design direction、registry、repair、review 等 JSON Schema。 |

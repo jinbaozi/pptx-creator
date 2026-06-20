@@ -8,7 +8,49 @@ function addIssue(issues, issue) {
   issues.push(issue);
 }
 
-function scoreSlide(slide, deckSize) {
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function consistencyAdjustments(consistencyReport) {
+  if (!consistencyReport || typeof consistencyReport !== "object") {
+    return { alignment: 0, designSystemFit: 0, compatibility: 0 };
+  }
+  let alignment = 0;
+  let designSystemFit = 0;
+  let compatibility = 0;
+
+  // coordinateDriftPx > 1 reduces alignment.
+  const drift = safeNumber(consistencyReport.coordinateDriftPx, null);
+  if (drift !== null && drift > 1) {
+    // 0 penalty at 1px; 30 at 10px; cap at 30 above 10px.
+    alignment = clamp(Math.round((drift - 1) * 3.5), 0, 30);
+  }
+
+  // paletteMatch < 0.85 reduces designSystemFit.
+  const palette = safeNumber(consistencyReport.paletteMatch, null);
+  if (palette !== null && palette < 0.85) {
+    // 0 penalty at 0.85; 30 at 0; linear.
+    designSystemFit = clamp(Math.round((0.85 - palette) * 200), 0, 30);
+  }
+
+  // fontFallback non-empty reduces compatibility.
+  const fontFallback = Array.isArray(consistencyReport.fontFallback)
+    ? consistencyReport.fontFallback
+    : [];
+  if (fontFallback.length > 0) {
+    // 8 penalty per fallback, capped at 30.
+    compatibility = clamp(fontFallback.length * 8, 0, 30);
+  }
+
+  return { alignment, designSystemFit, compatibility };
+}
+
+function safeNumber(value, fallback = null) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function scoreSlide(slide, deckSize, adjustments) {
   const issues = [];
   const repairs = [];
   const elements = slide.elements || [];
@@ -118,32 +160,44 @@ function scoreSlide(slide, deckSize) {
   }
   const penalty = issues.reduce((sum, issue) => sum + (issue.severity === "high" ? 18 : 10), 0);
   const score = Math.max(0, 100 - penalty);
+  const scores = {
+    hierarchy: elements.some((el) => el.type === "text") ? 85 : 45,
+    alignment: issues.some((issue) => issue.type === "bounds") ? 55 : 88,
+    density: elements.length > 14 ? 65 : 85,
+    contrast: 82,
+    variety: 80,
+    editability: elements.some((el) => el.type === "image") ? 78 : 95,
+    designSystemFit: 82,
+    compatibility: 90
+  };
+  if (adjustments) {
+    scores.alignment = Math.max(0, scores.alignment - (adjustments.alignment || 0));
+    scores.designSystemFit = Math.max(0, scores.designSystemFit - (adjustments.designSystemFit || 0));
+    scores.compatibility = Math.max(0, scores.compatibility - (adjustments.compatibility || 0));
+  }
   return {
     id: slide.id,
     score,
-    scores: {
-      hierarchy: elements.some((el) => el.type === "text") ? 85 : 45,
-      alignment: issues.some((issue) => issue.type === "bounds") ? 55 : 88,
-      density: elements.length > 14 ? 65 : 85,
-      contrast: 82,
-      variety: 80,
-      editability: elements.some((el) => el.type === "image") ? 78 : 95,
-      designSystemFit: 82
-    },
+    scores,
     issues,
     recommendedRepairs: repairs
   };
 }
 
-export function reviewManifest(manifest, options = {}) {
+export function reviewManifest(manifest, options = {}, consistencyReport = null) {
   const deckSize = manifest.deck?.size || DEFAULT_SIZE;
-  const slides = (manifest.slides || []).map((slide) => scoreSlide(slide, deckSize));
+  const adjustments = consistencyAdjustments(consistencyReport);
+  const slides = (manifest.slides || []).map((slide) => scoreSlide(slide, deckSize, adjustments));
   const deckScore = slides.length
     ? Math.round(slides.reduce((sum, slide) => sum + slide.score, 0) / slides.length)
     : 0;
-  return {
+  const review = {
     mode: options.mode || "creative",
     deckScore,
     slides
   };
+  if (consistencyReport) {
+    review.consistencyAdjustments = adjustments;
+  }
+  return review;
 }

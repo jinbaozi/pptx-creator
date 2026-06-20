@@ -18,15 +18,40 @@ Image replication uses deterministic helpers plus host-agent visual reasoning. S
 
 ```text
 Reference image
-  -> python scripts/inspect-image.py <image>           # quick metadata
-  -> python scripts/image-to-manifest-hints.py <image> <hints.json>
-  -> python scripts/image-replica-analyze.py <image> <analysis.json>
-  -> python scripts/image-replica-plan.py <analysis.json> <layer-plan.json>
+  -> node scripts/image-to-manifest.mjs --input <image> --output <out-dir>     # unified wrapper
+       (auto-detects creative hints flow or replica flow via --mode)
   -> host agent reads hints + analysis + layer plan, then inventories objects
   -> host agent writes deck.manifest.json (from manifestSkeleton)
   -> python scripts/validate-manifest.py deck.manifest.json
   -> node scripts/render-pptx.mjs deck.manifest.json output/final.pptx
   -> python scripts/compare-preview.py <image> <rendered-slide.png> -o <visual-report.json>
+```
+
+Both flows are first-class. The unified wrapper (`scripts/image-to-manifest.mjs`)
+auto-detects between them:
+
+- `--mode creative` (default) → calls `image-to-manifest-hints.py`. Fast and
+  deterministic; designed for design-first or single-image creative decks.
+- `--mode replica` → calls `image-replica-analyze.py` and
+  `image-replica-plan.py`. Targets higher-fidelity reconstruction and Level 3-4
+  editability; honors `--ocr-confidence` (calibrated in U10).
+- `--mode auto` → same as creative for v1; reserved for future heuristic
+  detection (low color variance, text-heavy).
+
+Pass a directory of PNGs as `--input` to enable the multi-image flow: each
+PNG becomes one slide, with consistent `designSystem` and `deck.size` across
+the deck. Per-image artifacts land in `slide-001/`, `slide-002/`, ... under
+the chosen `--output` directory.
+
+If you prefer to drive the Python scripts directly, the equivalent
+per-script commands are:
+
+```text
+Reference image
+  -> python scripts/inspect-image.py <image>           # quick metadata
+  -> python scripts/image-to-manifest-hints.py <image> <hints.json>
+  -> python scripts/image-replica-analyze.py <image> <analysis.json>
+  -> python scripts/image-replica-plan.py <analysis.json> <layer-plan.json>
 ```
 
 Use `image-to-manifest-hints.py` for a lightweight first pass. Use `image-replica-analyze.py` and `image-replica-plan.py` when the task requires higher fidelity, stricter editability reporting, or later visual repair loops.
@@ -47,7 +72,7 @@ Before writing the manifest, list detected objects:
 - Decorative patterns
 ```
 
-Assign editability per object (see `references/editability-ladder.md`):
+Assign editability per object using the ladder in `references/qa-rubric.md`:
 
 | Class | Manifest element |
 | --- | --- |
@@ -126,6 +151,37 @@ Layer planning from analysis JSON:
 ```powershell
 python scripts/image-replica-plan.py output/image-replica-analysis.json output/replica-layer-plan.json
 ```
+
+### `image-to-manifest.mjs` (unified wrapper)
+
+Single entry point that auto-dispatches to either of the flows above and
+emits a `deck.manifest.skeleton.json` ready for host-agent completion.
+
+```powershell
+# single image, default creative hints flow
+node scripts/image-to-manifest.mjs --input reference.png --output output/image-deck
+
+# single image, replica flow with custom OCR confidence
+node scripts/image-to-manifest.mjs --mode replica --input reference.png --output output/replica --ocr-confidence 0.6
+
+# multi-image: a directory of PNGs, one slide each
+node scripts/image-to-manifest.mjs --mode creative --input examples/image-batch --output output/batch
+```
+
+Wrapper responsibilities:
+
+- Dispatch to `image-to-manifest-hints.py` (`--mode creative`) or to
+  `image-replica-analyze.py` + `image-replica-plan.py` (`--mode replica`).
+- Forward `--ocr-confidence` to `image-replica-plan.py` when the upstream
+  script advertises support (probed via `--help`); otherwise persist the
+  configured value in the manifest `_generator` block so U10 calibration can
+  read it.
+- When `--input` is a directory, run the chosen flow per PNG and concatenate
+  the per-image manifests into one deck. `designSystem` and `deck.size` are
+  pinned to the first slide so the deck stays internally consistent.
+- Validate flags eagerly (unknown flags, `--ocr-confidence` outside `0..1`,
+  `--palette-count` outside `1..12`) and surface Python errors with the
+  original exit code.
 
 ## OCR (M1.5)
 

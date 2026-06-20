@@ -95,6 +95,69 @@ describe("html-to-manifest", () => {
     expect(manifest.slides[0].elements[0]).toMatchObject({ type: "text", text: "Hello", x: 1, y: 1, w: 4, h: 0.5 });
   });
 
+  it("resolves inline CSS hex colors against DESIGN.md tokens (U9)", () => {
+    const html = `
+      <div class="pptx-deck" data-design-system="business-neutral" data-deck-title="Tokens">
+        <section class="pptx-slide">
+          <div data-pptx-kind="text" data-color="#2563EB" data-x="1" data-y="1" data-w="4" data-h="0.5">Branded</div>
+        </section>
+      </div>`;
+    const designTokens = {
+      colors: {
+        primary: "#2563EB",
+        secondary: "#475569"
+      }
+    };
+    const result = convertHtmlToManifest(html, {
+      designTokens,
+      returnMetadata: true
+    });
+    const text = result.manifest.slides[0].elements.find((el) => el.type === "text");
+    expect(text.style.color).toBe("{colors.primary}");
+    expect(result.paletteResolution.paletteMatch).toBeGreaterThan(0);
+    expect(result.paletteResolution.skipped).toBe(false);
+  });
+
+  it("leaves unmatched inline hex colors untouched and tracks them in paletteResolution (U9)", () => {
+    const html = `
+      <div class="pptx-deck" data-design-system="business-neutral" data-deck-title="Unmapped">
+        <section class="pptx-slide">
+          <div data-pptx-kind="text" data-color="#ABCDEF" data-x="1" data-y="1" data-w="4" data-h="0.5">Brand</div>
+        </section>
+      </div>`;
+    const designTokens = { colors: { primary: "#2563EB" } };
+    const result = convertHtmlToManifest(html, {
+      designTokens,
+      returnMetadata: true
+    });
+    const text = result.manifest.slides[0].elements[0];
+    expect(text.style.color).toBe("#ABCDEF"); // unmatched, kept verbatim
+    expect(result.paletteResolution.unmapped.length).toBe(1);
+    expect(result.paletteResolution.unmapped[0].extractedHex).toBe("#ABCDEF");
+    expect(result.paletteResolution.matches.length).toBe(0);
+  });
+
+  it("skips color resolution in strict replica mode (U9)", () => {
+    const html = `
+      <div class="pptx-deck" data-design-system="business-neutral" data-deck-title="Replica">
+        <section class="pptx-slide">
+          <div data-pptx-kind="text" data-color="#2563EB" data-x="1" data-y="1" data-w="4" data-h="0.5">Keep</div>
+        </section>
+      </div>`;
+    const designTokens = { colors: { primary: "#2563EB" } };
+    const result = convertHtmlToManifest(html, {
+      designTokens,
+      designMode: "replica",
+      returnMetadata: true
+    });
+    const text = result.manifest.slides[0].elements[0];
+    // The data-color attribute (#2563EB) must remain untouched under
+    // replica mode — the design system is owned by the source.
+    expect(text.style.color).toBe("#2563EB");
+    expect(result.paletteResolution.skipped).toBe(true);
+    expect(result.paletteResolution.paletteMatch).toBe(0);
+  });
+
   it("auto-paginates oversized semantic card grids", () => {
     const cards = Array.from(
       { length: 7 },
@@ -167,12 +230,188 @@ describe("html-to-manifest", () => {
       "utf8"
     );
 
-    const manifest = await writeManifestFromHtml(inputPath, manifestPath, {
+    const { manifest } = await writeManifestFromHtml(inputPath, manifestPath, {
       fetchRemoteAsset: async () => Buffer.from("fake-image")
     });
     const image = manifest.slides[0].elements.find((element) => element.type === "image");
 
     expect(image.src).toMatch(/^assets\/remote-image-/);
     expect(await readFile(join(outputDir, image.src), "utf8")).toBe("fake-image");
+  });
+
+  it("detects measured path for marker-only HTML", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Markers">
+        <section class="pptx-slide">
+          <h1 data-pptx-kind="text" data-pptx-id="t" data-x="0.5" data-y="0.5" data-w="12" data-h="1">Title</h1>
+          <div data-pptx-type="text" data-id="b" data-x="0.5" data-y="2" data-w="12" data-h="0.5">Body</div>
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, { returnMetadata: true });
+    const slide = result.manifest.slides[0];
+
+    expect(slide.path).toBe("measured");
+    expect(slide.markers).toBe(2);
+    expect(slide.autoLayoutContainers).toBe(0);
+    expect(result.layoutPaths).toEqual([
+      { slideId: slide.id, path: "measured", markers: 2, autoLayoutContainers: 0 }
+    ]);
+  });
+
+  it("detects auto-layout path for card-grid-only HTML", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Auto">
+        <section class="pptx-slide">
+          <h1>Auto Layout</h1>
+          <div class="cards" data-cols="2">
+            <div class="card"><h3>A</h3><p>a</p></div>
+            <div class="card"><h3>B</h3><p>b</p></div>
+          </div>
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, { returnMetadata: true });
+    const slide = result.manifest.slides[0];
+
+    expect(slide.path).toBe("auto-layout");
+    expect(slide.markers).toBe(0);
+    expect(slide.autoLayoutContainers).toBe(1);
+  });
+
+  it("detects hybrid path for mixed HTML", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Hybrid">
+        <section class="pptx-slide">
+          <h1 data-pptx-kind="text" data-pptx-id="t" data-x="0.5" data-y="0.5" data-w="12" data-h="1">Hybrid</h1>
+          <div class="cards" data-cols="2">
+            <div class="card"><h3>A</h3><p>a</p></div>
+            <div class="card"><h3>B</h3><p>b</p></div>
+          </div>
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, { returnMetadata: true });
+    const slide = result.manifest.slides[0];
+
+    expect(slide.path).toBe("hybrid");
+    expect(slide.markers).toBeGreaterThan(0);
+    expect(slide.autoLayoutContainers).toBe(1);
+    // Both kinds of children must be rendered: the measured marker and the
+    // auto-layout card shapes.
+    const hasMeasuredTitle = slide.elements.some(
+      (el) => el.id === "t" && el.type === "text" && el.x === 0.5
+    );
+    const hasCardShape = slide.elements.some((el) => el.type === "shape");
+    expect(hasMeasuredTitle).toBe(true);
+    expect(hasCardShape).toBe(true);
+  });
+
+  it("force-hybrid flag overrides detection", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Forced">
+        <section class="pptx-slide">
+          <h1 data-pptx-kind="text" data-pptx-id="t" data-x="0.5" data-y="0.5" data-w="12" data-h="1">Only markers here</h1>
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, { returnMetadata: true, forceHybrid: true });
+    expect(result.manifest.slides[0].path).toBe("hybrid");
+  });
+
+  it("force-auto-layout and force-measured flags override detection", () => {
+    const autoHtml = `
+      <div class="pptx-deck" data-deck-title="Auto">
+        <section class="pptx-slide">
+          <h1>Auto</h1>
+          <div class="cards" data-cols="1">
+            <div class="card"><h3>A</h3><p>a</p></div>
+          </div>
+        </section>
+      </div>`;
+    const autoResult = convertHtmlToManifest(autoHtml, { returnMetadata: true, forceAutoLayout: true });
+    expect(autoResult.manifest.slides[0].path).toBe("auto-layout");
+
+    const measuredHtml = `
+      <div class="pptx-deck" data-deck-title="Measured">
+        <section class="pptx-slide">
+          <div data-pptx-type="text" data-id="x" data-x="1" data-y="1" data-w="4" data-h="0.5">Hello</div>
+        </section>
+      </div>`;
+    const measuredResult = convertHtmlToManifest(measuredHtml, { returnMetadata: true, forceMeasured: true });
+    expect(measuredResult.manifest.slides[0].path).toBe("measured");
+  });
+
+  it("attaches sourceCoordinates selectively (image + one per region)", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Selective">
+        <section class="pptx-slide">
+          <h1>Title</h1>
+          <p class="subtitle">Sub</p>
+          <div class="cards" data-cols="2">
+            <div class="card"><h3>Card 1</h3><p>x</p></div>
+            <div class="card"><h3>Card 2</h3><p>y</p></div>
+            <div class="card"><h3>Card 3</h3><p>z</p></div>
+            <div class="card"><h3>Card 4</h3><p>w</p></div>
+          </div>
+          <img data-x="10" data-y="5" data-w="2" data-h="1" src="hero.png">
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, { returnMetadata: true });
+    const coords = result.sourceCoordinates;
+    // The image is always recorded.
+    const imageCoord = coords.find((c) => c.dx === 10 && c.dy === 5);
+    expect(imageCoord).toBeTruthy();
+    // Non-image elements are recorded at most once per region (tl/tr/bl/br).
+    // Mirror the same 2x2 region logic the implementation uses.
+    const halfW = (13.333 - 0.7 * 2) / 2;
+    const halfH = 7.5 / 2;
+    function bucket(box) {
+      const colHalf = box.dx < halfW ? "l" : "r";
+      const rowHalf = box.dy < halfH ? "t" : "b";
+      return `${rowHalf}${colHalf}`;
+    }
+    const nonImageByRegion = new Map();
+    for (const c of coords) {
+      if (c.dx === 10 && c.dy === 5) continue; // skip the image
+      const key = bucket(c);
+      nonImageByRegion.set(key, (nonImageByRegion.get(key) ?? 0) + 1);
+    }
+    for (const [key, count] of nonImageByRegion) {
+      expect(count, `region ${key} should hold at most one sample`).toBeLessThanOrEqual(1);
+    }
+    // The first element per region wins. The title is the first "tl"
+    // sample; the first top-right card is the "tr" sample.
+    expect(nonImageByRegion.get("tl")).toBe(1);
+    expect(nonImageByRegion.get("tr")).toBe(1);
+    expect(nonImageByRegion.get("bl")).toBe(1);
+    expect(nonImageByRegion.get("br")).toBe(1);
+  });
+
+  it("writes inputHints.json alongside the manifest", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-html-hints-"));
+    const manifestPath = join(outputDir, "deck.manifest.json");
+    await writeManifestFromHtml(sampleHtml, manifestPath);
+    const hintsPath = join(outputDir, "inputHints.json");
+    const hints = JSON.parse(await readFile(hintsPath, "utf8"));
+    expect(hints.viewportSize).toEqual({ w: 1280, h: 720 });
+    expect(Array.isArray(hints.imageDimensions)).toBe(true);
+    expect(Array.isArray(hints.detectedPalette)).toBe(true);
+    expect(["absent", "present", "deferred"]).toContain(hints.ocrAvailability);
+  });
+
+  it("exposes per-slide path info for consistency report consumption", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Multi">
+        <section class="pptx-slide">
+          <h1 data-pptx-kind="text" data-pptx-id="t" data-x="0.5" data-y="0.5" data-w="12" data-h="1">M</h1>
+        </section>
+        <section class="pptx-slide">
+          <h1>Auto</h1>
+          <div class="cards" data-cols="1">
+            <div class="card"><h3>A</h3><p>a</p></div>
+          </div>
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, { returnMetadata: true });
+    expect(result.layoutPaths).toHaveLength(2);
+    expect(result.layoutPaths[0].path).toBe("measured");
+    expect(result.layoutPaths[1].path).toBe("auto-layout");
   });
 });

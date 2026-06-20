@@ -1,0 +1,4 @@
+interface:
+  display_name: "PPTX Creator"
+  short_description: "Create and repair mostly editable PowerPoint decks"
+  default_prompt: "Use $pptx-creator to create a mostly editable PowerPoint deck from my source material."

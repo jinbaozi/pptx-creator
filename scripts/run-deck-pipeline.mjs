@@ -3,11 +3,14 @@
  * Host agent must author deck.manifest.json before invoking this script.
  */
 import { execFile } from "node:child_process";
-import { access, copyFile, mkdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { runPython } from "./lib/python-utils.mjs";
+import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
+import { preflightFonts } from "./lib/font-preflight.mjs";
+import { parseDesignFile } from "./parse-design-md.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,18 +48,127 @@ async function runPythonStep(label, args) {
   }
 }
 
+async function detectLibreOffice() {
+  for (const binary of ["libreoffice", "soffice"]) {
+    try {
+      await execFileAsync("which", [binary]);
+      return true;
+    } catch {
+      // continue
+    }
+  }
+  return false;
+}
+
 export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const resolvedManifest = resolve(manifestPath);
   const resolvedOutput = resolve(outputDir);
   await mkdir(resolvedOutput, { recursive: true });
 
+  const inputType = options.inputType ?? "unknown";
+  const inputSource = options.inputSource ?? resolvedManifest;
+
   const steps = [];
   steps.push(await runPythonStep("validate-manifest", [join(root, "scripts/validate-manifest.py"), resolvedManifest]));
 
   const pptxPath = join(resolvedOutput, "final.pptx");
-  steps.push(
-    await runStep("render-pptx", process.execPath, [join(root, "scripts/render-pptx.mjs"), resolvedManifest, pptxPath])
-  );
+  const renderResult = await runStep("render-pptx", process.execPath, [
+    join(root, "scripts/render-pptx.mjs"),
+    resolvedManifest,
+    pptxPath
+  ]);
+  steps.push(renderResult);
+
+  let intermediate = {
+    sourceCoordinates: [],
+    fontNames: [],
+    paletteMatches: [],
+    paletteUnmapped: [],
+    inlineColors: [],
+    editabilityCounter: { text: 0, shape: 0, image: 0, table: 0, croppedAsset: 0 },
+    preview: { libreofficeAvailable: false, status: "deferred" },
+    layoutPaths: {},
+    inputHints: {}
+  };
+  if (renderResult.ok) {
+    try {
+      const parsed = JSON.parse(renderResult.stdout);
+      if (parsed && parsed.intermediate && typeof parsed.intermediate === "object") {
+        intermediate = { ...intermediate, ...parsed.intermediate };
+      }
+    } catch {
+      // Render succeeded but emitted no JSON; intermediate stays as defaults.
+    }
+  }
+
+  // Hoisted manifest read — shared by preflight-fonts and consistency-report.
+  let manifestJson;
+  try {
+    manifestJson = JSON.parse(await readFile(resolvedManifest, "utf8"));
+  } catch {
+    manifestJson = null;
+  }
+
+  // preflight-fonts: populate intermediate.fontNames / .fontFallback
+  let preflightResult;
+  try {
+    if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
+    let design = null;
+    if (manifestJson.designSystem && manifestJson.designSystem.source) {
+      const baseDir = dirname(resolvedManifest);
+      try {
+        design = await parseDesignFile(resolve(baseDir, manifestJson.designSystem.source));
+      } catch {
+        design = null;
+      }
+    }
+    const preflight = await preflightFonts(manifestJson, design);
+    const fallbackEntries = (preflight.fallback ?? []).map((entry) => ({
+      element: "design-tokens",
+      requested: entry.requested,
+      fallback: entry.fallback
+    }));
+    intermediate.fontNames = fallbackEntries;
+    intermediate.fontFallback = preflight.fallback ?? [];
+    preflightResult = { label: "preflight-fonts", ok: true, stdout: preflight.source, stderr: "" };
+  } catch (error) {
+    preflightResult = {
+      label: "preflight-fonts",
+      ok: false,
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error)
+    };
+  }
+  steps.push(preflightResult);
+
+  // preview-diff: LibreOffice-gated
+  const libreofficeAvailable = await detectLibreOffice();
+  intermediate.preview = libreofficeAvailable
+    ? { libreofficeAvailable: true, status: "deferred" }
+    : { libreofficeAvailable: false, status: "deferred" };
+  const previewStep = {
+    label: "preview-diff",
+    ok: true,
+    stdout: libreofficeAvailable ? "libreoffice-detected" : "libreoffice-missing",
+    stderr: ""
+  };
+  steps.push(previewStep);
+
+  // consistency-report: always emitted (previewDiff deferred when LO missing)
+  try {
+    if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
+    const { json, md } = buildConsistencyReport(manifestJson, intermediate, { inputType, inputSource });
+    await writeFile(join(resolvedOutput, "consistency-report.json"), json + "\n", "utf8");
+    await writeFile(join(resolvedOutput, "consistency-report.md"), md + "\n", "utf8");
+    steps.push({ label: "consistency-report", ok: true, stdout: "written", stderr: "" });
+  } catch (error) {
+    steps.push({
+      label: "consistency-report",
+      ok: false,
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error)
+    });
+  }
 
   if (options.copyManifest !== false) {
     await copyFile(resolvedManifest, join(resolvedOutput, "deck.manifest.json"));

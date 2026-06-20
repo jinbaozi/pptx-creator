@@ -76,8 +76,8 @@ def require_local_file(src: object, manifest_path: Path, label: str) -> None:
     require(file_path.exists(), f"{label}: file missing: {src}")
 
 
-def validate_element(element: dict, slide_id: str, width: float, height: float, manifest_path: Path) -> None:
-    require(element.get("type") in {"text", "shape", "image", "table", "line", "chart", "icon", "diagram"}, f"{slide_id}: unsupported element type")
+def validate_element(element: dict, slide_id: str, width: float, height: float, manifest_path: Path, manifest_assets: list | None = None) -> None:
+    require(element.get("type") in {"text", "shape", "image", "table", "line", "chart", "icon", "diagram", "cropped-asset"}, f"{slide_id}: unsupported element type")
     require(isinstance(element.get("id"), str) and element["id"], f"{slide_id}: element id is required")
     for key in ["x", "y", "w", "h"]:
         require(isinstance(element.get(key), (int, float)), f"{slide_id}/{element['id']}: {key} must be numeric")
@@ -90,6 +90,26 @@ def validate_element(element: dict, slide_id: str, width: float, height: float, 
         require(element.get("shape") in {"rect", "roundRect", "ellipse"}, f"{slide_id}/{element['id']}: unsupported shape")
     if element["type"] == "image":
         require_local_file(element.get("src"), manifest_path, f"{slide_id}/{element['id']}")
+    if element["type"] == "cropped-asset":
+        # Either a direct src OR an assets.id reference (resolves to manifest.assets[].src).
+        src = element.get("src")
+        assets_ref = element.get("assets")
+        if isinstance(src, str) and src:
+            require_local_file(src, manifest_path, f"{slide_id}/{element['id']}")
+        elif isinstance(assets_ref, dict) and assets_ref.get("id"):
+            assets_list = manifest_assets or []
+            assets_index = {a.get("id"): a for a in assets_list}
+            resolved = assets_index.get(assets_ref["id"])
+            require(resolved is not None, f"{slide_id}/{element['id']}: cropped-asset assets.id not found in manifest.assets")
+            require_local_file(resolved.get("src"), manifest_path, f"{slide_id}/{element['id']}")
+        else:
+            require(False, f"{slide_id}/{element['id']}: cropped-asset requires src or assets.id")
+        crop = element.get("crop")
+        if crop is not None:
+            require(isinstance(crop, dict), f"{slide_id}/{element['id']}: cropped-asset crop must be an object")
+            for key in ["x", "y", "w", "h"]:
+                require(isinstance(crop.get(key), (int, float)), f"{slide_id}/{element['id']}: cropped-asset crop.{key} must be numeric")
+            require(crop["w"] > 0 and crop["h"] > 0, f"{slide_id}/{element['id']}: cropped-asset crop w and h must be positive")
     if element["type"] == "table":
         require(isinstance(element.get("rows"), list), f"{slide_id}/{element['id']}: rows are required")
     if element["type"] == "chart":
@@ -146,7 +166,7 @@ def validate_slides(data: dict, width: float, height: float, manifest_path: Path
             element_id = element.get("id")
             require(element_id not in seen_elements, f"{slide_id}: duplicate element id: {element_id}")
             seen_elements.add(element_id)
-            validate_element(element, slide_id, width, height, manifest_path)
+            validate_element(element, slide_id, width, height, manifest_path, data.get("assets", []))
 
 
 def main() -> None:

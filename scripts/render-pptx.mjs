@@ -360,6 +360,48 @@ function addImage(slide, element, baseDir) {
   });
 }
 
+function addCroppedAsset(slide, element, baseDir, manifestAssets) {
+  // Resolve src: direct src wins, otherwise look up via manifest.assets[].id.
+  let src = element.src;
+  if (!src && element.assets && typeof element.assets === "object" && element.assets.id) {
+    const resolved = resolveAssetSrc(element.assets.id, manifestAssets);
+    if (resolved) src = resolved;
+    else throw new Error(`cropped-asset references unknown manifest.assets id: ${element.assets.id}`);
+  }
+  if (!src) throw new Error("cropped-asset requires src or assets.id");
+  const crop = element.crop;
+  const imageOpts = {
+    path: localImagePath(baseDir, src),
+    x: element.x,
+    y: element.y,
+    w: element.w,
+    h: element.h
+  };
+  if (element.id) {
+    // Surface the manifest id in the slide XML so downstream tooling can correlate
+    // generated objects back to their source blocks (cropped-asset provenance).
+    imageOpts.objectName = element.id;
+    imageOpts.altText = element.id;
+  }
+  if (crop && typeof crop === "object") {
+    // pptxgenjs uses sizing with `type: "crop"` and a `w`/`h` describing the source crop box.
+    imageOpts.sizing = {
+      type: "crop",
+      x: Number(crop.x) || 0,
+      y: Number(crop.y) || 0,
+      w: Number(crop.w) || 0,
+      h: Number(crop.h) || 0
+    };
+  }
+  slide.addImage(imageOpts);
+}
+
+function resolveAssetSrc(assetId, manifestAssets) {
+  if (!Array.isArray(manifestAssets)) return null;
+  const hit = manifestAssets.find((a) => a && a.id === assetId);
+  return hit && typeof hit.src === "string" ? hit.src : null;
+}
+
 function addBackground(slide, background, manifest, design, baseDir) {
   if (background.type === "solid") {
     slide.background = { color: hex(resolveValue(background.color, design.tokens), design.tokens.colors.background) };
@@ -382,7 +424,7 @@ function expandRenderableElements(elements) {
   });
 }
 
-function renderElement(slide, element, design, baseDir, counters) {
+function renderElement(slide, element, design, baseDir, counters, manifestAssets) {
   if (element.type === "text") {
     counters.text += 1;
     addText(slide, element, design);
@@ -395,6 +437,10 @@ function renderElement(slide, element, design, baseDir, counters) {
   } else if (element.type === "image") {
     counters.image += 1;
     addImage(slide, element, baseDir);
+  } else if (element.type === "cropped-asset") {
+    counters.croppedAsset = (counters.croppedAsset ?? 0) + 1;
+    counters.image += 1;
+    addCroppedAsset(slide, element, baseDir, manifestAssets);
   } else if (element.type === "table") {
     counters.table += 1;
     addTable(slide, element, design);
@@ -411,27 +457,65 @@ function renderElement(slide, element, design, baseDir, counters) {
 
 export function editableLevel(counters) {
   const { text, shape, image, table } = counters;
+  const croppedAsset = counters.croppedAsset ?? 0;
+  const effectiveImage = image + croppedAsset;
   const nativeShapes = shape + table;
 
   // Level 1: raster fallback — images present but no editable text
-  if (image > 0 && text === 0) return 1;
+  if (effectiveImage > 0 && text === 0) return 1;
 
   // Level 5: fully native — no raster images, with editable text
-  if (image === 0 && text > 0) return 5;
+  if (effectiveImage === 0 && text > 0) return 5;
 
   // Level 4: native text + shapes/tables, plus some raster assets
-  if (text > 0 && image > 0 && nativeShapes > 0) return 4;
+  if (text > 0 && effectiveImage > 0 && nativeShapes > 0) return 4;
 
   // Level 3: text editable, but visuals are mostly rasterized
-  if (text > 0 && image > 0) return 3;
+  if (text > 0 && effectiveImage > 0) return 3;
 
   // Level 2: shape/table-only slides or other sparse native content without text
   return 2;
 }
 
+function aggregateCounters(countersBySlide) {
+  return countersBySlide.reduce(
+    (acc, item) => {
+      acc.text += item.text ?? 0;
+      acc.shape += item.shape ?? 0;
+      acc.image += item.image ?? 0;
+      acc.table += item.table ?? 0;
+      acc.croppedAsset += item.croppedAsset ?? 0;
+      return acc;
+    },
+    { text: 0, shape: 0, image: 0, table: 0, croppedAsset: 0 }
+  );
+}
+
+function collectFontNames(manifest, design) {
+  const fonts = new Set();
+  const typography = design.tokens?.typography ?? {};
+  for (const value of Object.values(typography)) {
+    if (value && typeof value === "object" && value.fontFamily) {
+      fonts.add(value.fontFamily);
+    }
+  }
+  for (const slide of manifest.slides ?? []) {
+    const style = slide.style ?? {};
+    if (typeof style.fontFamily === "string") fonts.add(style.fontFamily);
+    for (const element of slide.elements ?? []) {
+      const elementStyle = element.style ?? {};
+      if (typeof elementStyle.fontFamily === "string") fonts.add(elementStyle.fontFamily);
+    }
+  }
+  return [...fonts];
+}
+
 async function writeReports(outputDir, manifest, design, countersBySlide, options = {}) {
   const nativeText = countersBySlide.reduce((sum, item) => sum + item.text, 0);
-  const rasterized = countersBySlide.reduce((sum, item) => sum + item.image, 0);
+  const rasterized = countersBySlide.reduce(
+    (sum, item) => sum + item.image + (item.croppedAsset ?? 0),
+    0
+  );
   const overall = Math.min(...countersBySlide.map(editableLevel));
   const compatibilityIssues = [];
   const fontNames = new Set();
@@ -517,13 +601,36 @@ async function main() {
     const slide = pptx.addSlide();
     const counters = { text: 0, shape: 0, image: 0, table: 0 };
     addBackground(slide, sourceSlide.background, manifest, design, baseDir);
-    for (const element of expandRenderableElements(sourceSlide.elements ?? [])) renderElement(slide, element, design, baseDir, counters);
+    for (const element of expandRenderableElements(sourceSlide.elements ?? [])) renderElement(slide, element, design, baseDir, counters, manifest.assets);
     countersBySlide.push(counters);
   }
 
   await pptx.writeFile({ fileName: outputPath });
   await writeReports(outputDir, manifest, design, countersBySlide, { backend });
-  console.log(JSON.stringify({ pptxPath: outputPath, slides: manifest.slides.length, design: design.name, backend }, null, 2));
+  const editabilityCounter = aggregateCounters(countersBySlide);
+  const fontNames = collectFontNames(manifest, design).map((requested) => ({
+    element: "design-tokens",
+    requested,
+    fallback: requested
+  }));
+  const intermediate = {
+    sourceCoordinates: [],
+    fontNames,
+    paletteMatches: [],
+    paletteUnmapped: [],
+    inlineColors: [],
+    editabilityCounter,
+    preview: { libreofficeAvailable: false, status: "deferred" },
+    layoutPaths: {},
+    inputHints: {}
+  };
+  console.log(
+    JSON.stringify(
+      { pptxPath: outputPath, slides: manifest.slides.length, design: design.name, backend, intermediate },
+      null,
+      2
+    )
+  );
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
