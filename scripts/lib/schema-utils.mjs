@@ -89,15 +89,17 @@ function validateValue(value, schema, path, errors) {
   }
   if (Array.isArray(schema.type)) {
     const actual = jsonTypeOf(value);
-    if (!schema.type.includes(actual)) {
+    if (!schema.type.includes(actual) && !(schema.type.includes("integer") && typeof value === "number" && Number.isInteger(value))) {
       errors.push({ path, message: `expected type ${schema.type.join("|")}, got ${actual}` });
       return;
     }
   } else if (typeof schema.type === "string") {
     const actual = jsonTypeOf(value);
     if (actual !== schema.type) {
-      errors.push({ path, message: `expected type ${schema.type}, got ${actual}` });
-      return;
+      if (!(schema.type === "integer" && typeof value === "number" && Number.isInteger(value))) {
+        errors.push({ path, message: `expected type ${schema.type}, got ${actual}` });
+        return;
+      }
     }
   }
   if (schema.enum && !schema.enum.includes(value)) {
@@ -112,6 +114,9 @@ function validateValue(value, schema, path, errors) {
     }
     if (typeof schema.pattern === "string" && !(new RegExp(schema.pattern).test(value))) {
       errors.push({ path, message: `string does not match pattern ${schema.pattern}` });
+    }
+    if (schema.format === "date-time" && isNaN(Date.parse(value))) {
+      errors.push({ path, message: `string is not a valid date-time` });
     }
   }
   if (typeof value === "number") {
@@ -165,6 +170,42 @@ function validateValue(value, schema, path, errors) {
           validateValue(value[key], schema.additionalProperties, `${path}.${key}`, errors);
         }
       }
+    }
+  }
+  if (Array.isArray(schema.allOf)) {
+    for (const sub of schema.allOf) {
+      validateValue(value, sub, path, errors);
+    }
+  }
+  if (Array.isArray(schema.anyOf)) {
+    let anyMatched = false;
+    for (const sub of schema.anyOf) {
+      const subErrors = [];
+      validateValue(value, sub, `${path}[anyOf]`, subErrors);
+      if (subErrors.length === 0) {
+        anyMatched = true;
+        break;
+      }
+    }
+    if (!anyMatched) {
+      errors.push({ path, message: `value did not match any of ${schema.anyOf.length} anyOf branches` });
+    }
+  }
+  if (schema.if && typeof schema.if === "object") {
+    const branchErrors = [];
+    validateValue(value, schema.if, `${path}[if]`, branchErrors);
+    const matchesIf = branchErrors.length === 0;
+    if (matchesIf && schema.then) {
+      validateValue(value, schema.then, `${path}[then]`, errors);
+    } else if (!matchesIf && schema.else) {
+      validateValue(value, schema.else, `${path}[else]`, errors);
+    }
+  }
+  if (schema.not) {
+    const notErrors = [];
+    validateValue(value, schema.not, `${path}[not]`, notErrors);
+    if (notErrors.length === 0) {
+      errors.push({ path, message: "value must not match the not schema" });
     }
   }
 }
