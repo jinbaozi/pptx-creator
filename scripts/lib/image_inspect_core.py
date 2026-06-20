@@ -535,13 +535,170 @@ def build_replica_analysis(
     }
 
 
-def build_replica_layer_plan(analysis: dict[str, Any]) -> dict[str, Any]:
+# Default OCR confidence threshold for editable-text gating (U5).
+# Tuned during U10 Calibration; 0.7 is the conservative baseline.
+DEFAULT_OCR_CONFIDENCE_THRESHOLD = 0.7
+
+
+def _match_ocr_to_candidate(
+    ocr_block: dict[str, Any],
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the candidate whose inchBox contains the OCR pixel box center.
+
+    Falls back to the candidate whose inchBox center is closest to the OCR
+    center when no candidate fully contains it (handles OCR drift)."""
+    ocr_pixel = ocr_block.get("pixelBox") or {}
+    try:
+        cx = float(ocr_pixel.get("x", 0)) + float(ocr_pixel.get("w", 0)) / 2.0
+        cy = float(ocr_pixel.get("y", 0)) + float(ocr_pixel.get("h", 0)) / 2.0
+    except (TypeError, ValueError):
+        return None
+    px_per_in_x = (ocr_block.get("_pxPerInX") or 1.0) or 1.0
+    px_per_in_y = (ocr_block.get("_pxPerInY") or 1.0) or 1.0
+    cx_in = cx / px_per_in_x
+    cy_in = cy / px_per_in_y
+    containing: dict[str, Any] | None = None
+    best_distance = float("inf")
+    best_candidate: dict[str, Any] | None = None
+    for cand in candidates:
+        box = cand.get("inchBox") or {}
+        try:
+            x = float(box.get("x", 0))
+            y = float(box.get("y", 0))
+            w = float(box.get("w", 0))
+            h = float(box.get("h", 0))
+        except (TypeError, ValueError):
+            continue
+        if x <= cx_in <= x + w and y <= cy_in <= y + h:
+            containing = cand
+            break
+        cand_cx = x + w / 2.0
+        cand_cy = y + h / 2.0
+        distance = (cand_cx - cx_in) ** 2 + (cand_cy - cy_in) ** 2
+        if distance < best_distance:
+            best_distance = distance
+            best_candidate = cand
+    return containing or best_candidate
+
+
+def _decide_kind(
+    confidence_01: float | None,
+    threshold: float,
+) -> str:
+    """Assign per-element kind based on normalized OCR confidence vs threshold.
+
+    confidence_01 == None means OCR did not provide a usable value for this
+    block. In that case we are conservative and fall back to cropped-asset so
+    downstream renderers do not silently treat unknown text as editable.
+    """
+    if confidence_01 is None:
+        return "cropped-asset"
+    if confidence_01 >= threshold:
+        return "editable-text"
+    return "cropped-asset"
+
+
+def build_replica_layer_plan(
+    analysis: dict[str, Any],
+    ocr_blocks: list[dict[str, Any]] | None = None,
+    *,
+    threshold: float = DEFAULT_OCR_CONFIDENCE_THRESHOLD,
+) -> dict[str, Any]:
+    """Build the per-layer plan from a replica analysis, optionally gated by OCR.
+
+    When ``ocr_blocks`` is None or empty (the conservative default — e.g.
+    Tesseract missing and ``ocr_image`` returned ``status: "deferred"``) all
+    text-region objects are emitted with ``kind: "cropped-asset"`` so they are
+    not silently treated as editable. The behavior is documented here so
+    downstream tooling can rely on it.
+
+    ``ocr_blocks`` entries must already be normalized to a 0-1 confidence
+    scale (see ``image-replica-plan.py``); this function does not rescale.
+    """
     if analysis.get("kind") != "image-replica-analysis":
         _fail("expected image-replica-analysis input")
     candidates = analysis.get("objectCandidates", [])
     native_text = [item["id"] for item in candidates if item.get("editableAs") == "native-text"]
     native_shapes = [item["id"] for item in candidates if item.get("editableAs") == "native-shape"]
-    return {
+
+    # Build per-candidate decisions when OCR data is provided. We attach the
+    # ``kind`` field at the candidate level (rather than the layer level) so
+    # downstream consumers — e.g. U6's cropped-asset promotion — can read a
+    # single source of truth for what each object should become.
+    #
+    # ocr_conservative_default applies whenever OCR is unavailable — either
+    # the caller passed None explicitly (deferred from ocr_image) or the list
+    # is empty. In both cases every text-region candidate falls back to
+    # ``cropped-asset`` so we never silently treat unknown text as editable.
+    decisions: list[dict[str, Any]] = []
+    candidate_kind_overrides: dict[str, str] = {}
+    ocr_conservative_default = not ocr_blocks
+
+    if not ocr_conservative_default:
+        mapping = analysis.get("slideMapping") or {}
+        try:
+            px_per_in_x = float(mapping.get("pxPerInX") or 0.0) or 0.0
+        except (TypeError, ValueError):
+            px_per_in_x = 0.0
+        try:
+            px_per_in_y = float(mapping.get("pxPerInY") or 0.0) or 0.0
+        except (TypeError, ValueError):
+            px_per_in_y = 0.0
+        # Restrict OCR matching to candidates that expect text content.
+        # Background / shape candidates have the same boxes but should not
+        # receive an editable-text kind from OCR alone.
+        text_candidates = [c for c in candidates if c.get("editableAs") == "native-text"]
+        for block in ocr_blocks or []:
+            enriched = dict(block)
+            if px_per_in_x:
+                enriched["_pxPerInX"] = px_per_in_x
+            if px_per_in_y:
+                enriched["_pxPerInY"] = px_per_in_y
+            confidence_raw = enriched.get("confidence01")
+            if confidence_raw is None and "confidence" in enriched:
+                confidence_raw = enriched.get("confidence")
+            try:
+                confidence_01 = float(confidence_raw) if confidence_raw is not None else None
+            except (TypeError, ValueError):
+                confidence_01 = None
+            matched = _match_ocr_to_candidate(enriched, text_candidates)
+            kind = _decide_kind(confidence_01, threshold)
+            decisions.append(
+                {
+                    "ocrText": enriched.get("text", ""),
+                    "candidateId": matched["id"] if matched else None,
+                    "kind": kind,
+                    "confidence01": round(confidence_01, 4) if confidence_01 is not None else None,
+                    "threshold": round(float(threshold), 4),
+                    "passes": (
+                        confidence_01 is not None and confidence_01 >= float(threshold)
+                    ),
+                }
+            )
+            if matched is not None:
+                # First OCR match wins for a given candidate; later matches are
+                # still recorded as decisions but do not overwrite the kind.
+                candidate_kind_overrides.setdefault(matched["id"], kind)
+
+    # Annotate candidates with their per-element ``kind`` for downstream use.
+    # When OCR is in conservative-default mode (deferred or missing) every
+    # text-region candidate is explicitly tagged ``cropped-asset`` so the
+    # downstream renderer does not silently mark unknown text as editable.
+    annotated_candidates: list[dict[str, Any]] = []
+    for cand in candidates:
+        new_cand = dict(cand)
+        if candidate_kind_overrides and cand["id"] in candidate_kind_overrides:
+            new_cand["kind"] = candidate_kind_overrides[cand["id"]]
+        elif ocr_conservative_default and cand.get("editableAs") == "native-text":
+            new_cand["kind"] = "cropped-asset"
+        elif not ocr_conservative_default and cand.get("editableAs") == "native-text":
+            # OCR was provided but no OCR block matched this candidate — be
+            # conservative and treat unmatched text regions as cropped.
+            new_cand["kind"] = "cropped-asset"
+        annotated_candidates.append(new_cand)
+
+    plan: dict[str, Any] = {
         "version": REPLICA_VERSION,
         "kind": "replica-layer-plan",
         "sourceImage": analysis["sourceImage"],
@@ -598,6 +755,14 @@ def build_replica_layer_plan(analysis: dict[str, Any]) -> dict[str, Any]:
             "reviewOutput": "Write replica-visual-report.json after rendering and comparison.",
         },
     }
+
+    # Surface per-block decisions and candidate annotations so callers can
+    # audit why a given block landed in editable-text vs cropped-asset.
+    plan["decisions"] = decisions
+    plan["threshold"] = round(float(threshold), 4)
+    plan["objectCandidates"] = annotated_candidates
+
+    return plan
 
 
 def inspect_image(path: Path, *, palette_count: int = 6) -> dict[str, Any]:
