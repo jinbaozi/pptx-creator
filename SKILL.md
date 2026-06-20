@@ -135,13 +135,20 @@ When the user provides a slide screenshot or reference image:
 
 1. Read `references/image-to-pptx.md`.
 2. Install Python image helpers: `pip install -r requirements.txt`
-3. Inspect:
+3. Convert (single image, default creative flow):
+   `node scripts/image-to-manifest.mjs --input reference.png --output output/image-deck`
+   Add `--mode replica` for the higher-fidelity replica flow.
+   Pass a directory of PNGs as `--input` to enable multi-image flow
+   (one PNG per slide, consistent `designSystem` and `deck.size`).
+4. (Optional) Inspect underlying artifacts directly:
    `python scripts/inspect-image.py reference.png`
    `python scripts/image-to-manifest-hints.py reference.png output/image-hints.json`
-4. Inventory objects visually; use `layoutHints` and `manifestSkeleton` from hints JSON.
-5. Replace placeholder text in the skeleton; assign editability per object.
-6. Validate and render using the M1.1 commands above.
-7. Report editability level (target Level 2–4 for image replication).
+   `python scripts/image-replica-analyze.py reference.png output/image-replica-analysis.json`
+   `python scripts/image-replica-plan.py output/image-replica-analysis.json output/replica-layer-plan.json`
+5. Inventory objects visually; use `layoutHints` and `manifestSkeleton` from hints JSON.
+6. Replace placeholder text in the skeleton; assign editability per object.
+7. Validate and render using the M1.1 commands above.
+8. Report editability level (target Level 2–4 for image replication).
 
 ## M1.5 workflow (OCR, crop, preview)
 
