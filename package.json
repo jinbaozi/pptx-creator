@@ -40,6 +40,7 @@
     "workbench:test": "vitest run tests/workbench.test.mjs"
   },
   "dependencies": {
+    "fontkit": "^2.0.0",
     "jszip": "^3.10.1",
     "node-html-parser": "^6.1.13",
     "pptxgenjs": "^3.12.0",
