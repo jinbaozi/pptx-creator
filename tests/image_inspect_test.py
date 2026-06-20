@@ -17,10 +17,12 @@ from image_inspect_core import (  # noqa: E402
     extract_palette,
     image_metadata,
     inspect_image,
+    load_design_tokens,
     load_image,
     ocr_status,
     png_dimensions_stdlib,
     px_to_inch,
+    resolve_palette_to_tokens,
     slide_mapping,
     Box,
 )
@@ -147,6 +149,81 @@ class ImageInspectCoreTest(unittest.TestCase):
         self.assertIn("editable-shapes", layer_ids)
         self.assertGreaterEqual(plan["editabilityTarget"]["level"], 4)
         self.assertIn("repairLoop", plan)
+
+    def test_load_design_tokens_parses_business_neutral(self):
+        tokens = load_design_tokens(ROOT / "design-systems" / "business-neutral" / "DESIGN.md")
+        self.assertIn("colors", tokens)
+        self.assertEqual(tokens["colors"].get("primary"), "#2563EB")
+        self.assertEqual(tokens["colors"].get("background"), "#FFFFFF")
+        self.assertEqual(tokens.get("name"), "Business Neutral")
+
+    def test_resolve_palette_to_tokens_pure(self):
+        tokens = load_design_tokens(ROOT / "design-systems" / "business-neutral" / "DESIGN.md")
+        # Exact match against an existing design-system color.
+        exact = resolve_palette_to_tokens(
+            [{"hex": "#2563EB", "origin": "p0"}], tokens
+        )
+        self.assertEqual(exact["paletteMatch"], 1.0)
+        self.assertEqual(exact["matches"][0]["tokenName"], "primary")
+        self.assertFalse(exact["skipped"])
+
+        # Far-off color is unmapped.
+        far = resolve_palette_to_tokens(
+            [{"hex": "#FF00FF", "origin": "p1"}], tokens
+        )
+        self.assertEqual(far["paletteMatch"], 0)
+        self.assertEqual(far["unmapped"][0]["extractedHex"], "#FF00FF")
+
+        # Replica mode bypasses.
+        replica = resolve_palette_to_tokens(
+            [{"hex": "#2563EB", "origin": "p2"}], tokens, is_replica=True
+        )
+        self.assertTrue(replica["skipped"])
+        self.assertEqual(replica["paletteMatch"], 0)
+
+    def test_build_manifest_hints_emits_palette_resolution(self):
+        tokens = load_design_tokens(ROOT / "design-systems" / "business-neutral" / "DESIGN.md")
+        hints = build_manifest_hints(
+            SAMPLE_IMAGE,
+            deck_title="产品能力概览",
+            design_tokens=tokens,
+        )
+        self.assertIn("paletteResolution", hints)
+        self.assertIn("paletteMatch", hints["paletteResolution"])
+        self.assertIsInstance(hints["paletteResolution"]["matches"], list)
+        self.assertIsInstance(hints["paletteResolution"]["unmapped"], list)
+        self.assertGreaterEqual(hints["paletteResolution"]["paletteMatch"], 0)
+        self.assertLessEqual(hints["paletteResolution"]["paletteMatch"], 1)
+        # Skeleton surfaces the paletteMatch + inlineColors for downstream use.
+        skeleton = hints["manifestSkeleton"]
+        self.assertIn("paletteMatch", skeleton)
+        self.assertIn("inlineColors", skeleton)
+        self.assertEqual(skeleton["paletteMatch"], hints["paletteResolution"]["paletteMatch"])
+
+    def test_build_replica_analysis_emits_palette_match_top_level(self):
+        tokens = load_design_tokens(ROOT / "design-systems" / "business-neutral" / "DESIGN.md")
+        analysis = build_replica_analysis(
+            SAMPLE_IMAGE, deck_title="Replica", design_tokens=tokens
+        )
+        self.assertIn("paletteResolution", analysis)
+        self.assertIn("paletteMatch", analysis)
+        self.assertIn("paletteMatches", analysis)
+        self.assertIn("paletteUnmapped", analysis)
+        # Replica layer plan propagates the resolution.
+        plan = build_replica_layer_plan(analysis)
+        self.assertIn("paletteMatch", plan)
+        self.assertEqual(plan["paletteMatch"], analysis["paletteMatch"])
+
+    def test_build_replica_analysis_replica_mode_skips_resolution(self):
+        analysis = build_replica_analysis(
+            SAMPLE_IMAGE,
+            deck_title="Replica",
+            design_tokens={"colors": {"primary": "#FF0000"}},
+            mode="replica",
+        )
+        self.assertTrue(analysis["paletteResolution"]["skipped"])
+        self.assertEqual(analysis["paletteMatch"], 0)
+        self.assertEqual(analysis["paletteMatches"], [])
 
 
 class ImageInspectCliTest(unittest.TestCase):

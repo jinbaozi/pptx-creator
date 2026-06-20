@@ -1,6 +1,7 @@
 import { relative, resolve } from "node:path";
 import { parse } from "node-html-parser";
 import { buildMeasurementLookup, getMeasurementBox, mergeMeasurementsIntoManifest, roundInches } from "./html-measurement-core.mjs";
+import { buildTokenLookup, exactTokenRef, resolveTokens } from "./color-tokens.mjs";
 
 export { mergeMeasurementsIntoManifest };
 
@@ -88,6 +89,88 @@ const TYPOGRAPHY = {
 };
 
 let elementCounter = 0;
+
+// CSS color properties whose values may carry inline hex colors we want
+// to resolve against DESIGN.md tokens. Limited to the small subset that
+// `convertSlide` actually surfaces into manifest element styles.
+const COLOR_STYLE_KEYS = ["color", "background", "backgroundColor", "fill", "borderColor", "headerFill"];
+
+function isHexColor(value) {
+  return typeof value === "string" && /^#?[0-9a-fA-F]{6}$/.test(value.trim());
+}
+
+function normalizeHex(value) {
+  const trimmed = value.trim();
+  if (!/^#?[0-9a-fA-F]{6}$/.test(trimmed)) return null;
+  const body = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
+  return `#${body.toUpperCase()}`;
+}
+
+/**
+ * Resolve inline hex colors in element styles against a DESIGN.md token
+ * table. Returns the same shape as the caller passed in plus a
+ * `paletteResolution` field on the returned object: {matches, unmapped,
+ * paletteMatch, skipped}.
+ *
+ *   - On exact hex match, the inline hex is replaced with the token
+ *     reference (e.g., "{colors.primary}").
+ *   - On no exact match, the inline hex is kept verbatim and the
+ *     unmapped entries are accumulated for the consistency report.
+ *   - Strict replica mode (`isReplica === true`) short-circuits and
+ *     leaves all colors untouched.
+ */
+export function resolveInlineStyles(elements, designTokens, options = {}) {
+  const isReplica = Boolean(options.isReplica);
+  const tokenLookup = isReplica ? null : buildTokenLookup(designTokens ?? {});
+  const summary = { matches: [], unmapped: [], paletteMatch: 1, skipped: isReplica };
+
+  if (!Array.isArray(elements) || elements.length === 0) {
+    return { elements, paletteResolution: summary };
+  }
+  if (isReplica) {
+    return { elements, paletteResolution: summary };
+  }
+
+  for (const element of elements) {
+    const style = element?.style;
+    if (!style || typeof style !== "object") continue;
+    for (const key of COLOR_STYLE_KEYS) {
+      const value = style[key];
+      if (!isHexColor(value)) continue;
+      const normalized = normalizeHex(value);
+      if (!normalized) continue;
+      const tokenRef = exactTokenRef(normalized, tokenLookup);
+      if (tokenRef) {
+        style[key] = `{${tokenRef}}`;
+        summary.matches.push({
+          extractedHex: normalized,
+          tokenRef: `{${tokenRef}}`,
+          elementId: element.id ?? null,
+          origin: `style.${key}`
+        });
+      } else {
+        summary.unmapped.push({
+          extractedHex: normalized,
+          elementId: element.id ?? null,
+          origin: `style.${key}`
+        });
+      }
+    }
+  }
+
+  // Use the resolver's weighted average so the consistency report gets a
+  // single 0..1 score that's consistent with the image adapter's path.
+  const resolved = resolveTokens(
+    [
+      ...summary.matches.map((m) => ({ hex: m.extractedHex, origin: m.origin })),
+      ...summary.unmapped.map((m) => ({ hex: m.extractedHex, origin: m.origin }))
+    ],
+    designTokens
+  );
+  summary.paletteMatch = resolved.paletteMatch;
+
+  return { elements, paletteResolution: summary };
+}
 
 function nextId(prefix) {
   elementCounter += 1;
@@ -638,11 +721,25 @@ function convertSlide(slideNode, slideIndex, options = {}) {
     delete element._slideId;
   }
 
+  // U9: resolve inline hex colors in element styles against DESIGN.md
+  // tokens. Strict replica mode bypasses; otherwise exact matches become
+  // token references and unmatched colors are tracked for the consistency
+  // report. The per-slide paletteResolution is bubbled up so callers can
+  // aggregate it for `paletteMatch`.
+  const inline = resolveInlineStyles(result.elements, options.designTokens, {
+    isReplica: options.designMode === "replica"
+  });
+  // `resolveInlineStyles` mutates element.style in place; assign the
+  // refreshed array (same identity) back so the loop above's elements
+  // reference is preserved.
+  result.elements = inline.elements;
+
   return {
     ...result,
     path: detection.path,
     markers: detection.markers,
-    autoLayoutContainers: detection.autoLayoutContainers
+    autoLayoutContainers: detection.autoLayoutContainers,
+    paletteResolution: inline.paletteResolution
   };
 }
 
@@ -765,6 +862,7 @@ export function convertHtmlToManifest(html, options = {}) {
   const slides = [];
   const layoutPaths = [];
   const sourceCoordinates = [];
+  const paletteResolutions = [];
   for (const slideNode of sourceSlides) {
     if (canAutoPaginateCards(slideNode, { ...options, measurementLookup })) {
       const pageSlides = convertAutoPaginatedCards(slideNode, slides.length, options);
@@ -780,9 +878,17 @@ export function convertHtmlToManifest(html, options = {}) {
         _sourceCoordinates: sourceCoordinates,
         forceMeasured: options.forceMeasured,
         forceAutoLayout: options.forceAutoLayout,
-        forceHybrid: options.forceHybrid
+        forceHybrid: options.forceHybrid,
+        designTokens: options.designTokens,
+        designMode: options.designMode
       });
       slides.push(result);
+      if (result.paletteResolution) {
+        paletteResolutions.push({
+          slideId: result.id,
+          ...result.paletteResolution
+        });
+      }
       layoutPaths.push({
         slideId: result.id,
         path: result.path,
@@ -791,6 +897,13 @@ export function convertHtmlToManifest(html, options = {}) {
       });
     }
   }
+
+  // Aggregate per-slide palette resolutions into a deck-level summary so
+  // downstream consumers (consistency report, CLI logging) can read a
+  // single 0..1 paletteMatch score without re-walking the slides.
+  const aggregatedPalette = aggregatePaletteResolutions(paletteResolutions, {
+    isReplica: options.designMode === "replica"
+  });
 
   const manifest = {
     version: "0.1.1",
@@ -812,6 +925,13 @@ export function convertHtmlToManifest(html, options = {}) {
     mergeMeasurementsIntoManifest(manifest, options.measurements);
   }
 
+  // Surface the aggregated palette at the manifest level (U9) so the
+  // consistency report can pick it up without having to walk every slide.
+  // The shape mirrors the per-slide `paletteResolution` returned above.
+  if (options.returnMetadata || options.exposePaletteResolution) {
+    manifest._paletteResolution = aggregatedPalette;
+  }
+
   const inputHints = buildInputHints(sourceSlides, options.measurements, options);
 
   // Return shape: by default a manifest. When `options.returnMetadata` is
@@ -819,7 +939,54 @@ export function convertHtmlToManifest(html, options = {}) {
   // CLI logging) can read per-slide path info + input hints without
   // changing the existing manifest schema.
   if (options.returnMetadata) {
-    return { manifest, layoutPaths, sourceCoordinates, inputHints };
+    return {
+      manifest,
+      layoutPaths,
+      sourceCoordinates,
+      inputHints,
+      paletteResolution: aggregatedPalette,
+      paletteResolutions
+    };
   }
   return manifest;
+}
+
+/**
+ * Aggregate per-slide palette resolutions into a deck-level summary.
+ * Returns the same shape as a single slide's `paletteResolution`:
+ *   { matches, unmapped, paletteMatch, skipped }
+ *
+ * Aggregation rules:
+ *   - skipped: true if any per-slide resolution was skipped (replica mode).
+ *   - paletteMatch: weighted by the count of inline color references.
+ *     If no per-slide resolutions, defaults to 1 (no mismatch).
+ *   - matches / unmapped: concatenations of per-slide lists, each tagged
+ *     with the originating slideId for traceability.
+ */
+function aggregatePaletteResolutions(perSlide, options = {}) {
+  if (!Array.isArray(perSlide) || perSlide.length === 0) {
+    return { matches: [], unmapped: [], paletteMatch: 1, skipped: Boolean(options.isReplica) };
+  }
+  const skipped = perSlide.some((entry) => entry?.skipped);
+  if (skipped) {
+    return { matches: [], unmapped: [], paletteMatch: 0, skipped: true };
+  }
+  const matches = [];
+  const unmapped = [];
+  let weighted = 0;
+  let total = 0;
+  for (const entry of perSlide) {
+    const slideId = entry.slideId;
+    for (const match of entry.matches ?? []) {
+      matches.push({ ...match, slideId });
+      weighted += 1;
+      total += 1;
+    }
+    for (const miss of entry.unmapped ?? []) {
+      unmapped.push({ ...miss, slideId });
+      total += 1;
+    }
+  }
+  const paletteMatch = total === 0 ? 1 : Math.round((weighted / total) * 10000) / 10000;
+  return { matches, unmapped, paletteMatch, skipped: false };
 }

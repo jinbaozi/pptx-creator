@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -15,6 +16,82 @@ try:
     from PIL import Image
 except ImportError:  # pragma: no cover - exercised when Pillow missing
     Image = None  # type: ignore[misc, assignment]
+
+
+def load_design_tokens(design_md_path: Path) -> dict[str, Any]:
+    """Parse the YAML frontmatter of a DESIGN.md file with stdlib only.
+
+    Returns a dict-shaped token table mirroring what
+    ``scripts/parse-design-md.mjs`` produces for the ``tokens`` field.
+    Only the small subset used by the palette resolver — ``colors``,
+    plus a few metadata keys (``name``, ``version``) — is extracted.
+
+    The DESIGN.md format is simple key/value YAML with quoted string
+    values, so a regex extractor is sufficient and avoids adding a new
+    dependency. Malformed files return an empty dict so downstream code
+    degrades to "no tokens available" rather than crashing.
+    """
+    try:
+        text = design_md_path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    text = text.replace("\r\n", "\n")
+    if not text.startswith("---\n"):
+        return {}
+    end = text.find("\n---", 4)
+    if end < 0:
+        return {}
+    front = text[4:end]
+
+    tokens: dict[str, Any] = {}
+    colors: dict[str, str] = {}
+    for line in front.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$", stripped)
+        if not match:
+            continue
+        key, raw = match.group(1), match.group(2).strip()
+        # Strip YAML comments and surrounding quotes.
+        if "#" in raw:
+            raw = raw.split("#", 1)[0].strip()
+        if (raw.startswith('"') and raw.endswith('"')) or (
+            raw.startswith("'") and raw.endswith("'")
+        ):
+            raw = raw[1:-1]
+        if key == "colors":
+            # Handled by indented children below.
+            continue
+        if key in {"name", "description", "version"}:
+            tokens[key] = raw
+
+    # Second pass: parse `colors:` block (indented two spaces in practice).
+    in_colors = False
+    for line in front.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("colors:"):
+            in_colors = True
+            continue
+        if in_colors:
+            if not line.startswith((" ", "\t")):
+                # End of the colors block when we see another top-level key.
+                in_colors = False
+                continue
+            child = re.match(r"^\s+([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$", line)
+            if not child:
+                continue
+            ckey, cval = child.group(1), child.group(2).strip()
+            if cval.startswith('"') and cval.endswith('"'):
+                cval = cval[1:-1]
+            elif cval.startswith("'") and cval.endswith("'"):
+                cval = cval[1:-1]
+            if re.match(r"^#[0-9a-fA-F]{6}$", cval):
+                colors[ckey] = cval.upper() if cval.startswith("#") else f"#{cval.upper()}"
+
+    if colors:
+        tokens["colors"] = colors
+    return tokens
 
 SLIDE_PRESETS: dict[str, dict[str, float | str]] = {
     "wide": {"width": 13.333, "height": 7.5, "unit": "in"},
@@ -152,6 +229,204 @@ def extract_palette(image: Any, count: int = 6) -> list[dict[str, Any]]:
     return entries
 
 
+# -- U9 palette -> DESIGN.md token resolution --------------------------------
+#
+# Pure-Python mirror of scripts/lib/color-tokens.mjs (CIE76 ΔE in CIELAB
+# space). Kept in sync deliberately so the image adapter can resolve the
+# extracted palette to tokens without spawning a subprocess. Both code
+# paths share the same math contract:
+#
+#   - sRGB → linear RGB → XYZ (D65) → LAB
+#   - ΔE76 = sqrt((L1-L2)² + (a1-a2)² + (b1-b2)²)
+#   - threshold default 8 (same as the JS module)
+#
+# Strict replica mode short-circuits resolution (skipped=True, paletteMatch=0).
+
+_D65 = {"xn": 95.047, "yn": 100.0, "zn": 108.883}
+_PALETTE_RESOLVER_THRESHOLD = 8.0
+
+
+def _srgb_channel_to_linear(c: float) -> float:
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _pivot_xyz(t: float) -> float:
+    return t ** (1.0 / 3.0) if t > 0.008856 else 7.787 * t + 16.0 / 116.0
+
+
+def _rgb_to_lab(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
+    rl = _srgb_channel_to_linear(rgb[0] / 255.0)
+    gl = _srgb_channel_to_linear(rgb[1] / 255.0)
+    bl = _srgb_channel_to_linear(rgb[2] / 255.0)
+    x = rl * 0.4124564 + gl * 0.3575761 + bl * 0.1804375
+    y = rl * 0.2126729 + gl * 0.7151522 + bl * 0.0721750
+    z = rl * 0.0193339 + gl * 0.1191920 + bl * 0.9503041
+    fx = _pivot_xyz(x / (_D65["xn"] / 100.0))
+    fy = _pivot_xyz(y / (_D65["yn"] / 100.0))
+    fz = _pivot_xyz(z / (_D65["zn"] / 100.0))
+    return (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+
+
+def _delta_e76(rgb_a: tuple[int, int, int], rgb_b: tuple[int, int, int]) -> float:
+    l1, a1, b1 = _rgb_to_lab(rgb_a)
+    l2, a2, b2 = _rgb_to_lab(rgb_b)
+    return ((l1 - l2) ** 2 + (a1 - a2) ** 2 + (b1 - b2) ** 2) ** 0.5
+
+
+def _normalize_hex(hex_value: str) -> str | None:
+    if not isinstance(hex_value, str):
+        return None
+    trimmed = hex_value.strip().lstrip("#")
+    if len(trimmed) != 6:
+        return None
+    try:
+        int(trimmed, 16)
+    except ValueError:
+        return None
+    return f"#{trimmed.upper()}"
+
+
+def _extract_design_colors(design_tokens: dict[str, Any] | None) -> list[dict[str, str]]:
+    if not isinstance(design_tokens, dict):
+        return []
+    colors = design_tokens.get("colors") or {}
+    out: list[dict[str, str]] = []
+    for name, value in colors.items():
+        if not isinstance(value, str):
+            continue
+        trimmed = value.strip()
+        if not (len(trimmed) == 7 and trimmed.startswith("#")) and not (len(trimmed) == 6):
+            continue
+        normalized = _normalize_hex(trimmed)
+        if normalized is None:
+            continue
+        out.append({"name": name, "hex": normalized})
+    return out
+
+
+def resolve_palette_to_tokens(
+    palette: list[dict[str, Any]],
+    design_tokens: dict[str, Any] | None,
+    *,
+    threshold: float = _PALETTE_RESOLVER_THRESHOLD,
+    is_replica: bool = False,
+    origin_prefix: str = "palette",
+) -> dict[str, Any]:
+    """Resolve an extracted palette to DESIGN.md tokens via CIE76 ΔE.
+
+    Pure function — no side effects, no I/O. Mirrors the contract of
+    `resolveTokens` in `scripts/lib/color-tokens.mjs` so the image and
+    HTML adapters report consistent paletteMatch values.
+
+    Returns a dict with `matches`, `unmapped`, `paletteMatch`, and
+    `skipped` (True when `is_replica=True`). When `palette` is empty,
+    `paletteMatch` is 1 (no mismatch to measure). When `design_tokens` is
+    empty or has no literal hex colors, every palette entry is unmapped
+    and `paletteMatch` is 0.
+
+    Each input palette entry is converted to `{hex, origin}` for the
+    resolver; `origin` defaults to `<origin_prefix>-<index>`. Entries
+    that already provide a string `origin` keep it verbatim.
+    """
+    if is_replica:
+        return {"matches": [], "unmapped": [], "paletteMatch": 0, "skipped": True}
+
+    extracted: list[dict[str, str]] = []
+    for index, entry in enumerate(palette or []):
+        if isinstance(entry, str):
+            extracted.append({"hex": entry, "origin": f"{origin_prefix}-{index}"})
+            continue
+        if not isinstance(entry, dict):
+            continue
+        hex_value = entry.get("hex") or entry.get("value")
+        if not isinstance(hex_value, str):
+            continue
+        origin = entry.get("origin") or f"{origin_prefix}-{index}"
+        extracted.append({"hex": hex_value, "origin": str(origin)})
+
+    if not extracted:
+        return {"matches": [], "unmapped": [], "paletteMatch": 1, "skipped": False}
+
+    design_colors = _extract_design_colors(design_tokens)
+    if not design_colors:
+        return {
+            "matches": [],
+            "unmapped": [
+                {
+                    "extractedHex": (_normalize_hex(item["hex"]) or item["hex"]),
+                    "origin": item["origin"],
+                }
+                for item in extracted
+            ],
+            "paletteMatch": 0,
+            "skipped": False,
+        }
+
+    matches: list[dict[str, Any]] = []
+    unmapped: list[dict[str, Any]] = []
+    weighted_match_sum = 0.0
+    total_weight = 0.0
+    threshold = float(threshold)
+
+    for item in extracted:
+        normalized = _normalize_hex(item["hex"])
+        if normalized is None:
+            unmapped.append({"extractedHex": item["hex"], "origin": item["origin"]})
+            total_weight += 1.0
+            continue
+        try:
+            rgb = (
+                int(normalized[1:3], 16),
+                int(normalized[3:5], 16),
+                int(normalized[5:7], 16),
+            )
+        except ValueError:
+            unmapped.append({"extractedHex": item["hex"], "origin": item["origin"]})
+            total_weight += 1.0
+            continue
+
+        nearest_name: str | None = None
+        nearest_hex: str | None = None
+        nearest_delta = float("inf")
+        for token in design_colors:
+            token_rgb = (
+                int(token["hex"][1:3], 16),
+                int(token["hex"][3:5], 16),
+                int(token["hex"][5:7], 16),
+            )
+            delta = _delta_e76(rgb, token_rgb)
+            if delta < nearest_delta:
+                nearest_delta = delta
+                nearest_name = token["name"]
+                nearest_hex = token["hex"]
+
+        weight = 1.0
+        total_weight += weight
+        if nearest_delta <= threshold:
+            confidence = max(0.0, min(1.0, 1.0 - nearest_delta / threshold))
+            matches.append(
+                {
+                    "extractedHex": normalized,
+                    "tokenName": nearest_name,
+                    "deltaE": round(nearest_delta, 4),
+                    "confidence": round(confidence, 4),
+                    "origin": item["origin"],
+                    "tokenHex": nearest_hex,
+                }
+            )
+            weighted_match_sum += weight * confidence
+        else:
+            unmapped.append({"extractedHex": normalized, "origin": item["origin"]})
+
+    palette_match = 1.0 if total_weight == 0 else round(weighted_match_sum / total_weight, 4)
+    return {
+        "matches": matches,
+        "unmapped": unmapped,
+        "paletteMatch": palette_match,
+        "skipped": False,
+    }
+
+
 def _dominant_row_color(row_pixels: list[tuple[int, int, int]], buckets: int = 24) -> tuple[int, int, int]:
     def bucket(value: int) -> int:
         return min(buckets - 1, value * buckets // 256)
@@ -282,6 +557,7 @@ def build_manifest_skeleton(
     regions: list[dict[str, Any]],
     design_system: dict[str, str],
     deck_title: str = "Image Replication Draft",
+    palette_resolution: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     design_id = design_system["id"]
     elements: list[dict[str, Any]] = []
@@ -382,6 +658,15 @@ def build_manifest_skeleton(
             }
         ],
         "_skeleton": True,
+        "paletteMatch": (palette_resolution or {}).get("paletteMatch", 0),
+        "inlineColors": [
+            {
+                "slideId": "slide-001",
+                "hex": entry.get("extractedHex"),
+                "origin": entry.get("origin"),
+            }
+            for entry in (palette_resolution or {}).get("unmapped", [])
+        ],
     }
 
 
@@ -391,6 +676,8 @@ def build_manifest_hints(
     preset: str = "wide",
     palette_count: int = 6,
     deck_title: str | None = None,
+    design_tokens: dict[str, Any] | None = None,
+    mode: str = "balanced",
 ) -> dict[str, Any]:
     image_path = image_path.resolve()
     img = load_image(image_path)
@@ -400,13 +687,27 @@ def build_manifest_hints(
     regions = detect_layout_bands(img, mapping)
     design = suggest_design_system(palette)
     title = deck_title or image_path.stem.replace("-", " ").title()
-    skeleton = build_manifest_skeleton(image_path, mapping, regions, design, title)
+    palette_resolution = resolve_palette_to_tokens(
+        palette,
+        design_tokens,
+        is_replica=(mode == "replica"),
+        origin_prefix=f"{image_path.stem}-palette",
+    )
+    skeleton = build_manifest_skeleton(
+        image_path,
+        mapping,
+        regions,
+        design,
+        title,
+        palette_resolution=palette_resolution,
+    )
     return {
         "version": HINTS_VERSION,
         "sourceImage": image_path.name,
         "image": meta,
         "slideMapping": mapping,
         "palette": palette,
+        "paletteResolution": palette_resolution,
         "layoutHints": {
             "regions": regions,
             "coordinateRule": "inch = pixel / pxPerIn; origin top-left; slide size from slideMapping",
@@ -492,6 +793,8 @@ def build_replica_analysis(
     preset: str = "wide",
     palette_count: int = 8,
     deck_title: str | None = None,
+    design_tokens: dict[str, Any] | None = None,
+    mode: str = "balanced",
 ) -> dict[str, Any]:
     image_path = image_path.resolve()
     img = load_image(image_path)
@@ -499,6 +802,21 @@ def build_replica_analysis(
     mapping = slide_mapping(preset, meta)
     palette = extract_palette(img, palette_count)
     regions = detect_layout_bands(img, mapping)
+    palette_resolution = resolve_palette_to_tokens(
+        palette,
+        design_tokens,
+        is_replica=(mode == "replica"),
+        origin_prefix=f"{image_path.stem}-palette",
+    )
+    # In strict replica mode the resolver is bypassed — surface that
+    # explicitly by emitting no `paletteMatches` rows (the consistency
+    # report will record paletteMatch: 0 without contributing a per-slide
+    # entry that would otherwise skew the batch average).
+    palette_matches = (
+        []
+        if palette_resolution["skipped"]
+        else [{"slideId": "image", "score": palette_resolution["paletteMatch"]}]
+    )
     return {
         "version": REPLICA_VERSION,
         "kind": "image-replica-analysis",
@@ -507,6 +825,10 @@ def build_replica_analysis(
         "image": meta,
         "slideMapping": mapping,
         "palette": palette,
+        "paletteResolution": palette_resolution,
+        "paletteMatch": palette_resolution["paletteMatch"],
+        "paletteMatches": palette_matches,
+        "paletteUnmapped": palette_resolution["unmapped"],
         "regions": regions,
         "objectCandidates": build_object_candidates(regions),
         "detectors": {
@@ -761,6 +1083,27 @@ def build_replica_layer_plan(
     plan["decisions"] = decisions
     plan["threshold"] = round(float(threshold), 4)
     plan["objectCandidates"] = annotated_candidates
+
+    # U9: surface the palette->token resolution carried by the upstream
+    # analysis. Callers (image-replica-plan.py, downstream reports) can
+    # read a single source of truth for `paletteMatch`, the per-color
+    # matches, and any unmapped colors that should appear in the
+    # consistency report's inlineColor entries (U2/U3).
+    palette_resolution = analysis.get("paletteResolution")
+    if palette_resolution is None and "paletteMatch" in analysis:
+        # Back-compat: rebuild a minimal resolution shape if only the
+        # numeric score was carried over from a prior call.
+        palette_resolution = {
+            "matches": [],
+            "unmapped": [],
+            "paletteMatch": analysis.get("paletteMatch", 0),
+            "skipped": False,
+        }
+    if palette_resolution is not None:
+        plan["paletteResolution"] = palette_resolution
+        plan["paletteMatch"] = palette_resolution.get("paletteMatch", 0)
+        plan["paletteMatches"] = palette_resolution.get("matches", [])
+        plan["paletteUnmapped"] = palette_resolution.get("unmapped", [])
 
     return plan
 

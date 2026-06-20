@@ -95,6 +95,69 @@ describe("html-to-manifest", () => {
     expect(manifest.slides[0].elements[0]).toMatchObject({ type: "text", text: "Hello", x: 1, y: 1, w: 4, h: 0.5 });
   });
 
+  it("resolves inline CSS hex colors against DESIGN.md tokens (U9)", () => {
+    const html = `
+      <div class="pptx-deck" data-design-system="business-neutral" data-deck-title="Tokens">
+        <section class="pptx-slide">
+          <div data-pptx-kind="text" data-color="#2563EB" data-x="1" data-y="1" data-w="4" data-h="0.5">Branded</div>
+        </section>
+      </div>`;
+    const designTokens = {
+      colors: {
+        primary: "#2563EB",
+        secondary: "#475569"
+      }
+    };
+    const result = convertHtmlToManifest(html, {
+      designTokens,
+      returnMetadata: true
+    });
+    const text = result.manifest.slides[0].elements.find((el) => el.type === "text");
+    expect(text.style.color).toBe("{colors.primary}");
+    expect(result.paletteResolution.paletteMatch).toBeGreaterThan(0);
+    expect(result.paletteResolution.skipped).toBe(false);
+  });
+
+  it("leaves unmatched inline hex colors untouched and tracks them in paletteResolution (U9)", () => {
+    const html = `
+      <div class="pptx-deck" data-design-system="business-neutral" data-deck-title="Unmapped">
+        <section class="pptx-slide">
+          <div data-pptx-kind="text" data-color="#ABCDEF" data-x="1" data-y="1" data-w="4" data-h="0.5">Brand</div>
+        </section>
+      </div>`;
+    const designTokens = { colors: { primary: "#2563EB" } };
+    const result = convertHtmlToManifest(html, {
+      designTokens,
+      returnMetadata: true
+    });
+    const text = result.manifest.slides[0].elements[0];
+    expect(text.style.color).toBe("#ABCDEF"); // unmatched, kept verbatim
+    expect(result.paletteResolution.unmapped.length).toBe(1);
+    expect(result.paletteResolution.unmapped[0].extractedHex).toBe("#ABCDEF");
+    expect(result.paletteResolution.matches.length).toBe(0);
+  });
+
+  it("skips color resolution in strict replica mode (U9)", () => {
+    const html = `
+      <div class="pptx-deck" data-design-system="business-neutral" data-deck-title="Replica">
+        <section class="pptx-slide">
+          <div data-pptx-kind="text" data-color="#2563EB" data-x="1" data-y="1" data-w="4" data-h="0.5">Keep</div>
+        </section>
+      </div>`;
+    const designTokens = { colors: { primary: "#2563EB" } };
+    const result = convertHtmlToManifest(html, {
+      designTokens,
+      designMode: "replica",
+      returnMetadata: true
+    });
+    const text = result.manifest.slides[0].elements[0];
+    // The data-color attribute (#2563EB) must remain untouched under
+    // replica mode — the design system is owned by the source.
+    expect(text.style.color).toBe("#2563EB");
+    expect(result.paletteResolution.skipped).toBe(true);
+    expect(result.paletteResolution.paletteMatch).toBe(0);
+  });
+
   it("auto-paginates oversized semantic card grids", () => {
     const cards = Array.from(
       { length: 7 },
