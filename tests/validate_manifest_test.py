@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -13,7 +14,7 @@ SAMPLE = ROOT / "examples" / "text-input" / "deck.manifest.json"
 class ValidateManifestTest(TestCase):
     def run_validator(self, manifest: Path) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            ["python", str(VALIDATOR), str(manifest)],
+            [sys.executable, str(VALIDATOR), str(manifest)],
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -196,3 +197,64 @@ class ValidateManifestTest(TestCase):
             path.write_text(json.dumps(data), encoding="utf-8")
             result = self.run_validator(path)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_accepts_cropped_asset_with_src(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        image_abs = str(ROOT / "examples/image-input/business-slide.png")
+        data["slides"][0]["elements"].append(
+            {
+                "type": "cropped-asset",
+                "id": "cropped-asset-direct",
+                "src": image_abs,
+                "x": 0.5,
+                "y": 0.5,
+                "w": 2.0,
+                "h": 2.0,
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cropped.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_accepts_cropped_asset_via_assets_id(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        image_abs = str(ROOT / "examples/image-input/business-slide.png")
+        data["assets"] = [{"id": "shared-asset", "src": image_abs}]
+        data["slides"][0]["elements"].append(
+            {
+                "type": "cropped-asset",
+                "id": "cropped-asset-ref",
+                "assets": {"id": "shared-asset"},
+                "x": 0.5,
+                "y": 0.5,
+                "w": 2.0,
+                "h": 2.0,
+                "crop": {"x": 0, "y": 0, "w": 100, "h": 100},
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cropped-ref.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_cropped_asset_without_src_or_assets(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["slides"][0]["elements"].append(
+            {
+                "type": "cropped-asset",
+                "id": "cropped-asset-orphan",
+                "x": 0.5,
+                "y": 0.5,
+                "w": 2.0,
+                "h": 2.0,
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cropped-orphan.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cropped-asset requires src or assets.id", result.stderr)
