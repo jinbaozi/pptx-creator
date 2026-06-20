@@ -4,7 +4,14 @@ import sys
 from pathlib import Path
 
 
-REQUIRED = ["final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md"]
+REQUIRED = [
+    "final.pptx",
+    "editable-report.md",
+    "qa-report.md",
+    "compatibility-report.md",
+    "consistency-report.json",
+    "consistency-report.md",
+]
 
 
 def fail(message: str) -> None:

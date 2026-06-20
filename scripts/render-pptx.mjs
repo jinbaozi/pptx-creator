@@ -477,6 +477,39 @@ export function editableLevel(counters) {
   return 2;
 }
 
+function aggregateCounters(countersBySlide) {
+  return countersBySlide.reduce(
+    (acc, item) => {
+      acc.text += item.text ?? 0;
+      acc.shape += item.shape ?? 0;
+      acc.image += item.image ?? 0;
+      acc.table += item.table ?? 0;
+      acc.croppedAsset += item.croppedAsset ?? 0;
+      return acc;
+    },
+    { text: 0, shape: 0, image: 0, table: 0, croppedAsset: 0 }
+  );
+}
+
+function collectFontNames(manifest, design) {
+  const fonts = new Set();
+  const typography = design.tokens?.typography ?? {};
+  for (const value of Object.values(typography)) {
+    if (value && typeof value === "object" && value.fontFamily) {
+      fonts.add(value.fontFamily);
+    }
+  }
+  for (const slide of manifest.slides ?? []) {
+    const style = slide.style ?? {};
+    if (typeof style.fontFamily === "string") fonts.add(style.fontFamily);
+    for (const element of slide.elements ?? []) {
+      const elementStyle = element.style ?? {};
+      if (typeof elementStyle.fontFamily === "string") fonts.add(elementStyle.fontFamily);
+    }
+  }
+  return [...fonts];
+}
+
 async function writeReports(outputDir, manifest, design, countersBySlide, options = {}) {
   const nativeText = countersBySlide.reduce((sum, item) => sum + item.text, 0);
   const rasterized = countersBySlide.reduce(
@@ -574,7 +607,30 @@ async function main() {
 
   await pptx.writeFile({ fileName: outputPath });
   await writeReports(outputDir, manifest, design, countersBySlide, { backend });
-  console.log(JSON.stringify({ pptxPath: outputPath, slides: manifest.slides.length, design: design.name, backend }, null, 2));
+  const editabilityCounter = aggregateCounters(countersBySlide);
+  const fontNames = collectFontNames(manifest, design).map((requested) => ({
+    element: "design-tokens",
+    requested,
+    fallback: requested
+  }));
+  const intermediate = {
+    sourceCoordinates: [],
+    fontNames,
+    paletteMatches: [],
+    paletteUnmapped: [],
+    inlineColors: [],
+    editabilityCounter,
+    preview: { libreofficeAvailable: false, status: "deferred" },
+    layoutPaths: {},
+    inputHints: {}
+  };
+  console.log(
+    JSON.stringify(
+      { pptxPath: outputPath, slides: manifest.slides.length, design: design.name, backend, intermediate },
+      null,
+      2
+    )
+  );
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
