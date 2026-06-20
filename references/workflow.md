@@ -1,102 +1,96 @@
-﻿# PPTX Creator Workflow
+# Common Workflow
 
-Host agents perform all reasoning. Scripts validate, convert, measure, and render deterministically.
+Use this reference for text, Markdown, mixed inputs, batch jobs, common output rules, or advanced pipeline checks. For HTML, image, or PDF conversion, return to `SKILL.md` and load the matching input-specific reference instead.
 
-## Web research and asset discovery
+## Contents
 
-The host agent may use web search throughout the workflow when it can improve accuracy, content depth,
-material quality, or visual polish. The agent decides case by case.
+- [Operating contract](#operating-contract)
+- [Text and mixed inputs](#text-and-mixed-inputs)
+- [Output contract](#output-contract)
+- [Research and assets](#research-and-assets)
+- [Pipeline commands](#pipeline-commands)
+- [Optional checks](#optional-checks)
+- [Failure handling](#failure-handling)
 
-Search is recommended when:
+## Operating contract
 
-- facts, dates, standards, market context, product information, or technical claims may be current or uncertain;
-- a deck needs stronger visual references, diagrams, icon directions, image绱犳潗, or layout inspiration;
-- the user explicitly permits or asks for鑱旂綉鎼滅储鐩稿叧鍐呭銆佺礌鏉愩€佹渚嬨€佺珵鍝併€佹湳璇垨瑙嗚椋庢牸;
-- external documentation can improve the correctness of architecture, process, business value, or comparison slides.
+- Perform audience, narrative, writing, design, and repair decisions in the host agent.
+- Keep `deck.manifest.json` as the single source of truth.
+- Select and read one `DESIGN.md` before authoring the manifest.
+- Keep scripts deterministic and free of LLM API calls.
+- Prefer native PowerPoint objects and disclose all rasterized regions.
+- Keep generated files under the requested output directory.
 
-Search should be skipped or limited when:
+## Text and mixed inputs
 
-- the user forbids鑱旂綉;
-- the provided source material is enough;
-- the task is a strict 1:1 HTML/image/PDF replica and outside references would alter the original design.
+For a straightforward content deck:
 
-Rules for searched material:
+1. Define the audience, objective, narrative arc, and slide count.
+2. Select a design system.
+3. Read `references/manifest-spec.md` only while authoring the manifest.
+4. Write one main idea per slide with specific titles and bounded content density.
+5. Localize any external assets under `output/assets/`.
+6. Run the pipeline and inspect reports.
 
-- Do not fabricate facts, metrics, source names, case studies, or citations.
-- Keep important source URLs in the final response, QA notes, or a companion source list when they affect slide claims or assets.
-- Respect copyright, license, trademark, logo, brand, and commercial font restrictions.
-- Localize remote assets before rendering. Save them under the output folder, usually `output/assets/`, and reference local relative paths in `deck.manifest.json`.
-- For strict replicas, search may help identify missing fonts/assets, but must not change the original background, typography, layout, color, tone, effects, or content.
+For a creative roadshow, product launch, briefing, or narrative deck, use `references/design-first-workflow.md` before compiling the manifest.
+
+For mixed inputs, use each source for a declared purpose:
+
+- content source for claims and copy;
+- visual reference for palette, density, and composition;
+- `DESIGN.md` for final tokens and component rules.
+
+Do not silently copy visual-source content into the final deck.
 
 ## Output contract
 
-Every completed run should produce:
+A successful run produces:
 
 ```text
 output/
-  final.pptx                  # editable PPTX
+  final.pptx
   deck.manifest.json
   editable-report.md
   qa-report.md
   compatibility-report.md
-  output-manifest.json        # via package-output.py
+  output-manifest.json
 ```
 
-Design artifacts (when running design-first mode):
+Design-first runs may also produce storyboard, design direction, slide specifications, visual review, vision review, run index, registry, and preview artifacts. These remain intermediate evidence; they never replace `deck.manifest.json` or `final.pptx`.
 
-```text
-output/deck.storyboard.json
-output/deck.design-direction.json
-output/slide-design-specs.json
-output/ui-component-spec.json
-output/preview/               # preview artifacts
-output/visual-review.json
-output/vision-review.json
-output/run.json
-```
+## Research and assets
 
-Optional when dependencies exist:
+Use web research when facts may have changed, terminology is uncertain, or licensed visual material materially improves the deck. Skip it when the user forbids it, supplied material is sufficient, or outside references would alter a strict replica.
 
-```text
-output/preview/          # render-preview.py
-output/layout-measurements.json
-output/image-hints.json
-output/pdf-page-hints.json
-output/ocr.json
-output/preview-diff.json
-output/visual-regression-report.json
-output/accessibility-report.md
-output/openxml-repair-report.json
-output/template-summary.json
-```
+When research is used:
 
-### Mock vs. real vision review provider boundary
+- verify claims against source URLs;
+- do not invent facts, metrics, cases, or citations;
+- respect copyright, license, trademark, logo, brand, and font restrictions;
+- download permitted assets to the output directory before manifest use;
+- record material sources and caveats in notes or the final response.
 
-The screenshot-level review CLI defaults to `--provider mock`. The mock provider produces the same `vision-review.json` schema a real vision-capable provider must honor. Provider-backed review must not mutate `final.pptx` directly; it only reports findings and may feed the bounded repair loop.
+## Pipeline commands
 
-### Strict replica boundary
+Run the standard pipeline after authoring the manifest:
 
-Strict HTML, image, or PDF replica work must keep the original background, layout, typography, color, content, tone, and effects intact. Replica mode may bypass design artifacts and design-direction exploration when source fidelity is the primary objective. Creative-mode exploration must not be applied on top of a strict replica.
-
-### Visual Workbench artifact inspection
-
-The local Visual Workbench shell browses design artifacts, preview artifacts, repair patches, and review reports under `output/`. It does not own rendering: the deterministic pipeline still writes the editable PPTX. screenshot-level review results appear alongside other review outputs but never replace the deterministic render step.
-
-## Quick pipeline (any input type)
-
-After the host agent authors `deck.manifest.json`:
-
-```powershell
+```bash
 node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
 ```
 
-Batch mode:
+Run individual stages only for diagnosis:
 
-```powershell
-node scripts/run-batch-pipeline.mjs batch.json output/batch
+```bash
+node scripts/run-python.mjs scripts/validate-manifest.py output/deck.manifest.json
+node scripts/render-pptx.mjs output/deck.manifest.json output/final.pptx
+node scripts/run-python.mjs scripts/package-output.py output
 ```
 
-`batch.json` format:
+Run batch jobs with a manifest of jobs:
+
+```bash
+node scripts/run-batch-pipeline.mjs batch.json output/batch
+```
 
 ```json
 {
@@ -106,145 +100,24 @@ node scripts/run-batch-pipeline.mjs batch.json output/batch
 }
 ```
 
-Or step by step:
+## Optional checks
 
-```powershell
-python scripts/validate-manifest.py output/deck.manifest.json
-node scripts/render-pptx.mjs output/deck.manifest.json output/final.pptx
-python scripts/package-output.py output
-```
+Run only checks relevant to the requested deliverable:
 
-## Text / Markdown input
-
-```text
-User content
-  -> host agent optionally searches for facts, terminology, examples, visuals, and绱犳潗
-  -> host agent selects DESIGN.md
-  -> host agent builds slide outline + deck.manifest.json
-  -> run-deck-pipeline.mjs
-  -> host agent reads editable-report.md + qa-report.md
-```
-
-See `examples/text-input/README.md` and `references/prompt-library.md`.
-
-For polished creative decks, route text input through design-first mode: `deck.storyboard.json` -> `deck.design-direction.json` -> `slide-design-specs.json` -> `deck.manifest.json` -> PPTX -> visual review and repair.
-
-## HTML input
-
-### Semantic auto-layout (M1.2)
-
-```powershell
-node scripts/html-to-manifest.mjs input.html output/deck.manifest.json
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-Semantic card grids auto-paginate by default when a single slide contains too many `.card` elements. Use `--no-auto-paginate` for exact single-slide conversion.
-
-### CSS-positioned layout (M1.4)
-
-```powershell
-node scripts/measure-html.mjs input.html output/layout-measurements.json
-node scripts/html-to-manifest.mjs input.html output/deck.manifest.json --measurements output/layout-measurements.json
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-See `references/html-to-pptx.md` and `references/html-measurement.md`.
-
-## Image / screenshot input
-
-```powershell
-python scripts/inspect-image.py reference.png
-python scripts/image-to-manifest-hints.py reference.png output/image-hints.json
-python scripts/ocr-image.py reference.png -o output/ocr.json          # optional
-python scripts/extract-palette.py reference.png output/palette.json
-# host agent inventories objects, refines manifest from manifestSkeleton
-python scripts/crop-assets.py reference.png crops.json output/assets    # optional
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-python scripts/render-preview.py output/final.pptx output/preview       # optional
-python scripts/compare-preview.py reference.png output/preview/slide.png -o output/preview-diff.json
-```
-
-See `references/image-to-pptx.md`.
-
-## PDF page input
-
-PDF pages are first rendered to PNG references, then analyzed with the same image-to-PPTX hint pipeline.
-This is page-level support: the host agent still rebuilds editable text, shapes, tables, and charts from the
-page hints instead of rasterizing the final slide.
-
-```powershell
-node scripts/run-python.mjs scripts/pdf-to-page-hints.py source.pdf output/pdf-pages -o output/pdf-page-hints.json
-# host agent converts each pages[].hints.manifestSkeleton into editable manifest slides
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-If PyMuPDF is not installed, the script writes `status: deferred` and exits successfully so the host agent can report the dependency gap.
-
-## Visual regression
-
-```powershell
-node scripts/run-visual-regression.mjs output/deck.manifest.json output
-node scripts/run-visual-regression.mjs output/deck.manifest.json output --reference-dir baselines
-```
-
-The first command runs the pipeline and tries to render PPTX previews. If LibreOffice is missing, the report
-is `status: deferred`. With `--reference-dir`, rendered previews are compared to baseline PNG/JPEG images and
-`visual-regression-report.json` records close/moderate/divergent verdicts.
-
-## Template import
-
-```powershell
-node scripts/import-template.mjs template.pptx output/template-summary.json
-```
-
-This extracts a deterministic summary: slide/layout/master/theme counts and theme colors. It does not clone
-branded assets; the host agent uses the summary as design constraints.
-
-## Accessibility and OpenXML checks
-
-```powershell
+```bash
+node scripts/run-visual-critic.mjs output/deck.manifest.json output/visual-review.json --mode creative
 node scripts/analyze-accessibility.mjs output/deck.manifest.json output/accessibility-report.md
 node scripts/openxml-repair.mjs output/final.pptx output/openxml-repair-report.json
+node scripts/run-visual-regression.mjs output/deck.manifest.json output
+node scripts/run-vision-review.mjs output --provider mock
 ```
 
-Accessibility checks are manifest-level heuristics for missing image alt text, missing slide titles, small text,
-and chart descriptions. OpenXML repair currently performs structural inspection and reports re-render/repair
-actions when required parts are missing.
+Use `--mode replica` for strict reconstruction. Treat mock vision review as contract validation, not visual judgment.
 
-## Mixed input (style + content)
+## Failure handling
 
-```text
-Reference image -> palette + layout density hints
-User content   -> slide outline + copy
-Web research   -> optional facts, sources, visual references, and localizable assets
-Host agent     -> choose DESIGN.md, merge style tokens into manifest
-Pipeline       -> validate + render + reports
-```
-
-Do not rasterize the full reference slide unless the user explicitly accepts low editability.
-
-## Repair loop
-
-1. Read validator stderr or qa-report.md risks.
-2. Fix manifest fields (coordinates, assets, duplicate ids).
-3. Re-run pipeline (max 3 auto-fix attempts before asking the user).
-4. Never silently skip missing assets or out-of-bounds elements.
-
-## Screenshot-Level Vision Review
-
-After preview PNGs are generated, run:
-
-```powershell
-npm run explore:directions -- examples/design-first/compiler-roadshow/deck.storyboard.json output/visual-roadmap-next
-npm run pipeline:design-first -- examples/design-first/compiler-roadshow output/visual-roadmap-next --emit-run-index --validate-registry --run-id compiler-roadshow --input-summary "Compiler Roadshow"
-npm run vision:review -- output/visual-roadmap-next --provider mock
-npm run run:index -- output/visual-roadmap-next compiler-roadshow creative "Compiler Roadshow"
-```
-
-This creates `output/vision-review.json` using the same schema expected from a future vision-capable model provider. The mock provider is for local plumbing and tests; provider-backed review must keep the same output contract and must not edit PPTX files directly.
-
-## QA before responding
-
-Read `references/qa-rubric.md` and confirm slide count, editability level, and dependency gaps are reported to the user.
-Also read `compatibility-report.md` when WPS or cross-suite portability matters.
-
+1. Identify the first failing stage and preserve its stderr or report.
+2. Fix the manifest or missing local asset rather than patching the rendered PPTX.
+3. Rerun the smallest failing check, then rerun the full pipeline.
+4. Stop after three bounded repair attempts.
+5. Report missing optional dependencies as deferred; do not claim their checks passed.

@@ -238,9 +238,9 @@ final.pptx
 
 | Path | Purpose |
 | --- | --- |
-| `SKILL.md` | Agent Skill entry point. |
-| `AGENT.md` | Host-agent operating contract. |
-| `adapters/` | Codex, Claude Code, Cursor, and other host adapters. |
+| `SKILL.md` | Universal Agent Skill entry point, core contract, and on-demand routing. |
+| `agents/openai.yaml` | Codex/OpenAI interface metadata; not runtime logic. |
+| `references/` | Detailed workflows loaded progressively by input type and task stage. |
 | `design-systems/` | Built-in generic design systems. |
 | `layout-archetypes/` | Slide layout archetypes for design-first compilation. |
 | `schemas/` | JSON Schemas for deck, storyboard, design direction, registry, repair, and review artifacts. |

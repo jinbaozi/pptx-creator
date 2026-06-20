@@ -1,123 +1,83 @@
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 import { describe, expect, it } from "vitest";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-const requiredDocs = [
-  "AGENT.md",
-  "adapters/codex.md",
-  "adapters/claude-code.md",
-  "adapters/cursor.md"
-];
+async function read(relativePath) {
+  return readFile(join(root, relativePath), "utf8");
+}
 
-describe("M3 agent productization docs", () => {
-  it.each(requiredDocs)("ships %s", async (relativePath) => {
-    await access(join(root, relativePath));
+function splitSkill(text) {
+  const match = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!match) throw new Error("SKILL.md must contain YAML frontmatter");
+  return { metadata: parseYaml(match[1]), body: match[2] };
+}
+
+describe("universal Agent Skill packaging", () => {
+  it("uses only portable trigger metadata", async () => {
+    const { metadata } = splitSkill(await read("SKILL.md"));
+    expect(Object.keys(metadata).sort()).toEqual(["description", "name"]);
+    expect(metadata.name).toBe("pptx-creator");
+    expect(metadata.description).toMatch(/PowerPoint/i);
+    expect(metadata.description).toMatch(/HTML/);
+    expect(metadata.description).toMatch(/PDF/);
   });
 
-  it("documents the universal pipeline contract", async () => {
-    const guide = await readFile(join(root, "AGENT.md"), "utf8");
+  it("keeps the skill body concise and routes details progressively", async () => {
+    const { body } = splitSkill(await read("SKILL.md"));
+    expect(body.split("\n").length).toBeLessThan(120);
+    expect(body).toContain("Do not read every reference up front");
 
-    expect(guide).toContain("SKILL.md");
-    expect(guide).toContain("DESIGN.md");
-    expect(guide).toContain("deck.manifest.json");
-    expect(guide).toContain("node scripts/run-deck-pipeline.mjs");
-    expect(guide).toContain("editable-report.md");
-    expect(guide).toContain("qa-report.md");
-  });
-
-  it("ships split Chinese and English READMEs with core project documentation", async () => {
-    const readme = await readFile(join(root, "README.md"), "utf8");
-    const englishReadme = await readFile(join(root, "README.en.md"), "utf8");
-
-    expect(readme).toContain("## 中文版");
-    expect(readme).toContain("[English](README.en.md)");
-    expect(readme).toContain("核心能力");
-    expect(readme).toContain("安装部署");
-    expect(readme).toContain("整体架构");
-    expect(readme).toContain("npm run pipeline");
-    expect(readme).not.toContain("## English");
-
-    expect(englishReadme).toContain("## English");
-    expect(englishReadme).toContain("[中文](README.md)");
-    expect(englishReadme).toContain("Core Capabilities");
-    expect(englishReadme).toContain("Installation");
-    expect(englishReadme).toContain("Architecture");
-    expect(englishReadme).toContain("npm run pipeline");
-  });
-
-  it("documents autonomous web search and source-safe asset handling", async () => {
-    const guide = await readFile(join(root, "AGENT.md"), "utf8");
-    const skill = await readFile(join(root, "SKILL.md"), "utf8");
-    const workflow = await readFile(join(root, "references/workflow.md"), "utf8");
-    const prompts = await readFile(join(root, "references/prompt-library.md"), "utf8");
-
-    for (const content of [guide, skill, workflow, prompts]) {
-      const lower = content.toLowerCase();
-      expect(lower).toContain("web search");
-      expect(lower).toContain("source");
-      expect(content).toContain("output/assets");
-    }
-    expect(prompts).not.toContain("fabricate facts");
-  });
-
-  it("documents Codex, Claude Code, and Cursor adapters", async () => {
-    for (const relativePath of requiredDocs.slice(1)) {
-      const content = await readFile(join(root, relativePath), "utf8");
-      expect(content).toContain("npm install");
-      expect(content).toContain("npm run setup");
-      expect(content).toContain("node scripts/run-deck-pipeline.mjs");
-      expect(content).toContain("PPTX_CREATOR_PYTHON");
+    const references = [...body.matchAll(/`(references\/[A-Za-z0-9._-]+\.md)`/g)].map((match) => match[1]);
+    expect(new Set(references).size).toBeGreaterThanOrEqual(10);
+    for (const relativePath of new Set(references)) {
+      await expect(access(join(root, relativePath))).resolves.toBeUndefined();
     }
   });
 
-  it("documents design-first creative deck workflow", async () => {
-    const files = [
-      "AGENT.md",
-      "SKILL.md",
-      "references/workflow.md",
-      "references/design-first-workflow.md",
-      "README.md",
-      "README.en.md"
-    ];
-    for (const file of files) {
-      const text = await readFile(join(root, file), "utf8");
-      expect(text).toMatch(/design-first/i);
+  it("ships matching OpenAI interface metadata without coupling runtime logic", async () => {
+    const metadata = parseYaml(await read("agents/openai.yaml"));
+    expect(metadata.interface.display_name).toBe("PPTX Creator");
+    expect(metadata.interface.short_description.length).toBeGreaterThanOrEqual(25);
+    expect(metadata.interface.short_description.length).toBeLessThanOrEqual(64);
+    expect(metadata.interface.default_prompt).toContain("$pptx-creator");
+    expect(metadata.dependencies).toBeUndefined();
+  });
+
+  it("does not keep duplicate host-specific operating guides", async () => {
+    await expect(access(join(root, "AGENT.md"))).rejects.toThrow();
+    for (const adapter of ["codex.md", "claude-code.md", "cursor.md"]) {
+      await expect(access(join(root, "adapters", adapter))).rejects.toThrow();
     }
-    const workflow = await readFile(join(root, "references/design-first-workflow.md"), "utf8");
+  });
+
+  it("keeps the common workflow portable and free of corrupted text", async () => {
+    const workflow = await read("references/workflow.md");
+    expect(workflow).toContain("node scripts/run-deck-pipeline.mjs");
+    expect(workflow).toContain("output/assets");
+    expect(workflow).toContain("web research");
+    expect(workflow).not.toMatch(/[鑱绱潗]/);
+  });
+
+  it("documents the design-first route and strict replica boundary", async () => {
+    const skill = await read("SKILL.md");
+    const workflow = await read("references/design-first-workflow.md");
+    expect(skill).toContain("references/design-first-workflow.md");
     expect(workflow).toMatch(/deck\.storyboard\.json/);
     expect(workflow).toMatch(/deck\.design-direction\.json/);
     expect(workflow).toMatch(/slide-design-specs\.json/);
     expect(workflow).toMatch(/Replica mode/i);
-    expect(workflow).toMatch(/Creative mode/i);
   });
 
-  it("documents design-first agent roles and future visual roadmap", async () => {
-    const promptLibrary = await readFile(join(root, "references/prompt-library.md"), "utf8");
-    expect(promptLibrary).toMatch(/Planner/i);
-    expect(promptLibrary).toMatch(/Art Director/i);
-    expect(promptLibrary).toMatch(/Slide Designer/i);
-    expect(promptLibrary).toMatch(/Critic/i);
-    expect(promptLibrary).toMatch(/Repair/i);
-
-    const readme = await readFile(join(root, "README.md"), "utf8");
-    const englishReadme = await readFile(join(root, "README.en.md"), "utf8");
-    for (const content of [readme, englishReadme]) {
-      expect(content).toMatch(/Visual Workbench/i);
-      expect(content).toMatch(/Screenshot-Level Vision Model Review/i);
-    }
-  });
-
-  it("documents the design artifact pipeline and review deliverables in both READMEs", async () => {
-    const readme = await readFile(join(root, "README.md"), "utf8");
-    const englishReadme = await readFile(join(root, "README.en.md"), "utf8");
-    for (const content of [readme, englishReadme]) {
-      expect(content).toMatch(/design artifacts?/i);
-      expect(content).toMatch(/preview artifacts?/i);
-      expect(content).toMatch(/screenshot-level review/i);
-      expect(content).toMatch(/editable PPTX/i);
-    }
+  it("keeps bilingual project documentation aligned with the skill layout", async () => {
+    const readme = await read("README.md");
+    const englishReadme = await read("README.en.md");
+    expect(readme).toContain("agents/openai.yaml");
+    expect(readme).toContain("渐进加载");
+    expect(englishReadme).toContain("agents/openai.yaml");
+    expect(englishReadme).toContain("loaded progressively");
   });
 });

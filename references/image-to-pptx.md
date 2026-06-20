@@ -72,7 +72,7 @@ Before writing the manifest, list detected objects:
 - Decorative patterns
 ```
 
-Assign editability per object (see `references/editability-ladder.md`):
+Assign editability per object using the ladder in `references/qa-rubric.md`:
 
 | Class | Manifest element |
 | --- | --- |
