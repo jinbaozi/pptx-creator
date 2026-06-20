@@ -296,5 +296,6 @@
         }
       ]
     }
-  ]
+  ],
+  "_generator.notes": "HTML-input example. Pipeline emits per-deck consistency-report.json + .md (inputType=html)."
 }

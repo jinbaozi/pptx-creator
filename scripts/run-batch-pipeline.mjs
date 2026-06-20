@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runDeckPipeline } from "./run-deck-pipeline.mjs";
+import { buildConsistencyBatch } from "./lib/consistency-report-writer.mjs";
 
 function fail(message) {
   console.error(message);
@@ -10,7 +11,7 @@ function fail(message) {
 
 export async function runBatchPipeline(batchPath, defaultOutputDir = "output/batch") {
   const resolvedBatch = resolve(batchPath);
-  const batch = JSON.parse((await readFile(resolvedBatch, "utf8")).replace(/^\uFEFF/, ""));
+  const batch = JSON.parse((await readFile(resolvedBatch, "utf8")).replace(/^﻿/, ""));
   const jobs = Array.isArray(batch.jobs) ? batch.jobs : [];
   if (jobs.length === 0) {
     throw new Error("batch.jobs must contain at least one job");
@@ -19,6 +20,7 @@ export async function runBatchPipeline(batchPath, defaultOutputDir = "output/bat
   await mkdir(reportDir, { recursive: true });
 
   const results = [];
+  const consistencyEntries = [];
   for (const [index, job] of jobs.entries()) {
     const id = job.id ?? `job-${index + 1}`;
     const manifest = resolve(dirname(resolvedBatch), job.manifest);
@@ -35,6 +37,17 @@ export async function runBatchPipeline(batchPath, defaultOutputDir = "output/bat
         error: error instanceof Error ? error.message : String(error)
       });
     }
+    // Try to read the per-deck consistency report (best-effort; never
+    // abort the batch on a single job failure).
+    try {
+      const reportPath = resolve(outputDir, "consistency-report.json");
+      const raw = await readFile(reportPath, "utf8");
+      const parsed = JSON.parse(raw);
+      const rel = relative(reportDir, reportPath).replace(/\\/g, "/");
+      consistencyEntries.push({ path: rel, report: parsed });
+    } catch {
+      // No consistency report available for this job — skip silently.
+    }
   }
 
   const report = {
@@ -47,6 +60,21 @@ export async function runBatchPipeline(batchPath, defaultOutputDir = "output/bat
     status: results.every((job) => job.status === "passed") ? "passed" : "failed"
   };
   await writeFile(resolve(reportDir, "batch-report.json"), JSON.stringify(report, null, 2) + "\n", "utf8");
+
+  // Batch-level consistency aggregate. Validate against schema; if the
+  // aggregate is empty (no per-deck reports), skip the write so we never
+  // emit a schema-invalid envelope.
+  if (consistencyEntries.length > 0) {
+    const batchReport = buildConsistencyBatch(consistencyEntries, {
+      createdAt: new Date().toISOString()
+    });
+    await writeFile(
+      resolve(reportDir, "consistency-report.batch.json"),
+      JSON.stringify(batchReport, null, 2) + "\n",
+      "utf8"
+    );
+  }
+
   return report;
 }
 

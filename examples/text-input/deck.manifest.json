@@ -51,5 +51,6 @@
         }
       ]
     }
-  ]
+  ],
+  "_generator.notes": "Text-input example. Pipeline emits per-deck consistency-report.json + .md (inputType=text)."
 }

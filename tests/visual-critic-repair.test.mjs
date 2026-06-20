@@ -58,6 +58,74 @@ describe("visual critic", () => {
     const review = JSON.parse(fs.readFileSync(reviewPath, "utf8"));
     expect(review.slides[0].issues.length).toBeGreaterThan(0);
   });
+
+  it("accepts an optional consistencyReport as third argument (backward compatible)", () => {
+    // No consistencyReport → same as before.
+    const baseline = reviewManifest(sampleManifest(), { mode: "creative" });
+    expect(baseline.consistencyAdjustments).toBeUndefined();
+    expect(baseline.slides[0].scores.alignment).toBe(55); // bounds issue present
+  });
+
+  it("reduces alignment score when coordinateDriftPx > 1", () => {
+    const baseline = reviewManifest(sampleManifest(), { mode: "creative" });
+    const drifted = reviewManifest(
+      sampleManifest(),
+      { mode: "creative" },
+      { coordinateDriftPx: 6, fontFallback: [], paletteMatch: 1.0 }
+    );
+    expect(drifted.slides[0].scores.alignment).toBeLessThan(baseline.slides[0].scores.alignment);
+    expect(drifted.consistencyAdjustments.alignment).toBeGreaterThan(0);
+  });
+
+  it("reduces designSystemFit when paletteMatch < 0.85", () => {
+    const baseline = reviewManifest(sampleManifest(), { mode: "creative" });
+    const mismatched = reviewManifest(
+      sampleManifest(),
+      { mode: "creative" },
+      { coordinateDriftPx: 0, fontFallback: [], paletteMatch: 0.5 }
+    );
+    expect(mismatched.slides[0].scores.designSystemFit).toBeLessThan(baseline.slides[0].scores.designSystemFit);
+    expect(mismatched.consistencyAdjustments.designSystemFit).toBeGreaterThan(0);
+  });
+
+  it("reduces compatibility score when fontFallback is non-empty", () => {
+    const baseline = reviewManifest(sampleManifest(), { mode: "creative" });
+    const fellBack = reviewManifest(
+      sampleManifest(),
+      { mode: "creative" },
+      {
+        coordinateDriftPx: 0,
+        paletteMatch: 1.0,
+        fontFallback: [
+          { element: "title", requested: "Inter", fallback: "Arial" },
+          { element: "body", requested: "Source Han Sans SC", fallback: "Microsoft YaHei" }
+        ]
+      }
+    );
+    expect(fellBack.slides[0].scores.compatibility).toBeLessThan(baseline.slides[0].scores.compatibility);
+    expect(fellBack.consistencyAdjustments.compatibility).toBeGreaterThan(0);
+  });
+
+  it("leaves scores untouched when consistencyReport values are within thresholds", () => {
+    const baseline = reviewManifest(sampleManifest(), { mode: "creative" });
+    const safe = reviewManifest(
+      sampleManifest(),
+      { mode: "creative" },
+      { coordinateDriftPx: 0.5, paletteMatch: 0.95, fontFallback: [] }
+    );
+    expect(safe.slides[0].scores.alignment).toBe(baseline.slides[0].scores.alignment);
+    expect(safe.slides[0].scores.designSystemFit).toBe(baseline.slides[0].scores.designSystemFit);
+    expect(safe.slides[0].scores.compatibility).toBe(baseline.slides[0].scores.compatibility);
+  });
+
+  it("ignores null/undefined consistencyReport (backward compatible)", () => {
+    const baseline = reviewManifest(sampleManifest(), { mode: "creative" });
+    const fromNull = reviewManifest(sampleManifest(), { mode: "creative" }, null);
+    const fromUndef = reviewManifest(sampleManifest(), { mode: "creative" }, undefined);
+    expect(fromNull.deckScore).toBe(baseline.deckScore);
+    expect(fromUndef.deckScore).toBe(baseline.deckScore);
+    expect(fromNull.consistencyAdjustments).toBeUndefined();
+  });
 });
 
 describe("repair patch", () => {
