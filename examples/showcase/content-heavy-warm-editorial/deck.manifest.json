@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "designSystem": {
-    "source": "../../Users/godxu/02-workspace/02-github/pptx-creator/design-systems/warm-editorial/DESIGN.md",
+    "source": "../../../design-systems/warm-editorial/DESIGN.md",
     "name": "Warm Editorial",
     "mode": "balanced"
   },

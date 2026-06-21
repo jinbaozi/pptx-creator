@@ -68,7 +68,9 @@ describe("consistency-report-writer", () => {
           "averageCoordinateDriftPx",
           "fontFallbackRate",
           "paletteMatch",
-          "perDeckReports"
+          "perDeckReports",
+          "layoutSafetyDistribution",
+          "averageSlopRisk"
         ])
       );
     });

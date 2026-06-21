@@ -12,7 +12,9 @@
     "averageCoordinateDriftPx",
     "fontFallbackRate",
     "paletteMatch",
-    "perDeckReports"
+    "perDeckReports",
+    "layoutSafetyDistribution",
+    "averageSlopRisk"
   ],
   "properties": {
     "version": { "type": "string", "minLength": 1 },
@@ -48,7 +50,19 @@
         "type": "string",
         "minLength": 1
       }
-    }
+    },
+    "layoutSafetyDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "violated-with-flag", "violated-blocked", "unknown"],
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "violated-with-flag": { "type": "integer", "minimum": 0 },
+        "violated-blocked": { "type": "integer", "minimum": 0 },
+        "unknown": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "averageSlopRisk": { "type": "number", "minimum": 0, "maximum": 100 }
   },
   "not": {
     "anyOf": [

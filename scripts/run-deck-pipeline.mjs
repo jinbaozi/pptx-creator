@@ -3,6 +3,7 @@
  * Host agent must author deck.manifest.json before invoking this script.
  */
 import { execFile } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -11,6 +12,8 @@ import { runPython } from "./lib/python-utils.mjs";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
 import { preflightFonts } from "./lib/font-preflight.mjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
+import { reviewManifest } from "./lib/visual-critic.mjs";
+import { scoreSlopRisk } from "./lib/slop-risk.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -155,9 +158,9 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
 
   // preflight-fonts: populate intermediate.fontNames / .fontFallback
   let preflightResult;
+  let design = null;
   try {
     if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
-    let design = null;
     if (manifestJson.designSystem && manifestJson.designSystem.source) {
       const baseDir = dirname(resolvedManifest);
       try {
@@ -210,6 +213,20 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     // layout-safety step itself failed — leave undefined so the report omits it.
   }
 
+  // U3: deck-level slopRisk (deck score 0..100, higher = more slop). The
+  // visual-review.json file is the canonical per-slide artifact; we mirror
+  // the deck-level score into the consistency report so the batch
+  // aggregate can average it. Re-read the (now-written) consistency report
+  // to also generate the visual-review sidecar.
+  let slopRiskDeck = null;
+  try {
+    const tokens = design?.tokens ?? manifestJson?.designSystem?.tokens ?? {};
+    const slop = scoreSlopRisk(manifestJson, tokens);
+    slopRiskDeck = slop.score;
+  } catch {
+    slopRiskDeck = null;
+  }
+
   // consistency-report: always emitted (previewDiff deferred when LO missing)
   try {
     if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
@@ -234,12 +251,14 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         : (existingFeedback?.acceptedAt ?? null)
     };
 
-    const { json, md } = buildConsistencyReport(manifestJson, intermediate, {
+    const reportOptions = {
       inputType,
       inputSource,
       feedback,
-      ...(layoutSafetyStatus !== undefined ? { layoutSafety: layoutSafetyStatus } : {})
-    });
+      ...(layoutSafetyStatus !== undefined ? { layoutSafety: layoutSafetyStatus } : {}),
+      ...(slopRiskDeck !== null ? { slopRisk: slopRiskDeck } : {})
+    };
+    const { json, md } = buildConsistencyReport(manifestJson, intermediate, reportOptions);
     await writeFile(join(resolvedOutput, "consistency-report.json"), json + "\n", "utf8");
     await writeFile(join(resolvedOutput, "consistency-report.md"), md + "\n", "utf8");
     steps.push({ label: "consistency-report", ok: true, stdout: "written", stderr: "" });
@@ -250,6 +269,22 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
       stdout: "",
       stderr: error instanceof Error ? error.message : String(error)
     });
+  }
+
+  // U3 / U11: emit visual-review.json (per-slide scores + deck-level
+  // slopRisk) when not in replica mode. Pure function over the manifest;
+  // never fails the pipeline — the slopRisk is purely diagnostic.
+  try {
+    if (manifestJson) {
+      const review = reviewManifest(manifestJson, { mode: options.mode ?? "creative" });
+      await writeFile(
+        join(resolvedOutput, "visual-review.json"),
+        JSON.stringify(review, null, 2) + "\n",
+        "utf8"
+      );
+    }
+  } catch {
+    // best-effort; visual-review is diagnostic.
   }
 
   if (options.copyManifest !== false) {
@@ -309,10 +344,22 @@ async function main() {
   }
 }
 
-const invokedDirectly =
-  process.argv[1] &&
-  (import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href ||
-    import.meta.url === new URL(`file:///${resolve(process.argv[1]).replace(/\\/g, "/")}`).href);
+const invokedDirectly = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    // macOS resolves /tmp/... to /private/tmp/... and /Users/... to
+    // /private/Users/...; use realpath for a stable match.
+    const realScript = realpathSync(process.argv[1]);
+    const realUrl = new URL(`file://${realScript}`).href;
+    if (import.meta.url === realUrl) return true;
+  } catch {
+    // fall through to legacy checks
+  }
+  return (
+    import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href ||
+    import.meta.url === new URL(`file:///${resolve(process.argv[1]).replace(/\\/g, "/")}`).href
+  );
+})();
 
 if (invokedDirectly) {
   main();

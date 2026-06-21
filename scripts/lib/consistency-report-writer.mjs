@@ -524,12 +524,20 @@ function sectionBody(section, report, intermediate) {
 export function buildConsistencyBatch(entries, options = {}) {
   const sortedEntries = [...entries].sort((a, b) => a.path.localeCompare(b.path));
   const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const layoutSafetyDistribution = {
+    passed: 0,
+    "violated-with-flag": 0,
+    "violated-blocked": 0,
+    unknown: 0
+  };
   let driftTotal = 0;
   let driftCount = 0;
   let fontFallbackHits = 0;
   let fontElementCount = 0;
   let paletteTotal = 0;
   let paletteCount = 0;
+  let slopRiskTotal = 0;
+  let slopRiskCount = 0;
   let failed = 0;
 
   for (const { report } of sortedEntries) {
@@ -549,6 +557,22 @@ export function buildConsistencyBatch(entries, options = {}) {
       paletteTotal += report.paletteMatch;
       paletteCount += 1;
     }
+    // Layout safety per-deck status distribution.
+    if (report.layoutSafety === "passed") layoutSafetyDistribution.passed += 1;
+    else if (report.layoutSafety === "violated-with-flag") layoutSafetyDistribution["violated-with-flag"] += 1;
+    else if (report.layoutSafety === "violated-blocked") layoutSafetyDistribution["violated-blocked"] += 1;
+    else layoutSafetyDistribution.unknown += 1;
+    // slopRisk numeric average. The per-deck field is either a number
+    // (deck-level score injected by run-deck-pipeline) or an object with
+    // { score, signals } (from visual-critic). Accept both shapes.
+    const slop = report.slopRisk;
+    if (typeof slop === "number" && Number.isFinite(slop)) {
+      slopRiskTotal += slop;
+      slopRiskCount += 1;
+    } else if (slop && typeof slop === "object" && typeof slop.score === "number" && Number.isFinite(slop.score)) {
+      slopRiskTotal += slop.score;
+      slopRiskCount += 1;
+    }
     if (pipelineViol + sourceViol > 0) failed += 1;
   }
 
@@ -567,7 +591,9 @@ export function buildConsistencyBatch(entries, options = {}) {
     averageCoordinateDriftPx: driftCount === 0 ? 0 : Number((driftTotal / driftCount).toFixed(3)),
     fontFallbackRate: fontElementCount === 0 ? 0 : Number((fontFallbackHits / fontElementCount).toFixed(3)),
     paletteMatch: paletteCount === 0 ? 0 : Number((paletteTotal / paletteCount).toFixed(3)),
-    perDeckReports: sortedEntries.map((entry) => entry.path)
+    perDeckReports: sortedEntries.map((entry) => entry.path),
+    layoutSafetyDistribution,
+    averageSlopRisk: slopRiskCount === 0 ? 0 : Number((slopRiskTotal / slopRiskCount).toFixed(2))
   };
 
   if (options.createdAt) batch.createdAt = options.createdAt;
