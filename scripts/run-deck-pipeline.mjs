@@ -71,6 +71,50 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const steps = [];
   steps.push(await runPythonStep("validate-manifest", [join(root, "scripts/validate-manifest.py"), resolvedManifest]));
 
+  // U4 layout-safety pre-render gate.
+  const layoutSafetyPath = join(resolvedOutput, "layout-safety-report.json");
+  const layoutSafetyFlags = [];
+  if (options.strictLayoutSafety === true) layoutSafetyFlags.push("--strict-layout-safety");
+  if (options.allowLayoutViolation === true) layoutSafetyFlags.push("--allow-layout-violation");
+  const layoutSafetyResult = await runStep("layout-safety", process.execPath, [
+    join(root, "scripts/run-layout-safety-check.mjs"),
+    resolvedManifest,
+    "--output",
+    layoutSafetyPath,
+    ...layoutSafetyFlags
+  ]);
+  steps.push(layoutSafetyResult);
+
+  // Hard-block path: layout-safety returned non-zero AND --strict was set.
+  // The CLI already enforces this; mirror the block here so the pipeline
+  // summary contains a `pipeline-blocked.json` and the render step is skipped.
+  if (!layoutSafetyResult.ok && options.strictLayoutSafety === true) {
+    let layoutReport = null;
+    try {
+      layoutReport = JSON.parse(await readFile(layoutSafetyPath, "utf8"));
+    } catch {
+      layoutReport = null;
+    }
+    const blockedSummary = {
+      manifest: resolvedManifest,
+      outputDir: resolvedOutput,
+      steps: steps.map(({ label, ok }) => ({ label, ok })),
+      status: "blocked",
+      blockedBy: "layout-safety",
+      layoutSafety: layoutReport?.summary ?? null
+    };
+    await writeFile(
+      join(resolvedOutput, "pipeline-blocked.json"),
+      `${JSON.stringify(blockedSummary, null, 2)}\n`,
+      "utf8"
+    );
+    const error = new Error(
+      `pipeline blocked at layout-safety: ${layoutSafetyResult.stderr || layoutSafetyResult.stdout}`
+    );
+    error.summary = blockedSummary;
+    throw error;
+  }
+
   const pptxPath = join(resolvedOutput, "final.pptx");
   const renderResult = await runStep("render-pptx", process.execPath, [
     join(root, "scripts/render-pptx.mjs"),
@@ -154,10 +198,26 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   };
   steps.push(previewStep);
 
+  // U4: read layout-safety result, compute status string for consistency report.
+  let layoutSafetyStatus;
+  try {
+    const layoutReport = JSON.parse(await readFile(layoutSafetyPath, "utf8"));
+    const critical = layoutReport?.summary?.criticalCount ?? 0;
+    if (critical === 0) layoutSafetyStatus = "passed";
+    else if (options.strictLayoutSafety === true) layoutSafetyStatus = "violated-blocked";
+    else layoutSafetyStatus = "violated-with-flag";
+  } catch {
+    // layout-safety step itself failed — leave undefined so the report omits it.
+  }
+
   // consistency-report: always emitted (previewDiff deferred when LO missing)
   try {
     if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
-    const { json, md } = buildConsistencyReport(manifestJson, intermediate, { inputType, inputSource });
+    const { json, md } = buildConsistencyReport(manifestJson, intermediate, {
+      inputType,
+      inputSource,
+      ...(layoutSafetyStatus !== undefined ? { layoutSafety: layoutSafetyStatus } : {})
+    });
     await writeFile(join(resolvedOutput, "consistency-report.json"), json + "\n", "utf8");
     await writeFile(join(resolvedOutput, "consistency-report.md"), md + "\n", "utf8");
     steps.push({ label: "consistency-report", ok: true, stdout: "written", stderr: "" });
@@ -194,14 +254,28 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
 }
 
 async function main() {
-  const manifestArg = process.argv[2];
-  const outputArg = process.argv[3] ?? "output";
+  // Strip our own CLI flags before parsing positional args so the user
+  // can invoke `run-deck-pipeline.mjs manifest.json output --strict-layout-safety`.
+  const argv = process.argv.slice(2);
+  const cliFlags = {
+    strictLayoutSafety: false,
+    allowLayoutViolation: false
+  };
+  const positional = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--strict-layout-safety") cliFlags.strictLayoutSafety = true;
+    else if (arg === "--allow-layout-violation") cliFlags.allowLayoutViolation = true;
+    else positional.push(arg);
+  }
+  const manifestArg = positional[0];
+  const outputArg = positional[1] ?? "output";
   if (!manifestArg) {
-    fail("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir]");
+    fail("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir] [--strict-layout-safety] [--allow-layout-violation]");
   }
 
   try {
-    const summary = await runDeckPipeline(manifestArg, outputArg);
+    const summary = await runDeckPipeline(manifestArg, outputArg, cliFlags);
     console.log(JSON.stringify(summary, null, 2));
   } catch (error) {
     if (error.summary) {

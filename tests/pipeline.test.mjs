@@ -29,6 +29,11 @@ describe("run-deck-pipeline", () => {
     expect(labels).toContain("preview-diff");
     expect(labels).toContain("consistency-report");
     expect(labels).toContain("package-output");
+    // U4: layout-safety pre-render gate appears in pipeline summary.
+    expect(labels).toContain("layout-safety");
+    // U4: layout-safety step must succeed (text-input example is clean).
+    const layoutStep = summary.steps.find((step) => step.label === "layout-safety");
+    expect(layoutStep.ok).toBe(true);
 
     // U2: consistency-report step must succeed.
     const consistencyStep = summary.steps.find((step) => step.label === "consistency-report");
@@ -43,6 +48,8 @@ describe("run-deck-pipeline", () => {
     await access(join(outputDir, "consistency-report.md"));
     await access(join(outputDir, "output-manifest.json"));
     await access(join(outputDir, "deck.manifest.json"));
+    // U4: layout-safety report written alongside consistency-report.
+    await access(join(outputDir, "layout-safety-report.json"));
 
     const pptx = await stat(join(outputDir, "final.pptx"));
     expect(pptx.size).toBeGreaterThan(1000);

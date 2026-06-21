@@ -54,7 +54,7 @@ async function listFiles(root, folder, extension) {
 }
 
 async function listReviewFiles(root) {
-  const names = ["visual-review.json", "vision-review.json", "merged-review.json", "consistency-report.json", "consistency-report.md"];
+  const names = ["visual-review.json", "vision-review.json", "merged-review.json", "layout-safety-report.json", "consistency-report.json", "consistency-report.md"];
   const present = [];
   for (const name of names) {
     if (await exists(root, name)) present.push(name);

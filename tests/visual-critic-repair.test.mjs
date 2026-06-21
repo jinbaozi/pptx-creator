@@ -166,9 +166,9 @@ describe("visual critic", () => {
             { type: "shape", id: "i1", shape: "ellipse", x: 0.5, y: 4, w: 0.5, h: 0.5, style: {} },
             { type: "shape", id: "i2", shape: "ellipse", x: 1.5, y: 4, w: 0.5, h: 0.5, style: {} },
             { type: "shape", id: "i3", shape: "ellipse", x: 2.5, y: 4, w: 0.5, h: 0.5, style: {} },
-            { type: "text", id: "m1", role: "metric", x: 0.5, y: 5, w: 1, h: 0.5, text: "1x", style: { fontSize: 16 } },
-            { type: "text", id: "m2", role: "metric", x: 1.5, y: 5, w: 1, h: 0.5, text: "2x", style: { fontSize: 16 } },
-            { type: "text", id: "m3", role: "metric", x: 2.5, y: 5, w: 1, h: 0.5, text: "3x", style: { fontSize: 16 } }
+            { type: "text", id: "m1", role: "metric", x: 0.5, y: 5, w: 1, h: 0.5, text: "1x", style: { fontSize: 32 } },
+            { type: "text", id: "m2", role: "metric", x: 1.5, y: 5, w: 1, h: 0.5, text: "2x", style: { fontSize: 32 } },
+            { type: "text", id: "m3", role: "metric", x: 2.5, y: 5, w: 1, h: 0.5, text: "3x", style: { fontSize: 32 } }
           ]
         }
       ]

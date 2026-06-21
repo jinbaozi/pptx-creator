@@ -1,6 +1,7 @@
 const DEFAULT_SIZE = { width: 13.333, height: 7.5 };
 
 import { scoreSlopRisk } from "./slop-risk.mjs";
+import { checkBounds, checkFontSize } from "./check-layout-safety.mjs";
 
 function number(value, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -52,7 +53,7 @@ function safeNumber(value, fallback = null) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function scoreSlide(slide, deckSize, adjustments) {
+function scoreSlide(slide, deckSize, adjustments, designTokens = {}) {
   const issues = [];
   const repairs = [];
   const elements = slide.elements || [];
@@ -62,13 +63,9 @@ function scoreSlide(slide, deckSize, adjustments) {
     const y = number(el.y);
     const w = number(el.w);
     const h = number(el.h);
-    if (x < 0 || y < 0 || x + w > deckSize.width || y + h > deckSize.height) {
-      addIssue(issues, {
-        severity: "high",
-        type: "bounds",
-        message: `Element ${el.id} exceeds slide bounds.`,
-        target: el.id
-      });
+    const boundsIssue = checkBounds(el, deckSize);
+    if (boundsIssue) {
+      addIssue(issues, boundsIssue);
       repairs.push({
         action: "resize",
         target: el.id,
@@ -97,18 +94,15 @@ function scoreSlide(slide, deckSize, adjustments) {
       }
     }
     if (el.type === "text") {
-      const fontSize = number(el.style?.fontSize, 16);
-      if (fontSize < 11) {
-        addIssue(issues, {
-          severity: "medium",
-          type: "font-size",
-          message: `Element ${el.id} uses font size below 11pt.`,
-          target: el.id
-        });
+      const fontSizeIssue = checkFontSize(el, designTokens);
+      if (fontSizeIssue) {
+        addIssue(issues, fontSizeIssue);
+        const resolvedFontSize = number(el.style?.fontSize, 16);
+        const repairTarget = resolvedFontSize < 16 ? 16 : Math.max(resolvedFontSize, 11);
         repairs.push({
           action: "updateStyle",
           target: el.id,
-          params: { fontSize: 11 }
+          params: { fontSize: repairTarget }
         });
       }
     }
@@ -205,7 +199,7 @@ export function reviewManifest(manifest, options = {}, consistencyReport = null,
     }
   }
   const slides = (manifest.slides || []).map((slide) => {
-    const result = scoreSlide(slide, deckSize, adjustments);
+    const result = scoreSlide(slide, deckSize, adjustments, designTokens);
     let slopEntry = perSlideSlop.get(slide.id);
     if (!slopEntry) {
       const fallback = scoreSlopRisk({ slides: [slide] }, designTokens);

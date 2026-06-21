@@ -25,6 +25,7 @@
     "preview:compare": "node scripts/run-python.mjs scripts/compare-preview.py",
     "visual:regression": "node scripts/run-visual-regression.mjs",
     "visual:critic": "node scripts/run-visual-critic.mjs",
+    "layout:check": "node scripts/run-layout-safety-check.mjs",
     "repair:apply": "node scripts/apply-repair-patch.mjs",
     "registry:validate": "node scripts/validate-registry.mjs",
     "run:index": "node scripts/build-run-index.mjs",
