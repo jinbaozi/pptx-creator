@@ -1,0 +1,8 @@
+{
+  "deckId": "internal-001-text-input",
+  "sourcePath": "../../text-input/deck.manifest.json",
+  "expectedSlopRisk": 42,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Generic business deck with templated layout — mid-low slop"
+}

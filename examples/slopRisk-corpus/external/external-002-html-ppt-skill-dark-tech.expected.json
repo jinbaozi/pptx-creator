@@ -1,0 +1,9 @@
+{
+  "deckId": "external-002-html-ppt-skill-dark-tech",
+  "provenanceUrl": "https://github.com/lewislulu/html-ppt-skill/blob/main/assets/themes/dark-tech/preview.png",
+  "sourceLicense": "MIT",
+  "expectedSlopRisk": 85,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Dark tech theme — low slop, polished gradients"
+}

@@ -1,0 +1,8 @@
+{
+  "deckId": "internal-002-html-input-one-page",
+  "sourcePath": "../../html-input/one-page-dashboard.html",
+  "expectedSlopRisk": 55,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Mid slop — single-page dashboard, decent density but uniform"
+}

@@ -1,0 +1,8 @@
+{
+  "deckId": "internal-003-html-input-css-positioned",
+  "sourcePath": "../../html-input/css-positioned-dashboard.html",
+  "expectedSlopRisk": 60,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Mid — denser layout with explicit CSS positioning, more visual noise"
+}

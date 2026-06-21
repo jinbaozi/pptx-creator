@@ -1,0 +1,8 @@
+{
+  "deckId": "internal-004-html-input",
+  "sourcePath": "../../html-input/deck.manifest.json",
+  "expectedSlopRisk": 50,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Mid — paired HTML dashboard manifest, baseline reference"
+}

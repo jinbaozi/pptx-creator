@@ -1,0 +1,16 @@
+deckId,source,expectedSlopRisk,reviewer,annotatedAt
+internal-001-text-input,examples/text-input/deck.manifest.json,42,calibration-author,2026-06-21
+internal-002-html-input-one-page,examples/html-input/one-page-dashboard.html,55,calibration-author,2026-06-21
+internal-003-html-input-css-positioned,examples/html-input/css-positioned-dashboard.html,60,calibration-author,2026-06-21
+internal-004-html-input,examples/html-input/deck.manifest.json,50,calibration-author,2026-06-21
+internal-005-design-first,examples/design-first/compiler-roadshow/deck.storyboard.json,65,calibration-author,2026-06-21
+internal-006-image-input,examples/image-input/deck.manifest.skeleton.json,38,calibration-author,2026-06-21
+external-001-html-ppt-skill-modern-minimalist,https://github.com/lewislulu/html-ppt-skill/blob/main/assets/themes/modern-minimalist/preview.png,88,calibration-author,2026-06-21
+external-002-html-ppt-skill-dark-tech,https://github.com/lewislulu/html-ppt-skill/blob/main/assets/themes/dark-tech/preview.png,85,calibration-author,2026-06-21
+external-003-html-ppt-skill-editorial,https://github.com/lewislulu/html-ppt-skill/blob/main/assets/themes/editorial/preview.png,82,calibration-author,2026-06-21
+external-004-html-ppt-skill-cyberpunk,https://github.com/lewislulu/html-ppt-skill/blob/main/assets/themes/cyberpunk-neon/preview.png,72,calibration-author,2026-06-21
+external-005-ppt-master-compiler-roadshow,https://github.com/hugohe3/ppt-master/blob/main/examples/compiler-roadshow/preview.png,80,calibration-author,2026-06-21
+external-006-ppt-master-startup-pitch,https://github.com/hugohe3/ppt-master/blob/main/examples/startup-pitch/preview.png,78,calibration-author,2026-06-21
+external-007-ppt-master-product-roadshow,https://github.com/hugohe3/ppt-master/blob/main/examples/product-roadshow/preview.png,75,calibration-author,2026-06-21
+external-008-marp-theme-default,https://github.com/marp-team/marp-core/blob/main/themes/default.png,70,calibration-author,2026-06-21
+external-009-reveal-js-template,https://github.com/hakimel/reveal.js/blob/master/css/theme/template/assets/preview.png,65,calibration-author,2026-06-21

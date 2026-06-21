@@ -1,0 +1,9 @@
+{
+  "deckId": "external-009-reveal-js-template",
+  "provenanceUrl": "https://github.com/hakimel/reveal.js/blob/master/css/theme/template/assets/preview.png",
+  "sourceLicense": "MIT",
+  "expectedSlopRisk": 65,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Reveal.js default template — mid slop, developer-grade baseline"
+}

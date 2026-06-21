@@ -1,0 +1,9 @@
+{
+  "deckId": "external-007-ppt-master-product-roadshow",
+  "provenanceUrl": "https://github.com/hugohe3/ppt-master/blob/main/examples/product-roadshow/preview.png",
+  "sourceLicense": "MIT",
+  "expectedSlopRisk": 75,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Product roadshow — mid slop, balanced template"
+}
