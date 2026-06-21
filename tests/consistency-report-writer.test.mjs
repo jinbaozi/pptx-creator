@@ -318,7 +318,7 @@ describe("consistency-report-writer", () => {
       expect(md).toMatch(/## layoutSafety\s*\n\s*\n_not measured_/);
     });
 
-    it("exposes layoutSafety as a 9th DIMENSION_SECTIONS entry in fixed order", () => {
+    it("exposes layoutSafety and slopRisk in fixed order (10th = slopRisk, U3)", () => {
       expect(DIMENSION_SECTIONS).toEqual([
         "inputSource",
         "editabilityLevel",
@@ -328,9 +328,10 @@ describe("consistency-report-writer", () => {
         "rasterizedRegions",
         "layoutSafety",
         "editabilityFloor",
+        "slopRisk",
         "previewDiff"
       ]);
-      expect(DIMENSION_SECTIONS).toHaveLength(9);
+      expect(DIMENSION_SECTIONS).toHaveLength(10);
     });
 
     it("keeps byte-identical JSON when layoutSafety is omitted (determinism preserved)", () => {

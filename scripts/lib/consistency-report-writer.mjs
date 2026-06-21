@@ -62,7 +62,7 @@ export async function loadBatchSchema() {
   return _batchSchema;
 }
 
-// 9 dimensions, always emitted in this order.
+// 10 dimensions, always emitted in this order.
 export const DIMENSION_SECTIONS = [
   "inputSource",
   "editabilityLevel",
@@ -72,6 +72,7 @@ export const DIMENSION_SECTIONS = [
   "rasterizedRegions",
   "layoutSafety",
   "editabilityFloor",
+  "slopRisk",
   "previewDiff"
 ];
 
@@ -307,6 +308,7 @@ export function buildConsistencyReport(manifest, intermediate, options = {}) {
   report.paletteMatch = paletteMatch;
   report.rasterizedRegions = rasterizedRegions;
   if (options.layoutSafety !== undefined) report.layoutSafety = options.layoutSafety;
+  if (options.slopRisk !== undefined) report.slopRisk = options.slopRisk;
   report.qualityTargets = options.qualityTargets ?? {};
   report.editabilityFloor = editabilityFloor;
   report.previewDiff = previewDiff;
@@ -450,6 +452,28 @@ function sectionBody(section, report, intermediate) {
         if (source.length > 0) out.push(`- Source-causal: ${source.join(", ")}`);
       }
       return out;
+    }
+    case "slopRisk": {
+      const value = report.slopRisk;
+      if (value === undefined || value === null) {
+        return [NOT_MEASURED];
+      }
+      if (typeof value === "number") {
+        return [`- slopRisk: ${value}/100 (0 = clean, 100 = pure slop)`];
+      }
+      // Object form: { score, signals }
+      if (typeof value === "object" && typeof value.score === "number") {
+        const out = [`- slopRisk: ${value.score}/100 (0 = clean, 100 = pure slop)`];
+        if (Array.isArray(value.signals)) {
+          for (const signal of value.signals) {
+            if (signal && signal.weight > 0) {
+              out.push(`- ${signal.id}: weight ${signal.weight}, count ${signal.count}`);
+            }
+          }
+        }
+        return out;
+      }
+      return [NOT_MEASURED];
     }
     case "previewDiff": {
       const preview = report.previewDiff;

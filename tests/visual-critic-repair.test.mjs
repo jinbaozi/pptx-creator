@@ -126,6 +126,69 @@ describe("visual critic", () => {
     expect(fromUndef.deckScore).toBe(baseline.deckScore);
     expect(fromNull.consistencyAdjustments).toBeUndefined();
   });
+
+  it("emits a 0..100 slopRisk score per slide and at deck level (9th dimension)", () => {
+    const review = reviewManifest(sampleManifest(), { mode: "creative" });
+    for (const slide of review.slides) {
+      expect(slide.scores).toHaveProperty("slopRisk");
+      expect(slide.scores.slopRisk).toBeGreaterThanOrEqual(0);
+      expect(slide.scores.slopRisk).toBeLessThanOrEqual(100);
+    }
+    expect(review.slopRisk).toBeGreaterThanOrEqual(0);
+    expect(review.slopRisk).toBeLessThanOrEqual(100);
+  });
+
+  it("slopRisk does NOT change deckScore (reported alongside, not as a penalty)", () => {
+    // Build two manifests that produce the same penalty-based deck score
+    // (both fully clean: 100) so we can isolate slopRisk from deckScore.
+    // The slop manifest piles on all 9 slop signals; the clean manifest
+    // is plain. Both should yield deckScore=100; only slopRisk differs.
+    const cleanManifest = {
+      version: "0.1.1",
+      designSystem: { source: "design-systems/business-neutral/DESIGN.md", name: "Business Neutral", mode: "balanced" },
+      deck: { title: "Clean", language: "en-US", size: { preset: "wide", width: 13.333, height: 7.5, unit: "in" } },
+      assets: [],
+      slides: [{ id: "s1", elements: [{ type: "text", id: "t", x: 0.5, y: 0.5, w: 4, h: 0.5, text: "Hello", style: { fontSize: 16, fontFamily: "Inter, sans-serif" } }] }]
+    };
+    const slopManifest = {
+      version: "0.1.1",
+      designSystem: { source: "design-systems/business-neutral/DESIGN.md", name: "Business Neutral", mode: "balanced" },
+      deck: { title: "Slop", language: "en-US", size: { preset: "wide", width: 13.333, height: 7.5, unit: "in" } },
+      assets: [],
+      slides: [
+        {
+          id: "s1",
+          elements: [
+            { type: "text", id: "t1", x: 0.5, y: 0.5, w: 2, h: 0.5, text: "POWER", style: { fontFamily: "Inter, Roboto, Source Serif Pro, JetBrains Mono, sans-serif", fontSize: 16, stroke: "#000", shadow: "1px 1px 1px #000" } },
+            { type: "text", id: "t2", x: 0.5, y: 1.5, w: 2, h: 0.5, text: "AI \u{1F600}", style: { fontSize: 16 } },
+            { type: "shape", id: "card", shape: "roundRect", x: 0.5, y: 2.5, w: 4, h: 1, style: { borderRadius: "rounded.lg", fill: "linear-gradient(red, blue)" } },
+            { type: "shape", id: "card2", shape: "roundRect", x: 4.5, y: 2.5, w: 4, h: 1, style: { borderRadius: "rounded.lg" } },
+            { type: "shape", id: "i1", shape: "ellipse", x: 0.5, y: 4, w: 0.5, h: 0.5, style: {} },
+            { type: "shape", id: "i2", shape: "ellipse", x: 1.5, y: 4, w: 0.5, h: 0.5, style: {} },
+            { type: "shape", id: "i3", shape: "ellipse", x: 2.5, y: 4, w: 0.5, h: 0.5, style: {} },
+            { type: "text", id: "m1", role: "metric", x: 0.5, y: 5, w: 1, h: 0.5, text: "1x", style: { fontSize: 16 } },
+            { type: "text", id: "m2", role: "metric", x: 1.5, y: 5, w: 1, h: 0.5, text: "2x", style: { fontSize: 16 } },
+            { type: "text", id: "m3", role: "metric", x: 2.5, y: 5, w: 1, h: 0.5, text: "3x", style: { fontSize: 16 } }
+          ]
+        }
+      ]
+    };
+    const cleanReview = reviewManifest(cleanManifest, { mode: "creative" });
+    const slopReview = reviewManifest(slopManifest, { mode: "creative" });
+    expect(cleanReview.deckScore).toBe(100);
+    expect(slopReview.deckScore).toBe(cleanReview.deckScore);
+    expect(slopReview.slopRisk).toBeGreaterThan(0);
+    expect(cleanReview.slopRisk).toBe(0);
+  });
+
+  it("accepts an optional slopRiskReport as fourth argument", () => {
+    const report = {
+      slides: [{ id: "slide-001", score: 73, signals: [{ id: "font-family-dedup", weight: 20, count: 4 }] }]
+    };
+    const review = reviewManifest(sampleManifest(), { mode: "creative" }, null, report);
+    expect(review.slides[0].scores.slopRisk).toBe(73);
+    expect(review.slopRisk).toBe(73);
+  });
 });
 
 describe("repair patch", () => {
