@@ -17,6 +17,12 @@
  * Exports:
  *   - `preflightLayout(manifest, options)`  → primary entry. Returns
  *     `{checks, summary: {criticalCount, warningCount, blocked, ...}}`.
+ *     Internal shape — call `formatReport()` for the schema-conforming wire
+ *     shape consumed by the CLI, pipeline, and U6 repair-patch adapter.
+ *   - `formatReport(result, options)`       → U5 writer. Pure transform from
+ *     the internal `preflightLayout()` output to the
+ *     `schemas/layout-safety-report.schema.json` shape. Deterministic key
+ *     order; byte-identical output across runs for the same input.
  *   - `checkBounds(element, deckSize)`      → extracted from visual-critic
  *     for reuse by `scripts/lib/visual-critic.mjs`.
  *   - `checkFontSize(element)`              → extracted from visual-critic
@@ -33,10 +39,20 @@
  *      else → body.
  *   4. fontSize fallback: ≥32 → metric; ≥18 → title; else → body.
  *
- * Output is JSON-serializable. The shape is intentionally simple so the
- * CLI wrapper (`scripts/run-layout-safety-check.mjs`) and the pipeline
- * (`scripts/run-deck-pipeline.mjs`) can consume it without further
- * transformation.
+ * Two output shapes exist:
+ *   - **Internal** (`preflightLayout` return value): `{slideId, severity,
+ *     type, message, target, relatedTarget?, ...}` — mirrors the
+ *     `visual-critic.mjs` issue shape so the visual-critic can reuse
+ *     `checkBounds` / `checkFontSize` without translation.
+ *   - **Wire** (`formatReport` return value): conforms to
+ *     `schemas/layout-safety-report.schema.json`. Stable `kind` enum
+ *     (separate from the internal `type`); field names use the
+ *     `elementId` / `relatedElementId` vocabulary to match the schema.
+ *
+ * Output is JSON-serializable. The wire shape is intentionally simple so
+ * the CLI wrapper (`scripts/run-layout-safety-check.mjs`), the pipeline
+ * (`scripts/run-deck-pipeline.mjs`), and the U6 repair-patch adapter can
+ * consume it without further transformation.
  */
 
 const TOLERANCE_IN = 0.005;
@@ -654,6 +670,126 @@ export function preflightLayout(manifest, options = {}) {
   };
 }
 
+/* -------------------------------------------------------------------------- */
+/* U5 writer — schema-conforming report formatter                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Mapping from internal `type` strings (used by the preflight checks and the
+ * legacy visual-critic issue shape) to the stable `kind` enum exposed in
+ * `schemas/layout-safety-report.schema.json`. Downstream tooling (U6 repair
+ * adapter, workbench) switches on `kind`; the schema enum is the contract.
+ */
+const KIND_MAP = Object.freeze({
+  bounds: "bounds",
+  overlap: "overlap",
+  "font-size": "font-too-small",
+  "line-height-too-tight": "line-height-too-tight",
+  "text-overflow": "text-overflow",
+  "card-spacing-tight": "card-spacing-tight",
+  "contrast-fail": "contrast-fail",
+  "letter-spacing-too-tight": "letter-spacing-too-tight"
+});
+
+/**
+ * Recursively sort object keys for deterministic JSON output. Mirrors the
+ * implementation in `consistency-report-writer.mjs` so both writers produce
+ * byte-identical output for structurally-equal inputs across runs.
+ * Arrays keep their input order — semantic ordering matters there.
+ */
+export function sortObjectKeys(value) {
+  if (Array.isArray(value)) return value.map(sortObjectKeys);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) {
+      out[key] = sortObjectKeys(value[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Translate one internal `preflightLayout()` check into the wire shape.
+ * Pure; called once per check by `formatReport`.
+ */
+function mapCheckToWire(check) {
+  const internalType = typeof check.type === "string" ? check.type : "bounds";
+  const kind = KIND_MAP[internalType] ?? "bounds";
+  const elementId = typeof check.target === "string" ? check.target : "";
+  const wire = {
+    elementId,
+    kind,
+    severity: check.severity,
+    message: check.message
+  };
+  if (typeof check.slideId === "string" && check.slideId.length > 0) {
+    wire.slideId = check.slideId;
+  }
+  if (typeof check.relatedTarget === "string" && check.relatedTarget.length > 0) {
+    wire.relatedElementId = check.relatedTarget;
+  }
+  if (check.suggestion && typeof check.suggestion === "object") {
+    wire.suggestion = check.suggestion;
+  }
+  return wire;
+}
+
+/**
+ * Pure: transform the internal `preflightLayout()` output into the
+ * schema-conforming wire shape consumed by the CLI, pipeline, and U6
+ * repair-patch adapter. Deterministic key order via `sortObjectKeys` so
+ * the JSON serialized from the result is byte-identical across runs.
+ *
+ * @param {object} result  Output of `preflightLayout(manifest, options)`.
+ * @param {object} [options]
+ *   - deckSize: optional `{width, height}` override. Defaults to the
+ *     preflight's recorded deck size when present, else
+ *     `DEFAULT_DECK_SIZE`.
+ *   - version: optional schema/doc version string. Defaults to
+ *     `result.summary.version` when present, else "0.1.0".
+ *   - createdAt: optional ISO8601 timestamp. When omitted, the field is
+ *     absent from the output (strict-soft convention: no `Date.now()`
+ *     injection → byte-identical across runs).
+ *
+ * @returns {{
+ *   version: string,
+ *   deckSize: {width: number, height: number},
+ *   checks: Array<object>,
+ *   summary: {criticalCount: number, warningCount: number, slideCount?: number, blocked: boolean}
+ * }}
+ */
+export function formatReport(result, options = {}) {
+  const safeResult = result && typeof result === "object" ? result : { checks: [], summary: {} };
+  const checksRaw = Array.isArray(safeResult.checks) ? safeResult.checks : [];
+  const summaryRaw = safeResult.summary && typeof safeResult.summary === "object" ? safeResult.summary : {};
+
+  const deckSize = options.deckSize ?? DEFAULT_DECK_SIZE;
+  const version = options.version ?? summaryRaw.version ?? "0.1.0";
+
+  const wire = {
+    version,
+    deckSize: {
+      width: num(deckSize.width, DEFAULT_DECK_SIZE.width),
+      height: num(deckSize.height, DEFAULT_DECK_SIZE.height)
+    },
+    checks: checksRaw.map(mapCheckToWire),
+    summary: {
+      criticalCount: Number.isInteger(summaryRaw.criticalCount) ? summaryRaw.criticalCount : 0,
+      warningCount: Number.isInteger(summaryRaw.warningCount) ? summaryRaw.warningCount : 0,
+      blocked: summaryRaw.blocked === true
+    }
+  };
+  if (Number.isInteger(summaryRaw.slideCount) && summaryRaw.slideCount >= 0) {
+    wire.summary.slideCount = summaryRaw.slideCount;
+  }
+  if (typeof options.createdAt === "string" && options.createdAt.length > 0) {
+    wire.createdAt = options.createdAt;
+  }
+
+  return sortObjectKeys(wire);
+}
+
 export const __test__ = {
   DEFAULT_DECK_SIZE,
   FONT_SIZE_RULES,
@@ -666,5 +802,8 @@ export const __test__ = {
   hexToRgb,
   resolveTokenString,
   inferRole,
-  isCjk
+  isCjk,
+  formatReport,
+  sortObjectKeys,
+  KIND_MAP
 };

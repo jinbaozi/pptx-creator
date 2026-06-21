@@ -17,15 +17,23 @@
  *   0  Clean, or critical with --allow-layout-violation, or warning only.
  *   2  Critical violations + --strict-layout-safety (hard-block).
  *
- * Output JSON shape:
- *   {
- *     summary: { criticalCount, warningCount, slideCount, blocked, version },
- *     checks:  Array<{ slideId, severity, type, message, target, relatedTarget? }>
- *   }
+ * Output JSON shape: conforms to `schemas/layout-safety-report.schema.json`
+ * (U5). The CLI pipes the internal `preflightLayout()` output through
+ * `formatReport()` so the on-disk file is schema-valid and byte-identical
+ * across runs.
  */
 import fs from "node:fs";
 import path from "node:path";
-import { preflightLayout } from "./lib/check-layout-safety.mjs";
+import { preflightLayout, formatReport } from "./lib/check-layout-safety.mjs";
+import { validateJsonSchema } from "./lib/schema-utils.mjs";
+
+const SCHEMA_PATH = path.resolve(
+  path.dirname(new URL(import.meta.url).pathname),
+  "..",
+  "schemas",
+  "layout-safety-report.schema.json"
+);
+const SCHEMA = JSON.parse(fs.readFileSync(SCHEMA_PATH, "utf8"));
 
 function parseArgs(argv) {
   const out = {
@@ -78,16 +86,26 @@ if (!args.manifestPath) {
 }
 
 const manifest = JSON.parse(fs.readFileSync(args.manifestPath, "utf8"));
-const report = preflightLayout(manifest, { strict: args.strict });
+const internal = preflightLayout(manifest, { strict: args.strict });
+const report = formatReport(internal);
 
 const outputPath = args.outputPath ?? path.join("output", "layout-safety-report.json");
 fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });
 fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
+const validation = validateJsonSchema(report, SCHEMA);
+
 process.stdout.write(`Wrote ${outputPath}\n`);
 process.stdout.write(
-  `Layout safety: critical=${report.summary.criticalCount} warning=${report.summary.warningCount} slides=${report.summary.slideCount}\n`
+  `Layout safety: critical=${report.summary.criticalCount} warning=${report.summary.warningCount} slides=${report.summary.slideCount ?? 0}\n`
 );
+if (validation.valid) {
+  process.stdout.write(`Schema: valid (schemas/layout-safety-report.schema.json)\n`);
+} else {
+  process.stderr.write(
+    `Schema: INVALID — ${validation.errors.map((e) => `${e.path} ${e.message}`).join("; ")}\n`
+  );
+}
 
 const critical = report.summary.criticalCount;
 if (critical > 0 && args.strict) {

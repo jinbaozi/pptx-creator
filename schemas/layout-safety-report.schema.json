@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pptx-creator.local/layout-safety-report.schema.json",
+  "title": "Layout-Safety Preflight Report",
+  "description": "Deterministic JSON emitted by scripts/run-layout-safety-check.mjs (and the in-process preflightLayout from scripts/lib/check-layout-safety.mjs). Consumers: U6 repair-patch adapter, run-deck-pipeline summary block, workbench Visual Quality tab.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["deckSize", "checks", "summary"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional schema/doc version. Omitted when not specified."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional ISO8601 timestamp. Omitted when not specified to preserve byte-identical JSON across runs."
+    },
+    "deckSize": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "minimum": 0 },
+        "height": { "type": "number", "minimum": 0 }
+      },
+      "description": "Slide size in inches used for bounds checks."
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["elementId", "kind", "severity", "message"],
+        "properties": {
+          "slideId": {
+            "type": "string",
+            "description": "Manifest slide id (e.g. 's1'). Optional; callers correlate by elementId when absent."
+          },
+          "elementId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Id of the offending element within the slide."
+          },
+          "relatedElementId": {
+            "type": "string",
+            "description": "Second element id for pairwise checks (overlap, card-spacing). Optional."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bounds",
+              "overlap",
+              "font-too-small",
+              "line-height-too-tight",
+              "text-overflow",
+              "card-spacing-tight",
+              "contrast-fail",
+              "letter-spacing-too-tight"
+            ],
+            "description": "Detection category. Stable identifier; downstream tooling switches on this."
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "warning", "pass"],
+            "description": "Triage tier. Critical blocks pipeline in --strict mode; warning never blocks."
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable explanation rendered in QA reports."
+          },
+          "suggestion": {
+            "type": "object",
+            "description": "Optional repair hint. Shape compatible with repair-patch.mjs operations: {operation, targetElementId, changes}. U6 adapter enforces strict enum; U5 schema is intentionally permissive to keep the writer stable while repair-patch operations evolve."
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criticalCount", "warningCount", "blocked"],
+      "properties": {
+        "criticalCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of checks with severity='critical'."
+        },
+        "warningCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of checks with severity='warning'."
+        },
+        "slideCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of slides scanned."
+        },
+        "blocked": {
+          "type": "boolean",
+          "description": "True when --strict-layout-safety is set and any critical was found."
+        }
+      }
+    }
+  }
+}
