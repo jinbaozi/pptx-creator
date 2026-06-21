@@ -2,6 +2,7 @@ import { relative, resolve } from "node:path";
 import { parse } from "node-html-parser";
 import { buildMeasurementLookup, getMeasurementBox, mergeMeasurementsIntoManifest, roundInches } from "./html-measurement-core.mjs";
 import { buildTokenLookup, exactTokenRef, resolveTokens } from "./color-tokens.mjs";
+import * as archetypeResolver from "./archetype-resolver.mjs";
 
 export { mergeMeasurementsIntoManifest };
 
@@ -23,6 +24,32 @@ export function detectLayoutMode(slideNode, options = {}) {
   if (options.forceMeasured) return { path: "measured", markers: -1, autoLayoutContainers: -1 };
   if (options.forceAutoLayout) return { path: "auto-layout", markers: -1, autoLayoutContainers: -1 };
   if (options.forceHybrid) return { path: "hybrid", markers: -1, autoLayoutContainers: -1 };
+
+  // Short-circuit: when the slide carries an explicit `data-archetype`
+  // attribute that resolves to a known archetype catalog (slide-archetypes
+  // or layout-archetypes), honor it as a "measured" slide. The archetype's
+  // own slot schema is the source of truth for what to render, so the
+  // markers-vs-cards heuristic is bypassed entirely.
+  if (options.preferArchetypeFromArchetypeMd !== false) {
+    const archetypeAttr = slideNode.getAttribute?.("data-archetype");
+    if (archetypeAttr) {
+      const { loadFromBothRoots } = archetypeResolver;
+      if (loadFromBothRoots) {
+        try {
+          const archetype = loadFromBothRoots(archetypeAttr);
+          return {
+            path: "measured",
+            markers: 0,
+            autoLayoutContainers: 0,
+            archetype: archetype.name,
+            archetypeRoot: archetype.root
+          };
+        } catch {
+          // Unknown archetype name — fall through to heuristic detection.
+        }
+      }
+    }
+  }
 
   const markers = slideNode.querySelectorAll("[data-pptx-kind],[data-pptx-type]").length;
   const autoLayoutContainers = slideNode.querySelectorAll(".cards,.card-grid,[data-cards]").length;
@@ -734,11 +761,18 @@ function convertSlide(slideNode, slideIndex, options = {}) {
   // reference is preserved.
   result.elements = inline.elements;
 
+  // Pass through any extra metadata fields the detector produced (e.g.
+  // `archetype` and `archetypeRoot` when data-archetype short-circuited
+  // the heuristic), without overwriting the standard path/markers/...
+  // fields already declared above.
+  const { path: _ignoredPath, markers: _ignoredMarkers, autoLayoutContainers: _ignoredAuto, ...detectionExtras } = detection;
+
   return {
     ...result,
     path: detection.path,
     markers: detection.markers,
     autoLayoutContainers: detection.autoLayoutContainers,
+    ...detectionExtras,
     paletteResolution: inline.paletteResolution
   };
 }
@@ -893,7 +927,9 @@ export function convertHtmlToManifest(html, options = {}) {
         slideId: result.id,
         path: result.path,
         markers: result.markers,
-        autoLayoutContainers: result.autoLayoutContainers
+        autoLayoutContainers: result.autoLayoutContainers,
+        ...(result.archetype ? { archetype: result.archetype } : {}),
+        ...(result.archetypeRoot ? { archetypeRoot: result.archetypeRoot } : {})
       });
     }
   }

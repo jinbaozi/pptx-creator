@@ -1,0 +1,56 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../design-systems/business-neutral/DESIGN.md",
+    "name": "Business Neutral",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "Archetype Example — Section divider",
+    "language": "en-US",
+    "size": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-divider-example",
+      "type": "section-divider",
+      "archetype": "section-divider",
+      "title": "Part Two — How we built it",
+      "notes": "",
+      "background": { "type": "solid", "color": "#FFFFFF" },
+      "elements": [
+        {
+          "type": "text",
+          "id": "sectionNumber",
+          "x": 0.7,
+          "y": 2.6,
+          "w": 3,
+          "h": 1.2,
+          "text": "02",
+          "style": { "fontSize": 72, "color": "{colors.muted}", "typography": "{typography.metric}" }
+        },
+        {
+          "type": "text",
+          "id": "title",
+          "x": 0.7,
+          "y": 3.9,
+          "w": 12,
+          "h": 1.2,
+          "text": "How we built it",
+          "style": { "fontSize": 54, "bold": true, "color": "{colors.text}", "typography": "{typography.title}" }
+        },
+        {
+          "type": "text",
+          "id": "subtitle",
+          "x": 0.7,
+          "y": 5.2,
+          "w": 12,
+          "h": 0.6,
+          "text": "Architecture, trade-offs, and the surprises along the way.",
+          "style": { "fontSize": 16, "color": "{colors.muted}", "typography": "{typography.subtitle}" }
+        }
+      ]
+    }
+  ]
+}

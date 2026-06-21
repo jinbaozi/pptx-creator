@@ -315,6 +315,52 @@ describe("html-to-manifest", () => {
     expect(result.manifest.slides[0].path).toBe("hybrid");
   });
 
+  it("short-circuits to measured when data-archetype resolves via slide-archetypes (U8)", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Stat">
+        <section class="pptx-slide" data-archetype="stat-callout">
+          <p data-pptx-kind="text" data-pptx-id="metric" data-x="0.7" data-y="1.7" data-w="12" data-h="2.5">99.97%</p>
+          <p data-pptx-kind="text" data-pptx-id="supportingText" data-x="0.7" data-y="4.6" data-w="12" data-h="1.2">Uptime</p>
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, {
+      returnMetadata: true,
+      preferArchetypeFromArchetypeMd: true
+    });
+    const slide = result.manifest.slides[0];
+    // The data-archetype attribute short-circuits the markers-vs-cards
+    // heuristic to "measured", and the resolver stamps the resolved
+    // archetype name + catalog root onto the slide so downstream
+    // validators can confirm the archetype's slot schema was honored.
+    expect(slide.path).toBe("measured");
+    expect(slide.archetype).toBe("stat-callout");
+    expect(slide.archetypeRoot).toBe("slide-archetypes");
+    expect(result.layoutPaths[0]).toMatchObject({
+      path: "measured",
+      archetype: "stat-callout",
+      archetypeRoot: "slide-archetypes"
+    });
+  });
+
+  it("honors --no-prefer-archetype-from-archetype-md by falling back to heuristic detection (U8)", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Stat">
+        <section class="pptx-slide" data-archetype="stat-callout">
+          <div class="cards" data-cols="1">
+            <div class="card"><h3>Only card</h3><p>No markers</p></div>
+          </div>
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, {
+      returnMetadata: true,
+      preferArchetypeFromArchetypeMd: false
+    });
+    // Without the flag, the data-archetype attribute is ignored and the
+    // markers-vs-cards heuristic decides the path.
+    expect(result.manifest.slides[0].path).toBe("auto-layout");
+    expect(result.manifest.slides[0].archetype).toBeUndefined();
+  });
+
   it("force-auto-layout and force-measured flags override detection", () => {
     const autoHtml = `
       <div class="pptx-deck" data-deck-title="Auto">

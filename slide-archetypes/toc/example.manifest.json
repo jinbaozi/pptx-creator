@@ -1,0 +1,55 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../design-systems/business-neutral/DESIGN.md",
+    "name": "Business Neutral",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "Archetype Example — TOC",
+    "language": "en-US",
+    "size": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-toc-example",
+      "type": "toc",
+      "archetype": "toc",
+      "title": "Agenda",
+      "notes": "",
+      "background": { "type": "solid", "color": "#FFFFFF" },
+      "elements": [
+        {
+          "type": "text",
+          "id": "title",
+          "x": 0.7,
+          "y": 0.5,
+          "w": 12,
+          "h": 0.7,
+          "text": "Agenda",
+          "style": { "fontSize": 32, "bold": true, "color": "{colors.text}", "typography": "{typography.title}" }
+        },
+        {
+          "type": "line",
+          "id": "decorativeRule",
+          "x": 0.7,
+          "y": 1.4,
+          "w": 12,
+          "h": 0,
+          "style": { "color": "{colors.primary}" }
+        },
+        {
+          "type": "text",
+          "id": "entries",
+          "x": 0.7,
+          "y": 2.0,
+          "w": 12,
+          "h": 4.5,
+          "text": "1. Why we are here — context and problem framing\n2. What we built — the prototype walkthrough\n3. How it performs — early results and evidence\n4. Where we go next — roadmap and asks",
+          "style": { "fontSize": 16, "color": "{colors.text}", "typography": "{typography.body}" }
+        }
+      ]
+    }
+  ]
+}

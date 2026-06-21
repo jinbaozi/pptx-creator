@@ -83,7 +83,8 @@ function parseArgs(argv) {
     autoPaginate: true,
     forceAutoLayout: false,
     forceMeasured: false,
-    forceHybrid: false
+    forceHybrid: false,
+    preferArchetypeFromArchetypeMd: true
   };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -105,6 +106,10 @@ function parseArgs(argv) {
       args.forceMeasured = true;
     } else if (arg === "--force-hybrid") {
       args.forceHybrid = true;
+    } else if (arg === "--prefer-archetype-from-archetype-md") {
+      args.preferArchetypeFromArchetypeMd = true;
+    } else if (arg === "--no-prefer-archetype-from-archetype-md") {
+      args.preferArchetypeFromArchetypeMd = false;
     } else {
       positional.push(arg);
     }
@@ -159,11 +164,12 @@ async function main() {
     autoPaginate,
     forceAutoLayout,
     forceMeasured,
-    forceHybrid
+    forceHybrid,
+    preferArchetypeFromArchetypeMd
   } = parseArgs(process.argv.slice(2));
   if (!input || !output) {
     fail(
-      "usage: html-to-manifest.mjs <input.html> <output/deck.manifest.json> [--design-system id] [--design-mode balanced] [--measurements layout-measurements.json] [--no-auto-paginate] [--force-auto-layout | --force-measured | --force-hybrid]"
+      "usage: html-to-manifest.mjs <input.html> <output/deck.manifest.json> [--design-system id] [--design-mode balanced] [--measurements layout-measurements.json] [--no-auto-paginate] [--force-auto-layout | --force-measured | --force-hybrid] [--prefer-archetype-from-archetype-md | --no-prefer-archetype-from-archetype-md]"
     );
   }
   const inputPath = resolve(input);
@@ -175,7 +181,8 @@ async function main() {
     autoPaginate,
     forceAutoLayout,
     forceMeasured,
-    forceHybrid
+    forceHybrid,
+    preferArchetypeFromArchetypeMd
   });
   console.log(
     JSON.stringify(

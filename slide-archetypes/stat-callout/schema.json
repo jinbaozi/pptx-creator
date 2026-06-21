@@ -1,0 +1,11 @@
+{
+  "requiredSlots": ["metric", "supportingText"],
+  "optionalSlots": ["title", "context", "footnote"],
+  "constraints": {
+    "preferredEditableLevel": 5,
+    "maxTextBlocks": 4,
+    "density": "low",
+    "heroFontSizeFloor": 64,
+    "metricCount": 1
+  }
+}

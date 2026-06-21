@@ -1,0 +1,76 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../design-systems/business-neutral/DESIGN.md",
+    "name": "Business Neutral",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "Archetype Example — Two-column",
+    "language": "en-US",
+    "size": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-twocol-example",
+      "type": "two-column",
+      "archetype": "two-column",
+      "title": "Before vs. after",
+      "notes": "",
+      "background": { "type": "solid", "color": "#FFFFFF" },
+      "elements": [
+        {
+          "type": "text",
+          "id": "title",
+          "x": 0.7,
+          "y": 0.5,
+          "w": 12,
+          "h": 0.7,
+          "text": "Before vs. after",
+          "style": { "fontSize": 28, "bold": true, "color": "{colors.text}", "typography": "{typography.title}" }
+        },
+        {
+          "type": "text",
+          "id": "leftHeading",
+          "x": 0.7,
+          "y": 1.6,
+          "w": 5.4,
+          "h": 0.5,
+          "text": "Before",
+          "style": { "fontSize": 18, "color": "{colors.muted}", "typography": "{typography.heading}" }
+        },
+        {
+          "type": "text",
+          "id": "rightHeading",
+          "x": 7.0,
+          "y": 1.6,
+          "w": 5.4,
+          "h": 0.5,
+          "text": "After",
+          "style": { "fontSize": 18, "color": "{colors.primary}", "typography": "{typography.heading}" }
+        },
+        {
+          "type": "text",
+          "id": "leftColumn",
+          "x": 0.7,
+          "y": 2.2,
+          "w": 5.4,
+          "h": 4.5,
+          "text": "• Manual deploys, 45 minutes each\n• Six environments, no parity\n• Logs scattered across three tools\n• Incidents resolved by tribal knowledge",
+          "style": { "fontSize": 14, "color": "{colors.text}", "typography": "{typography.body}" }
+        },
+        {
+          "type": "text",
+          "id": "rightColumn",
+          "x": 7.0,
+          "y": 2.2,
+          "w": 5.4,
+          "h": 4.5,
+          "text": "• Automated deploys, under 4 minutes\n• One environment template, fully reproducible\n• Logs unified in a single pane\n• Runbooks attached to every alert",
+          "style": { "fontSize": 14, "color": "{colors.text}", "typography": "{typography.body}" }
+        }
+      ]
+    }
+  ]
+}
