@@ -22,7 +22,7 @@
  *    structural shape only — pass content and section order — not the
  *    report-level header line.
  *
- *  - Markdown structure: one `##` section per dimension (8 sections total,
+ *  - Markdown structure: one `##` section per dimension (9 sections total,
  *    always present regardless of input type). Each section opens with a
  *    pass/warn/fail glyph, the dimension name, and either a one-line
  *    summary or a list of contributing element IDs.
@@ -62,7 +62,7 @@ export async function loadBatchSchema() {
   return _batchSchema;
 }
 
-// 8 dimensions, always emitted in this order.
+// 9 dimensions, always emitted in this order.
 export const DIMENSION_SECTIONS = [
   "inputSource",
   "editabilityLevel",
@@ -70,6 +70,7 @@ export const DIMENSION_SECTIONS = [
   "fontFallback",
   "paletteMatch",
   "rasterizedRegions",
+  "layoutSafety",
   "editabilityFloor",
   "previewDiff"
 ];
@@ -245,6 +246,9 @@ export async function validateBatchReport(report) {
  *     If absent, the field is omitted (so byte-equality across runs holds).
  *   - version: optional schema/doc version (default '0.1.0').
  *   - qualityTargets: optional object copied through as-is.
+ *   - layoutSafety: optional string, one of `'passed' | 'violated-with-flag' | 'violated-blocked'`.
+ *     If omitted, the field is omitted from the JSON output (strict-soft
+ *     convention: optional field, missing means `_not measured_` in markdown).
  *   - editabilityFloor: optional `{ level, floorViolation: { pipelineCausal, sourceCausal } }`.
  *     If omitted, an empty-arrays default is used.
  *
@@ -302,6 +306,7 @@ export function buildConsistencyReport(manifest, intermediate, options = {}) {
   report.fontFallback = fontFallback;
   report.paletteMatch = paletteMatch;
   report.rasterizedRegions = rasterizedRegions;
+  if (options.layoutSafety !== undefined) report.layoutSafety = options.layoutSafety;
   report.qualityTargets = options.qualityTargets ?? {};
   report.editabilityFloor = editabilityFloor;
   report.previewDiff = previewDiff;
@@ -425,6 +430,13 @@ function sectionBody(section, report, intermediate) {
         (region) =>
           `- ${region.slideId}/${region.elementId}: ${(region.areaPct * 100).toFixed(1)}% — ${region.reason}${region.recoverable ? " (recoverable)" : ""}`
       );
+    }
+    case "layoutSafety": {
+      const value = report.layoutSafety;
+      if (value === undefined || value === null) {
+        return [NOT_MEASURED];
+      }
+      return [`- Layout safety: ${value}`];
     }
     case "editabilityFloor": {
       const floor = report.editabilityFloor ?? { level: report.editabilityLevel, floorViolation: { pipelineCausal: [], sourceCausal: [] } };

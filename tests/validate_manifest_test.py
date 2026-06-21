@@ -258,3 +258,25 @@ class ValidateManifestTest(TestCase):
             result = self.run_validator(path)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cropped-asset requires src or assets.id", result.stderr)
+
+    def test_accepts_mode_inspired(self):
+        """U1: extend designSystem.mode enum to include 'inspired'."""
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["designSystem"]["mode"] = "inspired"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "inspired.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("manifest valid", result.stdout)
+
+    def test_rejects_unknown_mode_typo(self):
+        """U1: preserve existing rejection of unknown mode values (e.g. 'typo')."""
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["designSystem"]["mode"] = "typo"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "typo.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("designSystem.mode", result.stderr)

@@ -115,7 +115,7 @@ describe("Visual Workbench", () => {
 
     // All cells present with tone classes.
     const cells = panel.locator(".cell");
-    expect(await cells.count()).toBe(8);
+    expect(await cells.count()).toBe(9);
     await expect(panel.locator(".cell.pass").first()).toBeAttached();
 
     // Click expands the detail panel.
@@ -125,6 +125,168 @@ describe("Visual Workbench", () => {
     await expect(detail).toBeVisible();
     await expect(detail).toContainText("editabilityLevel");
 
+    await browser.close();
+  });
+
+  it("renders 9 cells when consistency report includes layoutSafety", async () => {
+    const browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto(pathToFileURL(resolve("workbench/index.html")).href);
+
+    const sample = {
+      version: "1.0",
+      inputType: "html",
+      inputSource: "examples/html-input/sample.html",
+      editabilityLevel: 4,
+      coordinateDriftPx: 0.5,
+      fontFallback: [],
+      paletteMatch: 0.92,
+      rasterizedRegions: [],
+      layoutSafety: "passed",
+      editabilityFloor: {
+        level: 4,
+        satisfied: true,
+        floorViolation: { pipelineCausal: [], sourceCausal: [] }
+      },
+      previewDiff: { status: "ok", perSlide: [{ slideId: "s1" }] }
+    };
+    await page.evaluate((report) => window.renderConsistencyReport(report), sample);
+
+    const panel = page.locator("[data-panel='consistency-report']");
+    await expect(panel).toContainText("Layout safety");
+
+    const cells = panel.locator(".cell");
+    expect(await cells.count()).toBe(9);
+    // layoutSafety: passed → pass tone
+    const layoutSafetyCell = panel.locator(".cell[data-cell='layoutSafety']");
+    await expect(layoutSafetyCell).toHaveClass(/pass/);
+    await browser.close();
+  });
+
+  it("renders 8 cells with 'not measured' placeholder when layoutSafety is absent", async () => {
+    const browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto(pathToFileURL(resolve("workbench/index.html")).href);
+
+    const sample = {
+      version: "1.0",
+      inputType: "html",
+      inputSource: "examples/html-input/sample.html",
+      editabilityLevel: 4,
+      coordinateDriftPx: 0.5,
+      fontFallback: [],
+      paletteMatch: 0.92,
+      rasterizedRegions: [],
+      editabilityFloor: {
+        level: 4,
+        satisfied: true,
+        floorViolation: { pipelineCausal: [], sourceCausal: [] }
+      },
+      previewDiff: { status: "ok", perSlide: [{ slideId: "s1" }] }
+      // layoutSafety intentionally absent
+    };
+    await page.evaluate((report) => window.renderConsistencyReport(report), sample);
+
+    const panel = page.locator("[data-panel='consistency-report']");
+    const cells = panel.locator(".cell");
+    expect(await cells.count()).toBe(9);
+    const layoutSafetyCell = panel.locator(".cell[data-cell='layoutSafety']");
+    await expect(layoutSafetyCell).toContainText("not measured");
+    // warn tone class applied for missing values
+    await expect(layoutSafetyCell).toHaveClass(/warn/);
+    await browser.close();
+  });
+
+  it("maps layoutSafety: 'violated-blocked' to the fail tone class", async () => {
+    const browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto(pathToFileURL(resolve("workbench/index.html")).href);
+
+    const sample = {
+      version: "1.0",
+      inputType: "html",
+      inputSource: "examples/html-input/sample.html",
+      editabilityLevel: 4,
+      coordinateDriftPx: 0.5,
+      fontFallback: [],
+      paletteMatch: 0.92,
+      rasterizedRegions: [],
+      layoutSafety: "violated-blocked",
+      editabilityFloor: {
+        level: 4,
+        satisfied: true,
+        floorViolation: { pipelineCausal: [], sourceCausal: [] }
+      },
+      previewDiff: { status: "ok", perSlide: [{ slideId: "s1" }] }
+    };
+    await page.evaluate((report) => window.renderConsistencyReport(report), sample);
+
+    const panel = page.locator("[data-panel='consistency-report']");
+    const layoutSafetyCell = panel.locator(".cell[data-cell='layoutSafety']");
+    await expect(layoutSafetyCell).toHaveClass(/fail/);
+    await expect(layoutSafetyCell).toContainText("violated-blocked");
+    await browser.close();
+  });
+
+  it("maps layoutSafety: 'violated-with-flag' to the warn tone class", async () => {
+    const browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto(pathToFileURL(resolve("workbench/index.html")).href);
+
+    const sample = {
+      version: "1.0",
+      inputType: "html",
+      inputSource: "examples/html-input/sample.html",
+      editabilityLevel: 4,
+      coordinateDriftPx: 0.5,
+      fontFallback: [],
+      paletteMatch: 0.92,
+      rasterizedRegions: [],
+      layoutSafety: "violated-with-flag",
+      editabilityFloor: {
+        level: 4,
+        satisfied: true,
+        floorViolation: { pipelineCausal: [], sourceCausal: [] }
+      },
+      previewDiff: { status: "ok", perSlide: [{ slideId: "s1" }] }
+    };
+    await page.evaluate((report) => window.renderConsistencyReport(report), sample);
+
+    const panel = page.locator("[data-panel='consistency-report']");
+    const layoutSafetyCell = panel.locator(".cell[data-cell='layoutSafety']");
+    await expect(layoutSafetyCell).toHaveClass(/warn/);
+    await expect(layoutSafetyCell).toContainText("violated-with-flag");
+    await browser.close();
+  });
+
+  it("maps layoutSafety: 'passed' to the pass tone class", async () => {
+    const browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto(pathToFileURL(resolve("workbench/index.html")).href);
+
+    const sample = {
+      version: "1.0",
+      inputType: "html",
+      inputSource: "examples/html-input/sample.html",
+      editabilityLevel: 4,
+      coordinateDriftPx: 0.5,
+      fontFallback: [],
+      paletteMatch: 0.92,
+      rasterizedRegions: [],
+      layoutSafety: "passed",
+      editabilityFloor: {
+        level: 4,
+        satisfied: true,
+        floorViolation: { pipelineCausal: [], sourceCausal: [] }
+      },
+      previewDiff: { status: "ok", perSlide: [{ slideId: "s1" }] }
+    };
+    await page.evaluate((report) => window.renderConsistencyReport(report), sample);
+
+    const panel = page.locator("[data-panel='consistency-report']");
+    const layoutSafetyCell = panel.locator(".cell[data-cell='layoutSafety']");
+    await expect(layoutSafetyCell).toHaveClass(/pass/);
+    await expect(layoutSafetyCell).toContainText("passed");
     await browser.close();
   });
 

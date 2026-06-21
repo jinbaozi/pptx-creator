@@ -296,6 +296,7 @@ function evaluateConsistencyCells(report) {
   const fontFallback = Array.isArray(report.fontFallback) ? report.fontFallback : [];
   const rasterized = Array.isArray(report.rasterizedRegions) ? report.rasterizedRegions : [];
   const preview = report.previewDiff ?? { status: "deferred" };
+  const layoutSafety = report.layoutSafety;
 
   return [
     cell("editabilityLevel", "Editability", level === null ? "n/a" : `L${level}`, toneForLevel(level)),
@@ -303,6 +304,7 @@ function evaluateConsistencyCells(report) {
     cell("fontFallback", "Font fallback", fontFallback.length === 0 ? "none" : `${fontFallback.length} fallback(s)`, fontFallback.length === 0 ? "pass" : "fail"),
     cell("paletteMatch", "Palette match", palette === null ? "not measured" : palette.toFixed(2), toneForPalette(palette)),
     cell("rasterizedRegions", "Rasterized", rasterized.length === 0 ? "none" : `${rasterized.length} region(s)`, rasterized.length === 0 ? "pass" : "warn"),
+    cell("layoutSafety", "Layout safety", layoutSafety === undefined ? "not measured" : layoutSafety, toneForLayoutSafety(layoutSafety)),
     cell("editabilityFloor", "Floor", describeFloor(floor), toneForFloor(floor)),
     cell("previewDiff", "Preview diff", preview.status === "ok" ? `ok (${(preview.perSlide ?? []).length})` : "deferred", preview.status === "ok" ? "pass" : "warn"),
     cell("inputType", "Input type", report.inputType ?? "unknown", "pass")
@@ -339,6 +341,14 @@ function toneForFloor(floor) {
   if (floor.satisfied === true) return "pass";
   if (floor.satisfied === "with-justification") return "warn";
   return "fail";
+}
+
+function toneForLayoutSafety(value) {
+  if (value === undefined || value === null) return "warn";
+  if (value === "passed") return "pass";
+  if (value === "violated-with-flag") return "warn";
+  if (value === "violated-blocked") return "fail";
+  return "warn";
 }
 
 function describeFloor(floor) {

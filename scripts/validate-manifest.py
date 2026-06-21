@@ -37,7 +37,7 @@ def load_manifest(path: Path) -> dict:
 def validate_design_system(data: dict, manifest_path: Path) -> None:
     design = data.get("designSystem")
     require(isinstance(design, dict), "designSystem must be an object")
-    require(design.get("mode") in {"strict", "balanced", "creative"}, "designSystem.mode must be strict, balanced, or creative")
+    require(design.get("mode") in {"strict", "balanced", "creative", "inspired"}, "designSystem.mode must be strict, balanced, creative, or inspired")
     source = design.get("source")
     require(isinstance(source, str) and source, "designSystem.source is required")
     design_path = (manifest_path.parent / source).resolve()

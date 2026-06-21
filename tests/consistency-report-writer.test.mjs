@@ -264,4 +264,93 @@ describe("consistency-report-writer", () => {
       expect(reject.valid).toBe(false);
     });
   });
+
+  describe("layoutSafety (U1)", () => {
+    it("round-trips layoutSafety: 'violated-with-flag' through buildConsistencyReport and validates against the schema", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        layoutSafety: "violated-with-flag"
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.layoutSafety).toBe("violated-with-flag");
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("passes schema validation when layoutSafety is absent (optional, strict-soft)", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html"
+        // layoutSafety intentionally omitted
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.layoutSafety).toBeUndefined();
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("rejects an invalid layoutSafety enum value", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        layoutSafety: "not-a-real-status"
+      });
+      const result = await validatePerDeckReport(JSON.parse(json));
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => /layoutSafety/.test(e.message) || /layoutSafety/.test(e.path))).toBe(true);
+    });
+
+    it("includes '## layoutSafety' section in markdown when value is present", () => {
+      const { md } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        layoutSafety: "violated-blocked"
+      });
+      expect(md).toMatch(/## layoutSafety\s*\n\s*\n- Layout safety: violated-blocked/);
+    });
+
+    it("renders 'not measured' in markdown when layoutSafety is absent", () => {
+      const { md } = buildConsistencyReport(SAMPLE_MANIFEST, {}, {
+        inputType: "html",
+        inputSource: "demo.html"
+      });
+      expect(md).toMatch(/## layoutSafety\s*\n\s*\n_not measured_/);
+    });
+
+    it("exposes layoutSafety as a 9th DIMENSION_SECTIONS entry in fixed order", () => {
+      expect(DIMENSION_SECTIONS).toEqual([
+        "inputSource",
+        "editabilityLevel",
+        "coordinateDriftPx",
+        "fontFallback",
+        "paletteMatch",
+        "rasterizedRegions",
+        "layoutSafety",
+        "editabilityFloor",
+        "previewDiff"
+      ]);
+      expect(DIMENSION_SECTIONS).toHaveLength(9);
+    });
+
+    it("keeps byte-identical JSON when layoutSafety is omitted (determinism preserved)", () => {
+      const options = { inputType: "html", inputSource: "demo.html" };
+      const a = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, options);
+      const b = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, options);
+      expect(a.json).toBe(b.json);
+      expect(a.json.includes("layoutSafety")).toBe(false);
+    });
+
+    it("includes the layoutSafety section in markdown regardless of input type", () => {
+      const cases = [
+        { inputType: "html", inputSource: "demo.html" },
+        { inputType: "image", inputSource: "ref.png" },
+        { inputType: "design-first", inputSource: "storyboard" }
+      ];
+      for (const opts of cases) {
+        const { md } = buildConsistencyReport(SAMPLE_MANIFEST, {}, opts);
+        expect(md).toContain("## layoutSafety");
+      }
+    });
+  });
 });

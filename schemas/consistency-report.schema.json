@@ -49,6 +49,10 @@
       }
     },
     "qualityTargets": { "type": "object" },
+    "layoutSafety": {
+      "type": "string",
+      "enum": ["passed", "violated-with-flag", "violated-blocked"]
+    },
     "editabilityFloor": {
       "type": "object",
       "additionalProperties": false,
