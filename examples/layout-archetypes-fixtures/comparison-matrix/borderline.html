@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Comparison-matrix — borderline</title>
+<style>
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; margin: 40px; color: #1a1a1a; background: #ffffff; }
+  h1 { font-size: 22pt; line-height: 1.1; color: {colors.primary}; margin: 0 0 16px; font-weight: 700; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; }
+  th, td { border: 1px solid #e2e2e2; padding: 10px 12px; font-size: 11pt; line-height: 1.35; font-family: "Inter", sans-serif; vertical-align: top; }
+  th { background: #f7f7f7; font-size: 13pt; line-height: 1.2; color: {colors.primary}; font-weight: 700; text-align: left; }
+  th.winner { background: {colors.accent}; color: #fff; }
+  td.winner { background: #f0f7ff; color: {colors.primary}; font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>Compiler Backends Compared</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Dimension</th>
+        <th>LLVM</th>
+        <th>GCC</th>
+        <th class="winner">MLIR</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Build speed</td><td>Fast</td><td>Medium</td><td class="winner">Fast</td></tr>
+      <tr><td>Binary footprint</td><td>Large</td><td>Large</td><td class="winner">Medium</td></tr>
+      <tr><td>Maturity</td><td>Stable</td><td>Stable</td><td class="winner">Evolving</td></tr>
+      <tr><td>License</td><td>Apache-2</td><td>GPL</td><td class="winner">Apache-2</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Process-flow — good</title>
+<style>
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; margin: 48px; color: #1a1a1a; background: #ffffff; }
+  h1 { font-size: 24pt; line-height: 1.15; color: {colors.primary}; margin: 0 0 24px; font-weight: 700; }
+  .row { display: flex; gap: 16px; align-items: stretch; }
+  .step { flex: 1; background: #ffffff; border: 1px solid #e2e2e2; border-radius: 8px; padding: 18px 16px; }
+  .step.active { background: {colors.primary}; color: #fff; border-color: {colors.primary}; }
+  .num { font-size: 11pt; line-height: 1.2; color: {colors.accent}; font-weight: 700; margin-bottom: 6px; }
+  .h { font-size: 15pt; line-height: 1.25; font-weight: 700; font-family: "Inter", sans-serif; }
+  .b { font-size: 12pt; line-height: 1.4; font-family: "Inter", sans-serif; color: #4a4a4a; margin-top: 6px; }
+  .arrow { width: 16px; align-self: center; height: 2px; background: {colors.accent}; }
+</style>
+</head>
+<body>
+  <h1>Compiler Release Pipeline</h1>
+  <div class="row">
+    <div class="step"><div class="num">01</div><div class="h">Land</div><div class="b">PR merged to main</div></div>
+    <div class="arrow"></div>
+    <div class="step"><div class="num">02</div><div class="h">CI</div><div class="b">Tests, lint, format</div></div>
+    <div class="arrow"></div>
+    <div class="step active"><div class="num">03</div><div class="h">Build</div><div class="b">Artifacts and binaries</div></div>
+    <div class="arrow"></div>
+    <div class="step"><div class="num">04</div><div class="h">Sign</div><div class="b">Cosign signature</div></div>
+    <div class="arrow"></div>
+    <div class="step"><div class="num">05</div><div class="h">Canary</div><div class="b">5% traffic for 24h</div></div>
+    <div class="arrow"></div>
+    <div class="step"><div class="num">06</div><div class="h">Promote</div><div class="b">100% rollout</div></div>
+  </div>
+</body>
+</html>

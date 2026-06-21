@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Roadmap — bad</title>
+<style>
+  body { font-family: "Inter", "Times New Roman", monospace; margin: 16px; color: #111; background: #fafafa; }
+  h1 { font-size: 14pt; line-height: 1.0; color: #d23f3f; margin: 0 0 4px; font-family: Georgia, serif; }
+  .timeline { display: flex; flex-direction: column; gap: 2px; }
+  .phase { background: #fff; border: 1px solid #ddd; border-radius: 2px; padding: 1px 2px; }
+  .phase.shipped { background: #d23f3f; color: #fff; }
+  .phase.next { background: #f0a020; color: #fff; }
+  .phase.later { background: #7a3fd0; color: #fff; }
+  .h { font-size: 9pt; line-height: 1.0; font-weight: 800; font-family: "Inter", sans-serif; }
+  .b { font-size: 7pt; line-height: 1.0; font-family: "Inter", sans-serif; }
+  ul { margin: 0; padding-left: 10px; }
+  li { font-size: 6pt; line-height: 1.0; }
+  .icon { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #20d090; margin-right: 1px; }
+  .chip { display: inline-block; padding: 0 2px; border-radius: 4px; background: #20d090; color: #fff; font-size: 6pt; font-family: Georgia, serif; }
+</style>
+</head>
+<body>
+  <h1>Compiler Roadmap 2026</h1>
+  <div class="timeline">
+    <div class="phase shipped"><div class="h">Q1 — Cache</div><ul><li>multi-region cache</li><li>content-addressed</li><li>98% hit rate</li></ul></div>
+    <div class="phase next"><div class="h">Q2 — MLIR</div><ul><li>MLIR pass pipeline</li><li>vectorization</li><li>loop tiling</li><li>SCEV-based scheduling</li></ul></div>
+    <div class="phase later"><div class="h">Q3 — Backends</div><ul><li>CUDA</li><li>ROCm</li><li>TPU</li><li>ARM SVE</li><li>RISC-V V</li><li>WebGPU</li></ul></div>
+  </div>
+  <div>
+    <span class="icon"></span><span class="icon"></span><span class="icon"></span>
+    <span class="icon"></span><span class="icon"></span><span class="icon"></span>
+  </div>
+  <span class="chip">shipped</span>
+</body>
+</html>

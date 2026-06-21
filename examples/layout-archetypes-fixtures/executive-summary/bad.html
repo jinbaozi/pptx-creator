@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Executive-summary — bad</title>
+<style>
+  body { font-family: "Inter", "Times New Roman", monospace; margin: 16px; color: #111; background: #fafafa; }
+  h1 { font-size: 16pt; line-height: 1.0; color: #d23f3f; margin: 0 0 4px; font-family: Georgia, serif; }
+  p.lead { font-size: 9pt; line-height: 1.0; color: #444; margin: 0 0 6px; font-family: "Inter", sans-serif; }
+  ul { margin: 0; padding-left: 12px; }
+  li { font-size: 7pt; line-height: 1.0; color: #555; margin-bottom: 1px; font-family: "Inter", sans-serif; }
+  li:nth-child(1) { color: #d23f3f; }
+  li:nth-child(2) { color: #f0a020; }
+  li:nth-child(3) { color: #20d090; }
+  li:nth-child(4) { color: #2070d0; }
+  li:nth-child(5) { color: #7a3fd0; }
+  li:nth-child(6) { color: #d23f8f; }
+  li:nth-child(7) { color: #20a0d0; }
+  li:nth-child(8) { color: #d02020; }
+  .pill { display: inline-block; padding: 0 2px; border-radius: 4px; background: #7a3fd0; color: #fff; font-size: 7pt; font-family: Georgia, serif; }
+</style>
+</head>
+<body>
+  <h1>Why Compiler Infra Now</h1>
+  <p class="lead">Our compiler infrastructure is the foundation that everything else depends on, and we need to invest in it now to keep up with the rapidly evolving hardware and software landscape.</p>
+  <ul>
+    <li>p50 build time dropped 32% after the cache rollout.</li>
+    <li>Cache hit rate hit 98.2% across the fleet.</li>
+    <li>Onboarding time for new engineers cut from 14 to 5 days.</li>
+    <li>Five new backends shipped this quarter (CUDA, ROCm, TPU, ARM, RISC-V).</li>
+    <li>Two of three planned MLIR passes landed early.</li>
+    <li>Customer-reported regressions down 41% YoY.</li>
+    <li>CI cost per PR reduced 18% via cache reuse.</li>
+    <li>Open-source contributions grew 3x since last year.</li>
+  </ul>
+  <span class="pill">OKR</span>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Architecture-layered — bad</title>
+<style>
+  body { font-family: "Inter", "Times New Roman", monospace; margin: 16px; color: #111; background: #fafafa; }
+  h1 { font-size: 14pt; line-height: 1.0; color: #d23f3f; margin: 0 0 4px; font-family: Georgia, serif; }
+  .stack { display: flex; flex-direction: column; gap: 1px; }
+  .layer { padding: 1px 2px; border-radius: 2px; }
+  .l1 { background: #d23f3f; color: #fff; }
+  .l2 { background: #f0a020; color: #fff; }
+  .l3 { background: #20d090; color: #fff; }
+  .l4 { background: #2070d0; color: #fff; }
+  .l5 { background: #7a3fd0; color: #fff; }
+  .l6 { background: #d23f8f; color: #fff; }
+  .layer .h { font-size: 9pt; line-height: 1.0; font-weight: 700; font-family: "Inter", sans-serif; }
+  .layer .b { font-size: 7pt; line-height: 1.0; font-family: "Inter", sans-serif; }
+  .icon { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #fff; margin-right: 1px; }
+</style>
+</head>
+<body>
+  <h1>Compiler Pipeline Stack</h1>
+  <div class="stack">
+    <div class="layer l1"><div class="h">Frontend</div><div class="b">parsing, lexing, AST</div></div>
+    <div class="layer l2"><div class="h">IR</div><div class="b">typed intermediate</div></div>
+    <div class="layer l3"><div class="h">Optimizer</div><div class="b">passes, inline, dce</div></div>
+    <div class="layer l4"><div class="h">Backend</div><div class="b">isel, regalloc</div></div>
+    <div class="layer l5"><div class="h">Codegen</div><div class="b">emit mc / elf</div></div>
+    <div class="layer l6"><div class="h">Linker</div><div class="b">resolve, layout</div></div>
+  </div>
+  <div>
+    <span class="icon"></span><span class="icon"></span><span class="icon"></span>
+    <span class="icon"></span><span class="icon"></span><span class="icon"></span>
+    <span class="icon"></span><span class="icon"></span><span class="icon"></span>
+  </div>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Metrics-dashboard — good</title>
+<style>
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; margin: 48px; color: #1a1a1a; background: #ffffff; }
+  h1 { font-size: 26pt; line-height: 1.15; color: {colors.primary}; margin: 0 0 24px; font-weight: 700; }
+  .kpi-row { display: flex; gap: 24px; flex-wrap: wrap; }
+  .kpi { background: #ffffff; border: 1px solid #e2e2e2; border-radius: 8px; padding: 16px 20px; min-width: 140px; }
+  .num { font-size: 36pt; line-height: 1.05; font-weight: 800; color: {colors.primary}; font-family: "Inter", sans-serif; }
+  .lbl { font-size: 12pt; line-height: 1.4; color: #4a4a4a; margin-top: 6px; font-family: "Inter", sans-serif; }
+  .delta { font-size: 11pt; line-height: 1.4; color: {colors.accent}; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <h1>Q3 Compiler Performance</h1>
+  <div class="kpi-row">
+    <div class="kpi"><div class="num">142ms</div><div class="lbl">p50 build time</div><div class="delta">+12ms vs Q2</div></div>
+    <div class="kpi"><div class="num">312ms</div><div class="lbl">p95 build time</div><div class="delta">+8ms vs Q2</div></div>
+    <div class="kpi"><div class="num">98.2%</div><div class="lbl">cache hit rate</div><div class="delta">+1.4pp</div></div>
+    <div class="kpi"><div class="num">1.2k</div><div class="lbl">PRs merged per day</div><div class="delta">+18%</div></div>
+  </div>
+</body>
+</html>

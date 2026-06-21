@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Problem-solution — borderline</title>
+<style>
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; margin: 40px; color: #1a1a1a; background: #ffffff; }
+  h1 { font-size: 22pt; line-height: 1.1; color: {colors.primary}; margin: 0 0 18px; font-weight: 700; }
+  .panes { display: flex; gap: 16px; }
+  .pane { flex: 1; padding: 16px 20px; border-radius: 6px; }
+  .problem { background: #f3f4f6; }
+  .solution { background: {colors.primary}; color: #fff; }
+  .h { font-size: 13pt; line-height: 1.2; font-weight: 700; margin: 0 0 10px; font-family: "Inter", sans-serif; }
+  ul { margin: 0; padding-left: 16px; }
+  li { font-size: 11pt; line-height: 1.35; margin-bottom: 6px; }
+  .arrow { width: 16px; height: 2px; background: {colors.accent}; align-self: center; }
+</style>
+</head>
+<body>
+  <h1>Faster Builds, Lower Cost</h1>
+  <div class="panes">
+    <div class="pane problem">
+      <div class="h">Problem</div>
+      <ul>
+        <li>p50 build 142ms, cache 78%</li>
+        <li>4 min wait per rebuild</li>
+        <li>CI cost up 22% MoM</li>
+        <li>Single-region remote cache</li>
+      </ul>
+    </div>
+    <div class="arrow"></div>
+    <div class="pane solution">
+      <div class="h">Solution</div>
+      <ul>
+        <li>Multi-region remote cache</li>
+        <li>Content-addressed artifacts</li>
+        <li>Incremental linker</li>
+        <li>PR-aware cache invalidation</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>
