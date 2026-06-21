@@ -11,6 +11,27 @@ Create a structured `deck.manifest.json`, then use deterministic scripts to vali
 
 1. Classify the input as text, HTML, image, PDF, manifest, or mixed.
 2. Read only the matching reference from the routing table below.
+
+### HTML-first 推荐流程 (HTML-first recommendation)
+
+The default path for **plain text** input is **text → `deck.manifest.json` → pipeline** (see "Default: text → manifest" below). HTML-first is the recommended alternative for three specific cases — it is never the default for routine text-only input.
+
+Pick the HTML-first route when **any** of the following trigger conditions apply:
+
+1. **Design-first creative deck** — the input is a creative `examples/design-first/*/` reference (compiler-roadshow-style narrative content with a storyboard, design direction, and per-slide specs). Author `deck.html` directly using `slide-archetypes/*` and `layout-archetypes/*` `data-archetype` attributes, then convert via `node scripts/html-to-manifest.mjs <deck.html> <out/deck.manifest.json>` and run the pipeline. Reference showcase: `examples/design-first/compiler-roadshow-html/`.
+2. **Rich visual material** — the input is an image, PDF, or multi-column visual reference where CSS Grid / Flexbox precision matters more than manifest coordinate hand-authoring. Build a single-page `deck.html` (use the conventions in `references/html-to-pptx.md`) and feed it through `node scripts/html-to-manifest.mjs` → pipeline. For CSS-positioned originals, also run `node scripts/html:measure -- <deck.html> <out/layout-measurements.json>` first.
+3. **Host agent explicit judgment** — the host agent determines that the target deck needs layout precision (multi-column grids, nested cards, layered diagrams, asymmetric hero compositions) beyond what direct manifest coordinate editing expresses ergonomically. Author `deck.html` with `data-x/y/w/h` markers and convert it as in (2).
+
+**Default: text → manifest.** For ordinary prose, outlines, or batch text input, continue writing `deck.manifest.json` directly and run `node scripts/run-deck-pipeline.mjs`. HTML-first is an upgrade path, not a replacement.
+
+After the HTML-first conversion, validate and render exactly as in the text path:
+
+```bash
+node scripts/html-to-manifest.mjs <deck.html> <out/deck.manifest.json>
+python scripts/validate-manifest.py <out/deck.manifest.json>
+node scripts/run-deck-pipeline.mjs <out/deck.manifest.json> out
+```
+
 3. Select and read one `DESIGN.md` in this priority order:
    - user-provided;
    - project-root;

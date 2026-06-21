@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Compiler Roadshow — HTML-first Showcase</title>
+  <style>
+    body { font-family: "Inter", "PingFang SC", "Helvetica Neue", Arial, sans-serif; margin: 0; background: #07111F; color: #E8F1FF; }
+    .pptx-deck { display: flex; flex-direction: column; }
+    section.pptx-slide { padding: 56px; min-height: 480px; box-sizing: border-box; page-break-after: always; }
+    section.pptx-slide h1 { font-size: 32pt; line-height: 1.15; margin: 0 0 12px; color: #E8F1FF; font-weight: 700; }
+    section.pptx-slide h2 { font-size: 22pt; line-height: 1.2; margin: 0 0 12px; color: #35D0FF; font-weight: 700; }
+    section.pptx-slide p { font-size: 13pt; line-height: 1.4; color: #B7C4D8; margin: 0 0 12px; }
+    .accent-rule { width: 64px; height: 4px; background: #7CFFB2; margin: 16px 0; border-radius: 2px; }
+    .subtitle { font-size: 16pt; color: #B7C4D8; margin: 0 0 16px; }
+    .layers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+    .layer { background: #101C2E; border-radius: 8px; padding: 18px; }
+    .layer h3 { margin: 0 0 10px; color: #35D0FF; font-size: 16pt; }
+    .layer ul { margin: 0; padding-left: 18px; color: #E8F1FF; }
+    .layer li { font-size: 12pt; line-height: 1.5; margin-bottom: 6px; }
+    .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .pane { padding: 20px; border-radius: 8px; }
+    .problem { background: #1B2A41; }
+    .solution { background: #0F3D4F; }
+    .pane h3 { margin: 0 0 12px; font-size: 14pt; }
+    .pane ul { margin: 0; padding-left: 18px; }
+    .pane li { font-size: 12pt; line-height: 1.45; margin-bottom: 6px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+    .card { background: #101C2E; border-radius: 8px; padding: 18px; }
+    .card h3 { margin: 0 0 8px; color: #35D0FF; font-size: 14pt; }
+    .card p { font-size: 12pt; line-height: 1.45; margin: 0; }
+    .metric { font-size: 28pt; color: #7CFFB2; font-weight: 700; margin: 4px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px 12px; text-align: left; font-size: 12pt; border-bottom: 1px solid #1B2A41; }
+    th { color: #35D0FF; font-weight: 600; }
+    .phases { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+    .phase { background: #101C2E; border-radius: 8px; padding: 14px; }
+    .phase h3 { margin: 0 0 8px; color: #35D0FF; font-size: 13pt; }
+    .phase p { margin: 0; font-size: 11pt; line-height: 1.4; }
+    .wordmark { font-size: 11pt; letter-spacing: 1px; text-transform: uppercase; color: #6a7a91; margin-top: 32px; }
+  </style>
+</head>
+<body>
+  <div class="pptx-deck"
+       data-design-system="dark-tech"
+       data-deck-title="Compiler Roadshow — HTML-first Showcase"
+       data-language="zh-CN">
+
+    <!-- Slide 1: Cover (mirrors storyboard slide-001 cover) -->
+    <section class="pptx-slide" data-archetype="cover" data-type="cover" data-notes="HTML-first showcase cover for compiler roadshow.">
+      <h1>Modern C Compiler Component</h1>
+      <div class="accent-rule"></div>
+      <p class="subtitle">Rust-based GCC-compatible compilation pipeline</p>
+      <p>A self-contained, controllable, and extensible C compilation pipeline from preprocessing to link driving.</p>
+      <div class="wordmark">Pptx-Creator · HTML-first Showcase</div>
+    </section>
+
+    <!-- Slide 2: Problem-solution (mirrors storyboard slide-002) -->
+    <section class="pptx-slide" data-archetype="problem-solution" data-type="problem-solution" data-notes="Why a self-contained compiler pipeline matters.">
+      <h1>R&amp;D Background: Why a Self-Contained Compiler Matters</h1>
+      <div class="accent-rule"></div>
+      <div class="panes">
+        <div class="pane problem">
+          <h3>Problems</h3>
+          <ul>
+            <li>External toolchain dependencies are hard to control</li>
+            <li>Cross-architecture adaptation creates integration complexity</li>
+            <li>Optimization and diagnostics need a unified entry point</li>
+            <li>Compilation pipelines need observability and extensibility</li>
+          </ul>
+        </div>
+        <div class="pane solution">
+          <h3>Solution</h3>
+          <ul>
+            <li>End-to-end pipeline: preprocess → link driver</li>
+            <li>Single-binary deploy, no system toolchain requirement</li>
+            <li>Unified IR across optimization and codegen</li>
+            <li>Pluggable diagnostics and instrumentation hooks</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 3: Architecture-layered (mirrors storyboard slide-003) -->
+    <section class="pptx-slide" data-archetype="architecture-layered" data-type="architecture-layered" data-notes="Three-stage compiler pipeline.">
+      <h1>Core Technical Path: Three-Stage Compiler Pipeline</h1>
+      <div class="accent-rule"></div>
+      <div class="layers">
+        <div class="layer">
+          <h3>Frontend</h3>
+          <ul>
+            <li>Preprocess</li>
+            <li>Lex</li>
+            <li>Parse</li>
+            <li>Semantic analysis</li>
+            <li>AST</li>
+          </ul>
+        </div>
+        <div class="layer">
+          <h3>Middle-end</h3>
+          <ul>
+            <li>IR</li>
+            <li>Constant propagation</li>
+            <li>DCE</li>
+            <li>CSE</li>
+          </ul>
+        </div>
+        <div class="layer">
+          <h3>Backend</h3>
+          <ul>
+            <li>Code generation</li>
+            <li>Assembler</li>
+            <li>Link driver</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 4: Capability stack (extends the roadshow narrative) -->
+    <section class="pptx-slide" data-archetype="bullets-list" data-type="content" data-notes="Core capabilities delivered by the component.">
+      <h1>Core Capability Set</h1>
+      <div class="accent-rule"></div>
+      <div class="grid-3">
+        <div class="card">
+          <h3>Parsing &amp; Semantics</h3>
+          <p>C99 / C11 lexing, parsing, semantic analysis with deterministic AST.</p>
+        </div>
+        <div class="card">
+          <h3>Optimization</h3>
+          <p>IR-level constant propagation, dead-code elimination, common subexpression elimination.</p>
+        </div>
+        <div class="card">
+          <h3>Codegen</h3>
+          <p>Architecture-specific instruction selection, register allocation, and assembly emission.</p>
+        </div>
+        <div class="card">
+          <h3>Link Driving</h3>
+          <p>Section layout, symbol resolution, and relocation orchestration without external linker dependency.</p>
+        </div>
+        <div class="card">
+          <h3>Diagnostics</h3>
+          <p>Structured diagnostics with source mapping, severity classification, and recovery hints.</p>
+        </div>
+        <div class="card">
+          <h3>Extensibility</h3>
+          <p>Plugin points for new passes, targets, and architecture backends.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 5: Metrics dashboard (extends the roadshow narrative) -->
+    <section class="pptx-slide" data-archetype="metrics-dashboard" data-type="metrics" data-notes="Engineering metrics for the self-contained pipeline.">
+      <h1>Engineering Metrics</h1>
+      <div class="accent-rule"></div>
+      <div class="grid-3">
+        <div class="card">
+          <h3>Build Time</h3>
+          <div class="metric">3.2s</div>
+          <p>p50 clean build for hello-world equivalent</p>
+        </div>
+        <div class="card">
+          <h3>Binary Footprint</h3>
+          <div class="metric">18 MB</div>
+          <p>Single-binary compiler distribution</p>
+        </div>
+        <div class="card">
+          <h3>Pass Coverage</h3>
+          <div class="metric">82%</div>
+          <p>C99 mandatory feature coverage</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Target</th>
+            <th>Optimization</th>
+            <th>Throughput</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>x86_64</td>
+            <td>-O2</td>
+            <td>120 KLOC/s</td>
+          </tr>
+          <tr>
+            <td>AArch64</td>
+            <td>-O2</td>
+            <td>108 KLOC/s</td>
+          </tr>
+          <tr>
+            <td>RISC-V64</td>
+            <td>-O2</td>
+            <td>94 KLOC/s</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Slide 6: Process flow (extends the roadshow narrative) -->
+    <section class="pptx-slide" data-archetype="process-flow" data-type="process" data-notes="End-to-end compilation flow.">
+      <h1>End-to-End Compilation Flow</h1>
+      <div class="accent-rule"></div>
+      <div class="phases">
+        <div class="phase">
+          <h3>1. Source</h3>
+          <p>C source files, headers, and module manifests are ingested.</p>
+        </div>
+        <div class="phase">
+          <h3>2. Frontend</h3>
+          <p>Lex, parse, and semantic analysis produce a typed AST.</p>
+        </div>
+        <div class="phase">
+          <h3>3. Middle-end</h3>
+          <p>IR transforms apply optimization passes deterministically.</p>
+        </div>
+        <div class="phase">
+          <h3>4. Backend</h3>
+          <p>Codegen emits object files; the link driver produces the final binary.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 7: Comparison matrix (extends the roadshow narrative) -->
+    <section class="pptx-slide" data-archetype="comparison-matrix" data-type="comparison" data-notes="Comparison with external toolchains.">
+      <h1>Self-Contained vs External Toolchain</h1>
+      <div class="accent-rule"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>External Toolchain</th>
+            <th>Self-Contained</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Deploy Dependency</td>
+            <td>System gcc / binutils</td>
+            <td>Single binary</td>
+          </tr>
+          <tr>
+            <td>Reproducibility</td>
+            <td>Depends on host</td>
+            <td>Deterministic</td>
+          </tr>
+          <tr>
+            <td>Custom Pass Integration</td>
+            <td>Plugin only</td>
+            <td>First-class API</td>
+          </tr>
+          <tr>
+            <td>Cross-Architecture Adaptation</td>
+            <td>Per-target fork</td>
+            <td>Pluggable backend</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Slide 8: Roadmap (extends the roadshow narrative) -->
+    <section class="pptx-slide" data-archetype="roadmap" data-type="roadmap" data-notes="Delivery roadmap.">
+      <h1>Delivery Roadmap</h1>
+      <div class="accent-rule"></div>
+      <div class="phases">
+        <div class="phase">
+          <h3>Phase 1 — Foundation</h3>
+          <p>Frontend, IR, x86_64 backend, hello-world end-to-end.</p>
+        </div>
+        <div class="phase">
+          <h3>Phase 2 — Optimization</h3>
+          <p>Optimization passes, diagnostics surface, AArch64 backend.</p>
+        </div>
+        <div class="phase">
+          <h3>Phase 3 — Production</h3>
+          <p>RISC-V64 backend, link driver, performance parity.</p>
+        </div>
+        <div class="phase">
+          <h3>Phase 4 — Ecosystem</h3>
+          <p>Plugin API, IDE integration, packaging and distribution.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 9: Closing (extends the roadshow narrative) -->
+    <section class="pptx-slide" data-archetype="quote" data-type="closing" data-notes="Closing summary.">
+      <h1>One Compiler, One Pipeline, Full Control</h1>
+      <div class="accent-rule"></div>
+      <p>The HTML-first path turns the compiler-roadshow narrative into a deterministic, editable deck without hand-authoring manifest coordinates. The same content ships through the design-first path; here it ships through CSS Grid, archetypes, and the html-to-manifest adapter.</p>
+      <p class="subtitle">Built with Pptx-Creator · HTML-first showcase #1</p>
+    </section>
+
+  </div>
+</body>
+</html>
