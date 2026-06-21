@@ -1,0 +1,10 @@
+{
+  "requiredSlots": ["title", "bullets"],
+  "optionalSlots": ["subtitle", "footnote"],
+  "constraints": {
+    "preferredEditableLevel": 5,
+    "maxTextBlocks": 10,
+    "density": "medium",
+    "bulletCount": { "min": 4, "max": 7 }
+  }
+}

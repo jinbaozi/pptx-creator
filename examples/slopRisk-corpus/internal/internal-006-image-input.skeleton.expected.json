@@ -1,0 +1,8 @@
+{
+  "deckId": "internal-006-image-input",
+  "sourcePath": "../../image-input/deck.manifest.skeleton.json",
+  "expectedSlopRisk": 38,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Low-mid — image-input skeleton, sparse content"
+}

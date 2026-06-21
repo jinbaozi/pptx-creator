@@ -1,0 +1,225 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../../design-systems/dark-tech/DESIGN.md",
+    "name": "Dark Tech",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "Compiler Roadshow — HTML-first Showcase",
+    "language": "zh-CN",
+    "size": {
+      "preset": "wide",
+      "width": 13.333,
+      "height": 7.5,
+      "unit": "in"
+    }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-001",
+      "type": "cover",
+      "title": "Modern C Compiler Component",
+      "notes": "HTML-first showcase cover for compiler roadshow.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "measured",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "archetype": "cover",
+      "archetypeRoot": "layout-archetypes",
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-002",
+      "type": "problem-solution",
+      "title": "R&D Background: Why a Self-Contained Compiler Matters",
+      "notes": "Why a self-contained compiler pipeline matters.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "measured",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "archetype": "problem-solution",
+      "archetypeRoot": "layout-archetypes",
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-003",
+      "type": "architecture-layered",
+      "title": "Core Technical Path: Three-Stage Compiler Pipeline",
+      "notes": "Three-stage compiler pipeline.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "measured",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "archetype": "architecture-layered",
+      "archetypeRoot": "layout-archetypes",
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-004",
+      "type": "content",
+      "title": "Core Capability Set",
+      "notes": "Core capabilities delivered by the component.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "measured",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "archetype": "bullets-list",
+      "archetypeRoot": "slide-archetypes",
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-005",
+      "type": "metrics",
+      "title": "Engineering Metrics",
+      "notes": "Engineering metrics for the self-contained pipeline.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "measured",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "archetype": "metrics-dashboard",
+      "archetypeRoot": "layout-archetypes",
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-006",
+      "type": "process",
+      "title": "End-to-End Compilation Flow",
+      "notes": "End-to-end compilation flow.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "measured",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "archetype": "process-flow",
+      "archetypeRoot": "layout-archetypes",
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-007",
+      "type": "comparison",
+      "title": "Self-Contained vs External Toolchain",
+      "notes": "Comparison with external toolchains.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "measured",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "archetype": "comparison-matrix",
+      "archetypeRoot": "layout-archetypes",
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-008",
+      "type": "roadmap",
+      "title": "Delivery Roadmap",
+      "notes": "Delivery roadmap.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "measured",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "archetype": "roadmap",
+      "archetypeRoot": "layout-archetypes",
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-009",
+      "type": "closing",
+      "title": "One Compiler, One Pipeline, Full Control",
+      "notes": "Closing summary.",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "measured",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "archetype": "quote",
+      "archetypeRoot": "slide-archetypes",
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    }
+  ],
+  "_paletteResolution": {
+    "matches": [],
+    "unmapped": [],
+    "paletteMatch": 1,
+    "skipped": false
+  }
+}

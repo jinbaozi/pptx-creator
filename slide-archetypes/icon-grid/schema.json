@@ -1,0 +1,11 @@
+{
+  "requiredSlots": ["title", "tiles"],
+  "optionalSlots": ["subtitle", "footnote"],
+  "constraints": {
+    "preferredEditableLevel": 5,
+    "maxTextBlocks": 10,
+    "density": "medium",
+    "tileCount": { "min": 4, "max": 8 },
+    "validShapes": ["3x2", "2x4", "2x2"]
+  }
+}

@@ -36,6 +36,7 @@ M1.2 adds a deterministic HTML → `deck.manifest.json` adapter. Host agents sti
 - One or more `<section class="pptx-slide">` or `[data-slide]` children.
 - Multi-slide HTML is supported; each slide section becomes one manifest slide.
 - Oversized semantic card grids auto-paginate by default. Use `--no-auto-paginate` when exact single-slide output is required.
+- Semantic conversion is content-loss safe: every heading, paragraph, list item, metric, and table cell must appear in the manifest. Conversion fails below 100% coverage unless `--allow-content-loss` is explicitly supplied.
 
 ### Semantic mapping
 
@@ -82,14 +83,39 @@ For CSS-positioned layouts, add kind/id markers and run Playwright measurement:
 
 See `references/html-measurement.md` for the full measure → merge workflow.
 
-## Workflow
+## Guarded creative workflow
 
 ```bash
-node scripts/html-to-manifest.mjs examples/html-input/one-page-dashboard.html output/deck.manifest.json
-python scripts/validate-manifest.py output/deck.manifest.json
-node scripts/render-pptx.mjs output/deck.manifest.json output/final.pptx
-python scripts/package-output.py output
+npm run pipeline:html -- examples/html-input/one-page-dashboard.html output/html
 ```
+
+The command writes `deck.repaired.html`, `html-layout-report.json`, `html-repair-report.json`, per-slide screenshots, measurements, the Manifest, and the final PPTX. It never overwrites the source HTML. Chromium checks the HTML before conversion; any remaining critical blocks Manifest/PPTX generation.
+
+Automatic repair order is fixed: normalize slide bounds, reflow cards, fit text, separate remaining overlaps, then re-anchor connectors. Repairs may reduce spacing or font size down to the readability floor and may move complete cards to continuation slides. They never delete, rewrite, truncate, or split source text.
+
+Use the lower-level commands only for diagnosis:
+
+```bash
+npm run html:check -- input.html output/html-check
+npm run html:repair -- input.html output/html-repair
+npm run html:measure -- output/html-repair/deck.repaired.html output/html-repair/layout-measurements.json
+```
+
+### Connector contract
+
+Use an SVG `line`, `polyline`, or simple `M … L …` path. Complex curves and multi-branch connectors are unsupported in the first guarded version.
+
+```html
+<path data-connector
+      data-pptx-kind="line"
+      data-pptx-id="flow-a-b"
+      data-source-id="card-a"
+      data-target-id="card-b"
+      marker-end="url(#arrowhead)"
+      d="M 0 0 L 100 0" />
+```
+
+The auditor verifies both endpoints against declared node boundaries and verifies arrow direction. HTML conversion preserves `sourceId`, `targetId`, arrowheads, stroke color, width, and dash style in the native Manifest line.
 
 ## Editability target
 
@@ -99,6 +125,8 @@ HTML conversion should reach Level 3–5 on the editability ladder. Prefer nativ
 
 - Choose the correct built-in `DESIGN.md` or provide a custom one.
 - Keep HTML semantic and reasonably structured.
-- Add `data-x/y/w/h` when auto-layout is insufficient.
+- Use a 1280×720 `.pptx-slide` canvas for generated creative HTML.
+- Add globally unique measurement ids and connector metadata when auto-layout is insufficient.
+- Treat content-coverage or layout-safety failures as authoring errors; repair the HTML or manifest instead of silently dropping content or shrinking boxes.
 - Rasterize only complex decorative regions as `image` assets.
 - Review `editable-report.md` after rendering.

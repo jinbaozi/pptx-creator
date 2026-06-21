@@ -11,6 +11,27 @@ Create a structured `deck.manifest.json`, then use deterministic scripts to vali
 
 1. Classify the input as text, HTML, image, PDF, manifest, or mixed.
 2. Read only the matching reference from the routing table below.
+
+### HTML-first 推荐流程 (HTML-first recommendation)
+
+The default path for **plain text** input is **text → `deck.manifest.json` → pipeline** (see "Default: text → manifest" below). HTML-first is the recommended alternative for three specific cases — it is never the default for routine text-only input.
+
+Pick the HTML-first route when **any** of the following trigger conditions apply:
+
+1. **Design-first creative deck** — author `deck.html` using `slide-archetypes/*` and `layout-archetypes/*`, then run the guarded HTML pipeline. Reference showcase: `examples/design-first/compiler-roadshow-html/`.
+2. **Rich visual material** — use CSS Grid/Flexbox when multi-column visual structure is easier to express in HTML than manifest coordinates. Do not apply creative HTML repair to strict replica work.
+3. **Host agent explicit judgment** — use HTML for nested cards, layered diagrams, asymmetric hero compositions, or other layouts that need browser measurement.
+
+**Default: text → manifest.** For ordinary prose, outlines, or batch text input, continue writing `deck.manifest.json` directly and run `node scripts/run-deck-pipeline.mjs`. HTML-first is an upgrade path, not a replacement.
+
+For generated creative HTML, always run the guarded pipeline. It preserves the source, writes `deck.repaired.html`, audits real Chromium geometry, repairs at most three times, measures each slide, converts at 100% content coverage, then runs the strict manifest pipeline:
+
+```bash
+npm run pipeline:html -- <deck.html> <out>
+```
+
+Use `data-archetype` as routing metadata. Measured components require globally unique `data-pptx-id` plus `data-pptx-kind` or `data-pptx-type`. Connectors require `data-connector`, `data-pptx-kind="line"`, `data-source-id`, `data-target-id`, and an SVG marker. Zero HTML criticals and 100% content coverage are mandatory before Manifest/PPTX generation.
+
 3. Select and read one `DESIGN.md` in this priority order:
    - user-provided;
    - project-root;
@@ -54,6 +75,8 @@ Do not read every reference up front. Load only the files required by the curren
 - Use raster assets only for photos or effects that are impractical to rebuild.
 - Never describe a full-slide raster with no editable text as an editable deck.
 - Preserve source layout, color, typography, content, and tone in strict replica mode; skip creative direction exploration.
+- Run strict replicas with `node scripts/run-deck-pipeline.mjs <manifest> <out> --mode replica`. Replica mode keeps objective bounds checks, avoids creative slop scoring, and does not treat intentional source layering as a layout failure.
+- Keep connector `sourceId` and `targetId` metadata on native lines so endpoint accuracy can be verified. Do not pre-expand semantic diagrams in the manifest; the renderer expands them once.
 - Use web research only when it improves accuracy or asset quality and the user permits it. Record source URLs, respect licenses and trademarks, and localize remote assets under the output directory.
 - Do not call LLM APIs from package scripts or ask deterministic scripts to invent content.
 

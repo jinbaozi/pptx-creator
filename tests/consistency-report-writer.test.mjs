@@ -68,7 +68,9 @@ describe("consistency-report-writer", () => {
           "averageCoordinateDriftPx",
           "fontFallbackRate",
           "paletteMatch",
-          "perDeckReports"
+          "perDeckReports",
+          "layoutSafetyDistribution",
+          "averageSlopRisk"
         ])
       );
     });
@@ -262,6 +264,152 @@ describe("consistency-report-writer", () => {
       const tampered = { ...batch, floorViolation: { pipelineCausal: ["x"], sourceCausal: [] } };
       const reject = await validateBatchReport(tampered);
       expect(reject.valid).toBe(false);
+    });
+  });
+
+  describe("layoutSafety (U1)", () => {
+    it("round-trips layoutSafety: 'violated-with-flag' through buildConsistencyReport and validates against the schema", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        layoutSafety: "violated-with-flag"
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.layoutSafety).toBe("violated-with-flag");
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("passes schema validation when layoutSafety is absent (optional, strict-soft)", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html"
+        // layoutSafety intentionally omitted
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.layoutSafety).toBeUndefined();
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("rejects an invalid layoutSafety enum value", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        layoutSafety: "not-a-real-status"
+      });
+      const result = await validatePerDeckReport(JSON.parse(json));
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => /layoutSafety/.test(e.message) || /layoutSafety/.test(e.path))).toBe(true);
+    });
+
+    it("includes '## layoutSafety' section in markdown when value is present", () => {
+      const { md } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        layoutSafety: "violated-blocked"
+      });
+      expect(md).toMatch(/## layoutSafety\s*\n\s*\n- Layout safety: violated-blocked/);
+    });
+
+    it("renders 'not measured' in markdown when layoutSafety is absent", () => {
+      const { md } = buildConsistencyReport(SAMPLE_MANIFEST, {}, {
+        inputType: "html",
+        inputSource: "demo.html"
+      });
+      expect(md).toMatch(/## layoutSafety\s*\n\s*\n_not measured_/);
+    });
+
+    it("exposes layoutSafety and slopRisk in fixed order (10th = slopRisk, U3)", () => {
+      expect(DIMENSION_SECTIONS).toEqual([
+        "inputSource",
+        "editabilityLevel",
+        "coordinateDriftPx",
+        "fontFallback",
+        "paletteMatch",
+        "rasterizedRegions",
+        "layoutSafety",
+        "editabilityFloor",
+        "slopRisk",
+        "previewDiff"
+      ]);
+      expect(DIMENSION_SECTIONS).toHaveLength(10);
+    });
+
+    it("keeps byte-identical JSON when layoutSafety is omitted (determinism preserved)", () => {
+      const options = { inputType: "html", inputSource: "demo.html" };
+      const a = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, options);
+      const b = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, options);
+      expect(a.json).toBe(b.json);
+      expect(a.json.includes("layoutSafety")).toBe(false);
+    });
+
+    it("includes the layoutSafety section in markdown regardless of input type", () => {
+      const cases = [
+        { inputType: "html", inputSource: "demo.html" },
+        { inputType: "image", inputSource: "ref.png" },
+        { inputType: "design-first", inputSource: "storyboard" }
+      ];
+      for (const opts of cases) {
+        const { md } = buildConsistencyReport(SAMPLE_MANIFEST, {}, opts);
+        expect(md).toContain("## layoutSafety");
+      }
+    });
+  });
+
+  describe("feedback block (U10 / R22)", () => {
+    it("omits the feedback block by default so byte-equality across runs is preserved", () => {
+      const a = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, { inputType: "html", inputSource: "demo.html" });
+      const b = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, { inputType: "html", inputSource: "demo.html" });
+      expect(a.json).toBe(b.json);
+      expect(a.json.includes("feedback")).toBe(false);
+    });
+
+    it("round-trips feedback: null into an empty defaults block", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        feedback: null
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.feedback).toEqual({ retryCount: 0, accepted: null, acceptedAt: null });
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("round-trips feedback: {retryCount: 2, accepted: null, acceptedAt: null}", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        feedback: { retryCount: 2, accepted: null, acceptedAt: null }
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.feedback).toEqual({ retryCount: 2, accepted: null, acceptedAt: null });
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("round-trips feedback: {retryCount: 3, accepted: true, acceptedAt: ISO}", async () => {
+      const iso = "2026-06-21T00:00:00.000Z";
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        feedback: { retryCount: 3, accepted: true, acceptedAt: iso }
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.feedback).toEqual({ retryCount: 3, accepted: true, acceptedAt: iso });
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("clamps non-integer retryCount to 0", () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        feedback: { retryCount: "two", accepted: null, acceptedAt: null }
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.feedback.retryCount).toBe(0);
     });
   });
 });

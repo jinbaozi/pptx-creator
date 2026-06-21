@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pptx-creator.local/html-repair-report.schema.json",
+  "title": "HTML Layout Repair Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source", "repairedHtml", "maxAttempts", "attempts", "summary"],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "repairedHtml": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "maxAttempts": { "type": "integer", "minimum": 1 },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attempt", "criticalBefore", "criticalAfter", "operations"],
+        "properties": {
+          "attempt": { "type": "integer", "minimum": 1 },
+          "criticalBefore": { "type": "integer", "minimum": 0 },
+          "criticalAfter": { "type": "integer", "minimum": 0 },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "slideId", "elementId", "description"],
+              "properties": {
+                "kind": { "type": "string", "minLength": 1 },
+                "slideId": { "type": "string", "minLength": 1 },
+                "elementId": { "type": "string", "minLength": 1 },
+                "description": { "type": "string", "minLength": 1 },
+                "before": {},
+                "after": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "attemptCount", "criticalRemaining", "sourcePreserved"],
+      "properties": {
+        "status": { "type": "string", "enum": ["passed", "blocked"] },
+        "attemptCount": { "type": "integer", "minimum": 0 },
+        "criticalRemaining": { "type": "integer", "minimum": 0 },
+        "sourcePreserved": { "type": "boolean", "const": true }
+      }
+    }
+  }
+}

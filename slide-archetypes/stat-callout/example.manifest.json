@@ -1,0 +1,56 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../design-systems/business-neutral/DESIGN.md",
+    "name": "Business Neutral",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "Archetype Example — Stat-callout",
+    "language": "en-US",
+    "size": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-stat-example",
+      "type": "stat-callout",
+      "archetype": "stat-callout",
+      "title": "Pipeline uptime",
+      "notes": "",
+      "background": { "type": "solid", "color": "#FFFFFF" },
+      "elements": [
+        {
+          "type": "text",
+          "id": "title",
+          "x": 0.7,
+          "y": 1.0,
+          "w": 12,
+          "h": 0.5,
+          "text": "Pipeline uptime",
+          "style": { "fontSize": 18, "color": "{colors.muted}", "typography": "{typography.subtitle}" }
+        },
+        {
+          "type": "text",
+          "id": "metric",
+          "x": 0.7,
+          "y": 1.7,
+          "w": 12,
+          "h": 2.5,
+          "text": "99.97%",
+          "style": { "fontSize": 140, "bold": true, "color": "{colors.primary}", "typography": "{typography.metric}" }
+        },
+        {
+          "type": "text",
+          "id": "supportingText",
+          "x": 0.7,
+          "y": 4.6,
+          "w": 12,
+          "h": 1.2,
+          "text": "Sustained across 184 days and 12 production regions without manual intervention.",
+          "style": { "fontSize": 18, "color": "{colors.text}", "typography": "{typography.body}" }
+        }
+      ]
+    }
+  ]
+}

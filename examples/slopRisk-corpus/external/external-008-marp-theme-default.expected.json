@@ -1,0 +1,9 @@
+{
+  "deckId": "external-008-marp-theme-default",
+  "provenanceUrl": "https://github.com/marp-team/marp-core/blob/main/themes/default.png",
+  "sourceLicense": "MIT",
+  "expectedSlopRisk": 70,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Marp default theme — mid slop, minimalist but plain"
+}

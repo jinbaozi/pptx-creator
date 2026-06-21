@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pptx-creator.local/html-layout-report.schema.json",
+  "title": "HTML Layout Audit Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source", "viewport", "slides", "checks", "summary"],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "viewport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "slides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slideId", "width", "height", "screenshot"],
+        "properties": {
+          "slideId": { "type": "string", "minLength": 1 },
+          "width": { "type": "number", "minimum": 0 },
+          "height": { "type": "number", "minimum": 0 },
+          "screenshot": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slideId", "elementId", "selector", "kind", "severity", "message"],
+        "properties": {
+          "slideId": { "type": "string", "minLength": 1 },
+          "elementId": { "type": "string", "minLength": 1 },
+          "relatedElementId": { "type": "string" },
+          "selector": { "type": "string", "minLength": 1 },
+          "relatedSelector": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "slide-bounds",
+              "slide-size-mismatch",
+              "text-overflow",
+              "content-clipped",
+              "overlap",
+              "duplicate-id",
+              "zero-size",
+              "connector-detached",
+              "connector-direction",
+              "connector-marker-missing",
+              "connector-unsupported",
+              "asset-not-ready"
+            ]
+          },
+          "severity": { "type": "string", "enum": ["critical", "warning"] },
+          "message": { "type": "string", "minLength": 1 },
+          "rect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y", "w", "h"],
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "w": { "type": "number" },
+              "h": { "type": "number" }
+            }
+          },
+          "relatedRect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y", "w", "h"],
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "w": { "type": "number" },
+              "h": { "type": "number" }
+            }
+          },
+          "screenshot": { "type": ["string", "null"] },
+          "suggestion": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criticalCount", "warningCount", "slideCount", "blocked"],
+      "properties": {
+        "criticalCount": { "type": "integer", "minimum": 0 },
+        "warningCount": { "type": "integer", "minimum": 0 },
+        "slideCount": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "boolean" }
+      }
+    }
+  }
+}

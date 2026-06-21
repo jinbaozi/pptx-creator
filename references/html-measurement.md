@@ -57,7 +57,15 @@ node scripts/measure-html.mjs input.html output/layout-measurements.json `
   --viewport-width 1280 --viewport-height 720
 ```
 
-## Workflow
+## Recommended workflow
+
+Generated creative HTML should use the guarded pipeline, which performs audit, repair, measurement, conversion, and PPTX generation in one command:
+
+```powershell
+npm run pipeline:html -- input.html output/html
+```
+
+Use the steps below only when diagnosing measurement behavior.
 
 ### 1. Measure rendered HTML
 
@@ -79,11 +87,11 @@ node scripts/html-to-manifest.mjs examples/html-input/css-positioned-dashboard.h
 
 When measurements are provided and slides contain `[data-pptx-kind]` elements, the adapter uses measured coordinates instead of auto-layout.
 
-### 3. Validate and render (M1.1)
+### 3. Validate and render
 
 ```powershell
-python scripts/validate-manifest.py output/deck.manifest.json
-node scripts/render-pptx.mjs output/deck.manifest.json output/final.pptx
+node scripts/run-python.mjs scripts/validate-manifest.py output/deck.manifest.json
+node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
 ```
 
 ## Measurement JSON schema
@@ -97,6 +105,7 @@ node scripts/render-pptx.mjs output/deck.manifest.json output/final.pptx
   "elements": [
     {
       "id": "title",
+      "slideId": "slide-001",
       "kind": "text",
       "x": 0.938,
       "y": 0.438,
@@ -123,7 +132,7 @@ npx playwright install chromium
 ## Host agent responsibilities
 
 - Add `data-pptx-kind` and `data-pptx-id` to elements that need measured coordinates.
-- Keep slide canvas aspect ratio aligned with viewport (16:9 recommended).
+- Keep generated creative slide canvases exactly 1280×720 so browser pixels map to PPT inches without scale drift.
 - Review merged manifest coordinates before rendering.
 - Rasterize only complex decorative regions as `image` assets.
 

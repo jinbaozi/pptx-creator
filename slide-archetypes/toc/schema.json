@@ -1,0 +1,11 @@
+{
+  "requiredSlots": ["title", "entries"],
+  "optionalSlots": ["subtitle", "footnote", "decorativeRule"],
+  "constraints": {
+    "preferredEditableLevel": 5,
+    "maxTextBlocks": 12,
+    "density": "low",
+    "entryCount": { "min": 3, "max": 9 },
+    "twoColumnThreshold": 7
+  }
+}

@@ -12,7 +12,7 @@
       "properties": {
         "source": { "type": "string" },
         "name": { "type": "string" },
-        "mode": { "type": "string", "enum": ["strict", "balanced", "creative"] }
+        "mode": { "type": "string", "enum": ["strict", "balanced", "creative", "inspired"] }
       }
     },
     "deck": {

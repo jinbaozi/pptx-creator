@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Architecture-layered — good</title>
+<style>
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; margin: 48px; color: #1a1a1a; background: #ffffff; }
+  h1 { font-size: 24pt; line-height: 1.15; color: {colors.primary}; margin: 0 0 24px; font-weight: 700; }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+  .layer { padding: 18px 24px; border-radius: 8px; background: #f3f4f6; }
+  .layer.focal { background: {colors.primary}; color: #fff; }
+  .h { font-size: 15pt; line-height: 1.25; font-weight: 700; font-family: "Inter", sans-serif; }
+  .b { font-size: 12pt; line-height: 1.4; color: inherit; font-family: "Inter", sans-serif; margin-top: 4px; }
+  .arrow { width: 2px; height: 12px; background: {colors.accent}; margin: 0 auto; }
+</style>
+</head>
+<body>
+  <h1>Compiler Pipeline Stack</h1>
+  <div class="stack">
+    <div class="layer"><div class="h">Frontend</div><div class="b">Parsing, lexing, and AST construction for the source language.</div></div>
+    <div class="layer"><div class="h">IR</div><div class="b">Typed intermediate representation shared by all backends.</div></div>
+    <div class="layer focal"><div class="h">Optimizer</div><div class="b">Pass pipeline, inlining, dead-code elimination, vectorization.</div></div>
+    <div class="layer"><div class="h">Backend</div><div class="b">Instruction selection and register allocation per target.</div></div>
+    <div class="layer"><div class="h">Codegen</div><div class="b">Emits machine code, object files, and linkable artifacts.</div></div>
+  </div>
+</body>
+</html>

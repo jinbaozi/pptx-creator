@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Metrics-dashboard — bad</title>
+<style>
+  body { font-family: "Inter", "Helvetica Neue", "Times New Roman", sans-serif; margin: 16px; color: #111; background: #fafafa; }
+  h1 { font-size: 18pt; line-height: 1.0; color: #111; margin: 0 0 8px; font-family: Georgia, serif; font-weight: 700; }
+  .kpi-row { display: flex; gap: 2px; flex-wrap: wrap; }
+  .kpi { background: #fff; border: 1px solid #ddd; border-radius: 2px; padding: 1px 2px; min-width: 90px; }
+  .kpi:nth-child(1) .num { color: #d23f3f; }
+  .kpi:nth-child(2) .num { color: #f0a020; }
+  .kpi:nth-child(3) .num { color: #20d090; }
+  .kpi:nth-child(4) .num { color: #2070d0; }
+  .kpi:nth-child(5) .num { color: #7a3fd0; }
+  .kpi:nth-child(6) .num { color: #d23f8f; }
+  .kpi:nth-child(7) .num { color: #20a0d0; }
+  .num { font-size: 18pt; line-height: 1.0; font-weight: 800; font-family: "Inter", monospace; }
+  .lbl { font-size: 7pt; line-height: 1.0; color: #666; font-family: "Inter", sans-serif; }
+  .icon { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #d23f3f; margin-right: 2px; }
+  .icon.b { background: #f0a020; }
+  .icon.c { background: #20d090; }
+  .trend { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 6px solid #20d090; }
+</style>
+</head>
+<body>
+  <h1>Q3 Compiler Performance</h1>
+  <div class="kpi-row">
+    <div class="kpi"><div class="num">142ms</div><div class="lbl">p50 build</div></div>
+    <div class="kpi"><div class="num">312ms</div><div class="lbl">p95 build</div></div>
+    <div class="kpi"><div class="num">98.2%</div><div class="lbl">cache hit</div></div>
+    <div class="kpi"><div class="num">1.2k</div><div class="lbl">PRs/day</div></div>
+    <div class="kpi"><div class="num">46</div><div class="lbl">eng onboarded</div></div>
+    <div class="kpi"><div class="num">7d</div><div class="lbl">MTTR</div></div>
+    <div class="kpi"><div class="num">99.95%</div><div class="lbl">uptime</div></div>
+  </div>
+  <div>
+    <span class="icon"></span><span class="icon b"></span><span class="icon c"></span>
+    <span class="icon"></span><span class="icon b"></span><span class="icon c"></span>
+    <span class="icon"></span><span class="icon b"></span><span class="icon c"></span>
+  </div>
+  <div class="trend"></div>
+</body>
+</html>

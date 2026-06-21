@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Roadmap — borderline</title>
+<style>
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; margin: 40px; color: #1a1a1a; background: #ffffff; }
+  h1 { font-size: 22pt; line-height: 1.1; color: {colors.primary}; margin: 0 0 18px; font-weight: 700; }
+  .timeline { display: flex; gap: 16px; align-items: stretch; }
+  .phase { flex: 1; background: #ffffff; border: 1px solid #e2e2e2; border-radius: 6px; padding: 14px 16px; }
+  .phase.now { background: {colors.primary}; color: #fff; border-color: {colors.primary}; }
+  .h { font-size: 14pt; line-height: 1.2; font-weight: 700; font-family: "Inter", sans-serif; }
+  .sub { font-size: 10pt; line-height: 1.4; color: {colors.accent}; margin-top: 2px; }
+  ul { margin: 8px 0 0; padding-left: 16px; }
+  li { font-size: 11pt; line-height: 1.35; margin-bottom: 4px; }
+  .rail { width: 100%; height: 3px; background: {colors.accent}; border-radius: 2px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+  <h1>Compiler Roadmap 2026</h1>
+  <div class="rail"></div>
+  <div class="timeline">
+    <div class="phase"><div class="h">Q1 — Cache</div><div class="sub">Shipped</div><ul><li>Multi-region cache</li><li>Content-addressed artifacts</li><li>98% hit rate</li></ul></div>
+    <div class="phase now"><div class="h">Q2 — MLIR</div><div class="sub">In progress</div><ul><li>MLIR pass pipeline</li><li>Vectorization</li><li>Loop tiling</li></ul></div>
+    <div class="phase"><div class="h">Q3 — Backends</div><div class="sub">Planned</div><ul><li>CUDA and ROCm</li><li>TPU lowering</li><li>ARM SVE</li></ul></div>
+  </div>
+</body>
+</html>

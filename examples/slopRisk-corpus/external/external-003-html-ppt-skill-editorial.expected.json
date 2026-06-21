@@ -1,0 +1,9 @@
+{
+  "deckId": "external-003-html-ppt-skill-editorial",
+  "provenanceUrl": "https://github.com/lewislulu/html-ppt-skill/blob/main/assets/themes/editorial/preview.png",
+  "sourceLicense": "MIT",
+  "expectedSlopRisk": 82,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Editorial layout — low slop, magazine-grade hierarchy"
+}

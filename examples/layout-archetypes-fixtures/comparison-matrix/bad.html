@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Comparison-matrix — bad</title>
+<style>
+  body { font-family: "Inter", "Helvetica Neue", Georgia, monospace; margin: 16px; color: #111; background: #fafafa; }
+  h1 { font-size: 16pt; line-height: 1.0; color: #111; margin: 0 0 6px; font-family: Georgia, serif; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ddd; padding: 1px 2px; font-size: 8pt; line-height: 1.0; font-family: "Inter", sans-serif; }
+  th { background: #f4f4f4; }
+  th.a { color: #d23f3f; }
+  th.b { color: #f0a020; }
+  th.c { color: #20d090; }
+  th.d { color: #2070d0; }
+  th.e { color: #7a3fd0; }
+  th.f { color: #d23f8f; }
+  td:nth-child(1) { color: #d23f3f; }
+  td:nth-child(2) { color: #f0a020; }
+  td:nth-child(3) { color: #20d090; }
+  td:nth-child(4) { color: #2070d0; }
+  td:nth-child(5) { color: #7a3fd0; }
+  td:nth-child(6) { color: #d23f8f; }
+  .pill { display: inline-block; padding: 0 2px; border-radius: 4px; background: #7a3fd0; color: #fff; font-size: 7pt; font-family: Georgia, serif; }
+</style>
+</head>
+<body>
+  <h1>Compiler Backends Compared</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Dimension</th>
+        <th class="a">LLVM</th>
+        <th class="b">GCC</th>
+        <th class="c">MLIR</th>
+        <th class="d">Cranelift</th>
+        <th class="e">Mojo</th>
+        <th class="f">Triton</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Speed</td><td>Fast</td><td>Medium</td><td>Fast</td><td>Fast</td><td>Very fast</td><td>Very fast</td></tr>
+      <tr><td>Footprint</td><td>Large</td><td>Large</td><td>Medium</td><td>Small</td><td>Small</td><td>Medium</td></tr>
+      <tr><td>Maturity</td><td>Stable</td><td>Stable</td><td>Evolving</td><td>Evolving</td><td>Early</td><td>Stable</td></tr>
+      <tr><td>License</td><td>Apache-2</td><td>GPL</td><td>Apache-2</td><td>Apache-2</td><td>Proprietary</td><td>MIT</td></tr>
+    </tbody>
+  </table>
+  <span class="pill">winner</span>
+</body>
+</html>

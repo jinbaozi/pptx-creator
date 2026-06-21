@@ -6,8 +6,10 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
+import { preflightLayout } from "../scripts/lib/check-layout-safety.mjs";
 import { convertHtmlToManifest, layoutCards } from "../scripts/lib/html-to-manifest-core.mjs";
 import { writeManifestFromHtml } from "../scripts/html-to-manifest.mjs";
+import { parseDesignFile } from "../scripts/parse-design-md.mjs";
 
 const execFileAsync = promisify(execFile);
 const node = process.execPath;
@@ -39,6 +41,29 @@ describe("html-to-manifest", () => {
 
     const title = manifest.slides[0].elements.find((el) => el.text === "运营数据看板");
     expect(title?.style.typography).toBe("{typography.title}");
+  });
+
+  it("preserves all compiler-roadshow content without unsafe geometry", async () => {
+    const html = await readFile(join(root, "examples/design-first/compiler-roadshow-html/deck.html"), "utf8");
+    const result = convertHtmlToManifest(html, { returnMetadata: true });
+    const design = await parseDesignFile(join(root, "design-systems/dark-tech/DESIGN.md"));
+    const safety = preflightLayout(result.manifest, {
+      strict: true,
+      mode: "creative",
+      designTokens: design.tokens
+    });
+
+    expect(result.contentCoverage).toMatchObject({ sourceBlocks: 100, coveredBlocks: 100, ratio: 1, missing: [] });
+    expect(safety.summary).toMatchObject({ criticalCount: 0, warningCount: 0, blocked: false });
+  });
+
+  it("rejects semantic HTML when a text block cannot be converted", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-html-coverage-"));
+    const inputPath = join(outputDir, "input.html");
+    const manifestPath = join(outputDir, "deck.manifest.json");
+    await writeFile(inputPath, `<section class="pptx-slide"><h1>Covered</h1><code>orphan block</code></section>`, "utf8");
+
+    await expect(writeManifestFromHtml(inputPath, manifestPath)).rejects.toThrow(/HTML content coverage .*orphan block/);
   });
 
   it("keeps Chinese sample content readable", async () => {
@@ -313,6 +338,52 @@ describe("html-to-manifest", () => {
       </div>`;
     const result = convertHtmlToManifest(html, { returnMetadata: true, forceHybrid: true });
     expect(result.manifest.slides[0].path).toBe("hybrid");
+  });
+
+  it("short-circuits to measured when data-archetype resolves via slide-archetypes (U8)", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Stat">
+        <section class="pptx-slide" data-archetype="stat-callout">
+          <p data-pptx-kind="text" data-pptx-id="metric" data-x="0.7" data-y="1.7" data-w="12" data-h="2.5">99.97%</p>
+          <p data-pptx-kind="text" data-pptx-id="supportingText" data-x="0.7" data-y="4.6" data-w="12" data-h="1.2">Uptime</p>
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, {
+      returnMetadata: true,
+      preferArchetypeFromArchetypeMd: true
+    });
+    const slide = result.manifest.slides[0];
+    // The data-archetype attribute short-circuits the markers-vs-cards
+    // heuristic to "measured", and the resolver stamps the resolved
+    // archetype name + catalog root onto the slide so downstream
+    // validators can confirm the archetype's slot schema was honored.
+    expect(slide.path).toBe("measured");
+    expect(slide.archetype).toBe("stat-callout");
+    expect(slide.archetypeRoot).toBe("slide-archetypes");
+    expect(result.layoutPaths[0]).toMatchObject({
+      path: "measured",
+      archetype: "stat-callout",
+      archetypeRoot: "slide-archetypes"
+    });
+  });
+
+  it("honors --no-prefer-archetype-from-archetype-md by falling back to heuristic detection (U8)", () => {
+    const html = `
+      <div class="pptx-deck" data-deck-title="Stat">
+        <section class="pptx-slide" data-archetype="stat-callout">
+          <div class="cards" data-cols="1">
+            <div class="card"><h3>Only card</h3><p>No markers</p></div>
+          </div>
+        </section>
+      </div>`;
+    const result = convertHtmlToManifest(html, {
+      returnMetadata: true,
+      preferArchetypeFromArchetypeMd: false
+    });
+    // Without the flag, the data-archetype attribute is ignored and the
+    // markers-vs-cards heuristic decides the path.
+    expect(result.manifest.slides[0].path).toBe("auto-layout");
+    expect(result.manifest.slides[0].archetype).toBeUndefined();
   });
 
   it("force-auto-layout and force-measured flags override detection", () => {

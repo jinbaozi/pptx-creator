@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Problem-solution — bad</title>
+<style>
+  body { font-family: "Inter", "Times New Roman", monospace; margin: 16px; color: #111; background: #fafafa; }
+  h1 { font-size: 14pt; line-height: 1.0; color: #d23f3f; margin: 0 0 4px; font-family: Georgia, serif; }
+  .panes { display: flex; gap: 2px; }
+  .pane { flex: 1; padding: 1px 2px; border-radius: 2px; }
+  .problem { background: #fdecec; }
+  .solution { background: #2070d0; color: #fff; flex: 2.5; }
+  .h { font-size: 10pt; line-height: 1.0; font-weight: 800; margin: 0 0 2px; font-family: "Inter", sans-serif; }
+  .b { font-size: 7pt; line-height: 1.0; font-family: "Inter", sans-serif; }
+  .solution .h { color: #f0a020; }
+  ul { margin: 0; padding-left: 10px; }
+  li { font-size: 7pt; line-height: 1.0; }
+  .icon { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #d23f3f; margin-right: 1px; }
+  .icon.b { background: #f0a020; }
+  .icon.c { background: #20d090; }
+  .icon.d { background: #7a3fd0; }
+</style>
+</head>
+<body>
+  <h1>Why our build pipeline is slow and how to fix it</h1>
+  <div class="panes">
+    <div class="pane problem">
+      <div class="h">Problem</div>
+      <ul>
+        <li>p50 build is 142ms, way too slow</li>
+        <li>cache hit rate stuck at 78%</li>
+        <li>engineers wait 4 min per rebuild</li>
+        <li>CI cost growing 22% MoM</li>
+        <li>nightly flakes block 3% of merges</li>
+        <li>remote cache only on us-west-2</li>
+        <li>artifact retention 14 days</li>
+        <li>no incremental linking</li>
+        <li>warm cache invalidated on every PR</li>
+      </ul>
+    </div>
+    <div class="pane solution">
+      <div class="h">Solution</div>
+      <ul>
+        <li>Multi-region remote cache (3 regions)</li>
+        <li>Content-addressed artifacts</li>
+        <li>Incremental linker rollout</li>
+        <li>PR-aware cache invalidation</li>
+        <li>90-day artifact retention</li>
+        <li>Cache hit SLA dashboard</li>
+        <li>Auto-tuned hash function</li>
+        <li>Fleet-wide cache warmup</li>
+        <li>Multi-tier cache (L1/L2/L3)</li>
+        <li>Compressible payloads</li>
+        <li>Edge cache at 12 PoPs</li>
+        <li>Background warming on commit</li>
+      </ul>
+    </div>
+  </div>
+  <div>
+    <span class="icon"></span><span class="icon b"></span><span class="icon c"></span>
+    <span class="icon d"></span><span class="icon"></span><span class="icon b"></span>
+  </div>
+</body>
+</html>

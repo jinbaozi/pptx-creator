@@ -1,0 +1,8 @@
+{
+  "deckId": "internal-005-design-first",
+  "sourcePath": "../../design-first/compiler-roadshow/deck.storyboard.json",
+  "expectedSlopRisk": 65,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Mid-high — technical content with design-first planning, decent structure"
+}

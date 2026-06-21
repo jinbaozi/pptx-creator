@@ -49,6 +49,10 @@
       }
     },
     "qualityTargets": { "type": "object" },
+    "layoutSafety": {
+      "type": "string",
+      "enum": ["passed", "violated-with-flag", "violated-blocked"]
+    },
     "editabilityFloor": {
       "type": "object",
       "additionalProperties": false,
@@ -69,6 +73,21 @@
               "items": { "type": "string", "minLength": 1 }
             }
           }
+        }
+      }
+    },
+    "feedback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retryCount", "accepted", "acceptedAt"],
+      "properties": {
+        "retryCount": { "type": "integer", "minimum": 0 },
+        "accepted": {
+          "type": ["boolean", "null"]
+        },
+        "acceptedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
         }
       }
     },

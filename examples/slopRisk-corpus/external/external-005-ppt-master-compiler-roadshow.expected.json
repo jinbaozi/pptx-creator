@@ -1,0 +1,9 @@
+{
+  "deckId": "external-005-ppt-master-compiler-roadshow",
+  "provenanceUrl": "https://github.com/hugohe3/ppt-master/blob/main/examples/compiler-roadshow/preview.png",
+  "sourceLicense": "MIT",
+  "expectedSlopRisk": 80,
+  "reviewer": "calibration-author",
+  "annotatedAt": "2026-06-21",
+  "notes": "Compiler roadshow — low slop, technical content done well"
+}

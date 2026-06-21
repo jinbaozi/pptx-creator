@@ -1,0 +1,431 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../../design-systems/warm-editorial/DESIGN.md",
+    "name": "Warm Editorial",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "古籍数字化方法论白皮书",
+    "language": "zh-CN",
+    "size": {
+      "preset": "wide",
+      "width": 13.333,
+      "height": 7.5,
+      "unit": "in"
+    }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-001",
+      "type": "cover",
+      "title": "古籍数字化方法论",
+      "notes": "封面 — 课题名称、作者、年份",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [
+        {
+          "type": "text",
+          "id": "title-001",
+          "text": "古籍数字化方法论",
+          "x": 0.7,
+          "y": 0.55,
+          "w": 11.933,
+          "h": 0.75,
+          "style": {
+            "typography": "{typography.title}",
+            "color": "{colors.text}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "subtitle-002",
+          "text": "面向学术图书馆的长期保存与可检索改造实践",
+          "x": 0.7,
+          "y": 1.45,
+          "w": 11.933,
+          "h": 0.45,
+          "style": {
+            "typography": "{typography.subtitle}",
+            "color": "{colors.textMuted}"
+          }
+        }
+      ],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-002",
+      "type": "agenda",
+      "title": "",
+      "notes": "目录 — 八个章节，按阅读顺序展开",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [
+        {
+          "type": "text",
+          "id": "list-003",
+          "text": "• 缘起：为什么需要重新思考古籍数字化\n• 原则：长程保存优先于短期展示\n• 工艺：分阶段流水线与人工校对\n• 版式：从纸面到屏读的语义映射\n• 检索：知识图谱与全文索引的协作\n• 风险：版权、误识与过度自动化的代价\n• 组织：跨机构协作与责任分工\n• 展望：从“可读到”到“可被引用”的转变",
+          "x": 0.7,
+          "y": 0.55,
+          "w": 11.933,
+          "h": 2,
+          "style": {
+            "typography": "{typography.body}",
+            "color": "{colors.text}"
+          }
+        }
+      ],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-003",
+      "type": "essay",
+      "title": "",
+      "notes": "第一章 缘起 — 长段正文示范",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-004",
+      "type": "principles",
+      "title": "",
+      "notes": "第二章 原则 — 三条核心原则",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [
+        {
+          "type": "shape",
+          "id": "card-004",
+          "shape": "roundRect",
+          "x": 0.7,
+          "y": 0.55,
+          "w": 3.6776666666666666,
+          "h": 1.55,
+          "style": {
+            "component": "{components.content-card}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-title-005",
+          "text": "原则一 · 长程保存",
+          "x": 0.8999999999999999,
+          "y": 0.75,
+          "w": 3.2776666666666667,
+          "h": 0.35,
+          "style": {
+            "typography": "{typography.heading}",
+            "color": "{colors.primary}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-body-006",
+          "text": "数据格式与元数据规范应选择开放、文档完备、社区可维护的方案；不要把今天的选择变成明天的负担。",
+          "x": 0.8999999999999999,
+          "y": 1.18,
+          "w": 3.2776666666666667,
+          "h": 0.32,
+          "style": {
+            "typography": "{typography.caption}",
+            "color": "{colors.textMuted}"
+          }
+        },
+        {
+          "type": "shape",
+          "id": "card-007",
+          "shape": "roundRect",
+          "x": 4.8276666666666666,
+          "y": 0.55,
+          "w": 3.6776666666666666,
+          "h": 1.55,
+          "style": {
+            "component": "{components.content-card}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-title-008",
+          "text": "原则二 · 可追溯校对",
+          "x": 5.027666666666667,
+          "y": 0.75,
+          "w": 3.2776666666666667,
+          "h": 0.35,
+          "style": {
+            "typography": "{typography.heading}",
+            "color": "{colors.primary}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-body-009",
+          "text": "每一处自动识别都应保留对原图的指针与置信度；读者有权回到影印件核对任何一行文字。",
+          "x": 5.027666666666667,
+          "y": 1.18,
+          "w": 3.2776666666666667,
+          "h": 0.32,
+          "style": {
+            "typography": "{typography.caption}",
+            "color": "{colors.textMuted}"
+          }
+        },
+        {
+          "type": "shape",
+          "id": "card-010",
+          "shape": "roundRect",
+          "x": 8.955333333333332,
+          "y": 0.55,
+          "w": 3.6776666666666666,
+          "h": 1.55,
+          "style": {
+            "component": "{components.content-card}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-title-011",
+          "text": "原则三 · 中立呈现",
+          "x": 9.155333333333331,
+          "y": 0.75,
+          "w": 3.2776666666666667,
+          "h": 0.35,
+          "style": {
+            "typography": "{typography.heading}",
+            "color": "{colors.primary}"
+          }
+        },
+        {
+          "type": "text",
+          "id": "card-body-012",
+          "text": "界面与排版应减少隐含解读；让文本、批注、异文各自独立可见，避免把模型判断伪装成原始事实。",
+          "x": 9.155333333333331,
+          "y": 1.18,
+          "w": 3.2776666666666667,
+          "h": 0.32,
+          "style": {
+            "typography": "{typography.caption}",
+            "color": "{colors.textMuted}"
+          }
+        }
+      ],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 1,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-005",
+      "type": "pipeline",
+      "title": "",
+      "notes": "第三章 工艺 — 五阶段流水线",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [
+        {
+          "type": "text",
+          "id": "list-013",
+          "text": "• 扫描与色彩管理：采用 600 dpi 灰度为主，关键页辅以彩色；嵌入 ICC 配置以保证多年后的再现性。\n• 版面分析：基于规则与模型双轨输出，所有结果写入可读 XML，便于人工标注与回放。\n• 文字识别：对常规刻本使用通用模型，对孤本或特殊字体训练小样本适配器，避免把“漂亮答案”强加给陌生文本。\n• 人工校对：至少两位校者独立比对，差异处由第三位裁定，并形成可检索的校勘记。\n• 发布：提供网页阅读、API 访问、批量下载三档接口，附完整元数据与变更日志。",
+          "x": 0.7,
+          "y": 0.55,
+          "w": 11.933,
+          "h": 1.75,
+          "style": {
+            "typography": "{typography.body}",
+            "color": "{colors.text}"
+          }
+        }
+      ],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-006",
+      "type": "mapping",
+      "title": "",
+      "notes": "第四章 版式 — 纸面到屏读的映射",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-007",
+      "type": "retrieval",
+      "title": "",
+      "notes": "第五章 检索 — 全文与图谱的协作",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-008",
+      "type": "risks",
+      "title": "",
+      "notes": "第六章 风险 — 自动化代价",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [
+        {
+          "type": "text",
+          "id": "list-014",
+          "text": "• 版权与文化敏感：孤本、未公开馆藏、当代藏家手稿都涉及不同层级的权利；技术团队应与法务、伦委共同制定准入清单。\n• 识别误差的传播：模型一旦把错字写进索引，错字就获得了“被检索到的资格”；建议所有自动结果保留置信度低标记，并默认不被外链抓取。\n• 过度自动化的叙事：把“已数字化”包装成“已理解”会误导读者；面向公众的页面应明确说明每个数字版本的局限与适用范围。",
+          "x": 0.7,
+          "y": 0.55,
+          "w": 11.933,
+          "h": 1.0499999999999998,
+          "style": {
+            "typography": "{typography.body}",
+            "color": "{colors.text}"
+          }
+        }
+      ],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-009",
+      "type": "organization",
+      "title": "",
+      "notes": "第七章 组织 — 跨机构协作",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-010",
+      "type": "outlook",
+      "title": "",
+      "notes": "第八章 展望 — 从可读到可被引用",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    },
+    {
+      "id": "slide-011",
+      "type": "closing",
+      "title": "",
+      "notes": "收束 — 联络与版权",
+      "background": {
+        "type": "solid",
+        "color": "{colors.background}"
+      },
+      "elements": [],
+      "path": "auto-layout",
+      "markers": 0,
+      "autoLayoutContainers": 0,
+      "paletteResolution": {
+        "matches": [],
+        "unmapped": [],
+        "paletteMatch": 1,
+        "skipped": false
+      }
+    }
+  ],
+  "_paletteResolution": {
+    "matches": [],
+    "unmapped": [],
+    "paletteMatch": 1,
+    "skipped": false
+  }
+}

@@ -92,7 +92,13 @@ function addLine(slide, element, design) {
     y: element.y,
     w: element.w,
     h: element.h,
-    line: { color: hex(style.color, design.tokens.colors.primary), width: style.width ?? 1.5 }
+    line: {
+      color: hex(style.color, design.tokens.colors.primary),
+      width: style.width ?? 1.5,
+      ...(style.beginArrowType ? { beginArrowType: style.beginArrowType } : {}),
+      ...(style.endArrowType ? { endArrowType: style.endArrowType } : {}),
+      ...(style.dash ? { dash: style.dash } : {})
+    }
   });
 }
 

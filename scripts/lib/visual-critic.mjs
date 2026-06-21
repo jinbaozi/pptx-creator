@@ -1,5 +1,8 @@
 const DEFAULT_SIZE = { width: 13.333, height: 7.5 };
 
+import { scoreSlopRisk } from "./slop-risk.mjs";
+import { checkBounds, checkFontSize } from "./check-layout-safety.mjs";
+
 function number(value, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -50,7 +53,7 @@ function safeNumber(value, fallback = null) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function scoreSlide(slide, deckSize, adjustments) {
+function scoreSlide(slide, deckSize, adjustments, designTokens = {}) {
   const issues = [];
   const repairs = [];
   const elements = slide.elements || [];
@@ -60,13 +63,9 @@ function scoreSlide(slide, deckSize, adjustments) {
     const y = number(el.y);
     const w = number(el.w);
     const h = number(el.h);
-    if (x < 0 || y < 0 || x + w > deckSize.width || y + h > deckSize.height) {
-      addIssue(issues, {
-        severity: "high",
-        type: "bounds",
-        message: `Element ${el.id} exceeds slide bounds.`,
-        target: el.id
-      });
+    const boundsIssue = checkBounds(el, deckSize);
+    if (boundsIssue) {
+      addIssue(issues, boundsIssue);
       repairs.push({
         action: "resize",
         target: el.id,
@@ -95,18 +94,15 @@ function scoreSlide(slide, deckSize, adjustments) {
       }
     }
     if (el.type === "text") {
-      const fontSize = number(el.style?.fontSize, 16);
-      if (fontSize < 11) {
-        addIssue(issues, {
-          severity: "medium",
-          type: "font-size",
-          message: `Element ${el.id} uses font size below 11pt.`,
-          target: el.id
-        });
+      const fontSizeIssue = checkFontSize(el, designTokens);
+      if (fontSizeIssue) {
+        addIssue(issues, fontSizeIssue);
+        const resolvedFontSize = number(el.style?.fontSize, 16);
+        const repairTarget = resolvedFontSize < 16 ? 16 : Math.max(resolvedFontSize, 11);
         repairs.push({
           action: "updateStyle",
           target: el.id,
-          params: { fontSize: 11 }
+          params: { fontSize: repairTarget }
         });
       }
     }
@@ -168,7 +164,12 @@ function scoreSlide(slide, deckSize, adjustments) {
     variety: 80,
     editability: elements.some((el) => el.type === "image") ? 78 : 95,
     designSystemFit: 82,
-    compatibility: 90
+    compatibility: 90,
+    // 9th dimension. NOT included in the penalty sum above (per U3 R7
+    // and visual-critic design: slopRisk is reported alongside, not as
+    // a multiplicative tax on the per-slide score). 0 by default;
+    // reviewManifest() injects the real value before emitting.
+    slopRisk: 0
   };
   if (adjustments) {
     scores.alignment = Math.max(0, scores.alignment - (adjustments.alignment || 0));
@@ -184,16 +185,42 @@ function scoreSlide(slide, deckSize, adjustments) {
   };
 }
 
-export function reviewManifest(manifest, options = {}, consistencyReport = null) {
+export function reviewManifest(manifest, options = {}, consistencyReport = null, slopRiskReport = null) {
   const deckSize = manifest.deck?.size || DEFAULT_SIZE;
   const adjustments = consistencyAdjustments(consistencyReport);
-  const slides = (manifest.slides || []).map((slide) => scoreSlide(slide, deckSize, adjustments));
+  const designTokens = manifest?.designSystem?.tokens ?? {};
+  // Per-slide slopRisk scoring. If a deck-level slopRiskReport is provided
+  // (e.g. from `scripts/run-slop-risk.mjs`), distribute it evenly to every
+  // slide; otherwise fall back to calling scoreSlopRisk per slide.
+  const perSlideSlop = new Map();
+  if (slopRiskReport && typeof slopRiskReport === "object" && Array.isArray(slopRiskReport.slides)) {
+    for (const entry of slopRiskReport.slides) {
+      perSlideSlop.set(entry.id ?? "(unknown)", entry);
+    }
+  }
+  const slides = (manifest.slides || []).map((slide) => {
+    const result = scoreSlide(slide, deckSize, adjustments, designTokens);
+    let slopEntry = perSlideSlop.get(slide.id);
+    if (!slopEntry) {
+      const fallback = scoreSlopRisk({ slides: [slide] }, designTokens);
+      slopEntry = { id: slide.id, score: fallback.score, signals: fallback.signals };
+    }
+    result.scores.slopRisk = slopEntry.score;
+    if (Array.isArray(slopEntry.signals)) {
+      result.slopSignals = slopEntry.signals;
+    }
+    return result;
+  });
   const deckScore = slides.length
     ? Math.round(slides.reduce((sum, slide) => sum + slide.score, 0) / slides.length)
+    : 0;
+  const slopRiskDeck = slides.length
+    ? Math.round(slides.reduce((sum, slide) => sum + (slide.scores.slopRisk ?? 0), 0) / slides.length)
     : 0;
   const review = {
     mode: options.mode || "creative",
     deckScore,
+    slopRisk: slopRiskDeck,
     slides
   };
   if (consistencyReport) {

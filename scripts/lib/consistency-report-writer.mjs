@@ -22,7 +22,7 @@
  *    structural shape only — pass content and section order — not the
  *    report-level header line.
  *
- *  - Markdown structure: one `##` section per dimension (8 sections total,
+ *  - Markdown structure: one `##` section per dimension (9 sections total,
  *    always present regardless of input type). Each section opens with a
  *    pass/warn/fail glyph, the dimension name, and either a one-line
  *    summary or a list of contributing element IDs.
@@ -62,7 +62,7 @@ export async function loadBatchSchema() {
   return _batchSchema;
 }
 
-// 8 dimensions, always emitted in this order.
+// 10 dimensions, always emitted in this order.
 export const DIMENSION_SECTIONS = [
   "inputSource",
   "editabilityLevel",
@@ -70,7 +70,9 @@ export const DIMENSION_SECTIONS = [
   "fontFallback",
   "paletteMatch",
   "rasterizedRegions",
+  "layoutSafety",
   "editabilityFloor",
+  "slopRisk",
   "previewDiff"
 ];
 
@@ -245,6 +247,9 @@ export async function validateBatchReport(report) {
  *     If absent, the field is omitted (so byte-equality across runs holds).
  *   - version: optional schema/doc version (default '0.1.0').
  *   - qualityTargets: optional object copied through as-is.
+ *   - layoutSafety: optional string, one of `'passed' | 'violated-with-flag' | 'violated-blocked'`.
+ *     If omitted, the field is omitted from the JSON output (strict-soft
+ *     convention: optional field, missing means `_not measured_` in markdown).
  *   - editabilityFloor: optional `{ level, floorViolation: { pipelineCausal, sourceCausal } }`.
  *     If omitted, an empty-arrays default is used.
  *
@@ -302,9 +307,27 @@ export function buildConsistencyReport(manifest, intermediate, options = {}) {
   report.fontFallback = fontFallback;
   report.paletteMatch = paletteMatch;
   report.rasterizedRegions = rasterizedRegions;
+  if (options.layoutSafety !== undefined) report.layoutSafety = options.layoutSafety;
+  if (options.slopRisk !== undefined) report.slopRisk = options.slopRisk;
   report.qualityTargets = options.qualityTargets ?? {};
   report.editabilityFloor = editabilityFloor;
   report.previewDiff = previewDiff;
+
+  // R22 / U10: optional `feedback` block (workbench termination signals).
+  // Defaults: retryCount=0, accepted=null, acceptedAt=null. When the caller
+  // omits the option, the block is omitted entirely so byte-equality across
+  // runs is preserved for callers that don't care.
+  if (options.feedback !== undefined) {
+    const raw = options.feedback ?? {};
+    const retryCount = Number.isInteger(raw.retryCount) && raw.retryCount >= 0 ? raw.retryCount : 0;
+    const accepted = raw.accepted === true || raw.accepted === false || raw.accepted === null ? raw.accepted : null;
+    const acceptedAt = typeof raw.acceptedAt === "string" ? raw.acceptedAt : null;
+    report.feedback = {
+      retryCount,
+      accepted,
+      acceptedAt
+    };
+  }
 
   if (options.createdAt) {
     report.createdAt = options.createdAt;
@@ -426,6 +449,13 @@ function sectionBody(section, report, intermediate) {
           `- ${region.slideId}/${region.elementId}: ${(region.areaPct * 100).toFixed(1)}% — ${region.reason}${region.recoverable ? " (recoverable)" : ""}`
       );
     }
+    case "layoutSafety": {
+      const value = report.layoutSafety;
+      if (value === undefined || value === null) {
+        return [NOT_MEASURED];
+      }
+      return [`- Layout safety: ${value}`];
+    }
     case "editabilityFloor": {
       const floor = report.editabilityFloor ?? { level: report.editabilityLevel, floorViolation: { pipelineCausal: [], sourceCausal: [] } };
       const out = [`- Floor level: ${floor.level}`];
@@ -438,6 +468,28 @@ function sectionBody(section, report, intermediate) {
         if (source.length > 0) out.push(`- Source-causal: ${source.join(", ")}`);
       }
       return out;
+    }
+    case "slopRisk": {
+      const value = report.slopRisk;
+      if (value === undefined || value === null) {
+        return [NOT_MEASURED];
+      }
+      if (typeof value === "number") {
+        return [`- slopRisk: ${value}/100 (0 = clean, 100 = pure slop)`];
+      }
+      // Object form: { score, signals }
+      if (typeof value === "object" && typeof value.score === "number") {
+        const out = [`- slopRisk: ${value.score}/100 (0 = clean, 100 = pure slop)`];
+        if (Array.isArray(value.signals)) {
+          for (const signal of value.signals) {
+            if (signal && signal.weight > 0) {
+              out.push(`- ${signal.id}: weight ${signal.weight}, count ${signal.count}`);
+            }
+          }
+        }
+        return out;
+      }
+      return [NOT_MEASURED];
     }
     case "previewDiff": {
       const preview = report.previewDiff;
@@ -472,12 +524,20 @@ function sectionBody(section, report, intermediate) {
 export function buildConsistencyBatch(entries, options = {}) {
   const sortedEntries = [...entries].sort((a, b) => a.path.localeCompare(b.path));
   const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const layoutSafetyDistribution = {
+    passed: 0,
+    "violated-with-flag": 0,
+    "violated-blocked": 0,
+    unknown: 0
+  };
   let driftTotal = 0;
   let driftCount = 0;
   let fontFallbackHits = 0;
   let fontElementCount = 0;
   let paletteTotal = 0;
   let paletteCount = 0;
+  let slopRiskTotal = 0;
+  let slopRiskCount = 0;
   let failed = 0;
 
   for (const { report } of sortedEntries) {
@@ -497,6 +557,22 @@ export function buildConsistencyBatch(entries, options = {}) {
       paletteTotal += report.paletteMatch;
       paletteCount += 1;
     }
+    // Layout safety per-deck status distribution.
+    if (report.layoutSafety === "passed") layoutSafetyDistribution.passed += 1;
+    else if (report.layoutSafety === "violated-with-flag") layoutSafetyDistribution["violated-with-flag"] += 1;
+    else if (report.layoutSafety === "violated-blocked") layoutSafetyDistribution["violated-blocked"] += 1;
+    else layoutSafetyDistribution.unknown += 1;
+    // slopRisk numeric average. The per-deck field is either a number
+    // (deck-level score injected by run-deck-pipeline) or an object with
+    // { score, signals } (from visual-critic). Accept both shapes.
+    const slop = report.slopRisk;
+    if (typeof slop === "number" && Number.isFinite(slop)) {
+      slopRiskTotal += slop;
+      slopRiskCount += 1;
+    } else if (slop && typeof slop === "object" && typeof slop.score === "number" && Number.isFinite(slop.score)) {
+      slopRiskTotal += slop.score;
+      slopRiskCount += 1;
+    }
     if (pipelineViol + sourceViol > 0) failed += 1;
   }
 
@@ -515,7 +591,9 @@ export function buildConsistencyBatch(entries, options = {}) {
     averageCoordinateDriftPx: driftCount === 0 ? 0 : Number((driftTotal / driftCount).toFixed(3)),
     fontFallbackRate: fontElementCount === 0 ? 0 : Number((fontFallbackHits / fontElementCount).toFixed(3)),
     paletteMatch: paletteCount === 0 ? 0 : Number((paletteTotal / paletteCount).toFixed(3)),
-    perDeckReports: sortedEntries.map((entry) => entry.path)
+    perDeckReports: sortedEntries.map((entry) => entry.path),
+    layoutSafetyDistribution,
+    averageSlopRisk: slopRiskCount === 0 ? 0 : Number((slopRiskTotal / slopRiskCount).toFixed(2))
   };
 
   if (options.createdAt) batch.createdAt = options.createdAt;

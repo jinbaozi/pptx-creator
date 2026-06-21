@@ -48,7 +48,10 @@ function expandLayered(element) {
     if (layerIndex < layers.length - 1) {
       output.push(line(element, `connector-${layerIndex}`, element.x + element.w / 2, y + layerHeight, 0, gap, {
         color: "#667085",
-        width: 1
+        width: 1,
+        endArrowType: "triangle",
+        sourceId: `${element.id}__layer-${layerIndex}`,
+        targetId: `${element.id}__layer-${layerIndex + 1}`
       }));
     }
   });

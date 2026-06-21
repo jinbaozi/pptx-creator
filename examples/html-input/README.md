@@ -9,21 +9,18 @@
 | `layout-measurements.json` | Golden Playwright measurements |
 | `deck.manifest.json` | Pre-built manifest from semantic HTML |
 
-## Semantic HTML pipeline
+## Guarded HTML pipeline
 
 ```powershell
 cd pptx-creator
-node scripts/html-to-manifest.mjs examples/html-input/one-page-dashboard.html output/html-semantic.manifest.json
-node scripts/run-deck-pipeline.mjs output/html-semantic.manifest.json output/html-semantic
+npm run pipeline:html -- examples/html-input/one-page-dashboard.html output/html-semantic
 ```
 
 ## CSS measurement pipeline
 
 ```powershell
 npx playwright install chromium
-node scripts/measure-html.mjs examples/html-input/css-positioned-dashboard.html output/layout-measurements.json
-node scripts/html-to-manifest.mjs examples/html-input/css-positioned-dashboard.html output/html-css.manifest.json --measurements output/layout-measurements.json
-node scripts/run-deck-pipeline.mjs output/html-css.manifest.json output/html-css
+npm run pipeline:html -- examples/html-input/css-positioned-dashboard.html output/html-css
 ```
 
 ## Notes

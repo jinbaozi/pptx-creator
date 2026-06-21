@@ -1,0 +1,66 @@
+{
+  "version": "0.1.1",
+  "designSystem": {
+    "source": "../../design-systems/business-neutral/DESIGN.md",
+    "name": "Business Neutral",
+    "mode": "balanced"
+  },
+  "deck": {
+    "title": "Archetype Example — Quote",
+    "language": "en-US",
+    "size": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" }
+  },
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-quote-example",
+      "type": "quote",
+      "archetype": "quote",
+      "title": "Customer voice",
+      "notes": "",
+      "background": { "type": "solid", "color": "#FFFFFF" },
+      "elements": [
+        {
+          "type": "text",
+          "id": "decoration",
+          "x": 0.8,
+          "y": 0.7,
+          "w": 1.5,
+          "h": 1.5,
+          "text": "\"",
+          "style": { "fontSize": 120, "color": "{colors.primary}", "typography": "{typography.title}" }
+        },
+        {
+          "type": "text",
+          "id": "quote",
+          "x": 2.0,
+          "y": 2.3,
+          "w": 9.5,
+          "h": 3.0,
+          "text": "We rebuilt the rollout pipeline in three weeks and our deploys have not failed since.",
+          "style": { "fontSize": 32, "color": "{colors.text}", "typography": "{typography.quote}" }
+        },
+        {
+          "type": "text",
+          "id": "attribution",
+          "x": 2.0,
+          "y": 5.5,
+          "w": 9.5,
+          "h": 0.4,
+          "text": "— Priya Nair",
+          "style": { "fontSize": 16, "color": "{colors.text}", "typography": "{typography.subtitle}" }
+        },
+        {
+          "type": "text",
+          "id": "attributionRole",
+          "x": 2.0,
+          "y": 5.95,
+          "w": 9.5,
+          "h": 0.4,
+          "text": "VP Platform Engineering, Northwind Co.",
+          "style": { "fontSize": 12, "color": "{colors.muted}", "typography": "{typography.caption}" }
+        }
+      ]
+    }
+  ]
+}

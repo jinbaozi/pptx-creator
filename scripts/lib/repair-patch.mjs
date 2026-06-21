@@ -1,4 +1,13 @@
-const SUPPORTED = new Set(["move", "resize", "updateStyle", "updateText", "removeElement"]);
+const SUPPORTED = new Set([
+  "move",
+  "resize",
+  "updateStyle",
+  "updateText",
+  "removeElement",
+  "increaseSpacing",
+  "reduceDensity",
+  "adjustStyle"
+]);
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -49,6 +58,29 @@ export function applyRepairPatch(manifest, repairPatch) {
       if (typeof changes.text !== "string") throw new Error("updateText requires changes.text");
       element.text = changes.text;
     }
+    if (patch.operation === "increaseSpacing") {
+      const padding = changes.padding ?? "spacing.md";
+      const numeric = parseFloat(padding);
+      const value = Number.isFinite(numeric) ? numeric : 0.5;
+      element.style = element.style || {};
+      const existingPad = typeof element.style.padding === "number" ? element.style.padding : 0;
+      element.style.padding = Math.max(existingPad, value);
+    }
+    if (patch.operation === "reduceDensity") {
+      // Best-effort: requires children list. Manifest elements don't carry a
+      // `children` array, so we cannot thin them out deterministically. Log
+      // the intent and let the caller re-render with a denser-aware layout.
+      console.warn(
+        `[repair-patch] reduceDensity is a no-op on element ${patch.targetElementId}; ` +
+          "manifest elements carry no children list."
+      );
+    }
+    if (patch.operation === "adjustStyle") {
+      const styleChanges = (changes && typeof changes.style === "object" && changes.style) || {};
+      element.style = { ...(element.style || {}), ...styleChanges };
+    }
   }
   return next;
 }
+
+export { SUPPORTED };
