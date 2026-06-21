@@ -354,4 +354,60 @@ describe("consistency-report-writer", () => {
       }
     });
   });
+
+  describe("feedback block (U10 / R22)", () => {
+    it("omits the feedback block by default so byte-equality across runs is preserved", () => {
+      const a = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, { inputType: "html", inputSource: "demo.html" });
+      const b = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, { inputType: "html", inputSource: "demo.html" });
+      expect(a.json).toBe(b.json);
+      expect(a.json.includes("feedback")).toBe(false);
+    });
+
+    it("round-trips feedback: null into an empty defaults block", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        feedback: null
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.feedback).toEqual({ retryCount: 0, accepted: null, acceptedAt: null });
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("round-trips feedback: {retryCount: 2, accepted: null, acceptedAt: null}", async () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        feedback: { retryCount: 2, accepted: null, acceptedAt: null }
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.feedback).toEqual({ retryCount: 2, accepted: null, acceptedAt: null });
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("round-trips feedback: {retryCount: 3, accepted: true, acceptedAt: ISO}", async () => {
+      const iso = "2026-06-21T00:00:00.000Z";
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        feedback: { retryCount: 3, accepted: true, acceptedAt: iso }
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.feedback).toEqual({ retryCount: 3, accepted: true, acceptedAt: iso });
+      const result = await validatePerDeckReport(parsed);
+      expect(result.valid).toBe(true);
+    });
+
+    it("clamps non-integer retryCount to 0", () => {
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, FULL_INTERMEDIATE, {
+        inputType: "html",
+        inputSource: "demo.html",
+        feedback: { retryCount: "two", accepted: null, acceptedAt: null }
+      });
+      const parsed = JSON.parse(json);
+      expect(parsed.feedback.retryCount).toBe(0);
+    });
+  });
 });

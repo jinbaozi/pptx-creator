@@ -10,7 +10,8 @@ const panels = {
   "preview-artifacts": document.querySelector("#preview-artifacts"),
   "vision-review": document.querySelector("#vision-review"),
   "repair-patch": document.querySelector("#repair-patch"),
-  "consistency-report": document.querySelector("#consistency-report-panel")
+  "consistency-report": document.querySelector("#consistency-report-panel"),
+  "visual-quality": document.querySelector("#visual-quality-panel")
 };
 
 const renderers = {
@@ -37,10 +38,12 @@ input?.addEventListener("change", async (event) => {
 // /output/). When the file is missing, the panel shows a guidance message.
 document.addEventListener("DOMContentLoaded", () => {
   loadConsistencyReportFromFetch();
+  loadVisualQualityReportFromFetch();
 });
 
 if (typeof window !== "undefined" && document.readyState !== "loading") {
   loadConsistencyReportFromFetch();
+  loadVisualQualityReportFromFetch();
 }
 
 async function loadConsistencyReportFromFetch() {
@@ -254,6 +257,18 @@ if (typeof window !== "undefined") {
     return html;
   };
   window.evaluateConsistencyCells = evaluateConsistencyCells;
+  // --- visual quality exports (U10) ---
+  window.renderVisualQualityReport = function (visualReviewJson, layoutSafetyJson, errors) {
+    const panel = panels["visual-quality"];
+    if (!panel) return null;
+    panel.dataset.manualOverride = "true";
+    const html = renderVisualQualityReportHtml(visualReviewJson, layoutSafetyJson, errors ?? {});
+    panel.innerHTML = html;
+    return html;
+  };
+  window.evaluateVisualQualityCells = evaluateVisualQualityCells;
+  window.renderTerminationSignals = renderTerminationSignals;
+  window.activateTab = activateTab;
 }
 
 function renderConsistencyReportHtml(report) {
@@ -373,6 +388,12 @@ function bindConsistencyCellHandlers(cells) {
     const handler = () => {
       const cell = cells.find((entry) => entry.key === key);
       if (!cell || !detail) return;
+      // Deeplink: the 9th (layoutSafety) cell in the consistency report
+      // switches to the Visual Quality tab instead of expanding inline.
+      if (key === "layoutSafety") {
+        activateTab("visual-quality");
+        return;
+      }
       const isExpanded = node.getAttribute("aria-expanded") === "true";
       const next = !isExpanded;
       panel.querySelectorAll(".cell").forEach((other) => other.setAttribute("aria-expanded", "false"));
@@ -398,4 +419,244 @@ function bindConsistencyCellHandlers(cells) {
 function formatCellDetail(cell, key) {
   const payload = cell.raw;
   return JSON.stringify({ key, label: payload.label, display: payload.display, tone: payload.tone }, null, 2);
+}
+
+// --- visual quality tab (U10) ------------------------------------------------
+
+const VISUAL_QUALITY_LAYOUT_SAFETY_KINDS = [
+  "bounds",
+  "overlap",
+  "font-too-small",
+  "line-height-too-tight",
+  "text-overflow",
+  "card-spacing-tight",
+  "contrast-fail",
+  "letter-spacing-too-tight"
+];
+
+// --- visual quality loaders / state machine ---------------------------------
+
+/**
+ * Fetch both `output/visual-review.json` and `output/layout-safety-report.json`
+ * in parallel and render the resulting state matrix into the panel. The state
+ * matrix covers: both files missing, one file missing, malformed JSON, and
+ * the success path.
+ */
+async function loadVisualQualityReportFromFetch() {
+  const panel = panels["visual-quality"];
+  if (!panel || !window.fetch) return;
+  if (panel.dataset.manualOverride === "true") return;
+  // Loading state: spinner placeholder.
+  panel.innerHTML = renderVisualQualityLoading();
+  if (panel.dataset.manualOverride === "true") return;
+
+  let visualReview = null;
+  let layoutSafety = null;
+  let visualReviewError = null;
+  let layoutSafetyError = null;
+
+  const [visualResponse, layoutResponse] = await Promise.all([
+    fetch("./output/visual-review.json", { cache: "no-store" }).catch((error) => ({ __error: error })),
+    fetch("./output/layout-safety-report.json", { cache: "no-store" }).catch((error) => ({ __error: error }))
+  ]);
+
+  if (panel.dataset.manualOverride === "true") return;
+
+  // visual-review parsing
+  if (visualResponse && visualResponse.__error) {
+    visualReviewError = visualResponse.__error?.message ?? "fetch failed";
+  } else if (visualResponse && visualResponse.status === 404) {
+    visualReviewError = "404";
+  } else if (visualResponse && !visualResponse.ok) {
+    visualReviewError = `HTTP ${visualResponse.status}`;
+  } else if (visualResponse && typeof visualResponse.json === "function") {
+    try {
+      visualReview = await visualResponse.json();
+    } catch (error) {
+      visualReviewError = error?.message ?? "malformed JSON";
+    }
+  }
+
+  // layout-safety parsing
+  if (layoutResponse && layoutResponse.__error) {
+    layoutSafetyError = layoutResponse.__error?.message ?? "fetch failed";
+  } else if (layoutResponse && layoutResponse.status === 404) {
+    layoutSafetyError = "404";
+  } else if (layoutResponse && !layoutResponse.ok) {
+    layoutSafetyError = `HTTP ${layoutResponse.status}`;
+  } else if (layoutResponse && typeof layoutResponse.json === "function") {
+    try {
+      layoutSafety = await layoutResponse.json();
+    } catch (error) {
+      layoutSafetyError = error?.message ?? "malformed JSON";
+    }
+  }
+
+  if (panel.dataset.manualOverride === "true") return;
+  panel.innerHTML = renderVisualQualityReportHtml(visualReview, layoutSafety, {
+    visualReviewError,
+    layoutSafetyError
+  });
+  // Load consistency report too so we can render termination signals + deeplink.
+  loadVisualQualityTerminationSignals();
+}
+
+/**
+ * Re-render the visual-quality panel with termination signals derived from
+ * the consistency report's `feedback` block. Called by the consistency report
+ * auto-loader (and by manual renderConsistencyReport overrides).
+ */
+function loadVisualQualityTerminationSignals() {
+  const panel = panels["visual-quality"];
+  if (!panel || !window.fetch) return;
+  fetch("./output/consistency-report.json", { cache: "no-store" })
+    .then((response) => (response && response.ok ? response.json() : null))
+    .then((report) => {
+      if (panel.dataset.manualOverride === "true") return;
+      if (!report) return;
+      const feedback = report.feedback;
+      if (!feedback) return;
+      const banner = renderTerminationSignals(feedback);
+      if (!banner) return;
+      // Prepend banner to the existing panel content.
+      panel.innerHTML = banner + panel.innerHTML;
+    })
+    .catch(() => {
+      // Termination signals are best-effort; never fail the panel.
+    });
+}
+
+function renderVisualQualityLoading() {
+  return `<div class="consistency-empty">Loading visual quality reports&hellip;</div>`;
+}
+
+function renderVisualQualityReportHtml(visualReviewJson, layoutSafetyJson, errors = {}) {
+  const visualError = errors.visualReviewError ?? null;
+  const layoutError = errors.layoutSafetyError ?? null;
+
+  // State matrix: both files missing
+  if (visualError === "404" && layoutError === "404") {
+    return `<div class="consistency-empty">Run \`npm run pipeline\` first to generate <code>output/visual-review.json</code> and <code>output/layout-safety-report.json</code>.</div>`;
+  }
+  // State matrix: one file missing — distinguish which one
+  if (visualError === "404" || layoutError === "404") {
+    // visual-review.json holds slopRisk; layout-safety-report.json holds layout safety.
+    const missing = visualError === "404" ? "slopRisk not measured" : "Layout safety not measured";
+    return `<div class="consistency-empty">${escapeHtml(missing)} &mdash; run \`npm run pipeline\` to generate the missing report.</div>`;
+  }
+  // State matrix: malformed JSON
+  if (visualError || layoutError) {
+    const detail = visualError
+      ? `visual-review.json: ${escapeHtml(visualError)}`
+      : `layout-safety-report.json: ${escapeHtml(layoutError)}`;
+    return `<div class="consistency-empty">Report file is malformed &mdash; see console.<br><code>${detail}</code></div>`;
+  }
+  if (!visualReviewJson && !layoutSafetyJson) {
+    return renderVisualQualityLoading();
+  }
+  if (!visualReviewJson || typeof visualReviewJson !== "object") {
+    return `<div class="consistency-empty">visual-review.json is empty or not an object.</div>`;
+  }
+  if (!layoutSafetyJson || typeof layoutSafetyJson !== "object") {
+    return `<div class="consistency-empty">layout-safety-report.json is empty or not an object.</div>`;
+  }
+
+  const cells = evaluateVisualQualityCells(visualReviewJson, layoutSafetyJson);
+  const meta = `
+    <p class="meta">slopRisk ${escapeHtml(String(visualReviewJson.slopRisk ?? "n/a"))} · layout-safety critical ${escapeHtml(String(layoutSafetyJson?.summary?.criticalCount ?? 0))} / warning ${escapeHtml(String(layoutSafetyJson?.summary?.warningCount ?? 0))}</p>
+  `;
+  const grid = `
+    <div class="consistency-grid">
+      ${cells.map((entry) => `
+        <div class="cell ${entry.tone}" data-cell="${escapeHtml(entry.key)}">
+          <span class="cell-label">${escapeHtml(entry.label)}</span>
+          <span class="cell-value">${escapeHtml(entry.display)}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+  return meta + grid;
+}
+
+// --- visual quality cell evaluation ----------------------------------------
+
+/**
+ * Compute the per-cell tone grid for the Visual Quality tab. The two
+ * parallel grids are: (1) a single slopRisk cell with thresholds
+ *   - slopRisk >= 75 -> fail
+ *   - slopRisk >= 40 -> warn
+ *   - slopRisk <  40 -> pass
+ * and (2) one cell per layout-safety `kind`, where the cell tone is the
+ * worst severity present for that kind (critical -> fail,
+ * warning -> warn, none -> pass).
+ */
+function evaluateVisualQualityCells(visualReviewJson, layoutSafetyJson) {
+  const slopRisk = numericOrNull(visualReviewJson?.slopRisk);
+  const slopDisplay = slopRisk === null ? "n/a" : `${slopRisk}/100`;
+  const slopTone = slopRisk === null
+    ? "warn"
+    : slopRisk >= 75
+      ? "fail"
+      : slopRisk >= 40
+        ? "warn"
+        : "pass";
+
+  const cells = [cell("slopRisk", "slopRisk", slopDisplay, slopTone)];
+
+  const checks = Array.isArray(layoutSafetyJson?.checks) ? layoutSafetyJson.checks : [];
+  for (const kind of VISUAL_QUALITY_LAYOUT_SAFETY_KINDS) {
+    const matching = checks.filter((entry) => entry && entry.kind === kind);
+    const hasCritical = matching.some((entry) => entry.severity === "critical");
+    const hasWarning = matching.some((entry) => entry.severity === "warning");
+    const tone = hasCritical ? "fail" : hasWarning ? "warn" : "pass";
+    const display = matching.length === 0
+      ? "none"
+      : hasCritical
+        ? `${matching.length} critical`
+        : `${matching.length} warning`;
+    cells.push(cell(kind, kindLabel(kind), display, tone));
+  }
+  return cells;
+}
+
+function kindLabel(kind) {
+  switch (kind) {
+    case "bounds": return "Bounds";
+    case "overlap": return "Overlap";
+    case "font-too-small": return "Font size";
+    case "line-height-too-tight": return "Line height";
+    case "text-overflow": return "Text overflow";
+    case "card-spacing-tight": return "Card spacing";
+    case "contrast-fail": return "Contrast";
+    case "letter-spacing-too-tight": return "Letter spacing";
+    default: return kind;
+  }
+}
+
+// --- termination signals (U10 / R22) ---------------------------------------
+
+/**
+ * Render the termination-signal banner from the consistency report's
+ * `feedback` block. Returns an empty string when there's nothing to
+ * render.
+ *   - accepted: true   -> muted checkmark
+ *   - retryCount > 0   -> "Attempt N of 3" banner
+ *   - retryCount >= 3  -> red banner
+ */
+function renderTerminationSignals(feedback) {
+  if (!feedback || typeof feedback !== "object") return "";
+  const retryCount = Number.isFinite(feedback.retryCount) ? feedback.retryCount : 0;
+  const accepted = feedback.accepted === true;
+  const acceptedAt = typeof feedback.acceptedAt === "string" ? feedback.acceptedAt : null;
+
+  const parts = [];
+  if (accepted) {
+    const stamp = acceptedAt ? ` at ${escapeHtml(acceptedAt)}` : "";
+    parts.push(`<p class="termination-signal termination-accepted" data-signal="accepted">Accepted${escapeHtml(stamp)} ✓</p>`);
+  }
+  if (retryCount > 0) {
+    const cls = retryCount >= 3 ? "termination-signal termination-fail" : "termination-signal termination-warn";
+    parts.push(`<p class="${cls}" data-signal="retry">Attempt ${retryCount} of 3</p>`);
+  }
+  return parts.join("");
 }

@@ -285,6 +285,34 @@ code {
   background: #fbfcfe;
 }
 
+/* Termination-signal banners (U10) — reuse the cell tone palette. */
+.termination-signal {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.termination-accepted {
+  background: #e0e7ef;
+  border-color: #c7d2e0;
+  color: #172033;
+}
+
+.termination-warn {
+  background: #fff9c4;
+  border-color: #ffe082;
+  color: #92400e;
+}
+
+.termination-fail {
+  background: #ffcdd2;
+  border-color: #ef9a9a;
+  color: #b91c1c;
+}
+
 @media (max-width: 820px) {
   .topbar {
     display: grid;

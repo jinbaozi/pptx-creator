@@ -76,6 +76,21 @@
         }
       }
     },
+    "feedback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retryCount", "accepted", "acceptedAt"],
+      "properties": {
+        "retryCount": { "type": "integer", "minimum": 0 },
+        "accepted": {
+          "type": ["boolean", "null"]
+        },
+        "acceptedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    },
     "previewDiff": {
       "type": "object",
       "additionalProperties": false,

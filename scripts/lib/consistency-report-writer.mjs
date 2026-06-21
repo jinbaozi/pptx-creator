@@ -313,6 +313,22 @@ export function buildConsistencyReport(manifest, intermediate, options = {}) {
   report.editabilityFloor = editabilityFloor;
   report.previewDiff = previewDiff;
 
+  // R22 / U10: optional `feedback` block (workbench termination signals).
+  // Defaults: retryCount=0, accepted=null, acceptedAt=null. When the caller
+  // omits the option, the block is omitted entirely so byte-equality across
+  // runs is preserved for callers that don't care.
+  if (options.feedback !== undefined) {
+    const raw = options.feedback ?? {};
+    const retryCount = Number.isInteger(raw.retryCount) && raw.retryCount >= 0 ? raw.retryCount : 0;
+    const accepted = raw.accepted === true || raw.accepted === false || raw.accepted === null ? raw.accepted : null;
+    const acceptedAt = typeof raw.acceptedAt === "string" ? raw.acceptedAt : null;
+    report.feedback = {
+      retryCount,
+      accepted,
+      acceptedAt
+    };
+  }
+
   if (options.createdAt) {
     report.createdAt = options.createdAt;
   }

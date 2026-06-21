@@ -213,9 +213,31 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   // consistency-report: always emitted (previewDiff deferred when LO missing)
   try {
     if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
+
+    // R22 / U10: load existing feedback block (if any) and increment
+    // retryCount. --accept-result flips accepted=true with an ISO timestamp.
+    let existingFeedback = null;
+    try {
+      const existing = JSON.parse(await readFile(join(resolvedOutput, "consistency-report.json"), "utf8"));
+      if (existing && typeof existing === "object" && existing.feedback && typeof existing.feedback === "object") {
+        existingFeedback = existing.feedback;
+      }
+    } catch {
+      // No prior report; treat as fresh.
+    }
+    const nextRetryCount = (existingFeedback?.retryCount ?? 0) + 1;
+    const feedback = {
+      retryCount: nextRetryCount,
+      accepted: options.acceptResult === true ? true : (existingFeedback?.accepted ?? null),
+      acceptedAt: options.acceptResult === true
+        ? new Date().toISOString()
+        : (existingFeedback?.acceptedAt ?? null)
+    };
+
     const { json, md } = buildConsistencyReport(manifestJson, intermediate, {
       inputType,
       inputSource,
+      feedback,
       ...(layoutSafetyStatus !== undefined ? { layoutSafety: layoutSafetyStatus } : {})
     });
     await writeFile(join(resolvedOutput, "consistency-report.json"), json + "\n", "utf8");
@@ -259,19 +281,21 @@ async function main() {
   const argv = process.argv.slice(2);
   const cliFlags = {
     strictLayoutSafety: false,
-    allowLayoutViolation: false
+    allowLayoutViolation: false,
+    acceptResult: false
   };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--strict-layout-safety") cliFlags.strictLayoutSafety = true;
     else if (arg === "--allow-layout-violation") cliFlags.allowLayoutViolation = true;
+    else if (arg === "--accept-result") cliFlags.acceptResult = true;
     else positional.push(arg);
   }
   const manifestArg = positional[0];
   const outputArg = positional[1] ?? "output";
   if (!manifestArg) {
-    fail("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir] [--strict-layout-safety] [--allow-layout-violation]");
+    fail("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir] [--strict-layout-safety] [--allow-layout-violation] [--accept-result]");
   }
 
   try {
