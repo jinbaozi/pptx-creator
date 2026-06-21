@@ -72,7 +72,7 @@ describe("layout-safety-report-writer (U5)", () => {
           elements: [
             { type: "text", id: "tiny", x: 0.5, y: 0.5, w: 4, h: 0.5, text: "tiny", style: { fontSize: 8 } },
             { type: "shape", id: "card-a", x: 4.6, y: 0.5, w: 4, h: 2, shape: "rect" },
-            { type: "shape", id: "card-b", x: 4.7, y: 0.5, w: 4, h: 2, shape: "rect" }
+            { type: "shape", id: "card-b", x: 8.7, y: 0.5, w: 4, h: 2, shape: "rect" }
           ]
         }
       ]);

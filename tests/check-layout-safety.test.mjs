@@ -136,7 +136,7 @@ describe("check-layout-safety", () => {
   });
 
   describe("(5) text-overflow heuristic", () => {
-    it("warns when CJK long string dwarfs the textbox", () => {
+    it("blocks when CJK long string dwarfs the textbox", () => {
       const longText = "中".repeat(400);
       const manifest = makeManifest([
         textSlide({ type: "text", id: "cjk-overflow", x: 0.5, y: 0.5, w: 1, h: 0.3, text: longText, style: { fontSize: 16 } })
@@ -144,7 +144,7 @@ describe("check-layout-safety", () => {
       const result = preflightLayout(manifest);
       const issue = result.checks.find((c) => c.type === "text-overflow");
       expect(issue).toBeTruthy();
-      expect(issue.severity).toBe("warning");
+      expect(issue.severity).toBe("critical");
     });
 
     it("does not flag short Latin text in a wide box", () => {
@@ -159,7 +159,7 @@ describe("check-layout-safety", () => {
 
   describe("(6) card-spacing", () => {
     it("warns when two content-cards are closer than spacing.md", () => {
-      const tokens = { spacing: { md: 4 } };
+      const tokens = { spacing: { md: 1 } };
       const manifest = makeManifest(
         [
           {
@@ -298,6 +298,39 @@ describe("check-layout-safety", () => {
     });
   });
 
+  describe("connector accuracy", () => {
+    it("passes a connector attached to declared source and target boundaries", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "source", x: 1, y: 1, w: 2, h: 1, shape: "rect" },
+          { type: "shape", id: "target", x: 1, y: 3, w: 2, h: 1, shape: "rect" },
+          { type: "line", id: "connector-1", x: 2, y: 2, w: 0, h: 1, style: { sourceId: "source", targetId: "target", endArrowType: "triangle" } }
+        ]
+      }]);
+      const result = preflightLayout(manifest);
+      expect(result.checks.find((c) => c.type === "connector-detached")).toBeUndefined();
+    });
+
+    it("blocks a connector whose endpoints miss the declared nodes", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "source", x: 1, y: 1, w: 2, h: 1, shape: "rect" },
+          { type: "shape", id: "target", x: 1, y: 3, w: 2, h: 1, shape: "rect" },
+          { type: "line", id: "connector-1", x: 6, y: 2, w: 0, h: 1, style: { sourceId: "source", targetId: "target" } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      const issue = result.checks.find((c) => c.type === "connector-detached");
+      expect(issue?.severity).toBe("critical");
+      expect(issue?.suggestion).toMatchObject({ x: 2, y: 2, w: 0, h: 1 });
+      expect(result.summary.blocked).toBe(true);
+    });
+  });
+
   describe("summary", () => {
     it("counts critical vs warning separately", () => {
       const manifest = makeManifest([
@@ -307,7 +340,7 @@ describe("check-layout-safety", () => {
           elements: [
             { type: "text", id: "tiny", x: 0.5, y: 0.5, w: 4, h: 0.5, text: "tiny", style: { fontSize: 8 } }, // critical font-size
             { type: "shape", id: "card-a", x: 4.6, y: 0.5, w: 4, h: 2, shape: "rect" },
-            { type: "shape", id: "card-b", x: 4.7, y: 0.5, w: 4, h: 2, shape: "rect" } // warning card-spacing
+            { type: "shape", id: "card-b", x: 8.7, y: 0.5, w: 4, h: 2, shape: "rect" } // warning card-spacing
           ]
         }
       ]);

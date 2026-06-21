@@ -6,8 +6,10 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
+import { preflightLayout } from "../scripts/lib/check-layout-safety.mjs";
 import { convertHtmlToManifest, layoutCards } from "../scripts/lib/html-to-manifest-core.mjs";
 import { writeManifestFromHtml } from "../scripts/html-to-manifest.mjs";
+import { parseDesignFile } from "../scripts/parse-design-md.mjs";
 
 const execFileAsync = promisify(execFile);
 const node = process.execPath;
@@ -39,6 +41,29 @@ describe("html-to-manifest", () => {
 
     const title = manifest.slides[0].elements.find((el) => el.text === "运营数据看板");
     expect(title?.style.typography).toBe("{typography.title}");
+  });
+
+  it("preserves all compiler-roadshow content without unsafe geometry", async () => {
+    const html = await readFile(join(root, "examples/design-first/compiler-roadshow-html/deck.html"), "utf8");
+    const result = convertHtmlToManifest(html, { returnMetadata: true });
+    const design = await parseDesignFile(join(root, "design-systems/dark-tech/DESIGN.md"));
+    const safety = preflightLayout(result.manifest, {
+      strict: true,
+      mode: "creative",
+      designTokens: design.tokens
+    });
+
+    expect(result.contentCoverage).toMatchObject({ sourceBlocks: 100, coveredBlocks: 100, ratio: 1, missing: [] });
+    expect(safety.summary).toMatchObject({ criticalCount: 0, warningCount: 0, blocked: false });
+  });
+
+  it("rejects semantic HTML when a text block cannot be converted", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-html-coverage-"));
+    const inputPath = join(outputDir, "input.html");
+    const manifestPath = join(outputDir, "deck.manifest.json");
+    await writeFile(inputPath, `<section class="pptx-slide"><h1>Covered</h1><code>orphan block</code></section>`, "utf8");
+
+    await expect(writeManifestFromHtml(inputPath, manifestPath)).rejects.toThrow(/HTML content coverage .*orphan block/);
   });
 
   it("keeps Chinese sample content readable", async () => {

@@ -55,13 +55,18 @@
  * consume it without further transformation.
  */
 
+import { expandChartElement } from "./chart-renderer.mjs";
+import { expandDiagramElement } from "./diagram-compiler.mjs";
+
 const TOLERANCE_IN = 0.005;
 const OVERLAP_AREA_THRESHOLD = 0.05; // 5% of smaller element area
 const DECORATIVE_ROLES = new Set(["background", "backdrop", "canvas"]);
 
 const FONT_SIZE_RULES = {
   body: { critical: 10, warning: 11 },
-  caption: { critical: 10, warning: 11 },
+  caption: { critical: 8, warning: 10 },
+  "card-title": { critical: 12, warning: 14 },
+  "card-metric": { critical: 20, warning: 28 },
   title: { critical: 16, warning: 18 },
   heading: { critical: 16, warning: 18 },
   metric: { critical: 24, warning: 32 }
@@ -70,8 +75,11 @@ const FONT_SIZE_RULES = {
 const LINE_HEIGHT_RULES = {
   body: { critical: 1.0, warning: 1.35 },
   caption: { critical: 1.0, warning: 1.35 },
+  "card-title": { critical: 1.0, warning: 1.15 },
+  "card-metric": { critical: 0.9, warning: 1.0 },
   title: { critical: 0.95, warning: 1.10 },
-  heading: { critical: 0.95, warning: 1.10 }
+  heading: { critical: 0.95, warning: 1.10 },
+  metric: { critical: 0.90, warning: 1.0 }
 };
 
 const CONTRAST_RULES = {
@@ -177,6 +185,7 @@ function roleFromTypographyToken(value, tokens) {
   const segments = match[1].toLowerCase().split(".");
   const flat = segments.join(".");
   if (/metric|kpi|stat|big-number/.test(flat)) return "metric";
+  if (/subtitle/.test(flat)) return "body";
   if (/title|hero|headline/.test(flat)) return "title";
   if (/heading/.test(flat)) return "heading";
   if (/caption|footnote|note/.test(flat)) return "caption";
@@ -188,6 +197,7 @@ function roleFromId(id) {
   if (typeof id !== "string") return null;
   const lower = id.toLowerCase();
   if (/metric|kpi|stat|big-number/.test(lower)) return "metric";
+  if (/subtitle/.test(lower)) return "body";
   if (/title|hero|headline/.test(lower)) return "title";
   if (/heading/.test(lower)) return "heading";
   if (/caption|footnote|note/.test(lower)) return "caption";
@@ -238,7 +248,11 @@ export function checkBounds(element, deckSize) {
   const y = num(element?.y);
   const w = num(element?.w);
   const h = num(element?.h);
-  if (x < 0 || y < 0 || x + w > size.width + TOLERANCE_IN || y + h > size.height + TOLERANCE_IN) {
+  const minX = element?.type === "line" ? Math.min(x, x + w) : x;
+  const maxX = element?.type === "line" ? Math.max(x, x + w) : x + w;
+  const minY = element?.type === "line" ? Math.min(y, y + h) : y;
+  const maxY = element?.type === "line" ? Math.max(y, y + h) : y + h;
+  if (minX < -TOLERANCE_IN || minY < -TOLERANCE_IN || maxX > size.width + TOLERANCE_IN || maxY > size.height + TOLERANCE_IN) {
     return {
       severity: "high",
       type: "bounds",
@@ -260,7 +274,8 @@ export function checkBounds(element, deckSize) {
  */
 export function checkFontSize(element, tokens) {
   if (!element || element.type !== "text") return null;
-  const fontSize = num(element?.style?.fontSize, 16);
+  const typography = resolveTokenString(element?.style?.typography, tokens);
+  const fontSize = num(element?.style?.fontSize, num(typography?.fontSize, 16));
   const role = inferRole(element, tokens);
   const rules = FONT_SIZE_RULES[role] ?? FONT_SIZE_RULES.body;
   if (fontSize < rules.critical) {
@@ -292,24 +307,38 @@ function rectOverlapArea(a, b) {
   return xOverlap * yOverlap;
 }
 
-function rectCenterDistance(a, b) {
-  const ax = a.x + a.w / 2;
-  const ay = a.y + a.h / 2;
-  const bx = b.x + b.w / 2;
-  const by = b.y + b.h / 2;
-  const dx = ax - bx;
-  const dy = ay - by;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
 function overlaps(a, b) {
   return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
 }
 
 function isContentCard(el) {
-  if (!el) return false;
+  if (!el || el.type !== "shape") return false;
   const id = typeof el.id === "string" ? el.id.toLowerCase() : "";
-  return /card/.test(id);
+  const component = typeof el.style?.component === "string" ? el.style.component.toLowerCase() : "";
+  return /card/.test(`${id} ${component}`);
+}
+
+function isContainerSurface(el) {
+  if (!el || el.type !== "shape") return false;
+  const id = typeof el.id === "string" ? el.id.toLowerCase() : "";
+  const role = typeof el.role === "string" ? el.role.toLowerCase() : "";
+  const component = typeof el.style?.component === "string"
+    ? el.style.component.toLowerCase()
+    : "";
+  return /card|panel|container|surface/.test(`${id} ${role} ${component}`);
+}
+
+function containsElement(container, child) {
+  const tolerance = 0.01;
+  return child.x >= container.x - tolerance
+    && child.y >= container.y - tolerance
+    && child.x + child.w <= container.x + container.w + tolerance
+    && child.y + child.h <= container.y + container.h + tolerance;
+}
+
+function isIntentionalContainerOverlap(a, b) {
+  return (isContainerSurface(a) && containsElement(a, b))
+    || (isContainerSurface(b) && containsElement(b, a));
 }
 
 function checkOverlap(slide, deckSize) {
@@ -320,7 +349,9 @@ function checkOverlap(slide, deckSize) {
       const a = elements[i];
       const b = elements[j];
       if (!a || !b) continue;
+      if (a.type === "line" || b.type === "line") continue;
       if (isDecoration(a) || isDecoration(b)) continue;
+      if (isIntentionalContainerOverlap(a, b)) continue;
       if (!overlaps(a, b)) continue;
       const areaA = Math.max(1e-6, num(a.w) * num(a.h));
       const areaB = Math.max(1e-6, num(b.w) * num(b.h));
@@ -349,7 +380,8 @@ function checkLineHeight(slide, tokens) {
   const elements = Array.isArray(slide.elements) ? slide.elements : [];
   for (const el of elements) {
     if (!el || el.type !== "text") continue;
-    const lineHeight = safeNum(el.style?.lineHeight, null);
+    const typography = resolveTokenString(el.style?.typography, tokens);
+    const lineHeight = safeNum(el.style?.lineHeight, safeNum(typography?.lineHeight, null));
     if (lineHeight === null) continue;
     const role = inferRole(el, tokens);
     const rules = LINE_HEIGHT_RULES[role] ?? LINE_HEIGHT_RULES.body;
@@ -393,11 +425,13 @@ function checkTextOverflow(slide, tokens) {
     if (!el || el.type !== "text") continue;
     const text = typeof el.text === "string" ? el.text : "";
     if (!text) continue;
-    const fontSize = num(el.style?.fontSize, 16);
+    const typography = resolveTokenString(el.style?.typography, tokens);
+    const fontSize = num(el.style?.fontSize, num(typography?.fontSize, 16));
     const w = num(el.w, 0);
     const h = num(el.h, 0);
     if (w <= 0 || h <= 0) continue;
-    const isBold = el.style?.bold === true || el.style?.fontWeight === "bold";
+    const fontWeight = el.style?.fontWeight ?? typography?.fontWeight;
+    const isBold = el.style?.bold === true || fontWeight === "bold" || Number(fontWeight) >= 700;
     const isItalic = el.style?.italic === true || el.style?.fontStyle === "italic";
     let weight = 1;
     if (isBold) weight *= BOLD_FACTOR;
@@ -407,7 +441,7 @@ function checkTextOverflow(slide, tokens) {
     const projectedInches = (text.length * fontSize * FONT_ASPECT_RATIO * weight * cjkMul) / 72;
     // Available width in inches = box width * number of lines that fit.
     const fontSizeInches = fontSize / 72;
-    const lineHeight = num(el.style?.lineHeight, 1.2);
+    const lineHeight = num(el.style?.lineHeight, num(typography?.lineHeight, 1.2));
     const maxLines = Math.max(1, h / (fontSizeInches * lineHeight));
     const availableInches = w * maxLines;
     if (projectedInches > availableInches) {
@@ -431,7 +465,14 @@ function getSpacingMd(tokens) {
   const spacing = tokens.spacing;
   if (!spacing || typeof spacing !== "object") return 0.5;
   const md = spacing.md ?? spacing.medium ?? spacing["md"];
-  return num(md, 0.5);
+  const value = num(md, 0.5);
+  return value > 2 ? value / 72 : value;
+}
+
+function rectGap(a, b) {
+  const dx = Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0);
+  const dy = Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0);
+  return Math.hypot(dx, dy);
 }
 
 function checkCardSpacing(slide, tokens) {
@@ -444,16 +485,87 @@ function checkCardSpacing(slide, tokens) {
     for (let j = i + 1; j < cards.length; j += 1) {
       const a = cards[i];
       const b = cards[j];
-      const dist = rectCenterDistance(a, b);
-      if (dist < threshold) {
+      if (overlaps(a, b)) continue;
+      const gap = rectGap(a, b);
+      if (gap < threshold) {
         issues.push({
           severity: "medium",
           type: "card-spacing-tight",
-          message: `Cards ${a.id} and ${b.id} are too close (center distance ${dist.toFixed(3)} < ${threshold}).`,
+          message: `Cards ${a.id} and ${b.id} are too close (edge gap ${gap.toFixed(3)}in < ${threshold.toFixed(3)}in).`,
           target: a.id,
           relatedTarget: b.id
         });
       }
+    }
+  }
+  return issues;
+}
+
+function pointTouchesBoundary(point, rect, tolerance = 0.08) {
+  const insideX = point.x >= rect.x - tolerance && point.x <= rect.x + rect.w + tolerance;
+  const insideY = point.y >= rect.y - tolerance && point.y <= rect.y + rect.h + tolerance;
+  if (!insideX || !insideY) return false;
+  return Math.min(
+    Math.abs(point.x - rect.x),
+    Math.abs(point.x - (rect.x + rect.w)),
+    Math.abs(point.y - rect.y),
+    Math.abs(point.y - (rect.y + rect.h))
+  ) <= tolerance;
+}
+
+function boundaryAnchor(rect, toward) {
+  const center = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+  const targetCenter = { x: toward.x + toward.w / 2, y: toward.y + toward.h / 2 };
+  const dx = targetCenter.x - center.x;
+  const dy = targetCenter.y - center.y;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return { x: dx >= 0 ? rect.x + rect.w : rect.x, y: center.y };
+  }
+  return { x: center.x, y: dy >= 0 ? rect.y + rect.h : rect.y };
+}
+
+function checkConnectors(slide) {
+  const elements = Array.isArray(slide.elements) ? slide.elements : [];
+  const byId = new Map(elements.filter((el) => el?.id).map((el) => [el.id, el]));
+  const issues = [];
+  for (const line of elements.filter((el) => el?.type === "line")) {
+    const sourceId = line.style?.sourceId;
+    const targetId = line.style?.targetId;
+    if (!sourceId && !targetId) {
+      if (/connector|arrow/i.test(line.id ?? "")) {
+        issues.push({
+          severity: "medium",
+          type: "connector-detached",
+          message: `Connector ${line.id} has no sourceId/targetId metadata; endpoint accuracy cannot be verified.`,
+          target: line.id
+        });
+      }
+      continue;
+    }
+    const source = byId.get(sourceId);
+    const target = byId.get(targetId);
+    const start = { x: num(line.x), y: num(line.y) };
+    const end = { x: num(line.x) + num(line.w), y: num(line.y) + num(line.h) };
+    if (!source || !target || !pointTouchesBoundary(start, source) || !pointTouchesBoundary(end, target)) {
+      let suggestion;
+      if (source && target) {
+        const expectedStart = boundaryAnchor(source, target);
+        const expectedEnd = boundaryAnchor(target, source);
+        suggestion = {
+          x: expectedStart.x,
+          y: expectedStart.y,
+          w: expectedEnd.x - expectedStart.x,
+          h: expectedEnd.y - expectedStart.y
+        };
+      }
+      issues.push({
+        severity: "high",
+        type: "connector-detached",
+        message: `Connector ${line.id} does not terminate on ${sourceId ?? "source"} and ${targetId ?? "target"}.`,
+        target: line.id,
+        relatedTarget: !source ? sourceId : targetId,
+        ...(suggestion ? { suggestion } : {})
+      });
     }
   }
   return issues;
@@ -559,7 +671,7 @@ function checkLetterSpacing(slide, tokens) {
 /* per-slide orchestration                                                    */
 /* -------------------------------------------------------------------------- */
 
-function preflightSlide(slide, deckSize, tokens) {
+function preflightSlide(slide, deckSize, tokens, options = {}) {
   const checks = [];
   const elements = Array.isArray(slide.elements) ? slide.elements : [];
 
@@ -567,6 +679,17 @@ function preflightSlide(slide, deckSize, tokens) {
   for (const el of elements) {
     const issue = checkBounds(el, deckSize);
     if (issue) checks.push({ ...issue, severity: issue.severity === "high" ? "critical" : "warning" });
+  }
+
+  // Replica mode preserves source geometry and visual layering. Creative
+  // rules such as minimum font sizes, overlap, spacing, and contrast must not
+  // hard-block a faithful reconstruction. Bounds remain objective; the
+  // text-overflow heuristic remains a warning-only diagnostic.
+  if (options.mode === "replica") {
+    for (const issue of checkTextOverflow(slide, tokens)) {
+      checks.push({ ...issue, severity: "warning" });
+    }
+    return checks;
   }
 
   // (3) role-aware font-size — text-only.
@@ -592,7 +715,7 @@ function preflightSlide(slide, deckSize, tokens) {
 
   // (5) text-overflow heuristic.
   for (const issue of checkTextOverflow(slide, tokens)) {
-    checks.push({ ...issue, severity: "warning" });
+    checks.push({ ...issue, severity: "critical" });
   }
 
   // (6) card-spacing.
@@ -610,6 +733,10 @@ function preflightSlide(slide, deckSize, tokens) {
     checks.push({ ...issue, severity: "warning" });
   }
 
+  for (const issue of checkConnectors(slide)) {
+    checks.push({ ...issue, severity: issue.severity === "high" ? "critical" : "warning" });
+  }
+
   return checks;
 }
 
@@ -625,6 +752,8 @@ function preflightSlide(slide, deckSize, tokens) {
  *   - designTokens: optional pre-resolved tokens. Falls back to
  *     `manifest.designSystem.tokens`.
  *   - strict: boolean. When true, `summary.blocked` mirrors `criticalCount > 0`.
+ *   - mode: `creative` (default) or `replica`. Replica mode only hard-checks
+ *     slide bounds and keeps text overflow as a warning-only diagnostic.
  *     The CLI/pipeline computes the actual exit-code policy separately.
  *
  * @returns {{
@@ -648,7 +777,12 @@ export function preflightLayout(manifest, options = {}) {
 
   const checks = [];
   for (const slide of slides) {
-    const slideChecks = preflightSlide(slide, deckSize, tokens);
+    const expandedElements = (slide.elements ?? []).flatMap((element) => {
+      if (element?.type === "chart") return expandChartElement(element);
+      if (element?.type === "diagram") return expandDiagramElement(element);
+      return [element];
+    });
+    const slideChecks = preflightSlide({ ...slide, elements: expandedElements }, deckSize, tokens, options);
     for (const check of slideChecks) {
       checks.push({ slideId: slide.id, ...check });
     }
@@ -687,6 +821,7 @@ const KIND_MAP = Object.freeze({
   "line-height-too-tight": "line-height-too-tight",
   "text-overflow": "text-overflow",
   "card-spacing-tight": "card-spacing-tight",
+  "connector-detached": "connector-detached",
   "contrast-fail": "contrast-fail",
   "letter-spacing-too-tight": "letter-spacing-too-tight"
 });

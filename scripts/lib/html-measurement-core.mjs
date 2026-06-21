@@ -65,6 +65,7 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
       const inches = element.inches ?? convertMeasurementPxToInches(element.px, viewport, slideSize);
       return {
         id: element.id,
+        ...(element.slideId ? { slideId: element.slideId } : {}),
         kind: element.kind,
         tagName: element.tagName ?? null,
         selector: element.selector ?? `[data-pptx-id="${element.id}"]`,

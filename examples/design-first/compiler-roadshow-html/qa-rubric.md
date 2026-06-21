@@ -6,7 +6,7 @@ This rubric is **qualitative only**. It documents design rationale, tradeoffs, a
 
 - Mirrors `examples/design-first/compiler-roadshow/` outline: same compiler-roadshow narrative arc (cover → problem/solution → three-stage pipeline), extended to nine slides to demonstrate archetype variety on the HTML-first path.
 - Uses the new `slide-archetypes/*` (U8) and existing `layout-archetypes/*` catalogs via `data-archetype` attributes.
-- HTML-first path: `deck.html` → `node scripts/html-to-manifest.mjs` → `deck.manifest.json` → pipeline.
+- HTML-first path: `deck.html` → HTML audit/repair → measurement → `deck.manifest.json` → strict pipeline.
 - Storyboard alignment (verbatim titles, identical content points for the first three slides):
   - slide-001 cover headline: "Modern C Compiler Component" / subtitle "Rust-based GCC-compatible compilation pipeline".
   - slide-002 problem-solution headline: "R&D Background: Why a Self-Contained Compiler Matters" / four problem bullets / one solution summary.
@@ -21,7 +21,7 @@ This rubric is **qualitative only**. It documents design rationale, tradeoffs, a
 
 ## Tradeoffs
 
-- **Empty `elements` arrays in the produced manifest.** The HTML adapter emits `path: "measured"` and an `archetype` reference when `data-archetype` is present; per-slide `elements` get populated by the renderer's archetype expansion rather than the HTML adapter. This is intentional but means `node scripts/html-to-manifest.mjs` reports `elements: 0` in its summary — the count is recovered at render time.
+- **Browser normalization.** The source uses content-driven slide heights. The guarded creative pipeline writes a repaired copy with 1280×720 canvases before measurement; the source showcase remains unchanged.
 - **No web assets.** The showcase avoids remote images to keep the run reproducible offline. Adding a hero image would require localizing under `output/assets/` per the SKILL.md "Preserve editability and fidelity" rule.
 - **Storyboard fidelity vs showcase coverage.** The first three slides are strict storyboard mirrors (verbatim titles, same content points); slides 4–9 are extensions that follow the same narrative arc but are not 1:1 with any `slide-design-specs.json` entry. This is intentional — the showcase demonstrates archetype variety on the same deck topic.
 
@@ -34,6 +34,6 @@ This rubric is **qualitative only**. It documents design rationale, tradeoffs, a
 
 ## Verification
 
-- `node scripts/html-to-manifest.mjs` produced 9 slides with `designSystem: "Dark Tech"`.
-- `python scripts/validate-manifest.py` reports `manifest valid`.
-- The full pipeline (`node scripts/run-deck-pipeline.mjs`) and `slopRisk` / `layout-safety` reports remain the quantitative authority for shipped decks.
+- `npm run pipeline:html -- deck.html output` is the authoritative verification command.
+- `html-layout-report.json` must contain zero criticals before conversion.
+- Manifest layout safety, content coverage, and final PPTX reports remain mandatory after the HTML gate.

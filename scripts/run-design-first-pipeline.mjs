@@ -71,7 +71,9 @@ async function main() {
   const designFirstOptions = {
     inputType: "design-first",
     inputSource: path.join(inputDir, "deck.storyboard.json"),
-    copyManifest: false
+    copyManifest: false,
+    mode: options.mode,
+    strictLayoutSafety: true
   };
   await runDeckPipeline(manifestPath, outputDir, designFirstOptions);
   console.log(`Consistency report written: ${path.join(outputDir, "consistency-report.json")}`);
@@ -86,8 +88,10 @@ async function main() {
     }
   }
 
-  const review = reviewManifest(manifest, { mode: options.mode }, consistencyReport);
-  fs.writeFileSync(path.join(outputDir, "visual-review.json"), `${JSON.stringify(review, null, 2)}\n`, "utf8");
+  if (options.mode !== "replica") {
+    const review = reviewManifest(manifest, { mode: options.mode }, consistencyReport);
+    fs.writeFileSync(path.join(outputDir, "visual-review.json"), `${JSON.stringify(review, null, 2)}\n`, "utf8");
+  }
 
   if (options.validateRegistry) {
     validateRegistries(outputDir);

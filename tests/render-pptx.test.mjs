@@ -145,6 +145,8 @@ describe("render-pptx", () => {
     const xml = await slideXml(pptxPath);
     expect(xml).toContain("Frontend");
     expect(xml).toContain("Optimize");
+    expect(xml).toContain("tailEnd");
+    expect(xml).toContain('type="triangle"');
   });
 
   it("rejects remote image URLs with a clear localization error", async () => {

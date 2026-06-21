@@ -72,12 +72,12 @@ For creative decks, create or preserve source metadata:
 4. 复杂背景、照片、纹理、阴影、滤镜、复杂图标可作为 image 资产。
 5. 如果 HTML 使用 CSS 定位，为可测量元素添加 data-pptx-kind 和 data-pptx-id。
 6. 可以联网搜索缺失素材、字体线索、图标来源或公共图片，但不得改变原始视觉稿。
-7. 运行测量与转换：
-   node scripts/measure-html.mjs input.html output/layout-measurements.json
-   node scripts/html-to-manifest.mjs input.html output/deck.manifest.json --measurements output/layout-measurements.json
-8. html-to-manifest.mjs 会将 HTML 中的远程图片本地化到 output/assets/；手写 manifest 时也必须这样做。
-9. 不要将整页 HTML 截图作为唯一内容，除非用户明确接受 Level 1 fallback。
-10. 验证并渲染后报告可编辑性等级和任何图像化区域原因。
+7. 文本生成的 creative HTML 必须运行：npm run pipeline:html -- input.html output。
+8. 连接器必须使用 SVG，并提供 data-pptx-id、data-pptx-kind="line"、data-source-id、data-target-id 和 marker-end。
+9. 只有 html-layout-report.json 为零 critical 且内容覆盖率为 100% 时才允许生成 PPTX。
+10. html-to-manifest.mjs 会将 HTML 中的远程图片本地化到 output/assets/；手写 manifest 时也必须这样做。
+11. 不要将整页 HTML 截图作为唯一内容，除非用户明确接受 Level 1 fallback。
+12. 验证并渲染后报告 HTML 修复轮次、可编辑性等级和任何图像化区域原因。
 ```
 
 ## 图片复刻 PPT

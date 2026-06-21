@@ -12,6 +12,8 @@
  *                             pipeline passes this through when it wants
  *                             to write a `pipeline-blocked.json` summary
  *                             but still emit the report.
+ *   --replica-mode            Preserve source geometry. Only bounds can be
+ *                             critical; text overflow remains diagnostic.
  *
  * Exit codes:
  *   0  Clean, or critical with --allow-layout-violation, or warning only.
@@ -26,6 +28,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { preflightLayout, formatReport } from "./lib/check-layout-safety.mjs";
 import { validateJsonSchema } from "./lib/schema-utils.mjs";
+import { parseDesignFile } from "./parse-design-md.mjs";
 
 const SCHEMA_PATH = path.resolve(
   path.dirname(new URL(import.meta.url).pathname),
@@ -40,7 +43,8 @@ function parseArgs(argv) {
     manifestPath: null,
     outputPath: null,
     strict: false,
-    allowViolation: false
+    allowViolation: false,
+    mode: "creative"
   };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -51,6 +55,8 @@ function parseArgs(argv) {
       out.strict = true;
     } else if (arg === "--allow-layout-violation") {
       out.allowViolation = true;
+    } else if (arg === "--replica-mode") {
+      out.mode = "replica";
     } else if (arg === "--help" || arg === "-h") {
       out.help = true;
     } else {
@@ -68,6 +74,7 @@ function printHelp() {
       "                                 [--output <report.json>]",
       "                                 [--strict-layout-safety]",
       "                                 [--allow-layout-violation]",
+      "                                 [--replica-mode]",
       "",
       "Exit codes: 0 = clean / warning-only / allowed; 2 = critical + strict.",
       ""
@@ -85,8 +92,19 @@ if (!args.manifestPath) {
   process.exit(64); // EX_USAGE
 }
 
-const manifest = JSON.parse(fs.readFileSync(args.manifestPath, "utf8"));
-const internal = preflightLayout(manifest, { strict: args.strict });
+const manifestPath = path.resolve(args.manifestPath);
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+let designTokens = manifest.designSystem?.tokens ?? {};
+if (manifest.designSystem?.source) {
+  const designPath = path.resolve(path.dirname(manifestPath), manifest.designSystem.source);
+  const design = await parseDesignFile(designPath);
+  designTokens = design.tokens ?? designTokens;
+}
+const internal = preflightLayout(manifest, {
+  strict: args.strict,
+  mode: args.mode,
+  designTokens
+});
 const report = formatReport(internal);
 
 const outputPath = args.outputPath ?? path.join("output", "layout-safety-report.json");

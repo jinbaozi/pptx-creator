@@ -84,7 +84,8 @@ function parseArgs(argv) {
     forceAutoLayout: false,
     forceMeasured: false,
     forceHybrid: false,
-    preferArchetypeFromArchetypeMd: true
+    preferArchetypeFromArchetypeMd: true,
+    allowContentLoss: false
   };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -110,6 +111,8 @@ function parseArgs(argv) {
       args.preferArchetypeFromArchetypeMd = true;
     } else if (arg === "--no-prefer-archetype-from-archetype-md") {
       args.preferArchetypeFromArchetypeMd = false;
+    } else if (arg === "--allow-content-loss") {
+      args.allowContentLoss = true;
     } else {
       positional.push(arg);
     }
@@ -145,13 +148,21 @@ export async function writeManifestFromHtml(inputPath, outputPath, options = {})
     returnMetadata: true
   });
   const manifest = result.manifest ?? result;
+  if (result.contentCoverage?.ratio < 1 && options.allowContentLoss !== true) {
+    const preview = result.contentCoverage.missing.slice(0, 5).join(" | ");
+    throw new Error(
+      `HTML content coverage ${Math.round(result.contentCoverage.ratio * 100)}%; `
+      + `${result.contentCoverage.missing.length} block(s) were not converted: ${preview}. `
+      + "Add supported semantic structure or data-pptx-kind markers; use --allow-content-loss only for intentional omissions."
+    );
+  }
   await localizeRemoteAssets(manifest, manifestDir, options);
   await writeFile(resolvedOutput, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   // Always write inputHints.json alongside the manifest.
   const inputHintsPath = resolve(manifestDir, "inputHints.json");
   const inputHints = result.inputHints ?? { viewportSize: { w: 1280, h: 720 }, imageDimensions: [], detectedPalette: [], ocrAvailability: "deferred" };
   await writeFile(inputHintsPath, `${JSON.stringify(inputHints, null, 2)}\n`, "utf8");
-  return { manifest, layoutPaths: result.layoutPaths ?? [], sourceCoordinates: result.sourceCoordinates ?? [], inputHints };
+  return { manifest, layoutPaths: result.layoutPaths ?? [], sourceCoordinates: result.sourceCoordinates ?? [], inputHints, contentCoverage: result.contentCoverage };
 }
 
 async function main() {
@@ -165,16 +176,17 @@ async function main() {
     forceAutoLayout,
     forceMeasured,
     forceHybrid,
-    preferArchetypeFromArchetypeMd
+    preferArchetypeFromArchetypeMd,
+    allowContentLoss
   } = parseArgs(process.argv.slice(2));
   if (!input || !output) {
     fail(
-      "usage: html-to-manifest.mjs <input.html> <output/deck.manifest.json> [--design-system id] [--design-mode balanced] [--measurements layout-measurements.json] [--no-auto-paginate] [--force-auto-layout | --force-measured | --force-hybrid] [--prefer-archetype-from-archetype-md | --no-prefer-archetype-from-archetype-md]"
+      "usage: html-to-manifest.mjs <input.html> <output/deck.manifest.json> [--design-system id] [--design-mode balanced] [--measurements layout-measurements.json] [--no-auto-paginate] [--force-auto-layout | --force-measured | --force-hybrid] [--prefer-archetype-from-archetype-md | --no-prefer-archetype-from-archetype-md] [--allow-content-loss]"
     );
   }
   const inputPath = resolve(input);
   const outputPath = resolve(output);
-  const { manifest } = await writeManifestFromHtml(inputPath, outputPath, {
+  const { manifest, contentCoverage } = await writeManifestFromHtml(inputPath, outputPath, {
     designSystem: designSystem ?? undefined,
     designMode,
     measurements: measurements ?? undefined,
@@ -182,7 +194,8 @@ async function main() {
     forceAutoLayout,
     forceMeasured,
     forceHybrid,
-    preferArchetypeFromArchetypeMd
+    preferArchetypeFromArchetypeMd,
+    allowContentLoss
   });
   console.log(
     JSON.stringify(
@@ -195,7 +208,8 @@ async function main() {
         autoPaginate,
         forceAutoLayout,
         forceMeasured,
-        forceHybrid
+        forceHybrid,
+        contentCoverage
       },
       null,
       2

@@ -60,6 +60,21 @@ describe("layout-safety-repair-adapter", () => {
     expect(patch.targetElementId).toBe("el-4");
   });
 
+  it("maps connector-detached endpoint suggestions to move and resize", () => {
+    const patches = convertSuggestions([
+      {
+        kind: "connector-detached",
+        elementId: "connector-1",
+        slideId: "s1",
+        suggestion: { x: 2, y: 2, w: 0, h: 1 }
+      }
+    ]);
+    expect(patches).toEqual([
+      { operation: "move", targetElementId: "connector-1", slideId: "s1", changes: { x: 2, y: 2 } },
+      { operation: "resize", targetElementId: "connector-1", slideId: "s1", changes: { w: 0, h: 1 } }
+    ]);
+  });
+
   it("maps line-height-too-tight to adjustStyle with lineHeight 1.4 and suggestionKind", () => {
     const [patch] = convertSuggestions(
       [{ kind: "line-height-too-tight", elementId: "el-5", slideId: "s1" }],

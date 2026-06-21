@@ -3,6 +3,7 @@ import { compileDesignFirstManifest } from "../scripts/lib/manifest-compiler.mjs
 import { loadDesignFirstArtifacts } from "../scripts/lib/design-first-loader.mjs";
 import { compileUiSpec } from "../scripts/lib/ui-spec-compiler.mjs";
 import { compileComponentSpecs } from "../scripts/lib/component-spec-compiler.mjs";
+import { expandDiagramElement } from "../scripts/lib/diagram-compiler.mjs";
 
 function buildArtifactsWithArchitectureHint() {
   const artifacts = loadDesignFirstArtifacts("examples/design-first/compiler-roadshow");
@@ -50,17 +51,18 @@ describe("artifact-aware manifest compiler", () => {
 
     const types = new Set(archSlide.elements.map((el) => el.type));
     expect(types.has("text")).toBe(true);
-    expect(types.has("line")).toBe(true);
+    expect(types.has("line")).toBe(false);
 
     const semanticDiagram = archSlide.elements.find(
       (el) => el.type === "diagram" && el.kind === "layeredArchitecture"
     );
     expect(semanticDiagram).toBeTruthy();
 
-    const arrowLine = archSlide.elements.find(
-      (el) => el.type === "line" && el.style && el.style.endArrowType
-    );
+    const expanded = expandDiagramElement(semanticDiagram);
+    const arrowLine = expanded.find((el) => el.type === "line" && el.style?.endArrowType);
     expect(arrowLine).toBeTruthy();
+    expect(arrowLine.style.sourceId).toBeTruthy();
+    expect(arrowLine.style.targetId).toBeTruthy();
   });
 
   it("preserves generic compilation when uiSpec and componentSpecs are omitted", () => {
@@ -73,4 +75,3 @@ describe("artifact-aware manifest compiler", () => {
     expect(manifest.slides[0].elements.some((el) => el.type === "text")).toBe(true);
   });
 });
-

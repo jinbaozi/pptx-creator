@@ -1,5 +1,4 @@
 import { resolveArchetypeForSlide } from "./archetype-resolver.mjs";
-import { expandDiagramElement } from "./diagram-compiler.mjs";
 
 const SLIDE = { width: 13.333, height: 7.5 };
 
@@ -66,17 +65,6 @@ function compileLayeredArchitectureSlide(slideSpec, index, designDirection) {
     style: { theme: "business-tech", color: primary }
   };
   elements.push(diagram);
-
-  const expanded = expandDiagramElement(diagram).map((el) => {
-    if (el.type === "line" && el.id.includes("connector-")) {
-      return {
-        ...el,
-        style: { ...el.style, endArrowType: "triangle" }
-      };
-    }
-    return el;
-  });
-  elements.push(...expanded);
 
   elements.push(textElement("main-idea", slideSpec.mainIdea, 0.75, 6.7, 11.8, 0.4, {
     fontSize: 12,

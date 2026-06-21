@@ -10,6 +10,7 @@
  *                             which suggestion fields the check carries)
  *   font-too-small          → updateStyle {style: {fontSize: 12}}
  *   card-spacing-tight      → increaseSpacing {padding: "spacing.md"}
+ *   connector-detached      → move + resize to suggested endpoints
  *   text-overflow           → reduceDensity {}
  *   line-height-too-tight   → adjustStyle {style: {lineHeight: 1.4},
  *                                           suggestionKind: "..."}
@@ -95,6 +96,10 @@ export function convertOne(check, slideId) {
   const effectiveSlideId = check.slideId ?? slideId;
   switch (kind) {
     case "bounds": {
+      const patches = boundsPatches({ ...check, slideId: effectiveSlideId });
+      return patches.length > 0 ? patches : null;
+    }
+    case "connector-detached": {
       const patches = boundsPatches({ ...check, slideId: effectiveSlideId });
       return patches.length > 0 ? patches : null;
     }

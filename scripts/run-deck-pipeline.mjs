@@ -4,7 +4,7 @@
  */
 import { execFile } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -77,8 +77,10 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   // U4 layout-safety pre-render gate.
   const layoutSafetyPath = join(resolvedOutput, "layout-safety-report.json");
   const layoutSafetyFlags = [];
-  if (options.strictLayoutSafety === true) layoutSafetyFlags.push("--strict-layout-safety");
+  const hardLayoutSafety = options.allowLayoutViolation !== true && options.strictLayoutSafety !== false;
+  if (hardLayoutSafety) layoutSafetyFlags.push("--strict-layout-safety");
   if (options.allowLayoutViolation === true) layoutSafetyFlags.push("--allow-layout-violation");
+  if (options.mode === "replica") layoutSafetyFlags.push("--replica-mode");
   const layoutSafetyResult = await runStep("layout-safety", process.execPath, [
     join(root, "scripts/run-layout-safety-check.mjs"),
     resolvedManifest,
@@ -91,7 +93,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   // Hard-block path: layout-safety returned non-zero AND --strict was set.
   // The CLI already enforces this; mirror the block here so the pipeline
   // summary contains a `pipeline-blocked.json` and the render step is skipped.
-  if (!layoutSafetyResult.ok && options.strictLayoutSafety === true) {
+  if (!layoutSafetyResult.ok && hardLayoutSafety) {
     let layoutReport = null;
     try {
       layoutReport = JSON.parse(await readFile(layoutSafetyPath, "utf8"));
@@ -207,7 +209,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     const layoutReport = JSON.parse(await readFile(layoutSafetyPath, "utf8"));
     const critical = layoutReport?.summary?.criticalCount ?? 0;
     if (critical === 0) layoutSafetyStatus = "passed";
-    else if (options.strictLayoutSafety === true) layoutSafetyStatus = "violated-blocked";
+    else if (hardLayoutSafety) layoutSafetyStatus = "violated-blocked";
     else layoutSafetyStatus = "violated-with-flag";
   } catch {
     // layout-safety step itself failed — leave undefined so the report omits it.
@@ -219,12 +221,14 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   // aggregate can average it. Re-read the (now-written) consistency report
   // to also generate the visual-review sidecar.
   let slopRiskDeck = null;
-  try {
-    const tokens = design?.tokens ?? manifestJson?.designSystem?.tokens ?? {};
-    const slop = scoreSlopRisk(manifestJson, tokens);
-    slopRiskDeck = slop.score;
-  } catch {
-    slopRiskDeck = null;
+  if (options.mode !== "replica") {
+    try {
+      const tokens = design?.tokens ?? manifestJson?.designSystem?.tokens ?? {};
+      const slop = scoreSlopRisk(manifestJson, tokens);
+      slopRiskDeck = slop.score;
+    } catch {
+      slopRiskDeck = null;
+    }
   }
 
   // consistency-report: always emitted (previewDiff deferred when LO missing)
@@ -275,7 +279,9 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   // slopRisk) when not in replica mode. Pure function over the manifest;
   // never fails the pipeline — the slopRisk is purely diagnostic.
   try {
-    if (manifestJson) {
+    if (options.mode === "replica") {
+      await rm(join(resolvedOutput, "visual-review.json"), { force: true });
+    } else if (manifestJson) {
       const review = reviewManifest(manifestJson, { mode: options.mode ?? "creative" });
       await writeFile(
         join(resolvedOutput, "visual-review.json"),
@@ -315,9 +321,10 @@ async function main() {
   // can invoke `run-deck-pipeline.mjs manifest.json output --strict-layout-safety`.
   const argv = process.argv.slice(2);
   const cliFlags = {
-    strictLayoutSafety: false,
+    strictLayoutSafety: true,
     allowLayoutViolation: false,
-    acceptResult: false
+    acceptResult: false,
+    mode: "creative"
   };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -325,12 +332,16 @@ async function main() {
     if (arg === "--strict-layout-safety") cliFlags.strictLayoutSafety = true;
     else if (arg === "--allow-layout-violation") cliFlags.allowLayoutViolation = true;
     else if (arg === "--accept-result") cliFlags.acceptResult = true;
+    else if (arg === "--mode") cliFlags.mode = argv[++i];
     else positional.push(arg);
+  }
+  if (!new Set(["creative", "replica"]).has(cliFlags.mode)) {
+    fail(`unsupported pipeline mode: ${cliFlags.mode}; expected creative or replica`);
   }
   const manifestArg = positional[0];
   const outputArg = positional[1] ?? "output";
   if (!manifestArg) {
-    fail("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir] [--strict-layout-safety] [--allow-layout-violation] [--accept-result]");
+    fail("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir] [--mode creative|replica] [--strict-layout-safety] [--allow-layout-violation] [--accept-result]");
   }
 
   try {

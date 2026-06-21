@@ -18,19 +18,19 @@ The default path for **plain text** input is **text → `deck.manifest.json` →
 
 Pick the HTML-first route when **any** of the following trigger conditions apply:
 
-1. **Design-first creative deck** — the input is a creative `examples/design-first/*/` reference (compiler-roadshow-style narrative content with a storyboard, design direction, and per-slide specs). Author `deck.html` directly using `slide-archetypes/*` and `layout-archetypes/*` `data-archetype` attributes, then convert via `node scripts/html-to-manifest.mjs <deck.html> <out/deck.manifest.json>` and run the pipeline. Reference showcase: `examples/design-first/compiler-roadshow-html/`.
-2. **Rich visual material** — the input is an image, PDF, or multi-column visual reference where CSS Grid / Flexbox precision matters more than manifest coordinate hand-authoring. Build a single-page `deck.html` (use the conventions in `references/html-to-pptx.md`) and feed it through `node scripts/html-to-manifest.mjs` → pipeline. For CSS-positioned originals, also run `node scripts/html:measure -- <deck.html> <out/layout-measurements.json>` first.
-3. **Host agent explicit judgment** — the host agent determines that the target deck needs layout precision (multi-column grids, nested cards, layered diagrams, asymmetric hero compositions) beyond what direct manifest coordinate editing expresses ergonomically. Author `deck.html` with `data-x/y/w/h` markers and convert it as in (2).
+1. **Design-first creative deck** — author `deck.html` using `slide-archetypes/*` and `layout-archetypes/*`, then run the guarded HTML pipeline. Reference showcase: `examples/design-first/compiler-roadshow-html/`.
+2. **Rich visual material** — use CSS Grid/Flexbox when multi-column visual structure is easier to express in HTML than manifest coordinates. Do not apply creative HTML repair to strict replica work.
+3. **Host agent explicit judgment** — use HTML for nested cards, layered diagrams, asymmetric hero compositions, or other layouts that need browser measurement.
 
 **Default: text → manifest.** For ordinary prose, outlines, or batch text input, continue writing `deck.manifest.json` directly and run `node scripts/run-deck-pipeline.mjs`. HTML-first is an upgrade path, not a replacement.
 
-After the HTML-first conversion, validate and render exactly as in the text path:
+For generated creative HTML, always run the guarded pipeline. It preserves the source, writes `deck.repaired.html`, audits real Chromium geometry, repairs at most three times, measures each slide, converts at 100% content coverage, then runs the strict manifest pipeline:
 
 ```bash
-node scripts/html-to-manifest.mjs <deck.html> <out/deck.manifest.json>
-python scripts/validate-manifest.py <out/deck.manifest.json>
-node scripts/run-deck-pipeline.mjs <out/deck.manifest.json> out
+npm run pipeline:html -- <deck.html> <out>
 ```
+
+Use `data-archetype` as routing metadata. Measured components require globally unique `data-pptx-id` plus `data-pptx-kind` or `data-pptx-type`. Connectors require `data-connector`, `data-pptx-kind="line"`, `data-source-id`, `data-target-id`, and an SVG marker. Zero HTML criticals and 100% content coverage are mandatory before Manifest/PPTX generation.
 
 3. Select and read one `DESIGN.md` in this priority order:
    - user-provided;
@@ -75,6 +75,8 @@ Do not read every reference up front. Load only the files required by the curren
 - Use raster assets only for photos or effects that are impractical to rebuild.
 - Never describe a full-slide raster with no editable text as an editable deck.
 - Preserve source layout, color, typography, content, and tone in strict replica mode; skip creative direction exploration.
+- Run strict replicas with `node scripts/run-deck-pipeline.mjs <manifest> <out> --mode replica`. Replica mode keeps objective bounds checks, avoids creative slop scoring, and does not treat intentional source layering as a layout failure.
+- Keep connector `sourceId` and `targetId` metadata on native lines so endpoint accuracy can be verified. Do not pre-expand semantic diagrams in the manifest; the renderer expands them once.
 - Use web research only when it improves accuracy or asset quality and the user permits it. Record source URLs, respect licenses and trademarks, and localize remote assets under the output directory.
 - Do not call LLM APIs from package scripts or ask deterministic scripts to invent content.
 

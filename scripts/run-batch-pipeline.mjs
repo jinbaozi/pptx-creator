@@ -26,7 +26,11 @@ export async function runBatchPipeline(batchPath, defaultOutputDir = "output/bat
     const manifest = resolve(dirname(resolvedBatch), job.manifest);
     const outputDir = resolve(dirname(resolvedBatch), job.outputDir ?? `${id}`);
     try {
-      const summary = await runDeckPipeline(manifest, outputDir);
+      const summary = await runDeckPipeline(manifest, outputDir, {
+        mode: job.mode ?? "creative",
+        strictLayoutSafety: job.allowLayoutViolation === true ? false : true,
+        allowLayoutViolation: job.allowLayoutViolation === true
+      });
       results.push({ id, manifest, outputDir, status: summary.status, steps: summary.steps });
     } catch (error) {
       results.push({

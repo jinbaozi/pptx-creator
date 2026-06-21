@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runDeckPipeline } from "../scripts/run-deck-pipeline.mjs";
+import { convertHtmlToManifest } from "../scripts/lib/html-to-manifest-core.mjs";
+import { preflightLayout } from "../scripts/lib/check-layout-safety.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -316,4 +318,63 @@ describe("U11 AC5 — SKILL.md HTML-first 推荐流程 subsection", () => {
     const skill = await readFile(join(root, "SKILL.md"), "utf8");
     expect(skill).toContain("HTML-first 推荐流程");
   });
+});
+
+describe("replica and HTML-first regression coverage", () => {
+  it("converts semantic data-archetype HTML without empty slides", async () => {
+    const html = await readFile(
+      join(root, "examples/design-first/compiler-roadshow-html/deck.html"),
+      "utf8"
+    );
+    const result = convertHtmlToManifest(html, { returnMetadata: true });
+
+    expect(result.manifest.slides).toHaveLength(9);
+    expect(result.manifest.slides.every((slide) => slide.elements.length > 0)).toBe(true);
+    expect(result.manifest.slides[0]).toMatchObject({
+      path: "auto-layout",
+      archetype: "cover",
+      archetypeRoot: "layout-archetypes"
+    });
+  });
+
+  it("does not report container surfaces overlapping their own content", () => {
+    const manifest = {
+      version: "0.1.1",
+      designSystem: { source: "design-systems/business-neutral/DESIGN.md", name: "Business Neutral", mode: "balanced" },
+      deck: { title: "Card", language: "en-US", size: { preset: "wide", width: 13.333, height: 7.5, unit: "in" } },
+      assets: [],
+      slides: [{
+        id: "slide-001",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "card-surface", shape: "roundRect", x: 1, y: 1, w: 5, h: 2, style: { component: "{components.content-card}" } },
+          { type: "text", id: "card-copy", x: 1.3, y: 1.3, w: 4.4, h: 1, text: "Nested content", style: { fontSize: 14 } }
+        ]
+      }]
+    };
+
+    const report = preflightLayout(manifest);
+    expect(report.checks.find((check) => check.type === "overlap")).toBeUndefined();
+  });
+
+  it("keeps replica layout checks fidelity-safe and omits creative visual review", async () => {
+    const manifest = join(root, "examples/image-input/deck.manifest.skeleton.json");
+    const outputDir = join(root, "output", `pipeline-replica-${Date.now()}`);
+    await mkdir(outputDir, { recursive: true });
+    await writeFile(join(outputDir, "visual-review.json"), "{\"stale\":true}\n", "utf8");
+
+    const summary = await runDeckPipeline(manifest, outputDir, {
+      inputType: "image",
+      inputSource: "examples/image-input/business-slide.png",
+      mode: "replica",
+      strictLayoutSafety: true
+    });
+
+    expect(summary.status).toBe("passed");
+    const layout = JSON.parse(await readFile(join(outputDir, "layout-safety-report.json"), "utf8"));
+    expect(layout.summary.criticalCount).toBe(0);
+    const consistency = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
+    expect(consistency).not.toHaveProperty("slopRisk");
+    await expect(access(join(outputDir, "visual-review.json"))).rejects.toThrow();
+  }, 60000);
 });
