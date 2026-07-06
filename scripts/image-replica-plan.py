@@ -26,7 +26,7 @@ from image_inspect_core import (  # noqa: E402
 OCR_SCRIPT = ROOT / "scripts" / "ocr-image.py"
 
 
-def _normalize_ocr_blocks(ocr_payload: dict | None) -> list[dict] | None:
+def _normalize_ocr_blocks(ocr_payload):
     """Convert Tesseract 0-100 confidences into 0-1 and preserve pixel boxes.
 
     Returns None when OCR is unavailable (``status: "deferred"`` or no
@@ -58,7 +58,7 @@ def _normalize_ocr_blocks(ocr_payload: dict | None) -> list[dict] | None:
     return blocks or None
 
 
-def _invoke_ocr(image_path: Path, min_confidence: float = 0.0) -> dict | None:
+def _invoke_ocr(image_path: Path, min_confidence: float = 0.0):
     """Run ``scripts/ocr-image.py`` and parse its JSON output.
 
     Returns the OCR dict on success, or None when the script is missing,
@@ -89,7 +89,7 @@ def _invoke_ocr(image_path: Path, min_confidence: float = 0.0) -> dict | None:
         return None
 
 
-def _resolve_source_image(analysis: dict) -> Path | None:
+def _resolve_source_image(analysis: dict):
     """Try to locate the original image referenced by an analysis payload.
 
     Falls back to ``None`` when only the filename is known and the file does
@@ -145,7 +145,7 @@ def main() -> None:
         print(str(error), file=sys.stderr)
         raise SystemExit(1) from error
 
-    ocr_blocks: list[dict] | None = None
+    ocr_blocks = None
     if not args.skip_ocr:
         image_path = _resolve_source_image(data)
         if image_path is not None:

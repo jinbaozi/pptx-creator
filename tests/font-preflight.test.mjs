@@ -198,6 +198,37 @@ describe("font-preflight helpers", () => {
     expect(refs.has("sans-serif")).toBe(false);
   });
 
+  it("ignores colors, prose, and alignment strings while collecting fonts", () => {
+    const manifest = {
+      designSystem: {
+        tokens: {
+          colors: { primary: "#2563EB" },
+          metadata: {
+            name: "Dashboard Data",
+            description: "A data operations design system"
+          },
+          typography: {
+            title: { fontFamily: "Aptos", color: "#111827", align: "left" }
+          }
+        }
+      },
+      slides: [
+        {
+          id: "slide-001",
+          style: { color: "#64748B", align: "center" },
+          elements: [{ type: "text", id: "t", style: { typography: "{typography.title}" } }]
+        }
+      ]
+    };
+
+    const refs = collectReferencedFonts(manifest, manifest.designSystem.tokens);
+    expect(refs.has("Aptos")).toBe(true);
+    expect(refs.has("#2563EB")).toBe(false);
+    expect(refs.has("Dashboard Data")).toBe(false);
+    expect(refs.has("left")).toBe(false);
+    expect(refs.has("center")).toBe(false);
+  });
+
   it("falls back to the home directory font list when running on this host", () => {
     const fonts = collectReferencedFonts(sampleManifest(), SAMPLE_DESIGN.tokens);
     expect(fonts.size).toBeGreaterThan(0);

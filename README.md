@@ -149,6 +149,17 @@ node scripts/html-to-manifest.mjs input.html output/deck.manifest.json --measure
 npm run pipeline -- output/deck.manifest.json output
 ```
 
+严格 1:1 HTML 复刻：
+
+```bash
+node scripts/measure-html.mjs input.html output/layout-measurements.json --replica
+node scripts/html-to-manifest.mjs input.html output/deck.manifest.json --measurements output/layout-measurements.json --design-mode replica --force-measured
+node scripts/run-deck-pipeline.mjs output/deck.manifest.json output --input-type html --input-source input.html
+node scripts/run-visual-critic.mjs output/deck.manifest.json output/visual-review.json --mode replica
+```
+
+Replica 模式会从浏览器真实渲染结果提取 DOM 坐标与计算样式，优先转成可编辑 PPT 原生文本、形状、表格、线条、图片和单层外阴影；非 `drop-shadow(...)` 滤镜、backdrop-filter、clip-path、复杂渐变、多重阴影等 PPT 原生难以表达的效果会进入视觉评审报告，避免把整页悄悄退化成截图。
+
 图片或截图：
 
 ```bash

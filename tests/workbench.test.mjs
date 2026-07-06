@@ -3,7 +3,9 @@ import { chromium, expect } from "playwright/test";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 
-describe("Visual Workbench", () => {
+const playwrightEnabled = process.env.PLAYWRIGHT_RUN === "1";
+
+describe.skipIf(!playwrightEnabled)("Visual Workbench", () => {
   it("loads the static workbench shell", async () => {
     const browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });

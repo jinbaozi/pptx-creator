@@ -67,15 +67,32 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
         id: element.id,
         ...(element.slideId ? { slideId: element.slideId } : {}),
         kind: element.kind,
+        slideIndex: Number.isInteger(element.slideIndex) ? element.slideIndex : null,
         tagName: element.tagName ?? null,
         selector: element.selector ?? `[data-pptx-id="${element.id}"]`,
         x: inches.x,
         y: inches.y,
         w: inches.w,
         h: inches.h,
-        px: element.px
+        px: element.px,
+        text: element.text ?? "",
+        visibleText: typeof element.visibleText === "string" ? element.visibleText : null,
+        src: element.src ?? null,
+        naturalWidth: Number.isFinite(element.naturalWidth) ? element.naturalWidth : null,
+        naturalHeight: Number.isFinite(element.naturalHeight) ? element.naturalHeight : null,
+        style: element.style && typeof element.style === "object" ? element.style : {},
+        replica: element.replica && typeof element.replica === "object" ? element.replica : {}
       };
     });
+}
+
+export function normalizeMeasuredSlides(rawSlides = []) {
+  return rawSlides.map((slide, index) => ({
+    slideIndex: Number.isInteger(slide.slideIndex) ? slide.slideIndex : index,
+    selector: slide.selector ?? null,
+    style: slide.style && typeof slide.style === "object" ? slide.style : {},
+    replica: slide.replica && typeof slide.replica === "object" ? slide.replica : {}
+  }));
 }
 
 export function buildMeasurementsDocument({
@@ -83,6 +100,7 @@ export function buildMeasurementsDocument({
   viewport = DEFAULT_VIEWPORT,
   slideSize = SLIDE_SIZE,
   elements,
+  slides = [],
   measuredAt = new Date().toISOString()
 }) {
   return {
@@ -96,6 +114,7 @@ export function buildMeasurementsDocument({
       unit: slideSize.unit ?? "in"
     },
     viewport: { ...viewport },
+    slides: normalizeMeasuredSlides(slides),
     elements: normalizeMeasuredElements(elements, viewport, slideSize)
   };
 }

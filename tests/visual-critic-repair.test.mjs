@@ -49,6 +49,350 @@ describe("visual critic", () => {
     });
   });
 
+  it("flags Taste/Impeccable-inspired contrast and repeated-card issues", () => {
+    const manifest = sampleManifest();
+    manifest.slides[0].background = { type: "solid", color: "#F8FAFC" };
+    manifest.slides[0].elements = [
+      { type: "text", id: "low-contrast", x: 0.5, y: 0.5, w: 4, h: 0.4, text: "Muted", style: { fontSize: 12, color: "#CBD5E1" } },
+      { type: "shape", id: "card-1", shape: "roundRect", x: 0.5, y: 1.4, w: 3, h: 1.2, style: { fill: "#FFFFFF" } },
+      { type: "shape", id: "card-2", shape: "roundRect", x: 3.8, y: 1.4, w: 3, h: 1.2, style: { fill: "#FFFFFF" } },
+      { type: "shape", id: "card-3", shape: "roundRect", x: 7.1, y: 1.4, w: 3, h: 1.2, style: { fill: "#FFFFFF" } }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "creative" });
+    expect(review.slides[0].issues.some((issue) => issue.type === "text-contrast")).toBe(true);
+    expect(review.slides[0].issues.some((issue) => issue.type === "layout-repetition")).toBe(true);
+  });
+
+  it("checks text contrast against the overlapping card background, not only the slide background", () => {
+    const manifest = sampleManifest();
+    manifest.slides[0].background = { type: "solid", color: "#0F172A" };
+    manifest.slides[0].elements = [
+      {
+        type: "shape",
+        id: "metric-card",
+        shape: "roundRect",
+        x: 0.5,
+        y: 1.0,
+        w: 5,
+        h: 1.4,
+        style: { fill: "#FFFFFF", borderColor: "#E2E8F0" }
+      },
+      {
+        type: "text",
+        id: "card-label",
+        x: 0.8,
+        y: 1.25,
+        w: 3.5,
+        h: 0.4,
+        text: "Muted on card",
+        style: { fontSize: 12, color: "#CBD5E1" }
+      }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "creative" });
+    expect(review.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "text-contrast",
+        target: "card-label"
+      })
+    );
+  });
+
+  it("flags Taste/Impeccable default-font and black-shadow tells in creative mode", () => {
+    const manifest = sampleManifest();
+    manifest.slides[0].background = { type: "solid", color: "#F8FAFC" };
+    manifest.slides[0].elements = [
+      {
+        type: "text",
+        id: "default-font",
+        x: 0.5,
+        y: 0.5,
+        w: 6,
+        h: 0.5,
+        text: "Default font",
+        style: { fontSize: 24, color: "#111827", fontFamily: "Inter, system-ui, sans-serif" }
+      },
+      {
+        type: "shape",
+        id: "black-shadow-card",
+        shape: "roundRect",
+        x: 0.5,
+        y: 1.4,
+        w: 4,
+        h: 1.4,
+        style: {
+          backgroundColor: "#FFFFFF",
+          shadow: { type: "outer", color: "000000", opacity: 0.45, blur: 20, offset: 8, angle: 90 }
+        }
+      }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "creative" });
+    expect(review.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "overused-font",
+        target: "default-font"
+      })
+    );
+    expect(review.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "black-shadow",
+        target: "black-shadow-card"
+      })
+    );
+  });
+
+  it("flags neutral gray text on chromatic backgrounds in creative mode", () => {
+    const manifest = sampleManifest();
+    manifest.slides[0].background = { type: "solid", color: "#2563EB" };
+    manifest.slides[0].elements = [
+      {
+        type: "text",
+        id: "gray-on-brand",
+        x: 0.5,
+        y: 0.5,
+        w: 5,
+        h: 0.5,
+        text: "Muted on brand",
+        style: { fontSize: 22, color: "#64748B" }
+      }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "creative" });
+    expect(review.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "gray-on-color",
+        target: "gray-on-brand"
+      })
+    );
+  });
+
+  it("does not flag source gray-on-color tells in replica mode", () => {
+    const manifest = sampleManifest();
+    manifest.designSystem.mode = "replica";
+    manifest.slides[0].background = { type: "solid", color: "#2563EB" };
+    manifest.slides[0].elements = [
+      {
+        type: "text",
+        id: "source-gray",
+        x: 0.5,
+        y: 0.5,
+        w: 5,
+        h: 0.5,
+        text: "Source gray",
+        style: { fontSize: 22, color: "#64748B" }
+      }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "replica" });
+    expect(review.slides[0].issues.some((issue) => issue.type === "gray-on-color")).toBe(false);
+  });
+
+  it("flags nested card containers in creative mode but preserves them in replica mode", () => {
+    const manifest = sampleManifest();
+    manifest.slides[0].background = { type: "solid", color: "#F8FAFC" };
+    manifest.slides[0].elements = [
+      {
+        type: "shape",
+        id: "outer-card",
+        shape: "roundRect",
+        x: 0.6,
+        y: 0.8,
+        w: 6.0,
+        h: 3.0,
+        style: { fill: "#FFFFFF", borderColor: "#E2E8F0" }
+      },
+      {
+        type: "shape",
+        id: "inner-card",
+        shape: "roundRect",
+        x: 0.9,
+        y: 1.1,
+        w: 5.2,
+        h: 2.2,
+        style: { fill: "#F8FAFC", borderColor: "#CBD5E1" }
+      },
+      {
+        type: "text",
+        id: "card-title",
+        x: 1.2,
+        y: 1.35,
+        w: 3.5,
+        h: 0.4,
+        text: "Nested content",
+        style: { fontSize: 18, color: "#111827" }
+      }
+    ];
+
+    const creative = reviewManifest(manifest, { mode: "creative" });
+    expect(creative.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "nested-card",
+        target: "inner-card"
+      })
+    );
+
+    manifest.designSystem.mode = "replica";
+    const replica = reviewManifest(manifest, { mode: "replica" });
+    expect(replica.slides[0].issues.some((issue) => issue.type === "nested-card")).toBe(false);
+  });
+
+  it("does not flag creative anti-default tells in replica mode", () => {
+    const manifest = sampleManifest();
+    manifest.designSystem.mode = "replica";
+    manifest.slides[0].background = { type: "solid", color: "#F8FAFC" };
+    manifest.slides[0].elements = [
+      {
+        type: "text",
+        id: "source-font",
+        x: 0.5,
+        y: 0.5,
+        w: 6,
+        h: 0.5,
+        text: "Source font",
+        style: { fontSize: 24, color: "#111827", fontFamily: "Inter, system-ui, sans-serif" }
+      },
+      {
+        type: "shape",
+        id: "source-shadow",
+        shape: "roundRect",
+        x: 0.5,
+        y: 1.4,
+        w: 4,
+        h: 1.4,
+        style: {
+          backgroundColor: "#FFFFFF",
+          shadow: { type: "outer", color: "000000", opacity: 0.45, blur: 20, offset: 8, angle: 90 }
+        }
+      }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "replica" });
+    expect(review.slides[0].issues.some((issue) => issue.type === "overused-font")).toBe(false);
+    expect(review.slides[0].issues.some((issue) => issue.type === "black-shadow")).toBe(false);
+  });
+
+  it("flags template-like centered stack layouts in creative mode only", () => {
+    const manifest = sampleManifest();
+    manifest.slides[0].background = { type: "solid", color: "#FFFFFF" };
+    manifest.slides[0].elements = [
+      { type: "text", id: "stack-title", x: 3.4, y: 0.75, w: 6.5, h: 0.45, text: "Quarterly Update", style: { fontSize: 26, color: "#111827" } },
+      { type: "text", id: "stack-subtitle", x: 3.45, y: 1.45, w: 6.4, h: 0.35, text: "A familiar centered subtitle", style: { fontSize: 16, color: "#374151" } },
+      { type: "shape", id: "stack-pill", shape: "roundRect", x: 3.5, y: 2.25, w: 6.3, h: 0.6, style: { fill: "#F3F4F6" } },
+      { type: "text", id: "stack-body", x: 3.45, y: 3.15, w: 6.4, h: 0.45, text: "Centered body block", style: { fontSize: 18, color: "#111827" } },
+      { type: "text", id: "stack-footer", x: 3.5, y: 4.0, w: 6.3, h: 0.35, text: "Template footer", style: { fontSize: 14, color: "#374151" } }
+    ];
+
+    const creative = reviewManifest(manifest, { mode: "creative" });
+    expect(creative.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "template-stack-layout",
+        target: "slide-001"
+      })
+    );
+
+    manifest.designSystem.mode = "replica";
+    const replica = reviewManifest(manifest, { mode: "replica" });
+    expect(replica.slides[0].issues.some((issue) => issue.type === "template-stack-layout")).toBe(false);
+  });
+
+  it("flags fake-perfect metric numbers in creative mode", () => {
+    const manifest = sampleManifest();
+    manifest.slides[0].elements = [
+      {
+        type: "text",
+        id: "perfect-uptime",
+        x: 0.6,
+        y: 0.8,
+        w: 3,
+        h: 0.6,
+        text: "99.99%",
+        style: { fontSize: 32, color: "#111827" }
+      },
+      {
+        type: "text",
+        id: "template-count",
+        x: 0.6,
+        y: 1.6,
+        w: 3,
+        h: 0.6,
+        text: "1,234,567",
+        style: { fontSize: 32, color: "#111827" }
+      }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "creative" });
+    expect(review.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "fake-perfect-number",
+        target: "perfect-uptime"
+      })
+    );
+    expect(review.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "fake-perfect-number",
+        target: "template-count"
+      })
+    );
+  });
+
+  it("does not flag fake-perfect metric numbers in replica mode", () => {
+    const manifest = sampleManifest();
+    manifest.designSystem.mode = "replica";
+    manifest.slides[0].elements = [
+      {
+        type: "text",
+        id: "source-metric",
+        x: 0.6,
+        y: 0.8,
+        w: 3,
+        h: 0.6,
+        text: "99.99%",
+        style: { fontSize: 32, color: "#111827" }
+      }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "replica" });
+    expect(review.slides[0].issues.some((issue) => issue.type === "fake-perfect-number")).toBe(false);
+  });
+
+  it("reports unsupported browser effects in replica manifests", () => {
+    const manifest = sampleManifest();
+    manifest.designSystem.mode = "replica";
+    manifest.slides[0].replicaUnsupportedEffects = [
+      { elementId: "glass-card", filter: "blur(8px)", backdropFilter: null, clipPath: null }
+    ];
+
+    const review = reviewManifest(manifest, { mode: "replica" });
+    expect(review.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "replica-unsupported-effect",
+        target: "glass-card"
+      })
+    );
+  });
+
+  it("flags incomplete replica measurement coverage", () => {
+    const manifest = sampleManifest();
+    manifest.designSystem.mode = "replica";
+    manifest.slides[0].replicaCoverage = {
+      measuredElements: 4,
+      coveredElements: 3,
+      coverage: 0.75,
+      droppedElements: [{ elementId: "gradient", kind: "css-gradient", reason: "unsupported-kind" }],
+      unsupportedEffects: []
+    };
+
+    const review = reviewManifest(manifest, { mode: "replica" });
+    expect(review.slides[0].issues).toContainEqual(
+      expect.objectContaining({
+        type: "replica-coverage",
+        target: "slide-001"
+      })
+    );
+  });
+
   it("writes visual review through the CLI", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-review-"));
     const manifestPath = path.join(dir, "deck.manifest.json");
@@ -148,7 +492,7 @@ describe("visual critic", () => {
       designSystem: { source: "design-systems/business-neutral/DESIGN.md", name: "Business Neutral", mode: "balanced" },
       deck: { title: "Clean", language: "en-US", size: { preset: "wide", width: 13.333, height: 7.5, unit: "in" } },
       assets: [],
-      slides: [{ id: "s1", elements: [{ type: "text", id: "t", x: 0.5, y: 0.5, w: 4, h: 0.5, text: "Hello", style: { fontSize: 16, fontFamily: "Inter, sans-serif" } }] }]
+      slides: [{ id: "s1", elements: [{ type: "text", id: "t", x: 0.5, y: 0.5, w: 4, h: 0.5, text: "Hello", style: { fontSize: 16, fontFamily: "Aptos Display, sans-serif" } }] }]
     };
     const slopManifest = {
       version: "0.1.1",
@@ -159,7 +503,7 @@ describe("visual critic", () => {
         {
           id: "s1",
           elements: [
-            { type: "text", id: "t1", x: 0.5, y: 0.5, w: 2, h: 0.5, text: "POWER", style: { fontFamily: "Inter, Roboto, Source Serif Pro, JetBrains Mono, sans-serif", fontSize: 16, stroke: "#000", shadow: "1px 1px 1px #000" } },
+            { type: "text", id: "t1", x: 0.5, y: 0.5, w: 2, h: 0.5, text: "POWER", style: { fontFamily: "Aptos Display, Inter, Roboto, Source Serif Pro, JetBrains Mono, sans-serif", fontSize: 16, stroke: "#000", shadow: "1px 1px 1px #000" } },
             { type: "text", id: "t2", x: 0.5, y: 1.5, w: 2, h: 0.5, text: "AI \u{1F600}", style: { fontSize: 16 } },
             { type: "shape", id: "card", shape: "roundRect", x: 0.5, y: 2.5, w: 4, h: 1, style: { borderRadius: "rounded.lg", fill: "linear-gradient(red, blue)" } },
             { type: "shape", id: "card2", shape: "roundRect", x: 4.5, y: 2.5, w: 4, h: 1, style: { borderRadius: "rounded.lg" } },

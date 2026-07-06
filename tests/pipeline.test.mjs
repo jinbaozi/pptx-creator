@@ -1,14 +1,17 @@
-import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { runDeckPipeline } from "../scripts/run-deck-pipeline.mjs";
 import { convertHtmlToManifest } from "../scripts/lib/html-to-manifest-core.mjs";
 import { preflightLayout } from "../scripts/lib/check-layout-safety.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const execFileAsync = promisify(execFile);
 
 async function sha256(filePath) {
   const bytes = await readFile(filePath);
@@ -114,13 +117,68 @@ describe("run-deck-pipeline", () => {
   }, 30000);
 
   it("marks previewDiff as deferred when LibreOffice is missing", async () => {
-    // LibreOffice is not installed in this env (which and soffice absent).
-    // The pipeline should still complete with status:"deferred".
+    // The pipeline does not run preview rendering in this step. Even if
+    // LibreOffice exists on the host, previewDiff must remain deferred until
+    // an actual preview comparison is produced.
     const manifest = join(root, "examples/text-input/deck.manifest.json");
     const outputDir = join(root, "output", "pipeline-text");
     const json = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
     expect(json.previewDiff.status).toBe("deferred");
   }, 10000);
+
+  it("runs from the CLI entrypoint and writes final.pptx", async () => {
+    const manifest = join(root, "examples/text-input/deck.manifest.json");
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-pipeline-cli-"));
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [
+        join(root, "scripts/run-deck-pipeline.mjs"),
+        manifest,
+        outputDir,
+        "--input-type",
+        "html",
+        "--input-source",
+        "examples/html-input/smoke.html"
+      ],
+      { cwd: root }
+    );
+    const summary = JSON.parse(stdout);
+
+    expect(summary.status).toBe("passed");
+    await access(join(outputDir, "final.pptx"));
+    await access(join(outputDir, "consistency-report.json"));
+    const report = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
+    expect(report.inputType).toBe("html");
+    expect(report.inputSource).toBe("examples/html-input/smoke.html");
+  }, 60000);
+
+  it("copies replica coverage into consistency report quality targets", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-pipeline-coverage-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.designSystem.mode = "replica";
+    sample._replicaCoverage = {
+      measuredElements: 2,
+      coveredElements: 1,
+      coverage: 0.5,
+      droppedElements: [{ slideId: "slide-001", elementId: "css-gradient", kind: "css-gradient", reason: "unsupported-kind" }],
+      unsupportedEffects: [],
+      slides: []
+    };
+    const manifest = join(outputDir, "deck.manifest.json");
+    await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
+
+    await runDeckPipeline(manifest, outputDir, { inputSource: "replica.html" });
+    const report = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
+
+    expect(report.inputType).toBe("html");
+    expect(report.qualityTargets.replicaCoverage).toMatchObject({
+      measuredElements: 2,
+      coveredElements: 1,
+      coverage: 0.5
+    });
+  }, 60000);
 
   it("emits consistency-report.md with the 8 dimension sections", async () => {
     const manifest = join(root, "examples/text-input/deck.manifest.json");

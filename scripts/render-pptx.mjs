@@ -1,12 +1,14 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import JSZip from "jszip";
 import pptxgen from "pptxgenjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
 import { expandChartElement } from "./lib/chart-renderer.mjs";
 import { expandDiagramElement } from "./lib/diagram-compiler.mjs";
 
 const SHAPES = { rect: "rect", roundRect: "roundRect", ellipse: "ellipse" };
+const IMAGE_SHAPES = new Set(["rect", "roundRect", "ellipse"]);
 
 function fail(message) {
   console.error(message);
@@ -47,15 +49,46 @@ function localImagePath(baseDir, src) {
 function textOptions(element, design) {
   const style = resolveValue(element.style ?? {}, design.tokens);
   const typography = style.typography ?? {};
-  return {
+  const fontWeight = typography.fontWeight ?? style.fontWeight ?? 400;
+  const options = {
     fontFace: typography.fontFamily ?? style.fontFamily ?? design.tokens.typography.body.fontFamily,
     fontSize: typography.fontSize ?? style.fontSize ?? design.tokens.typography.body.fontSize,
-    bold: Boolean((typography.fontWeight ?? style.fontWeight ?? 400) >= 700 || style.bold),
+    bold: Boolean(fontWeight >= 700 || style.bold),
+    italic: Boolean(style.italic),
+    underline: style.underline,
+    strike: style.strike,
     color: hex(style.color, design.tokens.colors.text),
     align: style.align ?? "left",
     valign: style.valign ?? "top",
-    margin: 0.05
+    charSpacing: style.charSpacing,
+    lineSpacing: style.lineHeight,
+    transparency: style.transparency,
+    shadow: shadowOptions(style.shadow),
+    margin: style.margin ?? 0.05
   };
+  const bullet = bulletOptions(style.bullet);
+  if (bullet) options.bullet = bullet;
+  return options;
+}
+
+function bulletOptions(bullet) {
+  if (!bullet) return null;
+  if (bullet === true) return true;
+  if (typeof bullet !== "object") return null;
+  if (String(bullet.type ?? "").toLowerCase() === "number") {
+    return {
+      type: "number",
+      style: bullet.style,
+      startAt: bullet.startAt,
+      numberStartAt: bullet.numberStartAt,
+      indent: bullet.indent
+    };
+  }
+  const options = {};
+  if (bullet.characterCode) options.characterCode = bullet.characterCode;
+  if (bullet.code) options.code = bullet.code;
+  if (bullet.indent) options.indent = bullet.indent;
+  return Object.keys(options).length > 0 ? options : true;
 }
 
 function componentStyle(element, design) {
@@ -63,26 +96,336 @@ function componentStyle(element, design) {
   return resolveValue(style.component ?? style, design.tokens);
 }
 
+function shadowOptions(shadow) {
+  if (!shadow || typeof shadow !== "object") return null;
+  if (!["outer", "inner", "none"].includes(shadow.type)) return null;
+  const options = {
+    type: shadow.type,
+    color: hex(shadow.color, "000000"),
+    opacity: Number(shadow.opacity ?? 0.35),
+    blur: Number(shadow.blur ?? 0),
+    offset: Number(shadow.offset ?? 0),
+    angle: Number(shadow.angle ?? 0)
+  };
+  if (shadow.rotateWithShape !== undefined) options.rotateWithShape = Boolean(shadow.rotateWithShape);
+  return options;
+}
+
+function applyElementRotation(options, element) {
+  const rotate = Number(element.rotate);
+  if (Number.isFinite(rotate) && Math.abs(rotate) > 0.01) options.rotate = rotate;
+  return options;
+}
+
+function xmlEscape(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function inchesToEmu(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number * 914400) : null;
+}
+
+function pointsToEmu(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number * 12700) : null;
+}
+
+function imageSizingOptions(element) {
+  const sizing = element.sizing;
+  if (!sizing || typeof sizing !== "object" || !["cover", "contain", "crop"].includes(sizing.type)) return null;
+  const options = { type: sizing.type };
+  for (const key of ["x", "y", "w", "h"]) {
+    if (sizing[key] !== undefined) options[key] = sizing[key];
+  }
+  return options;
+}
+
+function imageSourceSizing(element) {
+  const sizing = element.sizing;
+  if (!sizing || typeof sizing !== "object") return null;
+  const sourceW = Number(sizing.sourceW);
+  const sourceH = Number(sizing.sourceH);
+  if (!(sourceW > 0 && sourceH > 0)) return null;
+  return { w: sourceW, h: sourceH };
+}
+
 function addText(slide, element, design) {
-  slide.addText(element.text ?? "", {
+  const opts = applyElementRotation({
     x: element.x,
     y: element.y,
     w: element.w,
     h: element.h,
     ...textOptions(element, design)
-  });
+  }, element);
+  if (element.id) opts.objectName = element.id;
+  slide.addText(element.text ?? "", opts);
 }
 
 function addShape(slide, element, design) {
   const style = componentStyle(element, design);
-  slide.addShape(SHAPES[element.shape] ?? "rect", {
+  const borderWidth = Number(style.borderWidth ?? 1);
+  const opts = applyElementRotation({
     x: element.x,
     y: element.y,
     w: element.w,
     h: element.h,
-    fill: { color: hex(style.backgroundColor ?? style.fill, design.tokens.colors.surface) },
-    line: { color: hex(style.borderColor ?? style.line, design.tokens.colors.border), transparency: 0 }
-  });
+    objectName: element.id,
+    fill: {
+      color: hex(style.backgroundColor ?? style.fill, design.tokens.colors.surface),
+      transparency: Number(style.transparency ?? 0)
+    },
+    line: {
+      color: hex(style.borderColor ?? style.line, style.backgroundColor ?? design.tokens.colors.border),
+      transparency: borderWidth <= 0 ? 100 : Number(style.borderTransparency ?? 0),
+      width: borderWidth <= 0 ? 0 : borderWidth,
+      dashType: style.dashType
+    }
+  }, element);
+  const shadow = shadowOptions(style.shadow);
+  if (shadow) opts.shadow = shadow;
+  slide.addShape(SHAPES[element.shape] ?? "rect", opts);
+}
+
+function gradientFillXml(gradient) {
+  if (!gradient || !Array.isArray(gradient.stops) || gradient.stops.length < 2) return null;
+  const stops = gradient.stops
+    .map((stop) => {
+      const color = hex(stop.color, "FFFFFF").toUpperCase();
+      const position = Math.round(Math.max(0, Math.min(100, Number(stop.position ?? 0))) * 1000);
+      return `<a:gs pos="${position}"><a:srgbClr val="${color}"/></a:gs>`;
+    })
+    .join("");
+  if (gradient.type === "radial") {
+    const path = gradient.shape === "circle" ? "circle" : "rect";
+    return `<a:gradFill rotWithShape="1"><a:gsLst>${stops}</a:gsLst><a:path path="${path}"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path></a:gradFill>`;
+  }
+  if (gradient.type !== "linear") return null;
+  const angle = Math.round((Number(gradient.angle ?? 0) || 0) * 60000);
+  return `<a:gradFill rotWithShape="1"><a:gsLst>${stops}</a:gsLst><a:lin ang="${angle}" scaled="0"/></a:gradFill>`;
+}
+
+async function patchGradientFills(pptxPath, gradientPatches) {
+  if (!gradientPatches.some((slide) => slide.length > 0)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, patches] of gradientPatches.entries()) {
+    if (patches.length === 0) continue;
+    const slidePath = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    let xml = await file.async("string");
+    for (const patch of patches) {
+      const gradientXml = gradientFillXml(patch.gradient);
+      if (!gradientXml) continue;
+      const name = xmlEscape(patch.id);
+      const shapePattern = new RegExp(`(<p:sp><p:nvSpPr><p:cNvPr[^>]*name="${name}"[\\s\\S]*?<p:spPr>[\\s\\S]*?)(<a:solidFill>[\\s\\S]*?</a:solidFill>|<a:noFill/>)([\\s\\S]*?</p:spPr>)`);
+      xml = xml.replace(shapePattern, `$1${gradientXml}$3`);
+    }
+    zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function patchBackgroundGradientFills(pptxPath, backgroundPatches) {
+  if (!backgroundPatches.some(Boolean)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, gradient] of backgroundPatches.entries()) {
+    if (!gradient) continue;
+    const gradientXml = gradientFillXml(gradient);
+    if (!gradientXml) continue;
+    const slidePath = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    let xml = await file.async("string");
+    const backgroundXml = `<p:bg><p:bgPr>${gradientXml}</p:bgPr></p:bg>`;
+    if (/<p:bg>[\s\S]*?<\/p:bg>/.test(xml)) {
+      xml = xml.replace(/<p:bg>[\s\S]*?<\/p:bg>/, backgroundXml);
+    } else {
+      xml = xml.replace("<p:cSld", "<p:cSld").replace(/(<p:cSld[^>]*>)/, `$1${backgroundXml}`);
+    }
+    zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function patchImageShapes(pptxPath, imageShapePatches) {
+  if (!imageShapePatches.some((slide) => slide.length > 0)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, patches] of imageShapePatches.entries()) {
+    if (patches.length === 0) continue;
+    const slidePath = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    let xml = await file.async("string");
+    for (const patch of patches) {
+      if (!IMAGE_SHAPES.has(patch.imageShape)) continue;
+      const name = xmlEscape(patch.id);
+      const picturePattern = new RegExp(
+        `(<p:pic>[\\s\\S]*?<p:nvPicPr>[\\s\\S]*?<p:cNvPr[^>]*name="${name}"[\\s\\S]*?<p:spPr>[\\s\\S]*?<a:prstGeom prst=")(rect|roundRect|ellipse)("[\\s\\S]*?</a:prstGeom>)`
+      );
+      xml = xml.replace(picturePattern, `$1${patch.imageShape}$3`);
+    }
+    zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function patchTextCaps(pptxPath, textCapPatches) {
+  if (!textCapPatches.some((slide) => slide.length > 0)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, patches] of textCapPatches.entries()) {
+    if (patches.length === 0) continue;
+    const slidePath = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    let xml = await file.async("string");
+    for (const patch of patches) {
+      if (patch.cap !== "small") continue;
+      const name = xmlEscape(patch.id);
+      const textShapePattern = new RegExp(
+        `(<p:sp><p:nvSpPr><p:cNvPr[^>]*name="${name}"[\\s\\S]*?<p:txBody>)([\\s\\S]*?)(</p:txBody>)`
+      );
+      xml = xml.replace(textShapePattern, (_match, before, body, after) => {
+        const patchedBody = body.replace(/<(a:(?:rPr|endParaRPr))\b(?![^>]*\bcap=)([^>]*)>/g, '<$1 cap="small"$2>');
+        return `${before}${patchedBody}${after}`;
+      });
+    }
+    zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function patchTextIndents(pptxPath, textIndentPatches) {
+  if (!textIndentPatches.some((slide) => slide.length > 0)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, patches] of textIndentPatches.entries()) {
+    if (patches.length === 0) continue;
+    const slidePath = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    let xml = await file.async("string");
+    for (const patch of patches) {
+      const indent = inchesToEmu(patch.firstLineIndent);
+      if (indent === null) continue;
+      const name = xmlEscape(patch.id);
+      const textShapePattern = new RegExp(
+        `(<p:sp><p:nvSpPr><p:cNvPr[^>]*name="${name}"[\\s\\S]*?<p:txBody>)([\\s\\S]*?)(</p:txBody>)`
+      );
+      xml = xml.replace(textShapePattern, (_match, before, body, after) => {
+        const patchedBody = body.replace(/<a:pPr\b([^>]*)>/g, (_pPr, attrs) => {
+          const withoutIndent = attrs.replace(/\sindent="[^"]*"/g, "");
+          return `<a:pPr${withoutIndent} indent="${indent}">`;
+        });
+        return `${before}${patchedBody}${after}`;
+      });
+    }
+    zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function patchTextDirections(pptxPath, textDirectionPatches) {
+  if (!textDirectionPatches.some((slide) => slide.length > 0)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, patches] of textDirectionPatches.entries()) {
+    if (patches.length === 0) continue;
+    const slidePath = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    let xml = await file.async("string");
+    for (const patch of patches) {
+      if (patch.textDirection !== "vertical") continue;
+      const name = xmlEscape(patch.id);
+      const textShapePattern = new RegExp(
+        `(<p:sp><p:nvSpPr><p:cNvPr[^>]*name="${name}"[\\s\\S]*?<p:txBody>)([\\s\\S]*?)(</p:txBody>)`
+      );
+      xml = xml.replace(textShapePattern, (_match, before, body, after) => {
+        const patchedBody = body.replace(/<a:bodyPr\b([^>]*)>/, (_bodyPr, attrs) => {
+          const withoutVert = attrs.replace(/\svert="[^"]*"/g, "");
+          return `<a:bodyPr${withoutVert} vert="vert">`;
+        });
+        return `${before}${patchedBody}${after}`;
+      });
+    }
+    zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function patchTextRtl(pptxPath, textRtlPatches) {
+  if (!textRtlPatches.some((slide) => slide.length > 0)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, patches] of textRtlPatches.entries()) {
+    if (patches.length === 0) continue;
+    const slidePath = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    let xml = await file.async("string");
+    for (const patch of patches) {
+      if (!patch.rtl) continue;
+      const name = xmlEscape(patch.id);
+      const textShapePattern = new RegExp(
+        `(<p:sp><p:nvSpPr><p:cNvPr[^>]*name="${name}"[\\s\\S]*?<p:txBody>)([\\s\\S]*?)(</p:txBody>)`
+      );
+      xml = xml.replace(textShapePattern, (_match, before, body, after) => {
+        const patchedBody = body.replace(/<a:pPr\b([^>]*)>/g, (_pPr, attrs) => {
+          const withoutRtl = attrs.replace(/\srtl="[^"]*"/g, "");
+          return `<a:pPr${withoutRtl} rtl="1">`;
+        });
+        return `${before}${patchedBody}${after}`;
+      });
+    }
+    zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+function textStrokeXml(stroke) {
+  if (!stroke || typeof stroke !== "object") return null;
+  const width = pointsToEmu(stroke.width);
+  if (!(width > 0)) return null;
+  const color = hex(stroke.color, "000000").toUpperCase();
+  const transparency = Number(stroke.transparency);
+  const alpha =
+    Number.isFinite(transparency) && transparency > 0
+      ? `<a:alpha val="${Math.round(Math.max(0, Math.min(100, 100 - transparency)) * 1000)}"/>`
+      : "";
+  const colorXml = alpha ? `<a:srgbClr val="${color}">${alpha}</a:srgbClr>` : `<a:srgbClr val="${color}"/>`;
+  return `<a:ln w="${width}"><a:solidFill>${colorXml}</a:solidFill></a:ln>`;
+}
+
+async function patchTextStrokes(pptxPath, textStrokePatches) {
+  if (!textStrokePatches.some((slide) => slide.length > 0)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, patches] of textStrokePatches.entries()) {
+    if (patches.length === 0) continue;
+    const slidePath = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    let xml = await file.async("string");
+    for (const patch of patches) {
+      const lineXml = textStrokeXml(patch.textStroke);
+      if (!lineXml) continue;
+      const name = xmlEscape(patch.id);
+      const textShapePattern = new RegExp(
+        `(<p:sp><p:nvSpPr><p:cNvPr[^>]*name="${name}"[\\s\\S]*?<p:txBody>)([\\s\\S]*?)(</p:txBody>)`
+      );
+      xml = xml.replace(textShapePattern, (_match, before, body, after) => {
+        const patchedBody = body.replace(/<a:rPr\b([^>]*)>([\s\S]*?)<\/a:rPr>/g, (_rPr, attrs, inner) => {
+          const cleanedInner = inner.replace(/<a:ln\b[\s\S]*?<\/a:ln>/g, "");
+          return `<a:rPr${attrs}>${lineXml}${cleanedInner}</a:rPr>`;
+        });
+        return `${before}${patchedBody}${after}`;
+      });
+    }
+    zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
 }
 
 function addLine(slide, element, design) {
@@ -97,7 +440,9 @@ function addLine(slide, element, design) {
       width: style.width ?? 1.5,
       ...(style.beginArrowType ? { beginArrowType: style.beginArrowType } : {}),
       ...(style.endArrowType ? { endArrowType: style.endArrowType } : {}),
-      ...(style.dash ? { dash: style.dash } : {})
+      ...(style.dash ? { dash: style.dash } : {}),
+      dashType: style.dashType,
+      transparency: style.transparency
     }
   });
 }
@@ -129,7 +474,7 @@ function addTable(slide, element, design) {
     y: element.y,
     w: element.w,
     h: element.h,
-    border: { color: hex(style.borderColor, design.tokens.colors.border), pt: 1 },
+    border: { color: hex(style.borderColor, design.tokens.colors.border), pt: Number(style.borderWidth ?? 1) },
     color: hex(style.color, design.tokens.colors.text),
     fontFace: design.tokens.typography.body.fontFamily,
     fontSize: style.fontSize ?? design.tokens.typography.body.fontSize,
@@ -357,13 +702,27 @@ function addIcon(slide, element, design) {
 }
 
 function addImage(slide, element, baseDir) {
-  slide.addImage({
+  const style = element.style ?? {};
+  const sourceSizing = imageSourceSizing(element);
+  const imageOpts = applyElementRotation({
     path: localImagePath(baseDir, element.src),
     x: element.x,
     y: element.y,
-    w: element.w,
-    h: element.h
-  });
+    w: sourceSizing?.w ?? element.w,
+    h: sourceSizing?.h ?? element.h
+  }, element);
+  if (element.id) {
+    imageOpts.objectName = element.id;
+    imageOpts.altText = element.id;
+  }
+  if (element.rounding !== undefined) imageOpts.rounding = Boolean(element.rounding);
+  else if (element.imageShape === "ellipse") imageOpts.rounding = true;
+  if (element.transparency !== undefined) imageOpts.transparency = Number(element.transparency);
+  const sizing = imageSizingOptions(element);
+  if (sizing) imageOpts.sizing = sizing;
+  const shadow = shadowOptions(style.shadow);
+  if (shadow) imageOpts.shadow = shadow;
+  slide.addImage(imageOpts);
 }
 
 function addCroppedAsset(slide, element, baseDir, manifestAssets) {
@@ -376,13 +735,13 @@ function addCroppedAsset(slide, element, baseDir, manifestAssets) {
   }
   if (!src) throw new Error("cropped-asset requires src or assets.id");
   const crop = element.crop;
-  const imageOpts = {
+  const imageOpts = applyElementRotation({
     path: localImagePath(baseDir, src),
     x: element.x,
     y: element.y,
     w: element.w,
     h: element.h
-  };
+  }, element);
   if (element.id) {
     // Surface the manifest id in the slide XML so downstream tooling can correlate
     // generated objects back to their source blocks (cropped-asset provenance).
@@ -419,6 +778,9 @@ function addBackground(slide, background, manifest, design, baseDir) {
       w: manifest.deck.size.width,
       h: manifest.deck.size.height
     });
+  } else if (background.type === "gradient") {
+    const firstStop = background.gradient?.stops?.[0]?.color;
+    slide.background = { color: hex(resolveValue(firstStop, design.tokens), design.tokens.colors.background) };
   }
 }
 
@@ -603,15 +965,68 @@ async function main() {
   pptx.layout = "CUSTOM_WIDE";
 
   const countersBySlide = [];
+  const gradientPatches = [];
+  const backgroundGradientPatches = [];
+  const imageShapePatches = [];
+  const textCapPatches = [];
+  const textIndentPatches = [];
+  const textDirectionPatches = [];
+  const textRtlPatches = [];
+  const textStrokePatches = [];
   for (const sourceSlide of manifest.slides) {
     const slide = pptx.addSlide();
     const counters = { text: 0, shape: 0, image: 0, table: 0 };
     addBackground(slide, sourceSlide.background, manifest, design, baseDir);
-    for (const element of expandRenderableElements(sourceSlide.elements ?? [])) renderElement(slide, element, design, baseDir, counters, manifest.assets);
+    backgroundGradientPatches.push(sourceSlide.background?.type === "gradient" ? sourceSlide.background.gradient : null);
+    const renderableElements = expandRenderableElements(sourceSlide.elements ?? []);
+    gradientPatches.push(
+      renderableElements
+        .filter((element) => element.type === "shape" && element.style?.gradient)
+        .map((element) => ({ id: element.id, gradient: element.style.gradient }))
+    );
+    imageShapePatches.push(
+      renderableElements
+        .filter((element) => element.type === "image" && element.id && IMAGE_SHAPES.has(element.imageShape))
+        .map((element) => ({ id: element.id, imageShape: element.imageShape }))
+    );
+    textCapPatches.push(
+      renderableElements
+        .filter((element) => element.type === "text" && element.id && element.style?.smallCaps)
+        .map((element) => ({ id: element.id, cap: "small" }))
+    );
+    textIndentPatches.push(
+      renderableElements
+        .filter((element) => element.type === "text" && element.id && Number.isFinite(Number(element.style?.firstLineIndent)))
+        .map((element) => ({ id: element.id, firstLineIndent: Number(element.style.firstLineIndent) }))
+    );
+    textDirectionPatches.push(
+      renderableElements
+        .filter((element) => element.type === "text" && element.id && element.style?.textDirection)
+        .map((element) => ({ id: element.id, textDirection: element.style.textDirection }))
+    );
+    textRtlPatches.push(
+      renderableElements
+        .filter((element) => element.type === "text" && element.id && element.style?.rtl)
+        .map((element) => ({ id: element.id, rtl: true }))
+    );
+    textStrokePatches.push(
+      renderableElements
+        .filter((element) => element.type === "text" && element.id && element.style?.textStroke)
+        .map((element) => ({ id: element.id, textStroke: element.style.textStroke }))
+    );
+    for (const element of renderableElements) renderElement(slide, element, design, baseDir, counters, manifest.assets);
     countersBySlide.push(counters);
   }
 
   await pptx.writeFile({ fileName: outputPath });
+  await patchGradientFills(outputPath, gradientPatches);
+  await patchBackgroundGradientFills(outputPath, backgroundGradientPatches);
+  await patchImageShapes(outputPath, imageShapePatches);
+  await patchTextCaps(outputPath, textCapPatches);
+  await patchTextIndents(outputPath, textIndentPatches);
+  await patchTextDirections(outputPath, textDirectionPatches);
+  await patchTextRtl(outputPath, textRtlPatches);
+  await patchTextStrokes(outputPath, textStrokePatches);
   await writeReports(outputDir, manifest, design, countersBySlide, { backend });
   const editabilityCounter = aggregateCounters(countersBySlide);
   const fontNames = collectFontNames(manifest, design).map((requested) => ({

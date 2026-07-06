@@ -37,7 +37,10 @@ def load_manifest(path: Path) -> dict:
 def validate_design_system(data: dict, manifest_path: Path) -> None:
     design = data.get("designSystem")
     require(isinstance(design, dict), "designSystem must be an object")
-    require(design.get("mode") in {"strict", "balanced", "creative", "inspired"}, "designSystem.mode must be strict, balanced, creative, or inspired")
+    require(
+        design.get("mode") in {"strict", "balanced", "creative", "inspired", "replica"},
+        "designSystem.mode must be strict, balanced, creative, inspired, or replica",
+    )
     source = design.get("source")
     require(isinstance(source, str) and source, "designSystem.source is required")
     design_path = (manifest_path.parent / source).resolve()
@@ -76,7 +79,25 @@ def require_local_file(src: object, manifest_path: Path, label: str) -> None:
     require(file_path.exists(), f"{label}: file missing: {src}")
 
 
-def validate_element(element: dict, slide_id: str, width: float, height: float, manifest_path: Path, manifest_assets: list | None = None) -> None:
+def validate_gradient(value: object, label: str) -> None:
+    require(isinstance(value, dict), f"{label}: gradient must be an object")
+    gradient_type = value.get("type")
+    require(gradient_type in {"linear", "radial"}, f"{label}: gradient.type must be linear or radial")
+    if gradient_type == "linear":
+        require(isinstance(value.get("angle"), (int, float)), f"{label}: gradient.angle must be numeric")
+    if gradient_type == "radial":
+        require(value.get("shape") in {"circle", "ellipse"}, f"{label}: gradient.shape must be circle or ellipse")
+        require(value.get("position") == "center", f"{label}: gradient.position must be center")
+    stops = value.get("stops")
+    require(isinstance(stops, list) and len(stops) >= 2, f"{label}: gradient.stops requires at least two stops")
+    for index, stop in enumerate(stops):
+        require(isinstance(stop, dict), f"{label}: gradient.stops[{index}] must be an object")
+        require(is_color_or_token(stop.get("color")), f"{label}: gradient.stops[{index}].color must be #RRGGBB or token")
+        position = stop.get("position")
+        require(isinstance(position, (int, float)) and 0 <= position <= 100, f"{label}: gradient.stops[{index}].position must be 0-100")
+
+
+def validate_element(element: dict, slide_id: str, width: float, height: float, manifest_path: Path, manifest_assets=None) -> None:
     require(element.get("type") in {"text", "shape", "image", "table", "line", "chart", "icon", "diagram", "cropped-asset"}, f"{slide_id}: unsupported element type")
     require(isinstance(element.get("id"), str) and element["id"], f"{slide_id}: element id is required")
     for key in ["x", "y", "w", "h"]:
@@ -90,6 +111,8 @@ def validate_element(element: dict, slide_id: str, width: float, height: float, 
         require(element.get("shape") in {"rect", "roundRect", "ellipse"}, f"{slide_id}/{element['id']}: unsupported shape")
     if element["type"] == "image":
         require_local_file(element.get("src"), manifest_path, f"{slide_id}/{element['id']}")
+        if element.get("imageShape") is not None:
+            require(element.get("imageShape") in {"rect", "roundRect", "ellipse"}, f"{slide_id}/{element['id']}: unsupported imageShape")
     if element["type"] == "cropped-asset":
         # Either a direct src OR an assets.id reference (resolves to manifest.assets[].src).
         src = element.get("src")
@@ -156,11 +179,13 @@ def validate_slides(data: dict, width: float, height: float, manifest_path: Path
         seen_slides.add(slide_id)
         background = slide.get("background")
         require(isinstance(background, dict), f"{slide_id}: background must be an object")
-        require(background.get("type") in {"solid", "image"}, f"{slide_id}: unsupported background type")
+        require(background.get("type") in {"solid", "image", "gradient"}, f"{slide_id}: unsupported background type")
         if background.get("type") == "solid":
             require(is_color_or_token(background.get("color")), f"{slide_id}: solid background requires #RRGGBB color or token")
         if background.get("type") == "image":
             require_local_file(background.get("src"), manifest_path, slide_id)
+        if background.get("type") == "gradient":
+            validate_gradient(background.get("gradient"), slide_id)
         seen_elements = set()
         for element in slide.get("elements", []):
             element_id = element.get("id")

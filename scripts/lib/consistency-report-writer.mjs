@@ -381,6 +381,9 @@ function previewDiffShape(preview, override) {
       ...(Array.isArray(override.perSlide) ? { perSlide: override.perSlide } : {})
     };
   }
+  if (preview?.status === "deferred") {
+    return { status: "deferred" };
+  }
   const libreofficeAvailable = preview.libreofficeAvailable === true;
   if (!libreofficeAvailable) {
     return { status: "deferred" };

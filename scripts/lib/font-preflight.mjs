@@ -59,12 +59,12 @@ function resolveTokenString(value, tokens) {
  * nested objects and arrays. Token strings like `{typography.title}`
  * are resolved against the design tokens when available.
  */
-function collectFontsFromValue(value, tokens, out) {
+function collectFontsFromValue(value, tokens, out, key = null) {
   if (value == null) return;
   if (typeof value === "string") {
     const resolved = resolveTokenString(value, tokens);
     if (typeof resolved === "string") {
-      addFontName(out, resolved);
+      if (key === "fontFamily") addFontName(out, resolved);
     } else if (resolved && typeof resolved === "object") {
       collectFontsFromValue(resolved, tokens, out);
     }
@@ -72,17 +72,13 @@ function collectFontsFromValue(value, tokens, out) {
   }
   if (Array.isArray(value)) {
     for (const item of value) {
-      collectFontsFromValue(item, tokens, out);
+      collectFontsFromValue(item, tokens, out, key);
     }
     return;
   }
   if (typeof value === "object") {
-    if (typeof value.fontFamily === "string") {
-      const family = resolveTokenString(value.fontFamily, tokens);
-      if (typeof family === "string") addFontName(out, family);
-    }
-    for (const child of Object.values(value)) {
-      collectFontsFromValue(child, tokens, out);
+    for (const [childKey, child] of Object.entries(value)) {
+      collectFontsFromValue(child, tokens, out, childKey);
     }
   }
 }

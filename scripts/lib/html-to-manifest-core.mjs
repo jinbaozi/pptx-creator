@@ -1,4 +1,6 @@
 import { relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { imageSize } from "image-size";
 import { parse } from "node-html-parser";
 import { buildMeasurementLookup, getMeasurementBox, mergeMeasurementsIntoManifest, roundInches } from "./html-measurement-core.mjs";
 import { buildTokenLookup, exactTokenRef, resolveTokens } from "./color-tokens.mjs";
@@ -232,7 +234,8 @@ function designSystemSource(id, options = {}) {
   const fallback = `../../design-systems/${id}/DESIGN.md`;
   if (!options.packageRoot || !options.manifestDir) return fallback;
   const designPath = resolve(options.packageRoot, `design-systems/${id}/DESIGN.md`);
-  return relative(options.manifestDir, designPath).replace(/\\/g, "/");
+  const rel = relative(options.manifestDir, designPath).replace(/\\/g, "/");
+  return rel.startsWith("../") ? designPath : rel;
 }
 
 function designSystemName(id) {
@@ -279,7 +282,22 @@ function shapeElement(id, box, component = "{components.content-card}") {
   };
 }
 
-function tableElement(id, tableNode, box) {
+function replicaTableStyle(style = {}) {
+  const tableStyle = {
+    borderColor: style.borderColor ?? "{colors.border}",
+    color: style.color ?? "{colors.text}",
+    fill: style.backgroundColor ?? "{colors.background}",
+    headerFill: style.backgroundColor ?? "{colors.surfaceAlt}",
+    fontSize: style.fontSize ?? 12
+  };
+  const borderWidthPx = Number(style.borderWidth);
+  if (Number.isFinite(borderWidthPx) && borderWidthPx > 0) {
+    tableStyle.borderWidth = Math.round(borderWidthPx * 0.75 * 100) / 100;
+  }
+  return tableStyle;
+}
+
+function tableElement(id, tableNode, box, measuredStyle = null) {
   const headers = [];
   const rows = [];
   const thead = tableNode.querySelector("thead");
@@ -310,13 +328,7 @@ function tableElement(id, tableNode, box) {
     w: box.w,
     h: box.h,
     rows,
-    style: {
-      borderColor: "{colors.border}",
-      color: "{colors.text}",
-      fill: "{colors.background}",
-      headerFill: "{colors.surfaceAlt}",
-      fontSize: 12
-    }
+    style: measuredStyle ? replicaTableStyle(measuredStyle) : replicaTableStyle()
   };
   if (headers.length > 0) element.headers = headers;
   return element;
@@ -357,6 +369,1044 @@ function lineElement(id, box, preserveHeight = false, node = null) {
   };
 }
 
+function measuredBox(measurement) {
+  return {
+    x: measurement.x,
+    y: measurement.y,
+    w: measurement.w,
+    h: measurement.h
+  };
+}
+
+function cssStyle(measurement) {
+  return measurement?.style && typeof measurement.style === "object" ? measurement.style : {};
+}
+
+function replicaTextMargin(style) {
+  const values = [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].map((value) =>
+    typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : null
+  );
+  return values.every((value) => value !== null) && values.some((value) => value > 0) ? values : 0.02;
+}
+
+function applyTextTransform(text, transform) {
+  const value = String(text ?? "");
+  if (transform === "uppercase") return value.toUpperCase();
+  if (transform === "lowercase") return value.toLowerCase();
+  if (transform === "capitalize") {
+    return value.replace(/\b(\p{L})/gu, (match) => match.toUpperCase());
+  }
+  return value;
+}
+
+function replicaTextContent(measurement, style) {
+  const source = typeof measurement.visibleText === "string" && measurement.visibleText ? measurement.visibleText : (measurement.text ?? "");
+  return applyTextTransform(source, style.textTransform);
+}
+
+function replicaTextDecoration(style) {
+  const line = typeof style.textDecorationLine === "string" ? style.textDecorationLine : "";
+  const decoration = {};
+  if (/\bunderline\b/.test(line)) decoration.underline = { style: "sng" };
+  if (/\bline-through\b/.test(line)) decoration.strike = "sngStrike";
+  return decoration;
+}
+
+function replicaTextSmallCaps(style) {
+  return ["small-caps", "all-small-caps"].includes(String(style.fontVariantCaps ?? "").trim().toLowerCase());
+}
+
+function replicaTextOverflow(style) {
+  const overflow = String(style.textOverflow ?? "").trim().toLowerCase();
+  const whiteSpace = String(style.whiteSpace ?? "").trim().toLowerCase();
+  const overflowX = String(style.overflowX ?? "").trim().toLowerCase();
+  return overflow === "ellipsis" && whiteSpace === "nowrap" && ["hidden", "clip"].includes(overflowX) ? "ellipsis" : undefined;
+}
+
+function replicaTextAlign(style) {
+  const textAlign = String(style.textAlign ?? "").trim().toLowerCase();
+  if (["center", "left", "right", "justify"].includes(textAlign)) return textAlign;
+  const direction = String(style.direction ?? "ltr").trim().toLowerCase();
+  if (textAlign === "start") return direction === "rtl" ? "right" : "left";
+  if (textAlign === "end") return direction === "rtl" ? "left" : "right";
+  if (style.display === "flex" && style.justifyContent === "center") return "center";
+  if (style.display === "flex" && style.justifyContent === "flex-end") return "right";
+  return "left";
+}
+
+function replicaTextIndent(style) {
+  const value = Number(style.textIndent);
+  return Number.isFinite(value) && Math.abs(value) >= 0.01 ? Math.round((value / 96) * 1000) / 1000 : undefined;
+}
+
+function replicaTextStroke(style) {
+  const widthPx = Number(style.webkitTextStrokeWidth);
+  if (!Number.isFinite(widthPx) || widthPx <= 0) return undefined;
+  const color = style.webkitTextStrokeColor ?? style.color;
+  if (!color) return undefined;
+  const stroke = {
+    color,
+    width: Math.round(widthPx * 0.75 * 100) / 100
+  };
+  const transparency = cssCombinedTransparency(style, "webkitTextStrokeTransparency");
+  if (transparency !== null) stroke.transparency = transparency;
+  return stroke;
+}
+
+function replicaTextFillColor(style) {
+  return style.webkitTextFillColor ?? style.color ?? "{colors.text}";
+}
+
+function replicaTextDirection(style) {
+  const writingMode = String(style.writingMode ?? "").trim().toLowerCase();
+  return writingMode.startsWith("vertical-") || writingMode === "sideways-rl" || writingMode === "sideways-lr" ? "vertical" : undefined;
+}
+
+function replicaTextRtl(style) {
+  return String(style.direction ?? "").trim().toLowerCase() === "rtl" || undefined;
+}
+
+function replicaTextValign(style) {
+  if (style.display === "flex" && style.alignItems === "center") return "middle";
+  if (style.display === "flex" && style.alignItems === "flex-end") return "bottom";
+  return "top";
+}
+
+function replicaRotate(style) {
+  const value = Number(style.rotate ?? style.rotation);
+  if (!Number.isFinite(value) || Math.abs(value) <= 0.01) return null;
+  return Math.round(value * 100) / 100;
+}
+
+function applyReplicaRotation(element, style) {
+  const rotate = replicaRotate(style);
+  if (rotate !== null) element.rotate = rotate;
+  return element;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function cssCombinedTransparency(style, ...transparencyKeys) {
+  let alpha = 1;
+  const opacity = Number(style.opacity);
+  if (Number.isFinite(opacity)) alpha *= clamp01(opacity);
+  for (const key of transparencyKeys) {
+    const transparency = Number(style[key]);
+    if (Number.isFinite(transparency)) alpha *= 1 - clamp01(transparency / 100);
+  }
+  const result = Math.round((1 - alpha) * 100);
+  return result > 0 ? result : null;
+}
+
+function parseObjectPositionAxis(value, axis) {
+  const token = String(value ?? "").trim().toLowerCase();
+  if (!token) return 0.5;
+  if ((axis === "x" && token === "left") || (axis === "y" && token === "top")) return 0;
+  if (token === "center") return 0.5;
+  if ((axis === "x" && token === "right") || (axis === "y" && token === "bottom")) return 1;
+  const percent = token.match(/^(-?\d+(?:\.\d+)?)%$/);
+  if (percent) return clamp01(Number(percent[1]) / 100);
+  return 0.5;
+}
+
+function parseObjectPosition(value) {
+  const parts = String(value ?? "50% 50%").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    return {
+      x: parseObjectPositionAxis(parts[0], "x"),
+      y: 0.5
+    };
+  }
+  return {
+    x: parseObjectPositionAxis(parts[0], "x"),
+    y: parseObjectPositionAxis(parts[1], "y")
+  };
+}
+
+function coverImageSizingForBox(sourceWidth, sourceHeight, box, objectPosition) {
+  if (!(sourceWidth > 0 && sourceHeight > 0)) return null;
+  const imageRatio = sourceHeight / sourceWidth;
+  const boxRatio = box.h / box.w;
+  const position = parseObjectPosition(objectPosition);
+  let sourceW = box.w;
+  let sourceH = box.h;
+  let x = 0;
+  let y = 0;
+  if (boxRatio > imageRatio) {
+    sourceH = box.h;
+    sourceW = box.h / imageRatio;
+    x = Math.max(0, sourceW - box.w) * position.x;
+  } else if (boxRatio < imageRatio) {
+    sourceW = box.w;
+    sourceH = box.w * imageRatio;
+    y = Math.max(0, sourceH - box.h) * position.y;
+  }
+  const sizing = {
+    type: Math.abs(x) > 0.001 || Math.abs(y) > 0.001 ? "crop" : "cover",
+    w: box.w,
+    h: box.h,
+    sourceW: roundInches(sourceW),
+    sourceH: roundInches(sourceH)
+  };
+  if (sizing.type === "crop") {
+    sizing.x = roundInches(x);
+    sizing.y = roundInches(y);
+  }
+  return sizing;
+}
+
+function replicaCoverImageSizing(measurement, box, style) {
+  return coverImageSizingForBox(Number(measurement.naturalWidth), Number(measurement.naturalHeight), box, style.objectPosition);
+}
+
+function replicaImageSizing(measurement, style, box) {
+  if (!["cover", "contain"].includes(style.objectFit)) return null;
+  if (style.objectFit === "cover") {
+    const cover = replicaCoverImageSizing(measurement, box, style);
+    if (cover) return cover;
+  }
+  return {
+    type: style.objectFit,
+    w: box.w,
+    h: box.h
+  };
+}
+
+function replicaImageElement(measurement, box) {
+  const style = cssStyle(measurement);
+  const element = applyReplicaRotation({ type: "image", id: measurement.id, src: measurement.src, ...box }, style);
+  const shapeKind = replicaShapeKind(measurement);
+  if (shapeKind === "ellipse") element.rounding = true;
+  else if (shapeKind === "roundRect") element.imageShape = "roundRect";
+  const transparency = cssCombinedTransparency(style);
+  if (transparency !== null) element.transparency = transparency;
+  const shadow = parseCssDropShadowFilter(measurement.replica?.filter) ?? parseCssBoxShadow(style.boxShadow);
+  if (shadow) element.style = { shadow };
+  const sizing = replicaImageSizing(measurement, style, box);
+  if (sizing) element.sizing = sizing;
+  return element;
+}
+
+function replicaImageBorderElement(measurement) {
+  const style = cssStyle(measurement);
+  if (!(Number(style.borderWidth ?? 0) > 0)) return null;
+  const borderStyle = style.borderStyle ?? "solid";
+  if (borderStyle === "none" || borderStyle === "hidden") return null;
+  return replicaShapeElement(`${measurement.id}-border`, {
+    ...measurement,
+    style: {
+      ...style,
+      backgroundColor: null,
+      boxShadow: null
+    }
+  });
+}
+
+function replicaImageLayerElements(measurement, box) {
+  const elements = [replicaImageElement(measurement, box)];
+  const border = replicaImageBorderElement(measurement);
+  if (border) elements.push(border);
+  const outline = replicaOutlineElement(measurement.id, measurement);
+  if (outline) elements.push(outline);
+  return elements;
+}
+
+function hasCssOutline(style) {
+  const width = Number(style.outlineWidth ?? 0) || 0;
+  const outlineStyle = style.outlineStyle ?? "none";
+  return width > 0 && outlineStyle !== "none" && outlineStyle !== "hidden";
+}
+
+function replicaOutlineElement(id, measurement) {
+  const style = cssStyle(measurement);
+  if (!hasCssOutline(style)) return null;
+  const widthPx = Number(style.outlineWidth ?? 0) || 0;
+  const offsetPx = Number(style.outlineOffset ?? 0) || 0;
+  const expansion = Math.max(0, (offsetPx + widthPx / 2) / 96);
+  const box = measuredBox(measurement);
+  const outlineStyle = {
+    ...style,
+    backgroundColor: null,
+    borderColor: style.outlineColor ?? style.borderColor ?? "{colors.border}",
+    borderTransparency: style.outlineTransparency ?? style.borderTransparency,
+    borderWidth: widthPx,
+    borderStyle: style.outlineStyle,
+    boxShadow: null
+  };
+  return replicaShapeElement(`${id}-outline`, {
+    ...measurement,
+    x: roundInches(box.x - expansion),
+    y: roundInches(box.y - expansion),
+    w: roundInches(box.w + expansion * 2),
+    h: roundInches(box.h + expansion * 2),
+    style: outlineStyle
+  });
+}
+
+function parseCssBackgroundImageUrl(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^url\(/i.test(trimmed) || splitCssCommaList(trimmed).length !== 1) return null;
+  const match = trimmed.match(/^url\((['"]?)(.*?)\1\)$/i);
+  if (!match) return null;
+  const raw = match[2].trim();
+  if (!raw || /^data:/i.test(raw)) return null;
+  if (/^file:\/\//i.test(raw)) {
+    try {
+      return fileURLToPath(raw);
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return decodeURI(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function replicaBackgroundImageSizing(style, box) {
+  return replicaBackgroundImageSizingForSrc(null, style, box);
+}
+
+function localImageDimensions(src) {
+  if (!src || /^https?:\/\//i.test(src)) return null;
+  try {
+    const dimensions = imageSize(src);
+    const width = Number(dimensions.width);
+    const height = Number(dimensions.height);
+    return width > 0 && height > 0 ? { width, height } : null;
+  } catch {
+    return null;
+  }
+}
+
+function cssBackgroundSizeLength(value, axisInches) {
+  const token = String(value ?? "").trim().toLowerCase();
+  const percent = token.match(/^(-?\d+(?:\.\d+)?)%$/);
+  if (percent) return Math.max(0, axisInches * (Number(percent[1]) / 100));
+  const px = token.match(/^(-?\d+(?:\.\d+)?)px$/);
+  if (px) return Math.max(0, Number(px[1]) / 96);
+  return null;
+}
+
+function cssBackgroundPositionLength(value, remainingInches) {
+  const token = String(value ?? "").trim().toLowerCase();
+  const percent = token.match(/^(-?\d+(?:\.\d+)?)%$/);
+  if (percent) return remainingInches * (Number(percent[1]) / 100);
+  const px = token.match(/^(-?\d+(?:\.\d+)?)px$/);
+  if (px) return Number(px[1]) / 96;
+  const calc = token.match(/^calc\(\s*(-?\d+(?:\.\d+)?)%\s*([+-])\s*(-?\d+(?:\.\d+)?)px\s*\)$/);
+  if (calc) {
+    const percentOffset = remainingInches * (Number(calc[1]) / 100);
+    const pixelOffset = Number(calc[3]) / 96;
+    return calc[2] === "+" ? percentOffset + pixelOffset : percentOffset - pixelOffset;
+  }
+  return null;
+}
+
+function cssBackgroundPositionAxisOffset(token, axis, remainingInches) {
+  const value = String(token ?? "").trim().toLowerCase();
+  if (!value || value === "center") return remainingInches / 2;
+  if ((axis === "x" && value === "left") || (axis === "y" && value === "top")) return 0;
+  if ((axis === "x" && value === "right") || (axis === "y" && value === "bottom")) return remainingInches;
+  return cssBackgroundPositionLength(value, remainingInches);
+}
+
+function cssBackgroundEdgeOffset(edge, offsetToken, axis, remainingInches) {
+  const value = cssBackgroundPositionLength(offsetToken, remainingInches);
+  if (value === null) return null;
+  if ((axis === "x" && edge === "left") || (axis === "y" && edge === "top")) return value;
+  if ((axis === "x" && edge === "right") || (axis === "y" && edge === "bottom")) return remainingInches - value;
+  return null;
+}
+
+function backgroundPositionOffset(value, box, imageBox) {
+  const remainingX = Math.max(0, box.w - imageBox.w);
+  const remainingY = Math.max(0, box.h - imageBox.h);
+  const parts = splitCssWhitespaceList(value ?? "50% 50%");
+  let x = remainingX / 2;
+  let y = remainingY / 2;
+
+  if (parts.length === 1) {
+    if (["top", "bottom"].includes(parts[0])) {
+      y = cssBackgroundPositionAxisOffset(parts[0], "y", remainingY);
+    } else {
+      x = cssBackgroundPositionAxisOffset(parts[0], "x", remainingX);
+    }
+  } else if (parts.length === 2) {
+    const [first, second] = parts;
+    if (["top", "bottom"].includes(first) && ["left", "right"].includes(second)) {
+      y = cssBackgroundPositionAxisOffset(first, "y", remainingY);
+      x = cssBackgroundPositionAxisOffset(second, "x", remainingX);
+    } else {
+      x = cssBackgroundPositionAxisOffset(first, "x", remainingX);
+      y = cssBackgroundPositionAxisOffset(second, "y", remainingY);
+    }
+  } else if (parts.length === 4) {
+    const [firstEdge, firstOffset, secondEdge, secondOffset] = parts;
+    const firstAxis = ["left", "right"].includes(firstEdge) ? "x" : ["top", "bottom"].includes(firstEdge) ? "y" : null;
+    const secondAxis = ["left", "right"].includes(secondEdge) ? "x" : ["top", "bottom"].includes(secondEdge) ? "y" : null;
+    if (firstAxis && secondAxis && firstAxis !== secondAxis) {
+      const first = cssBackgroundEdgeOffset(firstEdge, firstOffset, firstAxis, firstAxis === "x" ? remainingX : remainingY);
+      const second = cssBackgroundEdgeOffset(secondEdge, secondOffset, secondAxis, secondAxis === "x" ? remainingX : remainingY);
+      if (first === null || second === null) return null;
+      if (firstAxis === "x") {
+        x = first;
+        y = second;
+      } else {
+        y = first;
+        x = second;
+      }
+    } else {
+      return null;
+    }
+  } else if (parts.length > 0) {
+    return null;
+  }
+
+  if (![x, y].every((offset) => Number.isFinite(offset) && offset >= 0)) return null;
+  return { x: roundInches(x), y: roundInches(y) };
+}
+
+function splitCssWhitespaceList(value) {
+  const parts = [];
+  let current = "";
+  let depth = 0;
+  for (const char of String(value).trim().toLowerCase()) {
+    if (char === "(") depth += 1;
+    if (char === ")") depth = Math.max(0, depth - 1);
+    if (/\s/.test(char) && depth === 0) {
+      if (current.trim()) {
+        parts.push(current.trim());
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+function placedBackgroundImageBox(style, box, w, h) {
+  const position = backgroundPositionOffset(style.backgroundPosition, box, { w, h });
+  if (!position) return null;
+  return {
+    x: roundInches(box.x + position.x),
+    y: roundInches(box.y + position.y),
+    w: roundInches(w),
+    h: roundInches(h)
+  };
+}
+
+function explicitBackgroundImageBox(src, style, box) {
+  const size = String(style.backgroundSize ?? "").trim().toLowerCase();
+  if (!size || ["auto", "cover", "contain", "100% 100%"].includes(size)) return null;
+  const parts = size.split(/\s+/).filter(Boolean);
+  if (parts.length < 1 || parts.length > 2) return null;
+  const [widthToken, heightToken = "auto"] = parts;
+  const dimensions = widthToken === "auto" || heightToken === "auto" ? localImageDimensions(src) : null;
+  const ratio = dimensions ? dimensions.height / dimensions.width : null;
+  let w = widthToken === "auto" ? null : cssBackgroundSizeLength(widthToken, box.w);
+  let h = heightToken === "auto" ? null : cssBackgroundSizeLength(heightToken, box.h);
+  if (w === null && h !== null && ratio) w = h / ratio;
+  if (h === null && w !== null && ratio) h = w * ratio;
+  if (!(w > 0 && h > 0)) return null;
+  if (w > box.w || h > box.h) return null;
+  return placedBackgroundImageBox(style, box, w, h);
+}
+
+function intrinsicBackgroundImageBox(src, style, box) {
+  const size = String(style.backgroundSize ?? "").trim().toLowerCase();
+  if (!["auto", "auto auto"].includes(size)) return null;
+  const repeat = String(style.backgroundRepeat ?? "repeat").trim().toLowerCase();
+  if (repeat && repeat !== "no-repeat") return null;
+  const dimensions = localImageDimensions(src);
+  if (!dimensions) return null;
+  const w = dimensions.width / 96;
+  const h = dimensions.height / 96;
+  if (!(w > 0 && h > 0) || w > box.w || h > box.h) return null;
+  return placedBackgroundImageBox(style, box, w, h);
+}
+
+function normalizedBackgroundRepeat(style) {
+  return String(style.backgroundRepeat ?? "repeat").trim().toLowerCase();
+}
+
+function nearlyEqual(a, b, tolerance = 0.002) {
+  return Math.abs(a - b) <= tolerance;
+}
+
+function repeatBackgroundImagePlanForSrc(src, style, box) {
+  const repeat = normalizedBackgroundRepeat(style);
+  if (!["repeat-x", "repeat-y", "repeat"].includes(repeat)) return null;
+  const tileBox = explicitBackgroundImageBox(src, style, box) ?? intrinsicBackgroundImageBox(src, { ...style, backgroundRepeat: "no-repeat" }, box);
+  if (!tileBox || !(tileBox.w > 0 && tileBox.h > 0)) return null;
+  const repeatsX = repeat === "repeat-x" || repeat === "repeat";
+  const repeatsY = repeat === "repeat-y" || repeat === "repeat";
+  if (repeatsX && !nearlyEqual(tileBox.x, box.x)) return null;
+  if (repeatsY && !nearlyEqual(tileBox.y, box.y)) return null;
+  if (!repeatsX && (tileBox.x < box.x || tileBox.x + tileBox.w > box.x + box.w + 0.002)) return null;
+  if (!repeatsY && (tileBox.y < box.y || tileBox.y + tileBox.h > box.y + box.h + 0.002)) return null;
+  const countX = repeatsX ? box.w / tileBox.w : 1;
+  const countY = repeatsY ? box.h / tileBox.h : 1;
+  const roundedCountX = Math.round(countX);
+  const roundedCountY = Math.round(countY);
+  const totalTiles = roundedCountX * roundedCountY;
+  if (
+    !nearlyEqual(countX, roundedCountX) ||
+    !nearlyEqual(countY, roundedCountY) ||
+    roundedCountX < 1 ||
+    roundedCountY < 1 ||
+    totalTiles > 24
+  ) return null;
+  const boxes = [];
+  for (let row = 0; row < roundedCountY; row += 1) {
+    for (let col = 0; col < roundedCountX; col += 1) {
+      boxes.push({
+        x: roundInches((repeatsX ? box.x : tileBox.x) + tileBox.w * col),
+        y: roundInches((repeatsY ? box.y : tileBox.y) + tileBox.h * row),
+        w: tileBox.w,
+        h: tileBox.h
+      });
+    }
+  }
+  return {
+    boxes,
+    sizing: null
+  };
+}
+
+function replicaBackgroundImagePlanForSrc(src, style, box) {
+  const repeat = normalizedBackgroundRepeat(style);
+  if (repeat && repeat !== "no-repeat") return repeatBackgroundImagePlanForSrc(src, style, box);
+  const explicitBox = explicitBackgroundImageBox(src, style, box);
+  if (explicitBox) return { box: explicitBox, sizing: null };
+  const intrinsicBox = intrinsicBackgroundImageBox(src, style, box);
+  if (intrinsicBox) return { box: intrinsicBox, sizing: null };
+  const sizing = replicaBackgroundImageSizingForSrc(src, style, box);
+  return sizing ? { box, sizing } : null;
+}
+
+function replicaBackgroundImageSizingForSrc(src, style, box) {
+  const size = String(style.backgroundSize ?? "").trim().toLowerCase();
+  const repeat = String(style.backgroundRepeat ?? "repeat").trim().toLowerCase();
+  if (repeat && repeat !== "no-repeat") return null;
+  if (size === "100% 100%") return { type: "stretch" };
+  if (!["cover", "contain"].includes(size)) return null;
+  if (size === "cover") {
+    const dimensions = localImageDimensions(src);
+    const cover = dimensions ? coverImageSizingForBox(dimensions.width, dimensions.height, box, style.backgroundPosition) : null;
+    if (cover) return cover;
+  }
+  return {
+    type: size,
+    w: box.w,
+    h: box.h
+  };
+}
+
+function replicaBackgroundImageElements(id, measurement) {
+  const style = cssStyle(measurement);
+  const src = parseCssBackgroundImageUrl(style.backgroundImage);
+  if (!src) return [];
+  const box = measuredBox(measurement);
+  const plan = replicaBackgroundImagePlanForSrc(src, style, box);
+  if (!plan) return [];
+  const boxes = plan.boxes ?? [plan.box];
+  return boxes.map((imageBox, index) => {
+    const element = {
+      type: "image",
+      id: boxes.length === 1 ? `${id}-background-image` : `${id}-background-image-${index + 1}`,
+      src,
+      ...imageBox
+      };
+      const shapeKind = replicaShapeKind(measurement);
+      if (shapeKind === "ellipse") element.rounding = true;
+      else if (shapeKind === "roundRect") element.imageShape = "roundRect";
+      if (plan.sizing && plan.sizing.type !== "stretch") element.sizing = plan.sizing;
+      return applyReplicaRotation(element, style);
+    });
+}
+
+function splitCssCommaList(value) {
+  const parts = [];
+  let current = "";
+  let depth = 0;
+  for (const char of String(value)) {
+    if (char === "(") depth += 1;
+    if (char === ")") depth = Math.max(0, depth - 1);
+    if (char === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+function normalizeShadowColor(value) {
+  const hex = normalizeHex(value);
+  return hex ? hex.slice(1) : null;
+}
+
+function parseShadowColor(value) {
+  const raw = String(value);
+  const rgba = raw.match(/rgba?\(([^)]+)\)/i);
+  if (rgba) {
+    const parts = rgba[1].split(",").map((part) => part.trim());
+    if (parts.length < 3) return null;
+    const channels = parts.slice(0, 3).map((part) => Number.parseFloat(part));
+    if (channels.some((channel) => !Number.isFinite(channel))) return null;
+    const color = channels.map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, "0")).join("").toUpperCase();
+    const alpha = Number.parseFloat(parts[3] ?? "1");
+    return {
+      color,
+      opacity: Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1,
+      source: rgba[0]
+    };
+  }
+  const hex = raw.match(/#[0-9a-fA-F]{6}\b|(?<![-\w])\b[0-9a-fA-F]{6}\b(?![-\w])/);
+  if (!hex) return null;
+  return { color: normalizeShadowColor(hex[0]), opacity: 1, source: hex[0] };
+}
+
+function parseCssLinearGradient(value) {
+  if (typeof value !== "string" || !/^linear-gradient\(/i.test(value.trim())) return null;
+  const body = value.trim().replace(/^linear-gradient\(/i, "").replace(/\)\s*$/, "");
+  const parts = splitCssCommaList(body);
+  if (parts.length < 3) return null;
+  const angle = parseCssGradientAngle(parts[0]);
+  if (angle === null) return null;
+  const stops = parseCssGradientStops(parts.slice(1));
+  if (!stops) return null;
+  return {
+    type: "linear",
+    angle,
+    stops
+  };
+}
+
+function parseCssGradientStops(stopParts) {
+  const stopCount = stopParts.length;
+  if (stopCount < 2) return null;
+  const stops = stopParts.map((part, index) => {
+    const parsedColor = parseShadowColor(part);
+    if (!parsedColor?.color) return null;
+    const positionSource = part.replace(parsedColor.source, "").trim();
+    const positionMatch = positionSource.match(/^(\d+(?:\.\d+)?)%$/);
+    return {
+      color: `#${parsedColor.color}`,
+      position: positionMatch ? Number(positionMatch[1]) : Math.round((index / Math.max(1, stopCount - 1)) * 10000) / 100
+    };
+  });
+  if (stops.some((stop) => !stop)) return null;
+  if (stops.some((stop) => stop.position < 0 || stop.position > 100)) return null;
+  return stops;
+}
+
+function parseCssRadialGradientDescriptor(value) {
+  const source = String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!source || source === "at center") return { shape: "ellipse", position: "center" };
+  const match = source.match(/^(?:(circle|ellipse)\s*)?(?:at\s+(.+))?$/);
+  if (!match) return null;
+  const shape = match[1] ?? "ellipse";
+  const position = match[2] ?? "center";
+  if (!["center", "50% 50%", "center center"].includes(position)) return null;
+  return { shape, position: "center" };
+}
+
+function parseCssRadialGradient(value) {
+  if (typeof value !== "string" || !/^radial-gradient\(/i.test(value.trim())) return null;
+  const body = value.trim().replace(/^radial-gradient\(/i, "").replace(/\)\s*$/, "");
+  const parts = splitCssCommaList(body);
+  if (parts.length < 2) return null;
+  const firstColor = parseShadowColor(parts[0]);
+  const descriptor = firstColor?.color ? { shape: "ellipse", position: "center" } : parseCssRadialGradientDescriptor(parts[0]);
+  if (!descriptor) return null;
+  const stopParts = firstColor?.color ? parts : parts.slice(1);
+  const stops = parseCssGradientStops(stopParts);
+  if (!stops) return null;
+  return {
+    type: "radial",
+    shape: descriptor.shape,
+    position: descriptor.position,
+    stops
+  };
+}
+
+function parseCssSupportedGradient(value) {
+  return parseCssLinearGradient(value) ?? parseCssRadialGradient(value);
+}
+
+function parseCssGradientAngle(value) {
+  const source = String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  const angleMatch = source.match(/^(-?\d+(?:\.\d+)?)deg$/i);
+  if (angleMatch) return Math.round(Number(angleMatch[1]) * 100) / 100;
+  if (!source.startsWith("to ")) return null;
+  const directions = new Set(source.slice(3).split(" ").filter(Boolean));
+  if (directions.size === 0 || directions.size > 2) return null;
+  const hasTop = directions.has("top");
+  const hasRight = directions.has("right");
+  const hasBottom = directions.has("bottom");
+  const hasLeft = directions.has("left");
+  if (hasTop && hasBottom) return null;
+  if (hasLeft && hasRight) return null;
+  if (hasTop && hasRight) return 45;
+  if (hasBottom && hasRight) return 135;
+  if (hasBottom && hasLeft) return 225;
+  if (hasTop && hasLeft) return 315;
+  if (hasTop) return 0;
+  if (hasRight) return 90;
+  if (hasBottom) return 180;
+  if (hasLeft) return 270;
+  return null;
+}
+
+function parseCssLengthPx(value) {
+  const match = String(value).trim().match(/^(-?\d+(?:\.\d+)?)(px)?$/i);
+  if (!match) return null;
+  return Number.parseFloat(match[1]);
+}
+
+function parseCssBoxShadow(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "none") return null;
+  const shadows = splitCssCommaList(trimmed);
+  if (shadows.length !== 1 || /\binset\b/i.test(shadows[0])) return null;
+
+  const parsedColor = parseShadowColor(shadows[0]);
+  if (!parsedColor?.color) return null;
+  const lengthSource = shadows[0].replace(parsedColor.source, "").replace(/\binset\b/gi, " ").trim();
+  const lengths = lengthSource.split(/\s+/).map(parseCssLengthPx);
+  if (lengths.length < 2 || lengths.some((length) => length === null)) return null;
+
+  const [offsetX, offsetY, blur = 0] = lengths;
+  const offset = Math.round(Math.hypot(offsetX, offsetY) * 0.75 * 100) / 100;
+  const angle = Math.round((Math.atan2(offsetY, offsetX) * 180) / Math.PI + 360) % 360;
+  return {
+    type: "outer",
+    color: parsedColor.color,
+    opacity: Math.round(parsedColor.opacity * 100) / 100,
+    blur: Math.max(0, Math.round(blur * 0.75 * 100) / 100),
+    offset,
+    angle
+  };
+}
+
+function parseCssDropShadowFilter(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^drop-shadow\(/i.test(trimmed) || splitCssCommaList(trimmed).length !== 1) return null;
+  const match = trimmed.match(/^drop-shadow\((.*)\)$/i);
+  if (!match) return null;
+  return parseCssBoxShadow(match[1]);
+}
+
+function hasCssBoxShadow(style) {
+  return typeof style.boxShadow === "string" && style.boxShadow.trim() && style.boxShadow.trim() !== "none";
+}
+
+function hasReplicaPaint(style) {
+  return Boolean(style.backgroundColor) || Boolean(style.borderColor && Number(style.borderWidth ?? 0) > 0) || Boolean(parseCssBoxShadow(style.boxShadow)) || hasCssOutline(style);
+}
+
+function replicaUnsupportedEffect(measurement, style) {
+  if (!measurement.replica?.hasUnsupportedEffects) return null;
+  const backgroundImage = measurement.replica.backgroundImage ?? style.backgroundImage ?? null;
+  const supportedGradient = parseCssSupportedGradient(backgroundImage);
+  const backgroundImageSrc = parseCssBackgroundImageUrl(backgroundImage);
+  const supportedBackgroundImage = backgroundImageSrc && replicaBackgroundImagePlanForSrc(backgroundImageSrc, style, measuredBox(measurement));
+  const unsupportedBackgroundImage = backgroundImage && !supportedGradient && !supportedBackgroundImage ? backgroundImage : null;
+  const unsupportedFilter = measurement.replica.filter && !parseCssDropShadowFilter(measurement.replica.filter) ? measurement.replica.filter : null;
+  if (!unsupportedFilter && !measurement.replica.backdropFilter && !measurement.replica.clipPath && !unsupportedBackgroundImage) return null;
+  return {
+    elementId: measurement.id,
+    filter: unsupportedFilter,
+    backdropFilter: measurement.replica.backdropFilter ?? null,
+    clipPath: measurement.replica.clipPath ?? null,
+    backgroundImage: unsupportedBackgroundImage
+  };
+}
+
+function replicaBorderDashType(style) {
+  if (style.borderStyle === "dashed") return "dash";
+  if (style.borderStyle === "dotted") return "sysDot";
+  return null;
+}
+
+function replicaShapeKind(measurement) {
+  const style = cssStyle(measurement);
+  const box = measuredBox(measurement);
+  const cornerRadii = replicaCornerRadii(style);
+  const minDimensionPx = Math.min(Number(measurement?.px?.w ?? box.w * 96), Number(measurement?.px?.h ?? box.h * 96));
+  if (Number.isFinite(minDimensionPx) && minDimensionPx > 0 && cornerRadii.every((radius) => radius >= minDimensionPx / 2 - 0.5)) {
+    return "ellipse";
+  }
+  return hasUniformReplicaCornerRadius(cornerRadii) ? "roundRect" : "rect";
+}
+
+function replicaCornerRadii(style) {
+  const shorthand = Number(style.borderRadius) || 0;
+  return [
+    style.borderTopLeftRadius ?? shorthand,
+    style.borderTopRightRadius ?? shorthand,
+    style.borderBottomRightRadius ?? shorthand,
+    style.borderBottomLeftRadius ?? shorthand
+  ].map((value) => Number(value) || 0);
+}
+
+function hasUniformReplicaCornerRadius(cornerRadii) {
+  const positive = cornerRadii.filter((radius) => radius > 1);
+  if (positive.length !== 4) return false;
+  return cornerRadii.every((radius) => Math.abs(radius - cornerRadii[0]) <= 0.5);
+}
+
+function cssBorderDashType(borderStyle) {
+  if (borderStyle === "dashed") return "dash";
+  if (borderStyle === "dotted") return "sysDot";
+  return null;
+}
+
+function borderSideKey(side) {
+  return `${side[0].toUpperCase()}${side.slice(1)}`;
+}
+
+function visibleBorderSides(style) {
+  return ["top", "right", "bottom", "left"]
+    .map((side) => {
+      const key = borderSideKey(side);
+      const width = Number(style[`border${key}Width`] ?? (side === "top" ? style.borderWidth : 0)) || 0;
+      const borderStyle = style[`border${key}Style`] ?? (side === "top" ? style.borderStyle : null);
+      const color = style[`border${key}Color`] ?? (side === "top" ? style.borderColor : null);
+      return { side, width, borderStyle, color };
+    })
+    .filter((border) => border.width > 0 && border.borderStyle !== "none" && border.borderStyle !== "hidden");
+}
+
+function borderLineElement(id, measurement, border) {
+  const style = cssStyle(measurement);
+  const box = measuredBox(measurement);
+  const line = {
+    type: "line",
+    id: `${id}-${border.side}-border`,
+    x: border.side === "right" ? box.x + box.w : box.x,
+    y: border.side === "bottom" ? box.y + box.h : box.y,
+    w: border.side === "left" || border.side === "right" ? 0 : box.w,
+    h: border.side === "top" || border.side === "bottom" ? 0 : box.h,
+    style: {
+      color: border.color ?? style.borderColor ?? "{colors.border}",
+      width: Math.max(0.25, border.width * 0.75)
+    }
+  };
+  const dashType = cssBorderDashType(border.borderStyle);
+  if (dashType) line.style.dashType = dashType;
+  const sideKey = borderSideKey(border.side);
+  const transparency = cssCombinedTransparency(style, "borderTransparency", `border${sideKey}Transparency`);
+  if (transparency !== null) line.style.transparency = transparency;
+  return line;
+}
+
+function singleSideBorderLineElement(id, measurement) {
+  const style = cssStyle(measurement);
+  if (style.backgroundColor || Number(style.borderRadius ?? 0) > 0 || hasCssBoxShadow(style)) return null;
+  const borders = visibleBorderSides(style);
+  if (borders.length !== 1) return null;
+  return borderLineElement(id, measurement, borders[0]);
+}
+
+function hasCssBorderRadius(style) {
+  return ["borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"].some(
+    (key) => Number(style[key] ?? 0) > 0
+  );
+}
+
+function hasExplicitSideBorder(style) {
+  return ["Top", "Right", "Bottom", "Left"].some((sideKey) =>
+    ["Width", "Style", "Color", "Transparency"].some((suffix) => Object.prototype.hasOwnProperty.call(style, `border${sideKey}${suffix}`))
+  );
+}
+
+function hasAsymmetricBorderSides(style, borders) {
+  if (!hasExplicitSideBorder(style) || borders.length === 0) return false;
+  if (borders.length !== 4) return true;
+  const [first] = borders;
+  return borders.some((border) => {
+    const sideKey = borderSideKey(border.side);
+    const firstKey = borderSideKey(first.side);
+    return (
+      border.width !== first.width ||
+      border.borderStyle !== first.borderStyle ||
+      border.color !== first.color ||
+      style[`border${sideKey}Transparency`] !== style[`border${firstKey}Transparency`]
+    );
+  });
+}
+
+function filledBoxBorderLineElements(id, measurement) {
+  const style = cssStyle(measurement);
+  if (!style.backgroundColor || hasCssBorderRadius(style) || hasCssBoxShadow(style)) return [];
+  const borders = visibleBorderSides(style);
+  if (!hasAsymmetricBorderSides(style, borders)) return [];
+  return borders.map((border) => borderLineElement(id, measurement, border));
+}
+
+function replicaShapeElement(id, measurement) {
+  const style = cssStyle(measurement);
+  const dashType = replicaBorderDashType(style);
+  const element = {
+    type: "shape",
+    id,
+    shape: replicaShapeKind(measurement),
+    ...measuredBox(measurement),
+    style: {
+      fill: style.backgroundColor ?? "#FFFFFF",
+      backgroundColor: style.backgroundColor ?? "#FFFFFF",
+      borderColor: style.borderColor ?? style.backgroundColor ?? "#FFFFFF",
+      borderWidth: Number(style.borderWidth ?? 0) > 0 ? Math.max(0.25, Number(style.borderWidth) * 0.75) : 0,
+      transparency: style.backgroundColor ? (cssCombinedTransparency(style, "backgroundTransparency") ?? 0) : 100
+    }
+  };
+  const gradient = parseCssSupportedGradient(style.backgroundImage);
+  if (gradient) element.style.gradient = gradient;
+  const borderTransparency = cssCombinedTransparency(style, "borderTransparency");
+  if (borderTransparency !== null) element.style.borderTransparency = borderTransparency;
+  if (dashType) element.style.dashType = dashType;
+  const shadow = parseCssBoxShadow(style.boxShadow);
+  if (shadow) element.style.shadow = shadow;
+  const filterShadow = parseCssDropShadowFilter(measurement.replica?.filter);
+  if (filterShadow) element.style.shadow = filterShadow;
+  return applyReplicaRotation(element, style);
+}
+
+function replicaPaintLayerElements(id, measurement) {
+  const singleBorderLine = singleSideBorderLineElement(id, measurement);
+  if (singleBorderLine) return [singleBorderLine];
+  const backgroundImages = replicaBackgroundImageElements(id, measurement);
+  const shape = replicaShapeElement(id, measurement);
+  const outline = replicaOutlineElement(id, measurement);
+  if (backgroundImages.length > 0 && !shape.style.gradient) {
+    shape.style.fill = "#FFFFFF";
+    shape.style.backgroundColor = "#FFFFFF";
+    shape.style.transparency = 100;
+  }
+  const borderLines = filledBoxBorderLineElements(id, measurement);
+  if (borderLines.length === 0) {
+    const hasVisibleShape =
+      shape.style.gradient ||
+      Number(shape.style.transparency ?? 0) < 100 ||
+      Number(shape.style.borderWidth ?? 0) > 0 ||
+      shape.style.shadow;
+    const base =
+      backgroundImages.length > 0 && !hasVisibleShape
+        ? backgroundImages
+        : backgroundImages.length > 0
+          ? [...backgroundImages, shape]
+          : [shape];
+    return outline ? [...base, outline] : base;
+  }
+  shape.style.borderWidth = 0;
+  shape.style.borderColor = shape.style.fill ?? shape.style.backgroundColor ?? "#FFFFFF";
+  delete shape.style.borderTransparency;
+  delete shape.style.dashType;
+  const base = backgroundImages.length > 0 ? [...backgroundImages, shape, ...borderLines] : [shape, ...borderLines];
+  return outline ? [...base, outline] : base;
+}
+
+function replicaTextElement(id, measurement) {
+  const style = cssStyle(measurement);
+  const bullet = replicaTextBullet(style);
+  const element = {
+    type: "text",
+    id,
+    text: replicaTextContent(measurement, style),
+    ...measuredBox(measurement),
+    style: {
+      color: replicaTextFillColor(style),
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+      italic: style.fontStyle === "italic",
+      smallCaps: replicaTextSmallCaps(style) || undefined,
+      align: replicaTextAlign(style),
+      valign: replicaTextValign(style),
+      textDirection: replicaTextDirection(style),
+      rtl: replicaTextRtl(style),
+      lineHeight: style.lineHeight,
+      firstLineIndent: replicaTextIndent(style),
+      textStroke: replicaTextStroke(style),
+      charSpacing: style.letterSpacing,
+      textOverflow: replicaTextOverflow(style),
+      ...replicaTextDecoration(style),
+      ...(bullet ? { bullet } : {}),
+      margin: replicaTextMargin(style)
+    }
+  };
+  const shadow = parseCssBoxShadow(style.textShadow);
+  if (shadow) element.style.shadow = shadow;
+  const filterShadow = parseCssDropShadowFilter(measurement.replica?.filter);
+  if (filterShadow) element.style.shadow = filterShadow;
+  const transparency = cssCombinedTransparency(style, "colorTransparency", "webkitTextFillTransparency");
+  if (transparency !== null) element.style.transparency = transparency;
+  return applyReplicaRotation(element, style);
+}
+
+function replicaTextBullet(style) {
+  if (style.display !== "list-item") return null;
+  const listStyleType = String(style.listStyleType ?? "disc").trim().toLowerCase();
+  if (!listStyleType || ["none", "hidden"].includes(listStyleType)) return null;
+  const characterCodeByType = new Map([
+    ["disc", "2022"],
+    ["circle", "25E6"],
+    ["square", "25AA"]
+  ]);
+  if (characterCodeByType.has(listStyleType)) {
+    return {
+      type: "bullet",
+      characterCode: characterCodeByType.get(listStyleType)
+    };
+  }
+  if (["decimal", "decimal-leading-zero"].includes(listStyleType)) {
+    return {
+      type: "number",
+      style: listStyleType === "decimal-leading-zero" ? "arabicDbPeriod" : "arabicPeriod",
+      startAt: 1
+    };
+  }
+  return {
+    type: "bullet",
+    characterCode: "2022"
+  };
+}
+
+function measurementElementsForSlide(measurements, slideIndex) {
+  const elements = Array.isArray(measurements?.elements) ? measurements.elements : [];
+  const hasSlideIndexes = elements.some((element) => Number.isInteger(element.slideIndex));
+  if (!hasSlideIndexes) return slideIndex === 0 ? elements : [];
+  return elements.filter((element) => element.slideIndex === slideIndex);
+}
+
+function measurementSlideForSlide(measurements, slideIndex) {
+  const slides = Array.isArray(measurements?.slides) ? measurements.slides : [];
+  return slides.find((slide) => slide.slideIndex === slideIndex) ?? null;
+}
+
+function replicaZIndex(measurement) {
+  const value = cssStyle(measurement).zIndex;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() && value.trim() !== "auto") {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
 function isSimpleSvgLinePath(d) {
   return (
     typeof d === "string" &&
@@ -364,18 +1414,281 @@ function isSimpleSvgLinePath(d) {
   );
 }
 
+function parseSimpleSvgLinePath(d) {
+  if (!isSimpleSvgLinePath(d)) return null;
+  const numbers = String(d).match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+  if (numbers.length !== 4 || numbers.some((value) => !Number.isFinite(value))) return null;
+  const [x1, y1, x2, y2] = numbers;
+  return { x1, y1, x2, y2 };
+}
+
+function parseSvgNumber(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const match = String(value).trim().match(/^(-?\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const number = Number(match[1]);
+  return Number.isFinite(number) ? number : null;
+}
+
+function parseSvgViewBox(svg) {
+  const viewBox = String(svg.getAttribute("viewBox") ?? "").trim();
+  if (viewBox) {
+    const parts = viewBox.split(/[\s,]+/).map(Number);
+    if (parts.length === 4 && parts.every(Number.isFinite) && parts[2] > 0 && parts[3] > 0) {
+      return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+    }
+  }
+  const width = parseSvgNumber(svg.getAttribute("width"));
+  const height = parseSvgNumber(svg.getAttribute("height"));
+  return width > 0 && height > 0 ? { x: 0, y: 0, w: width, h: height } : null;
+}
+
+function svgPaint(node, name) {
+  const raw = node.getAttribute(name);
+  if (!raw || raw === "none") return null;
+  return normalizeHex(raw);
+}
+
+function svgTransparency(node, ...opacityNames) {
+  let alpha = 1;
+  const opacity = parseSvgNumber(node.getAttribute("opacity"));
+  if (Number.isFinite(opacity)) alpha *= clamp01(opacity);
+  for (const name of opacityNames) {
+    const value = parseSvgNumber(node.getAttribute(name));
+    if (Number.isFinite(value)) alpha *= clamp01(value);
+  }
+  return alpha < 1 ? Math.round((1 - alpha) * 100) : null;
+}
+
+function svgStrokeWidth(node, viewBox, box) {
+  const strokeWidth = parseSvgNumber(node.getAttribute("stroke-width"));
+  if (!(strokeWidth > 0)) return 0;
+  const scaleX = box.w / viewBox.w;
+  const scaleY = box.h / viewBox.h;
+  return Math.round(strokeWidth * ((scaleX + scaleY) / 2) * 72 * 100) / 100;
+}
+
+function svgShapeStyle(node, viewBox, box) {
+  const fill = svgPaint(node, "fill");
+  const stroke = svgPaint(node, "stroke");
+  const borderWidth = svgStrokeWidth(node, viewBox, box);
+  const style = {
+    fill: fill ?? "#FFFFFF",
+    backgroundColor: fill ?? "#FFFFFF",
+    transparency: fill ? (svgTransparency(node, "fill-opacity") ?? 0) : 100,
+    borderColor: stroke ?? fill ?? "#FFFFFF",
+    borderWidth: stroke ? borderWidth : 0
+  };
+  const borderTransparency = stroke ? svgTransparency(node, "stroke-opacity") : null;
+  if (borderTransparency !== null) style.borderTransparency = borderTransparency;
+  return style;
+}
+
+function svgLineStyle(node, viewBox, box) {
+  const stroke = svgPaint(node, "stroke");
+  const width = svgStrokeWidth(node, viewBox, box);
+  const style = {
+    color: stroke ?? "{colors.border}",
+    width: width > 0 ? width : 1.5
+  };
+  const transparency = svgTransparency(node, "stroke-opacity");
+  if (transparency !== null) style.transparency = transparency;
+  return style;
+}
+
+function svgBoxToSlideBox(svgBox, viewBox, localBox) {
+  const scaleX = svgBox.w / viewBox.w;
+  const scaleY = svgBox.h / viewBox.h;
+  return {
+    x: roundInches(svgBox.x + (localBox.x - viewBox.x) * scaleX),
+    y: roundInches(svgBox.y + (localBox.y - viewBox.y) * scaleY),
+    w: roundInches(localBox.w * scaleX),
+    h: roundInches(localBox.h * scaleY)
+  };
+}
+
+function svgTextElement(textNode, svgBox, viewBox) {
+  const text = textContent(textNode);
+  if (!text) return null;
+  const x = parseSvgNumber(textNode.getAttribute("x")) ?? 0;
+  const baselineY = parseSvgNumber(textNode.getAttribute("y")) ?? 0;
+  const fontSize = parseSvgNumber(textNode.getAttribute("font-size")) ?? 16;
+  if (![x, baselineY, fontSize].every((value) => Number.isFinite(value)) || fontSize <= 0) return null;
+  const textAnchor = String(textNode.getAttribute("text-anchor") ?? "start").trim().toLowerCase();
+  const localX = textAnchor === "middle" || textAnchor === "end" ? viewBox.x : x;
+  const localW = textAnchor === "middle" ? viewBox.w : Math.max(1, (textAnchor === "end" ? x : viewBox.x + viewBox.w) - localX);
+  const box = svgBoxToSlideBox(svgBox, viewBox, {
+    x: localX,
+    y: baselineY - fontSize,
+    w: localW,
+    h: fontSize * 1.2
+  });
+  const scaleY = svgBox.h / viewBox.h;
+  const style = {
+    color: svgPaint(textNode, "fill") ?? "#000000",
+    fontSize: Math.round(fontSize * scaleY * 72 * 100) / 100,
+    margin: 0
+  };
+  const transparency = svgTransparency(textNode, "fill-opacity");
+  if (transparency !== null) style.transparency = transparency;
+  const fontFamily = textNode.getAttribute("font-family");
+  if (fontFamily) style.fontFamily = fontFamily.trim().replace(/^["']|["']$/g, "");
+  const fontWeight = String(textNode.getAttribute("font-weight") ?? "").trim().toLowerCase();
+  if (/^\d+$/.test(fontWeight)) style.fontWeight = Number(fontWeight);
+  else if (fontWeight === "bold" || fontWeight === "bolder") style.fontWeight = 700;
+  const fontStyle = String(textNode.getAttribute("font-style") ?? "").trim().toLowerCase();
+  if (fontStyle === "italic" || fontStyle === "oblique") style.italic = true;
+  const textDecoration = String(textNode.getAttribute("text-decoration") ?? "").trim().toLowerCase();
+  if (/\bunderline\b/.test(textDecoration)) style.underline = { style: "sng" };
+  if (/\bline-through\b/.test(textDecoration)) style.strike = "sngStrike";
+  if (textAnchor === "middle") style.align = "center";
+  if (textAnchor === "end") style.align = "right";
+  return {
+    type: "text",
+    id: textNode.getAttribute("id") ?? textNode.getAttribute("data-id") ?? nextId("svg-text"),
+    text,
+    ...box,
+    style
+  };
+}
+
+function svgLineElementFromEndpoints(node, idPrefix, svgBox, viewBox, points) {
+  const start = svgBoxToSlideBox(svgBox, viewBox, { x: points.x1, y: points.y1, w: 0, h: 0 });
+  const end = svgBoxToSlideBox(svgBox, viewBox, { x: points.x2, y: points.y2, w: 0, h: 0 });
+  const id = node.getAttribute("id") ?? node.getAttribute("data-id") ?? nextId(idPrefix);
+  const line = lineElement(id, { x: start.x, y: start.y, w: roundInches(end.x - start.x), h: roundInches(end.y - start.y) }, true);
+  line.style = svgLineStyle(node, viewBox, svgBox);
+  return line;
+}
+
+function parseSvgPoints(value) {
+  const numbers = String(value ?? "").match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+  if (numbers.length < 4 || numbers.length % 2 !== 0 || numbers.some((number) => !Number.isFinite(number))) return [];
+  const points = [];
+  for (let index = 0; index < numbers.length; index += 2) {
+    points.push({ x: numbers[index], y: numbers[index + 1] });
+  }
+  return points;
+}
+
+function svgPolylineSegmentElement(polyline, svgBox, viewBox, start, end, index) {
+  const baseId = polyline.getAttribute("id") ?? polyline.getAttribute("data-id");
+  const line = svgLineElementFromEndpoints(polyline, "svg-polyline", svgBox, viewBox, {
+    x1: start.x,
+    y1: start.y,
+    x2: end.x,
+    y2: end.y
+  });
+  if (baseId) line.id = `${baseId}-segment-${index + 1}`;
+  return line;
+}
+
+function isStrokeOnlySvgShape(node) {
+  const fill = String(node.getAttribute("fill") ?? "none").trim().toLowerCase();
+  return !fill || fill === "none" || fill === "transparent";
+}
+
+function svgPrimitiveShapeElements(slideNode) {
+  const elements = [];
+  const svgs = slideNode.querySelectorAll("svg");
+  for (const svg of svgs) {
+    const svgBox = parseCoords(svg);
+    const viewBox = parseSvgViewBox(svg);
+    if (!svgBox || !viewBox) continue;
+    for (const circle of svg.querySelectorAll("circle")) {
+      const cx = parseSvgNumber(circle.getAttribute("cx"));
+      const cy = parseSvgNumber(circle.getAttribute("cy"));
+      const r = parseSvgNumber(circle.getAttribute("r"));
+      if (![cx, cy, r].every((value) => Number.isFinite(value)) || r <= 0) continue;
+      const box = svgBoxToSlideBox(svgBox, viewBox, { x: cx - r, y: cy - r, w: r * 2, h: r * 2 });
+      elements.push({
+        type: "shape",
+        id: circle.getAttribute("id") ?? circle.getAttribute("data-id") ?? nextId("svg-circle"),
+        shape: "ellipse",
+        ...box,
+        style: svgShapeStyle(circle, viewBox, svgBox)
+      });
+    }
+    for (const ellipse of svg.querySelectorAll("ellipse")) {
+      const cx = parseSvgNumber(ellipse.getAttribute("cx"));
+      const cy = parseSvgNumber(ellipse.getAttribute("cy"));
+      const rx = parseSvgNumber(ellipse.getAttribute("rx"));
+      const ry = parseSvgNumber(ellipse.getAttribute("ry"));
+      if (![cx, cy, rx, ry].every((value) => Number.isFinite(value)) || rx <= 0 || ry <= 0) continue;
+      const box = svgBoxToSlideBox(svgBox, viewBox, { x: cx - rx, y: cy - ry, w: rx * 2, h: ry * 2 });
+      elements.push({
+        type: "shape",
+        id: ellipse.getAttribute("id") ?? ellipse.getAttribute("data-id") ?? nextId("svg-ellipse"),
+        shape: "ellipse",
+        ...box,
+        style: svgShapeStyle(ellipse, viewBox, svgBox)
+      });
+    }
+    for (const rect of svg.querySelectorAll("rect")) {
+      const x = parseSvgNumber(rect.getAttribute("x")) ?? 0;
+      const y = parseSvgNumber(rect.getAttribute("y")) ?? 0;
+      const w = parseSvgNumber(rect.getAttribute("width"));
+      const h = parseSvgNumber(rect.getAttribute("height"));
+      if (!(w > 0 && h > 0)) continue;
+      const rx = parseSvgNumber(rect.getAttribute("rx")) ?? 0;
+      const ry = parseSvgNumber(rect.getAttribute("ry")) ?? 0;
+      const box = svgBoxToSlideBox(svgBox, viewBox, { x, y, w, h });
+      elements.push({
+        type: "shape",
+        id: rect.getAttribute("id") ?? rect.getAttribute("data-id") ?? nextId("svg-rect"),
+        shape: rx > 0 || ry > 0 ? "roundRect" : "rect",
+        ...box,
+        style: svgShapeStyle(rect, viewBox, svgBox)
+      });
+    }
+    for (const svgLine of svg.querySelectorAll("line")) {
+      const x1 = parseSvgNumber(svgLine.getAttribute("x1")) ?? 0;
+      const y1 = parseSvgNumber(svgLine.getAttribute("y1")) ?? 0;
+      const x2 = parseSvgNumber(svgLine.getAttribute("x2")) ?? 0;
+      const y2 = parseSvgNumber(svgLine.getAttribute("y2")) ?? 0;
+      if (![x1, y1, x2, y2].every((value) => Number.isFinite(value))) continue;
+      elements.push(svgLineElementFromEndpoints(svgLine, "svg-line", svgBox, viewBox, { x1, y1, x2, y2 }));
+    }
+    for (const polyline of svg.querySelectorAll("polyline")) {
+      const points = parseSvgPoints(polyline.getAttribute("points"));
+      if (points.length < 2) continue;
+      for (let index = 0; index < points.length - 1; index += 1) {
+        elements.push(svgPolylineSegmentElement(polyline, svgBox, viewBox, points[index], points[index + 1], index));
+      }
+    }
+    for (const polygon of svg.querySelectorAll("polygon")) {
+      if (!isStrokeOnlySvgShape(polygon)) continue;
+      const points = parseSvgPoints(polygon.getAttribute("points"));
+      if (points.length < 3) continue;
+      for (let index = 0; index < points.length; index += 1) {
+        elements.push(svgPolylineSegmentElement(polygon, svgBox, viewBox, points[index], points[(index + 1) % points.length], index));
+      }
+    }
+    for (const svgText of svg.querySelectorAll("text")) {
+      const element = svgTextElement(svgText, svgBox, viewBox);
+      if (element) elements.push(element);
+    }
+  }
+  return elements;
+}
+
 function svgPathLineElements(slideNode) {
   const elements = [];
   const paths = slideNode.querySelectorAll("svg path[d]");
   for (const path of paths) {
-    const d = path.getAttribute("d");
-    if (!isSimpleSvgLinePath(d)) continue;
+    const parsed = parseSimpleSvgLinePath(path.getAttribute("d"));
+    if (!parsed) continue;
     const svg = path.parentNode;
     if (!svg || String(svg.tagName).toLowerCase() !== "svg") continue;
-    const coords = parseCoords(svg);
-    if (!coords) continue;
+    const svgBox = parseCoords(svg);
+    const viewBox = parseSvgViewBox(svg);
+    if (!svgBox) continue;
     const id = path.getAttribute("id") ?? path.getAttribute("data-id") ?? nextId("svg-line");
-    elements.push(lineElement(id, coords, true, path));
+    if (!viewBox) {
+      elements.push(lineElement(id, svgBox, true, path));
+      continue;
+    }
+    elements.push(svgLineElementFromEndpoints(path, "svg-line", svgBox, viewBox, parsed));
   }
   return elements;
 }
@@ -660,6 +1973,182 @@ function convertMeasuredSlide(slideNode, lookup, slideId) {
   };
 }
 
+function findNodeByMeasurementId(slideNode, id) {
+  if (!id) return null;
+  const escaped = String(id).replace(/"/g, '\\"');
+  return (
+    slideNode.querySelector(`[data-pptx-id="${escaped}"]`) ??
+    slideNode.querySelector(`[data-id="${escaped}"]`) ??
+    slideNode.querySelector(`[id="${escaped}"]`)
+  );
+}
+
+function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
+  const layers = [];
+  const slideMeasurements = measurementElementsForSlide(measurements, slideIndex);
+  const slideMeasurement = measurementSlideForSlide(measurements, slideIndex);
+  const slideStyle = cssStyle(slideMeasurement);
+  const unsupportedEffects = [];
+  const coveredMeasurementIds = new Set();
+  const droppedElements = [];
+
+  const slideGradient = parseCssSupportedGradient(slideMeasurement?.replica?.backgroundImage ?? slideStyle.backgroundImage);
+  const unsupportedSlideBackgroundImage =
+    (slideMeasurement?.replica?.backgroundImage ?? slideStyle.backgroundImage) && !slideGradient
+      ? slideMeasurement?.replica?.backgroundImage ?? slideStyle.backgroundImage
+      : null;
+  if (
+    slideMeasurement?.replica?.hasUnsupportedEffects &&
+    (slideMeasurement.replica.filter ||
+      slideMeasurement.replica.backdropFilter ||
+      slideMeasurement.replica.clipPath ||
+      unsupportedSlideBackgroundImage)
+  ) {
+    unsupportedEffects.push({
+      elementId: "__slide-background",
+      filter: slideMeasurement.replica.filter ?? null,
+      backdropFilter: slideMeasurement.replica.backdropFilter ?? null,
+      clipPath: slideMeasurement.replica.clipPath ?? null,
+      backgroundImage: unsupportedSlideBackgroundImage
+    });
+  }
+
+  function addLayer(measurement, measurementIndex, layerElements) {
+    const normalized = Array.isArray(layerElements) ? layerElements : [layerElements];
+    layers.push({
+      zIndex: replicaZIndex(measurement),
+      measurementIndex,
+      elements: normalized
+    });
+  }
+
+  for (const [measurementIndex, measurement] of slideMeasurements.entries()) {
+    if (!measurement || !measurement.id || !measurement.kind) {
+      droppedElements.push({
+        elementId: measurement?.id ?? null,
+        kind: measurement?.kind ?? null,
+        reason: "missing-id-or-kind"
+      });
+      continue;
+    }
+    const box = measuredBox(measurement);
+    if (![box.x, box.y, box.w, box.h].every((value) => Number.isFinite(value)) || box.w <= 0 || box.h <= 0) {
+      droppedElements.push({
+        elementId: measurement.id,
+        kind: measurement.kind,
+        reason: "invalid-measurement-box"
+      });
+      continue;
+    }
+    const kind = measurement.kind;
+    const style = cssStyle(measurement);
+
+    const unsupportedEffect = replicaUnsupportedEffect(measurement, style);
+    if (unsupportedEffect) unsupportedEffects.push(unsupportedEffect);
+    if (hasCssBoxShadow(style) && !parseCssBoxShadow(style.boxShadow)) {
+      unsupportedEffects.push({
+        elementId: measurement.id,
+        boxShadow: style.boxShadow,
+        reason: "unsupported-box-shadow"
+      });
+    }
+
+    if (kind === "shape") {
+      addLayer(measurement, measurementIndex, replicaPaintLayerElements(measurement.id, measurement));
+      coveredMeasurementIds.add(measurement.id);
+    } else if (kind === "card") {
+      const cardNode = findNodeByMeasurementId(slideNode, measurement.id);
+      if (cardNode) {
+        const inner = cardInnerElements(cardNode, box, measurement.id).map((element) => {
+          if (element.id === measurement.id && element.type === "shape") {
+            return replicaPaintLayerElements(measurement.id, measurement);
+          }
+          return element;
+        }).flat();
+        addLayer(measurement, measurementIndex, inner);
+      } else {
+        addLayer(measurement, measurementIndex, replicaPaintLayerElements(measurement.id, measurement));
+      }
+      coveredMeasurementIds.add(measurement.id);
+    } else if (kind === "text") {
+      const layerElements = [];
+      if (hasReplicaPaint(style)) {
+        layerElements.push(...replicaPaintLayerElements(`${measurement.id}-box`, measurement));
+      }
+      layerElements.push(replicaTextElement(measurement.id, measurement));
+      addLayer(measurement, measurementIndex, layerElements);
+      coveredMeasurementIds.add(measurement.id);
+    } else if (kind === "image") {
+      if (measurement.src) {
+        addLayer(measurement, measurementIndex, replicaImageLayerElements(measurement, box));
+        coveredMeasurementIds.add(measurement.id);
+      } else {
+        droppedElements.push({
+          elementId: measurement.id,
+          kind,
+          reason: "missing-image-src"
+        });
+      }
+    } else if (kind === "table") {
+      const tableNode = findNodeByMeasurementId(slideNode, measurement.id);
+      if (tableNode) {
+        addLayer(measurement, measurementIndex, tableElement(measurement.id, tableNode, box, style));
+        coveredMeasurementIds.add(measurement.id);
+      } else {
+        droppedElements.push({
+          elementId: measurement.id,
+          kind,
+          reason: "table-node-not-found"
+        });
+      }
+    } else if (kind === "line") {
+      const line = lineElement(measurement.id, box, true);
+      line.style = {
+        color: style.borderColor ?? style.backgroundColor ?? style.color ?? "{colors.border}",
+        width: Number(style.borderWidth ?? 0) > 0 ? Math.max(0.25, Number(style.borderWidth) * 0.75) : 1
+      };
+      addLayer(measurement, measurementIndex, line);
+      coveredMeasurementIds.add(measurement.id);
+    } else {
+      droppedElements.push({
+        elementId: measurement.id,
+        kind,
+        reason: "unsupported-kind"
+      });
+    }
+  }
+  const measuredElements = slideMeasurements.length;
+  const coveredElements = coveredMeasurementIds.size;
+  const coverage = measuredElements === 0 ? 1 : Math.round((coveredElements / measuredElements) * 10000) / 10000;
+  const elements = [...layers]
+    .sort((a, b) => a.zIndex - b.zIndex || a.measurementIndex - b.measurementIndex)
+    .flatMap((layer) => layer.elements);
+
+  return {
+    id: slideId,
+    type: slideNode.getAttribute("data-type") ?? "replica",
+    title:
+      slideNode.getAttribute("data-title") ??
+      (() => {
+        const titleNode = slideNode.querySelector("h1, [data-pptx-kind='text'][data-typography='h1']");
+        return titleNode ? textContent(titleNode) : "";
+      })(),
+    notes: slideNode.getAttribute("data-notes") ?? "",
+    background: slideGradient
+      ? { type: "gradient", gradient: slideGradient }
+      : { type: "solid", color: slideStyle.backgroundColor ?? "{colors.background}" },
+    elements,
+    replicaUnsupportedEffects: unsupportedEffects,
+    replicaCoverage: {
+      measuredElements,
+      coveredElements,
+      coverage,
+      droppedElements,
+      unsupportedEffects
+    }
+  };
+}
+
 function convertAutoLayoutSlide(slideNode, lookup, slideId) {
   const elements = [];
   let cursorY = 0.55;
@@ -729,6 +2218,7 @@ function convertAutoLayoutSlide(slideNode, lookup, slideId) {
     elements.push({ type: "image", id: nextId("image"), src, ...coords });
   }
 
+  elements.push(...svgPrimitiveShapeElements(slideNode));
   elements.push(...svgPathLineElements(slideNode));
 
   const lists = slideNode.childNodes.filter((node) => node.tagName === "UL" || node.tagName === "OL");
@@ -891,11 +2381,16 @@ function convertHybridSlide(slideNode, lookup, slideId) {
 function convertSlide(slideNode, slideIndex, options = {}) {
   const lookup = options.measurementLookup ?? null;
   const slideId = `slide-${String(slideIndex + 1).padStart(3, "0")}`;
-  const detection = options._detection ?? detectLayoutMode(slideNode, options);
+  const detection =
+    options.designMode === "replica" && options.measurements
+      ? { path: "replica", markers: -1, autoLayoutContainers: -1 }
+      : options._detection ?? detectLayoutMode(slideNode, options);
   const sourceCoordinates = options._sourceCoordinates ?? [];
 
   let result;
-  if (detection.path === "measured") {
+  if (detection.path === "replica") {
+    result = convertReplicaSlide(slideNode, options.measurements, slideIndex, slideId);
+  } else if (detection.path === "measured") {
     result = convertMeasuredSlide(slideNode, lookup, slideId);
   } else if (detection.path === "auto-layout") {
     result = convertAutoLayoutSlide(slideNode, lookup, slideId);
@@ -1116,6 +2611,7 @@ export function convertHtmlToManifest(html, options = {}) {
   const layoutPaths = [];
   const sourceCoordinates = [];
   const paletteResolutions = [];
+  const replicaCoverageBySlide = [];
   for (const slideNode of sourceSlides) {
     if (canAutoPaginateCards(slideNode, { ...options, measurementLookup })) {
       const pageSlides = convertAutoPaginatedCards(slideNode, slides.length, options);
@@ -1133,13 +2629,20 @@ export function convertHtmlToManifest(html, options = {}) {
         forceAutoLayout: options.forceAutoLayout,
         forceHybrid: options.forceHybrid,
         designTokens: options.designTokens,
-        designMode: options.designMode
+        designMode: options.designMode,
+        measurements: options.measurements
       });
       slides.push(result);
       if (result.paletteResolution) {
         paletteResolutions.push({
           slideId: result.id,
           ...result.paletteResolution
+        });
+      }
+      if (result.replicaCoverage) {
+        replicaCoverageBySlide.push({
+          slideId: result.id,
+          ...result.replicaCoverage
         });
       }
       layoutPaths.push({
@@ -1159,6 +2662,7 @@ export function convertHtmlToManifest(html, options = {}) {
   const aggregatedPalette = aggregatePaletteResolutions(paletteResolutions, {
     isReplica: options.designMode === "replica"
   });
+  const aggregatedReplicaCoverage = aggregateReplicaCoverage(replicaCoverageBySlide);
 
   const manifest = {
     version: "0.1.1",
@@ -1186,6 +2690,9 @@ export function convertHtmlToManifest(html, options = {}) {
   if (options.returnMetadata || options.exposePaletteResolution) {
     manifest._paletteResolution = aggregatedPalette;
   }
+  if (options.returnMetadata || options.designMode === "replica") {
+    manifest._replicaCoverage = aggregatedReplicaCoverage;
+  }
 
   const inputHints = buildInputHints(sourceSlides, options.measurements, options);
   const contentCoverage = measureContentCoverage(sourceSlides, slides);
@@ -1202,10 +2709,35 @@ export function convertHtmlToManifest(html, options = {}) {
       inputHints,
       contentCoverage,
       paletteResolution: aggregatedPalette,
-      paletteResolutions
+      paletteResolutions,
+      replicaCoverage: aggregatedReplicaCoverage,
+      replicaCoverageBySlide
     };
   }
   return manifest;
+}
+
+function aggregateReplicaCoverage(perSlide) {
+  if (!Array.isArray(perSlide) || perSlide.length === 0) {
+    return { measuredElements: 0, coveredElements: 0, coverage: 1, droppedElements: [], unsupportedEffects: [], slides: [] };
+  }
+  const measuredElements = perSlide.reduce((sum, slide) => sum + (slide.measuredElements ?? 0), 0);
+  const coveredElements = perSlide.reduce((sum, slide) => sum + (slide.coveredElements ?? 0), 0);
+  const coverage = measuredElements === 0 ? 1 : Math.round((coveredElements / measuredElements) * 10000) / 10000;
+  const droppedElements = perSlide.flatMap((slide) =>
+    (slide.droppedElements ?? []).map((entry) => ({ ...entry, slideId: slide.slideId }))
+  );
+  const unsupportedEffects = perSlide.flatMap((slide) =>
+    (slide.unsupportedEffects ?? []).map((entry) => ({ ...entry, slideId: slide.slideId }))
+  );
+  return {
+    measuredElements,
+    coveredElements,
+    coverage,
+    droppedElements,
+    unsupportedEffects,
+    slides: perSlide
+  };
 }
 
 /**

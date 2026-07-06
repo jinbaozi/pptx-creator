@@ -7,7 +7,7 @@ import { realpathSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { runPython } from "./lib/python-utils.mjs";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
 import { preflightFonts } from "./lib/font-preflight.mjs";
@@ -63,12 +63,19 @@ async function detectLibreOffice() {
   return false;
 }
 
+function normalizeInputType(value, manifest) {
+  if (["html", "image", "design-first"].includes(value)) return value;
+  if (manifest?.designSystem?.mode === "replica") return "html";
+  return "design-first";
+}
+
 export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const resolvedManifest = resolve(manifestPath);
   const resolvedOutput = resolve(outputDir);
   await mkdir(resolvedOutput, { recursive: true });
 
-  const inputType = options.inputType ?? "unknown";
+  const manifestJson = JSON.parse(await readFile(resolvedManifest, "utf8"));
+  const inputType = normalizeInputType(options.inputType, manifestJson);
   const inputSource = options.inputSource ?? resolvedManifest;
 
   const steps = [];
@@ -148,14 +155,6 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     } catch {
       // Render succeeded but emitted no JSON; intermediate stays as defaults.
     }
-  }
-
-  // Hoisted manifest read — shared by preflight-fonts and consistency-report.
-  let manifestJson;
-  try {
-    manifestJson = JSON.parse(await readFile(resolvedManifest, "utf8"));
-  } catch {
-    manifestJson = null;
   }
 
   // preflight-fonts: populate intermediate.fontNames / .fontFallback
@@ -254,11 +253,16 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         ? new Date().toISOString()
         : (existingFeedback?.acceptedAt ?? null)
     };
+    const qualityTargets = {
+      ...(options.qualityTargets ?? {}),
+      ...(manifestJson._replicaCoverage ? { replicaCoverage: manifestJson._replicaCoverage } : {})
+    };
 
     const reportOptions = {
       inputType,
       inputSource,
       feedback,
+      qualityTargets,
       ...(layoutSafetyStatus !== undefined ? { layoutSafety: layoutSafetyStatus } : {}),
       ...(slopRiskDeck !== null ? { slopRisk: slopRiskDeck } : {})
     };
@@ -316,36 +320,49 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   return summary;
 }
 
-async function main() {
-  // Strip our own CLI flags before parsing positional args so the user
-  // can invoke `run-deck-pipeline.mjs manifest.json output --strict-layout-safety`.
-  const argv = process.argv.slice(2);
-  const cliFlags = {
+function parseArgs(argv) {
+  const positional = [];
+  const options = {
     strictLayoutSafety: true,
     allowLayoutViolation: false,
     acceptResult: false,
     mode: "creative"
   };
-  const positional = [];
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--strict-layout-safety") cliFlags.strictLayoutSafety = true;
-    else if (arg === "--allow-layout-violation") cliFlags.allowLayoutViolation = true;
-    else if (arg === "--accept-result") cliFlags.acceptResult = true;
-    else if (arg === "--mode") cliFlags.mode = argv[++i];
-    else positional.push(arg);
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--input-type") {
+      options.inputType = argv[index + 1];
+      index += 1;
+    } else if (arg === "--input-source") {
+      options.inputSource = argv[index + 1];
+      index += 1;
+    } else if (arg === "--strict-layout-safety") {
+      options.strictLayoutSafety = true;
+    } else if (arg === "--allow-layout-violation") {
+      options.allowLayoutViolation = true;
+    } else if (arg === "--accept-result") {
+      options.acceptResult = true;
+    } else if (arg === "--mode") {
+      options.mode = argv[index + 1];
+      index += 1;
+    } else {
+      positional.push(arg);
+    }
   }
-  if (!new Set(["creative", "replica"]).has(cliFlags.mode)) {
-    fail(`unsupported pipeline mode: ${cliFlags.mode}; expected creative or replica`);
+  return { manifestArg: positional[0], outputArg: positional[1] ?? "output", options };
+}
+
+async function main() {
+  const { manifestArg, outputArg, options } = parseArgs(process.argv.slice(2));
+  if (!new Set(["creative", "replica"]).has(options.mode)) {
+    fail(`unsupported pipeline mode: ${options.mode}; expected creative or replica`);
   }
-  const manifestArg = positional[0];
-  const outputArg = positional[1] ?? "output";
   if (!manifestArg) {
-    fail("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir] [--mode creative|replica] [--strict-layout-safety] [--allow-layout-violation] [--accept-result]");
+    fail("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir] [--mode creative|replica] [--input-type html|image|design-first] [--input-source source] [--strict-layout-safety] [--allow-layout-violation] [--accept-result]");
   }
 
   try {
-    const summary = await runDeckPipeline(manifestArg, outputArg, cliFlags);
+    const summary = await runDeckPipeline(manifestArg, outputArg, options);
     console.log(JSON.stringify(summary, null, 2));
   } catch (error) {
     if (error.summary) {

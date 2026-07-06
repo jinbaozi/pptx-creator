@@ -12,7 +12,7 @@
       "properties": {
         "source": { "type": "string" },
         "name": { "type": "string" },
-        "mode": { "type": "string", "enum": ["strict", "balanced", "creative", "inspired"] }
+        "mode": { "type": "string", "enum": ["strict", "balanced", "creative", "inspired", "replica"] }
       }
     },
     "deck": {
@@ -59,9 +59,10 @@
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "type": "string", "enum": ["solid", "image"] },
+              "type": { "type": "string", "enum": ["solid", "image", "gradient"] },
               "color": { "type": "string" },
-              "src": { "type": "string" }
+              "src": { "type": "string" },
+              "gradient": { "type": "object" }
             }
           },
           "elements": {
@@ -78,6 +79,8 @@
                 "h": { "type": "number", "exclusiveMinimum": 0 },
                 "text": { "type": "string" },
                 "shape": { "type": "string", "enum": ["rect", "roundRect", "ellipse"] },
+                "imageShape": { "type": "string", "enum": ["rect", "roundRect", "ellipse"] },
+                "rounding": { "type": "boolean" },
                 "src": { "type": "string" },
                 "headers": { "type": "array", "items": { "type": "string" } },
                 "rows": { "type": "array" },

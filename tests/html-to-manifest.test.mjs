@@ -89,9 +89,11 @@ describe("html-to-manifest", () => {
     const manifestPath = join(outputDir, "deck.manifest.json");
     await writeManifestFromHtml(sampleHtml, manifestPath);
 
-    const { stdout } = await execFileAsync("python", [join(root, "scripts/validate-manifest.py"), manifestPath], {
-      cwd: root
-    });
+    const { stdout } = await execFileAsync(
+      node,
+      [join(root, "scripts/run-python.mjs"), join(root, "scripts/validate-manifest.py"), manifestPath],
+      { cwd: root }
+    );
     expect(stdout).toContain("manifest valid");
   });
 

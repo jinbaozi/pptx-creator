@@ -27,6 +27,55 @@ class ValidateManifestTest(TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("manifest valid", result.stdout)
 
+    def test_accepts_replica_design_mode(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["designSystem"]["mode"] = "replica"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "replica.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_accepts_gradient_slide_backgrounds(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["slides"][0]["background"] = {
+            "type": "gradient",
+            "gradient": {
+                "type": "linear",
+                "angle": 90,
+                "stops": [
+                    {"color": "#111827", "position": 0},
+                    {"color": "#2563EB", "position": 100},
+                ],
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "gradient-bg.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_accepts_radial_gradient_slide_backgrounds(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["slides"][0]["background"] = {
+            "type": "gradient",
+            "gradient": {
+                "type": "radial",
+                "shape": "circle",
+                "position": "center",
+                "stops": [
+                    {"color": "#F8FAFC", "position": 0},
+                    {"color": "#2563EB", "position": 62},
+                    {"color": "#020617", "position": 100},
+                ],
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "radial-gradient-bg.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def with_resolved_design(self, data: dict) -> dict:
         copy = json.loads(json.dumps(data))
         copy["designSystem"]["source"] = str(ROOT / "design-systems" / "business-neutral" / "DESIGN.md")
@@ -81,6 +130,47 @@ class ValidateManifestTest(TestCase):
             result = self.run_validator(path)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("remote src must be downloaded before validation", result.stderr)
+
+    def test_accepts_roundrect_image_shape(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["slides"][0]["elements"].append(
+            {
+                "type": "image",
+                "id": "rounded-photo",
+                "src": str(ROOT / "examples" / "image-input" / "business-slide.png"),
+                "x": 1.0,
+                "y": 1.0,
+                "w": 2.0,
+                "h": 1.2,
+                "imageShape": "roundRect",
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "roundrect-image.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_unsupported_image_shape(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["slides"][0]["elements"].append(
+            {
+                "type": "image",
+                "id": "bad-rounded-photo",
+                "src": str(ROOT / "examples" / "image-input" / "business-slide.png"),
+                "x": 1.0,
+                "y": 1.0,
+                "w": 2.0,
+                "h": 1.2,
+                "imageShape": "roundedRect",
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "bad-image-shape.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsupported imageShape", result.stderr)
 
     def test_rejects_missing_background_image_file(self):
         data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
