@@ -192,7 +192,7 @@ Replica extraction currently maps:
 
 Unsupported CSS/SVG effects such as non-`drop-shadow(...)` filters, backdrop filters, clipping, multiple/inner shadows, complex gradients, non-centered radial gradients, repeated/multiple background images, unsupported background sizing, and complex SVG paths or SVG effects are reported as `replica-unsupported-effect` findings by the visual critic. Do not silently replace a strict replica with a full-slide screenshot. If a browser-only effect must be rasterized for visual fidelity, rasterize only that local region and keep the rest native/editable.
 
-The converter also writes `_replicaCoverage` metadata into the manifest and pipeline `qualityTargets.replicaCoverage` into `consistency-report.json`. Coverage below `1.0` means some measured DOM nodes were not represented as native PPT layers; the visual critic reports this as `replica-coverage`.
+The converter returns replica coverage as side-channel conversion metadata rather than a private manifest field. Coverage below `1.0` means some measured DOM nodes were not represented as native PPT layers; the visual critic reports per-slide incomplete coverage as `replica-coverage`.
 
 ## Editability target
 

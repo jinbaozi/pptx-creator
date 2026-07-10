@@ -70,8 +70,8 @@ describe("image-to-manifest wrapper", () => {
     expect(summary.designSystem).toBe("business-neutral");
     const manifest = JSON.parse(await readFile(join(outDir, "deck.manifest.skeleton.json"), "utf8"));
     expect(manifest.slides).toHaveLength(1);
-    expect(manifest._generator.wrapper).toBe("image-to-manifest.mjs");
-    expect(manifest._generator.mode).toBe("creative");
+    expect(manifest.metadata.generator.name).toBe("image-to-manifest.mjs");
+    expect(manifest.metadata.generator.mode).toBe("creative");
     // image-hints.json should exist as the canonical creative artifact.
     await readFile(join(outDir, "image-hints.json"), "utf8");
   });
@@ -96,7 +96,7 @@ describe("image-to-manifest wrapper", () => {
     await readFile(join(outDir, "replica-layer-plan.json"), "utf8");
     await readFile(join(outDir, "image-hints.json"), "utf8");
     const manifest = JSON.parse(await readFile(join(outDir, "deck.manifest.skeleton.json"), "utf8"));
-    expect(manifest._generator.mode).toBe("replica");
+    expect(manifest.metadata.generator.mode).toBe("replica");
   });
 
   it("concatenates directory of PNGs into a multi-slide manifest with consistent designSystem and deck.size", async () => {
@@ -147,7 +147,7 @@ describe("image-to-manifest wrapper", () => {
     // forward the flag (avoids argparse error). When U5 adds the flag to the
     // real script, the wrapper will start forwarding it automatically.
     const manifest = JSON.parse(await readFile(join(outDir, "deck.manifest.skeleton.json"), "utf8"));
-    expect(manifest._generator.ocrConfidence).toBeCloseTo(0.5);
+    expect(manifest.metadata.generator.ocrConfidence).toBeCloseTo(0.5);
   });
 
   it("propagates Python exit code as a non-zero wrapper exit", async () => {

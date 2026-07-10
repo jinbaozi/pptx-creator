@@ -1,9 +1,17 @@
 {
-  "version": "0.1.1",
+  "version": "0.2.0",
+  "metadata": {
+    "mode": "direct",
+    "inputType": "text",
+    "qualityProfile": "light",
+    "generator": {
+      "name": "host-agent",
+      "notes": "Text-input example. Pipeline emits per-deck consistency-report.json + .md (inputType=text)."
+    }
+  },
   "designSystem": {
     "source": "../../design-systems/business-neutral/DESIGN.md",
-    "name": "Business Neutral",
-    "mode": "balanced"
+    "name": "Business Neutral"
   },
   "deck": {
     "title": "AI Platform Roadshow",
@@ -51,6 +59,5 @@
         }
       ]
     }
-  ],
-  "_generator.notes": "Text-input example. Pipeline emits per-deck consistency-report.json + .md (inputType=text)."
+  ]
 }

@@ -1,94 +1,38 @@
 ---
 name: pptx-creator
-description: Create, convert, recreate, redesign, validate, or repair mostly editable PowerPoint presentations from text, Markdown, HTML, images, PDFs, or mixed inputs. Use when an agent must produce a .pptx, slide deck, PowerPoint, editable presentation, deck manifest, design-first slide artifacts, or PPTX QA reports.
+description: Route editable PowerPoint creation from text, HTML, images, or PDF, plus manifest repair.
 ---
 
-# PPTX Creator
+# PPTX Creator Router
 
-Create a structured `deck.manifest.json`, then use deterministic scripts to validate, render, and package it. Keep the manifest as the single source of truth; perform all content and design reasoning in the host agent.
+Select exactly one route from the input and requested outcome. Read only that
+route contract and its listed next references before acting.
 
-## Execute the core workflow
+| Route | Select when | Contract |
+|---|---|---|
+| `text` | Text, outline, or design-first artifacts become a deck | `references/routes/text.md` |
+| `html-replica` | HTML/CSS is the visual source to preserve | `references/routes/html-replica.md` |
+| `image-replica` | An image or screenshot is the visual source | `references/routes/image-replica.md` |
+| `pdf-replica` | PDF pages are the visual source | `references/routes/pdf-replica.md` |
+| `manifest-repair` | An existing manifest plus a bounded patch is repaired | `references/routes/manifest-repair.md` |
 
-1. Classify the input as text, HTML, image, PDF, manifest, or mixed.
-2. Read only the matching reference from the routing table below.
+Do not combine creative rules with replica rules. The `text` route alone may
+choose direct manifest execution or the creative design-first subflow.
 
-### HTML-first 推荐流程 (HTML-first recommendation)
+## Shared invariants
 
-The default path for **plain text** input is **text → `deck.manifest.json` → pipeline** (see "Default: text → manifest" below). HTML-first is the recommended alternative for three specific cases — it is never the default for routine text-only input.
+- The manifest is the single source of truth; deterministic scripts render it.
+- Never use a full-slide raster as an editable PPTX.
+- Replica routes preserve source layout, color, typography, and tone; they do
+  not explore creative directions.
+- Creative exploration belongs only to the text route.
+- Automatic repair is bounded to at most three attempts, then it must block and
+  ask for user direction.
+- Localize remote assets before validation; scripts never search the web or call
+  an LLM.
+- Report editability gaps honestly and preserve unrelated files.
 
-Pick the HTML-first route when **any** of the following trigger conditions apply:
+## Public entry point
 
-1. **Design-first creative deck** — author `deck.html` using `slide-archetypes/*` and `layout-archetypes/*`, then run the guarded HTML pipeline. Reference showcase: `examples/design-first/compiler-roadshow-html/`.
-2. **Rich visual material** — use CSS Grid/Flexbox when multi-column visual structure is easier to express in HTML than manifest coordinates. Do not apply creative HTML repair to strict replica work.
-3. **Host agent explicit judgment** — use HTML for nested cards, layered diagrams, asymmetric hero compositions, or other layouts that need browser measurement.
-
-**Default: text → manifest.** For ordinary prose, outlines, or batch text input, continue writing `deck.manifest.json` directly and run `node scripts/run-deck-pipeline.mjs`. HTML-first is an upgrade path, not a replacement.
-
-For generated creative HTML, always run the guarded pipeline. It preserves the source, writes `deck.repaired.html`, audits real Chromium geometry, repairs at most three times, measures each slide, converts at 100% content coverage, then runs the strict manifest pipeline:
-
-```bash
-npm run pipeline:html -- <deck.html> <out>
-```
-
-Use `data-archetype` as routing metadata. Measured components require globally unique `data-pptx-id` plus `data-pptx-kind` or `data-pptx-type`. Connectors require `data-connector`, `data-pptx-kind="line"`, `data-source-id`, `data-target-id`, and an SVG marker. Zero HTML criticals and 100% content coverage are mandatory before Manifest/PPTX generation.
-
-3. Select and read one `DESIGN.md` in this priority order:
-   - user-provided;
-   - project-root;
-   - input-adjacent;
-   - matching built-in under `design-systems/`;
-   - `design-systems/business-neutral/DESIGN.md`.
-4. Author or compile `output/deck.manifest.json` with local asset paths.
-5. Run the pipeline:
-
-   ```bash
-   node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-   ```
-
-6. Read `output/editable-report.md`, `output/qa-report.md`, `output/compatibility-report.md`, and `output/output-manifest.json`.
-7. Repair the manifest and rerun at most three times. Ask for direction if material issues remain.
-8. Return the PPTX path, slide count, editability level, rasterized regions, verification result, and dependency gaps.
-
-## Load references progressively
-
-Do not read every reference up front. Load only the files required by the current route.
-
-| Need | Read |
-| --- | --- |
-| Text, Markdown, mixed content, batch runs, or common output rules | `references/workflow.md` |
-| Creative text-to-deck planning | `references/design-first-workflow.md` |
-| Manifest fields, coordinates, elements, or token syntax | `references/manifest-spec.md` |
-| Design-system selection or token use | `references/design-md-for-pptx.md` and, only when choosing a built-in, `references/built-in-design-systems.md` |
-| Semantic HTML conversion | `references/html-to-pptx.md` |
-| CSS-positioned HTML measurement | `references/html-measurement.md` |
-| Image or screenshot reconstruction | `references/image-to-pptx.md` |
-| PDF page reconstruction | `references/pdf-to-pptx.md` |
-| QA, editability, and final reporting | `references/qa-rubric.md` |
-| Visual critic findings | `references/visual-critic-rubric.md` |
-| Applying bounded repairs | `references/repair-patch-spec.md` |
-| Prompt scaffolds for host-agent roles | `references/prompt-library.md` |
-| OCR confidence threshold maintenance | `references/calibration.md` |
-
-## Preserve editability and fidelity
-
-- Prefer native text, shapes, lines, tables, charts, icons, and diagrams.
-- Use raster assets only for photos or effects that are impractical to rebuild.
-- Never describe a full-slide raster with no editable text as an editable deck.
-- Preserve source layout, color, typography, content, and tone in strict replica mode; skip creative direction exploration.
-- Run strict replicas with `node scripts/run-deck-pipeline.mjs <manifest> <out> --mode replica`. Replica mode keeps objective bounds checks, avoids creative slop scoring, and does not treat intentional source layering as a layout failure.
-- Keep connector `sourceId` and `targetId` metadata on native lines so endpoint accuracy can be verified. Do not pre-expand semantic diagrams in the manifest; the renderer expands them once.
-- Use web research only when it improves accuracy or asset quality and the user permits it. Record source URLs, respect licenses and trademarks, and localize remote assets under the output directory.
-- Do not call LLM APIs from package scripts or ask deterministic scripts to invent content.
-
-## Prepare the runtime
-
-Run setup only when dependencies are not already available:
-
-```bash
-npm install
-pip install -r requirements.txt
-npx playwright install chromium
-npm run setup
-```
-
-Set `PPTX_CREATOR_PYTHON` when the default Python interpreter cannot be discovered. Treat Playwright, Tesseract, LibreOffice, PyMuPDF, and non-system fonts as optional unless the selected route requires them.
+Use `npm run pptx -- <text|html|image|pdf|manifest> ...`. Each route contract
+defines its one public command, inputs, outputs, and blocking conditions.

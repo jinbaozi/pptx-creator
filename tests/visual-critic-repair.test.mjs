@@ -8,8 +8,9 @@ import { applyRepairPatch } from "../scripts/lib/repair-patch.mjs";
 
 function sampleManifest() {
   return {
-    version: "0.1.1",
-    designSystem: { source: "design-systems/business-neutral/DESIGN.md", name: "Business Neutral", mode: "creative" },
+    version: "0.2.0",
+    metadata: { mode: "creative", inputType: "text", qualityProfile: "creative" },
+    designSystem: { source: "design-systems/business-neutral/DESIGN.md", name: "Business Neutral" },
     deck: { title: "Sample", language: "en-US", size: { preset: "wide", width: 13.333, height: 7.5, unit: "in" } },
     assets: [],
     slides: [
@@ -170,7 +171,7 @@ describe("visual critic", () => {
 
   it("does not flag source gray-on-color tells in replica mode", () => {
     const manifest = sampleManifest();
-    manifest.designSystem.mode = "replica";
+    manifest.metadata.mode = "replica";
     manifest.slides[0].background = { type: "solid", color: "#2563EB" };
     manifest.slides[0].elements = [
       {
@@ -233,14 +234,14 @@ describe("visual critic", () => {
       })
     );
 
-    manifest.designSystem.mode = "replica";
+    manifest.metadata.mode = "replica";
     const replica = reviewManifest(manifest, { mode: "replica" });
     expect(replica.slides[0].issues.some((issue) => issue.type === "nested-card")).toBe(false);
   });
 
   it("does not flag creative anti-default tells in replica mode", () => {
     const manifest = sampleManifest();
-    manifest.designSystem.mode = "replica";
+    manifest.metadata.mode = "replica";
     manifest.slides[0].background = { type: "solid", color: "#F8FAFC" };
     manifest.slides[0].elements = [
       {
@@ -292,7 +293,7 @@ describe("visual critic", () => {
       })
     );
 
-    manifest.designSystem.mode = "replica";
+    manifest.metadata.mode = "replica";
     const replica = reviewManifest(manifest, { mode: "replica" });
     expect(replica.slides[0].issues.some((issue) => issue.type === "template-stack-layout")).toBe(false);
   });
@@ -339,7 +340,7 @@ describe("visual critic", () => {
 
   it("does not flag fake-perfect metric numbers in replica mode", () => {
     const manifest = sampleManifest();
-    manifest.designSystem.mode = "replica";
+    manifest.metadata.mode = "replica";
     manifest.slides[0].elements = [
       {
         type: "text",
@@ -359,7 +360,7 @@ describe("visual critic", () => {
 
   it("reports unsupported browser effects in replica manifests", () => {
     const manifest = sampleManifest();
-    manifest.designSystem.mode = "replica";
+    manifest.metadata.mode = "replica";
     manifest.slides[0].replicaUnsupportedEffects = [
       { elementId: "glass-card", filter: "blur(8px)", backdropFilter: null, clipPath: null }
     ];
@@ -375,7 +376,7 @@ describe("visual critic", () => {
 
   it("flags incomplete replica measurement coverage", () => {
     const manifest = sampleManifest();
-    manifest.designSystem.mode = "replica";
+    manifest.metadata.mode = "replica";
     manifest.slides[0].replicaCoverage = {
       measuredElements: 4,
       coveredElements: 3,

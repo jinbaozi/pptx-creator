@@ -153,18 +153,15 @@ describe("run-deck-pipeline", () => {
     expect(report.inputSource).toBe("examples/html-input/smoke.html");
   }, 60000);
 
-  it("copies replica coverage into consistency report quality targets", async () => {
+  it("uses canonical replica metadata to classify the pipeline input", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-pipeline-coverage-"));
     const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
     sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
-    sample.designSystem.mode = "replica";
-    sample._replicaCoverage = {
-      measuredElements: 2,
-      coveredElements: 1,
-      coverage: 0.5,
-      droppedElements: [{ slideId: "slide-001", elementId: "css-gradient", kind: "css-gradient", reason: "unsupported-kind" }],
-      unsupportedEffects: [],
-      slides: []
+    sample.metadata = {
+      mode: "replica",
+      inputType: "html",
+      qualityProfile: "replica",
+      replicaSource: { type: "html", path: "replica.html" }
     };
     const manifest = join(outputDir, "deck.manifest.json");
     await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
@@ -173,11 +170,6 @@ describe("run-deck-pipeline", () => {
     const report = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
 
     expect(report.inputType).toBe("html");
-    expect(report.qualityTargets.replicaCoverage).toMatchObject({
-      measuredElements: 2,
-      coveredElements: 1,
-      coverage: 0.5
-    });
   }, 60000);
 
   it("emits consistency-report.md with the 8 dimension sections", async () => {
@@ -339,8 +331,8 @@ describe("U11 AC3 — visual-review.json with per-slide + deck-level slopRisk", 
   });
 });
 
-describe("U11 AC4 — validate-manifest.py accepts mode: 'inspired'", () => {
-  it("validates a manifest with designSystem.mode = 'inspired'", async () => {
+describe("0.2.0 manifest metadata", () => {
+  it("validates creative metadata without designSystem.mode", async () => {
     // Write the manifest to a tmp dir relative to the project root so the
     // designSystem.source relative path resolves. Use a project-relative
     // tmp dir (output/inspired-test-...) so depth is consistent.
@@ -352,7 +344,8 @@ describe("U11 AC4 — validate-manifest.py accepts mode: 'inspired'", () => {
     // Rewrite the designSystem.source to resolve from the new dir
     // (4 levels up: dir -> output -> root -> <files>).
     baseManifest.designSystem.source = "../../design-systems/business-neutral/DESIGN.md";
-    baseManifest.designSystem.mode = "inspired";
+    baseManifest.metadata.mode = "creative";
+    baseManifest.metadata.qualityProfile = "creative";
     const manifestPath = join(dir, "deck.manifest.json");
     await writeFile(manifestPath, JSON.stringify(baseManifest, null, 2), "utf8");
 
@@ -371,10 +364,10 @@ describe("U11 AC4 — validate-manifest.py accepts mode: 'inspired'", () => {
   });
 });
 
-describe("U11 AC5 — SKILL.md HTML-first 推荐流程 subsection", () => {
-  it("contains the bilingual subsection header", async () => {
+describe("exclusive SKILL router", () => {
+  it("routes HTML to the replica contract", async () => {
     const skill = await readFile(join(root, "SKILL.md"), "utf8");
-    expect(skill).toContain("HTML-first 推荐流程");
+    expect(skill).toContain("references/routes/html-replica.md");
   });
 });
 

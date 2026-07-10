@@ -119,8 +119,9 @@ class ImageInspectCoreTest(unittest.TestCase):
         self.assertIn("layoutHints", hints)
         self.assertIn("manifestSkeleton", hints)
         skeleton = hints["manifestSkeleton"]
-        self.assertEqual(skeleton["version"], "0.1.1")
-        self.assertTrue(skeleton.get("_skeleton"))
+        self.assertEqual(skeleton["version"], "0.2.0")
+        self.assertTrue(skeleton["metadata"]["generator"]["skeleton"])
+        self.assertNotIn("mode", skeleton["designSystem"])
         self.assertGreaterEqual(len(skeleton["slides"][0]["elements"]), 1)
         self.assertIn("hostAgentTasks", hints)
 

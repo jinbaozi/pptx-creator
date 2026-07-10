@@ -931,7 +931,7 @@ async function writeReports(outputDir, manifest, design, countersBySlide, option
   );
   await writeFile(
     resolve(outputDir, "qa-report.md"),
-    `# QA Report\n\n## Validation\n\n- Manifest schema: not validated in render step (run validate-manifest.py separately)\n- Design system: ${design.name}\n- Design source: ${manifest.designSystem.source}\n- Design mode: ${manifest.designSystem.mode}\n- Renderer backend: ${options.backend ?? "pptxgen"}\n- Layouts used: ${layouts.join(", ") || "none"}\n- PPTX render: passed\n- Preview render: skipped in M1.1\n\n## Risks\n\n- Visual preview rendering is deferred unless render-preview.py is available.\n`,
+    `# QA Report\n\n## Validation\n\n- Manifest schema: not validated in render step (run validate-manifest.py separately)\n- Design system: ${design.name}\n- Design source: ${manifest.designSystem.source}\n- Manifest mode: ${manifest.metadata.mode}\n- Renderer backend: ${options.backend ?? "pptxgen"}\n- Layouts used: ${layouts.join(", ") || "none"}\n- PPTX render: passed\n- Preview render: skipped in M1.1\n\n## Risks\n\n- Visual preview rendering is deferred unless render-preview.py is available.\n`,
     "utf8"
   );
   await writeFile(

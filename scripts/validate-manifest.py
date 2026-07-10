@@ -37,18 +37,39 @@ def load_manifest(path: Path) -> dict:
 def validate_design_system(data: dict, manifest_path: Path) -> None:
     design = data.get("designSystem")
     require(isinstance(design, dict), "designSystem must be an object")
-    require(
-        design.get("mode") in {"strict", "balanced", "creative", "inspired", "replica"},
-        "designSystem.mode must be strict, balanced, creative, inspired, or replica",
-    )
+    require("mode" not in design, "designSystem.mode was removed in 0.2.0; use metadata.mode")
+    unknown = set(design) - {"source", "name", "tokens"}
+    require(not unknown, f"designSystem supports theme fields only: {', '.join(sorted(unknown))}")
+    require(isinstance(design.get("name"), str) and design["name"], "designSystem.name is required")
+    if "tokens" in design:
+        require(isinstance(design["tokens"], dict), "designSystem.tokens must be an object")
     source = design.get("source")
     require(isinstance(source, str) and source, "designSystem.source is required")
     design_path = (manifest_path.parent / source).resolve()
     require(design_path.exists(), f"designSystem.source missing: {source}")
 
 
+def validate_top_level(data: dict) -> None:
+    require(isinstance(data, dict), "manifest must be an object")
+    private = sorted(key for key in data if isinstance(key, str) and key.startswith("_"))
+    require(not private, f"private top-level field is not allowed: {private[0] if private else ''}")
+
+
+def validate_metadata(data: dict) -> None:
+    metadata = data.get("metadata")
+    require(isinstance(metadata, dict), "metadata must be an object")
+    require(metadata.get("mode") in {"direct", "creative", "replica", "repair"}, "metadata.mode must be direct, creative, replica, or repair")
+    require(metadata.get("inputType") in {"text", "html", "image", "pdf", "manifest", "mixed"}, "metadata.inputType must be text, html, image, pdf, manifest, or mixed")
+    require(metadata.get("qualityProfile") in {"light", "creative", "replica"}, "metadata.qualityProfile must be light, creative, or replica")
+    unknown = set(metadata) - {"mode", "inputType", "qualityProfile", "designIntent", "replicaSource", "generator"}
+    require(not unknown, f"unsupported metadata field: {', '.join(sorted(unknown))}")
+    for key in ("designIntent", "replicaSource", "generator"):
+        if key in metadata:
+            require(isinstance(metadata[key], dict), f"metadata.{key} must be an object")
+
+
 def validate_deck(data: dict) -> tuple[float, float]:
-    require(data.get("version") == "0.1.1", "version must be 0.1.1")
+    require(data.get("version") == "0.2.0", "version must be 0.2.0")
     deck = data.get("deck")
     require(isinstance(deck, dict), "deck must be an object")
     size = deck.get("size")
@@ -199,6 +220,8 @@ def main() -> None:
         fail("usage: validate-manifest.py <deck.manifest.json>")
     manifest_path = Path(sys.argv[1])
     data = load_manifest(manifest_path)
+    validate_top_level(data)
+    validate_metadata(data)
     validate_design_system(data, manifest_path)
     width, height = validate_deck(data)
     validate_assets(data, manifest_path)

@@ -27,9 +27,11 @@ class ValidateManifestTest(TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("manifest valid", result.stdout)
 
-    def test_accepts_replica_design_mode(self):
+    def test_accepts_replica_metadata_mode(self):
         data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
-        data["designSystem"]["mode"] = "replica"
+        data["metadata"]["mode"] = "replica"
+        data["metadata"]["inputType"] = "image"
+        data["metadata"]["replicaSource"] = {"path": "reference.png"}
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "replica.json"
             path.write_text(json.dumps(data), encoding="utf-8")
@@ -349,24 +351,32 @@ class ValidateManifestTest(TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cropped-asset requires src or assets.id", result.stderr)
 
-    def test_accepts_mode_inspired(self):
-        """U1: extend designSystem.mode enum to include 'inspired'."""
+    def test_rejects_private_top_level_fields(self):
         data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
-        data["designSystem"]["mode"] = "inspired"
+        data["_internal"] = {"trace": True}
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "inspired.json"
+            path = Path(tmp) / "private.json"
             path.write_text(json.dumps(data), encoding="utf-8")
             result = self.run_validator(path)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("manifest valid", result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("private top-level field", result.stderr)
 
-    def test_rejects_unknown_mode_typo(self):
-        """U1: preserve existing rejection of unknown mode values (e.g. 'typo')."""
+    def test_rejects_design_system_mode(self):
         data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
-        data["designSystem"]["mode"] = "typo"
+        data["designSystem"]["mode"] = "creative"
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "typo.json"
+            path = Path(tmp) / "legacy-mode.json"
             path.write_text(json.dumps(data), encoding="utf-8")
             result = self.run_validator(path)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("designSystem.mode", result.stderr)
+
+    def test_rejects_missing_required_metadata(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data.pop("metadata", None)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "missing-metadata.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("metadata must be an object", result.stderr)

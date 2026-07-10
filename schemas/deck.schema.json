@@ -3,17 +3,32 @@
   "$id": "https://pptx-creator.local/deck.schema.json",
   "title": "Deck Manifest",
   "type": "object",
-  "required": ["version", "designSystem", "deck", "assets", "slides"],
+  "required": ["version", "metadata", "designSystem", "deck", "assets", "slides"],
+  "propertyNames": { "not": { "pattern": "^_" } },
   "properties": {
-    "version": { "type": "string", "const": "0.1.1" },
+    "version": { "type": "string", "const": "0.2.0" },
+    "metadata": {
+      "type": "object",
+      "required": ["mode", "inputType", "qualityProfile"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["direct", "creative", "replica", "repair"] },
+        "inputType": { "type": "string", "enum": ["text", "html", "image", "pdf", "manifest", "mixed"] },
+        "qualityProfile": { "type": "string", "enum": ["light", "creative", "replica"] },
+        "designIntent": { "type": "object" },
+        "replicaSource": { "type": "object" },
+        "generator": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
     "designSystem": {
       "type": "object",
-      "required": ["source", "name", "mode"],
+      "required": ["source", "name"],
       "properties": {
         "source": { "type": "string" },
         "name": { "type": "string" },
-        "mode": { "type": "string", "enum": ["strict", "balanced", "creative", "inspired", "replica"] }
-      }
+        "tokens": { "type": "object" }
+      },
+      "additionalProperties": false
     },
     "deck": {
       "type": "object",

@@ -28,11 +28,11 @@ describe("universal Agent Skill packaging", () => {
 
   it("keeps the skill body concise and routes details progressively", async () => {
     const { body } = splitSkill(await read("SKILL.md"));
-    expect(body.split("\n").length).toBeLessThan(120);
-    expect(body).toContain("Do not read every reference up front");
+    expect(body.split("\n").length).toBeLessThanOrEqual(80);
+    expect(body).toContain("Select exactly one route");
 
-    const references = [...body.matchAll(/`(references\/[A-Za-z0-9._-]+\.md)`/g)].map((match) => match[1]);
-    expect(new Set(references).size).toBeGreaterThanOrEqual(10);
+    const references = [...body.matchAll(/`(references\/routes\/[A-Za-z0-9._-]+\.md)`/g)].map((match) => match[1]);
+    expect(new Set(references).size).toBe(5);
     for (const relativePath of new Set(references)) {
       await expect(access(join(root, relativePath))).resolves.toBeUndefined();
     }
@@ -64,8 +64,10 @@ describe("universal Agent Skill packaging", () => {
 
   it("documents the design-first route and strict replica boundary", async () => {
     const skill = await read("SKILL.md");
+    const textRoute = await read("references/routes/text.md");
     const workflow = await read("references/design-first-workflow.md");
-    expect(skill).toContain("references/design-first-workflow.md");
+    expect(skill).toContain("references/routes/text.md");
+    expect(textRoute).toContain("references/design-first-workflow.md");
     expect(workflow).toMatch(/deck\.storyboard\.json/);
     expect(workflow).toMatch(/deck\.design-direction\.json/);
     expect(workflow).toMatch(/slide-design-specs\.json/);

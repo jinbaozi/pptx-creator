@@ -28,7 +28,9 @@ describe("html-to-manifest", () => {
     const html = await readFile(sampleHtml, "utf8");
     const manifest = convertHtmlToManifest(html);
 
-    expect(manifest.version).toBe("0.1.1");
+    expect(manifest.version).toBe("0.2.0");
+    expect(manifest.metadata).toMatchObject({ mode: "creative", inputType: "html", qualityProfile: "creative" });
+    expect(manifest.designSystem).not.toHaveProperty("mode");
     expect(manifest.designSystem.source).toContain("dashboard-data/DESIGN.md");
     expect(manifest.designSystem.name).toBe("Dashboard Data");
     expect(manifest.slides).toHaveLength(1);

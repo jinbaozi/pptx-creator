@@ -279,7 +279,20 @@ function mergeMultiImageManifest({ mode, images, slideRecords, designSystem, dec
     id: `slide-${String(idx + 1).padStart(3, "0")}-${basename(imagePath).replace(/\.[^.]+$/, "") ?? idx}`
   }));
   return {
-    version: "0.1.1",
+    version: "0.2.0",
+    metadata: {
+      mode: mode === "replica" ? "replica" : "creative",
+      inputType: "image",
+      qualityProfile: mode === "replica" ? "replica" : "creative",
+      ...(mode === "replica" ? { replicaSource: { type: "image", count: images.length } } : {}),
+      generator: {
+        name: "image-to-manifest.mjs",
+        mode,
+        multiImage: true,
+        slideCount: slides.length,
+        skeleton: true
+      }
+    },
     designSystem,
     deck: {
       title: deckTitle,
@@ -292,21 +305,27 @@ function mergeMultiImageManifest({ mode, images, slideRecords, designSystem, dec
       role: "reference",
       note: `Reference screenshot ${idx + 1}; remove from final manifest unless needed as cropped asset.`
     })),
-    slides,
-    _skeleton: true,
-    _generator: {
-      wrapper: "image-to-manifest.mjs",
-      mode,
-      multiImage: true,
-      slideCount: slides.length
-    }
+    slides
   };
 }
 
 function singleImageManifest({ mode, imagePath, slide, designSystem, deckSize, deckTitle, ocrConfidence }) {
   const fileName = basename(imagePath);
   return {
-    version: "0.1.1",
+    version: "0.2.0",
+    metadata: {
+      mode: mode === "replica" ? "replica" : "creative",
+      inputType: "image",
+      qualityProfile: mode === "replica" ? "replica" : "creative",
+      ...(mode === "replica" ? { replicaSource: { type: "image", path: fileName } } : {}),
+      generator: {
+        name: "image-to-manifest.mjs",
+        mode,
+        multiImage: false,
+        ocrConfidence: mode === "replica" ? ocrConfidence : undefined,
+        skeleton: true
+      }
+    },
     designSystem,
     deck: {
       title: deckTitle,
@@ -321,14 +340,7 @@ function singleImageManifest({ mode, imagePath, slide, designSystem, deckSize, d
         note: "Reference screenshot; remove from final manifest unless needed as cropped asset."
       }
     ],
-    slides: [slide],
-    _skeleton: true,
-    _generator: {
-      wrapper: "image-to-manifest.mjs",
-      mode,
-      multiImage: false,
-      ocrConfidence: mode === "replica" ? ocrConfidence : undefined
-    }
+    slides: [slide]
   };
 }
 
@@ -337,8 +349,7 @@ function pickDesignSystemFromHints(hints) {
   const id = suggestion.id ?? "business-neutral";
   return {
     source: `../../design-systems/${id}/DESIGN.md`,
-    name: id,
-    mode: "balanced"
+    name: id
   };
 }
 

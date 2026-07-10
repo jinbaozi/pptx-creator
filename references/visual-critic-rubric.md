@@ -29,6 +29,6 @@ The critic borrows the useful, localizable parts of Taste Skill and Impeccable w
 - Template-stack layout: four or more editable text/shape layers sharing the same slide center and nearly the same width are flagged in creative mode so the agent can add Taste-style compositional variance instead of centered boilerplate stacking.
 - Fake-perfect metrics: template-like numbers such as `99.99%`, isolated `50%`, repeated digits, and `1,234,567` are flagged in creative mode so the agent uses real measured data or clearly marks illustrative values.
 - Replica fidelity: browser-only effects captured during HTML measurement are reported as `replica-unsupported-effect` instead of being silently dropped; simple outer `box-shadow` and single `filter: drop-shadow(...)` effects are approximated as native PPT shadow first.
-- Replica coverage: measured HTML nodes that cannot be represented as native PPT layers are counted in `_replicaCoverage` and reported as `replica-coverage` when coverage is below `1.0`.
+- Replica coverage: measured HTML nodes that cannot be represented as native PPT layers are returned as conversion metadata and reported per slide as `replica-coverage` when coverage is below `1.0`.
 
 Creative-mode findings can feed repair patches. Replica-mode findings must preserve the source design; creative anti-default rules are skipped, and fixes should approximate native PPT equivalents first or use local raster layers only for unsupported effects.

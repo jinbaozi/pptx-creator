@@ -2,13 +2,20 @@
 
 `deck.manifest.json` is the contract between host agent reasoning and deterministic rendering scripts.
 
-M1.1 requires:
+The breaking `0.2.0` contract requires:
 
-- `version: "0.1.1"`
+- `version: "0.2.0"`
+- `metadata.mode`: `direct | creative | replica | repair`
+- `metadata.inputType`: `text | html | image | pdf | manifest | mixed`
+- `metadata.qualityProfile`: `light | creative | replica`
 - `designSystem.source`
-- `designSystem.mode`
+- `designSystem.name`
 - `deck.size`
 - one or more slides
+
+`designSystem` contains only theme source/name and optional tokens. Put optional
+design intent, replica source, and generator provenance in `metadata`. Private
+top-level `_...` fields and the removed `designSystem.mode` are invalid.
 
 Coordinates use inches and must fit inside `deck.size.width` and `deck.size.height`.
 
@@ -111,6 +118,6 @@ Supported diagram kinds are `layeredArchitecture`, `compilerPipeline`, `capabili
 
 M1.2 adds `scripts/html-to-manifest.mjs` to generate manifests from semantic HTML. See `references/html-to-pptx.md`.
 
-M1.3 adds image inspection helpers that produce `image-hints.json` and `deck.manifest.skeleton.json` for host-agent completion. See `references/image-to-pptx.md`. Skeleton manifests may include `_skeleton: true` and placeholder text — remove before final validation.
+M1.3 adds image inspection helpers that produce `image-hints.json` and `deck.manifest.skeleton.json` for host-agent completion. See `references/image-to-pptx.md`. Skeleton provenance belongs in `metadata.generator`; placeholder text must be replaced before final delivery.
 
 Host agents must not include backend-specific PptxGenJS option names in the manifest.

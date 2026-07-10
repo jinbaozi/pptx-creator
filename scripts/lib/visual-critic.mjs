@@ -498,7 +498,7 @@ export function reviewManifest(manifest, options = {}, consistencyReport = null,
   const deckSize = manifest.deck?.size || DEFAULT_SIZE;
   const adjustments = consistencyAdjustments(consistencyReport);
   const designTokens = manifest?.designSystem?.tokens ?? {};
-  const mode = options.mode || manifest.designSystem?.mode || "creative";
+  const mode = options.mode || manifest.metadata?.mode || "creative";
   // Per-slide slopRisk scoring. If a deck-level slopRiskReport is provided
   // (e.g. from `scripts/run-slop-risk.mjs`), distribute it evenly to every
   // slide; otherwise fall back to calling scoreSlopRisk per slide.
@@ -512,7 +512,7 @@ export function reviewManifest(manifest, options = {}, consistencyReport = null,
     const result = scoreSlide(slide, deckSize, adjustments, {
       ...options,
       mode,
-      designMode: manifest.designSystem?.mode,
+      designMode: manifest.metadata?.mode,
       designTokens
     });
     let slopEntry = perSlideSlop.get(slide.id);

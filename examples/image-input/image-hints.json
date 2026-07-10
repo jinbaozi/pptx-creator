@@ -198,11 +198,16 @@
     "reason": "default fallback for generic business slides"
   },
   "manifestSkeleton": {
-    "version": "0.1.1",
+    "version": "0.2.0",
+    "metadata": {
+      "mode": "creative",
+      "inputType": "image",
+      "qualityProfile": "creative",
+      "generator": { "name": "image_inspect_core.py", "skeleton": true }
+    },
     "designSystem": {
       "source": "../../design-systems/business-neutral/DESIGN.md",
-      "name": "business-neutral",
-      "mode": "balanced"
+      "name": "business-neutral"
     },
     "deck": {
       "title": "产品能力概览",
@@ -281,8 +286,7 @@
           }
         ]
       }
-    ],
-    "_skeleton": true
+    ]
   },
   "hostAgentTasks": [
     "Inventory visible objects (text, cards, tables, lines, icons, photos).",

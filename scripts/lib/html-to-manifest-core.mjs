@@ -2665,11 +2665,17 @@ export function convertHtmlToManifest(html, options = {}) {
   const aggregatedReplicaCoverage = aggregateReplicaCoverage(replicaCoverageBySlide);
 
   const manifest = {
-    version: "0.1.1",
+    version: "0.2.0",
+    metadata: {
+      mode: options.designMode === "replica" ? "replica" : "creative",
+      inputType: "html",
+      qualityProfile: options.designMode === "replica" ? "replica" : "creative",
+      ...(options.designMode === "replica" ? { replicaSource: { type: "html" } } : {}),
+      generator: { name: "html-to-manifest-core.mjs" }
+    },
     designSystem: {
       source: options.designSystemSource ?? designSystemSource(designId, options),
-      name: options.designSystemName ?? designSystemName(designId),
-      mode: options.designMode ?? "balanced"
+      name: options.designSystemName ?? designSystemName(designId)
     },
     deck: {
       title: deckTitle,
@@ -2682,16 +2688,6 @@ export function convertHtmlToManifest(html, options = {}) {
 
   if (options.measurements) {
     mergeMeasurementsIntoManifest(manifest, options.measurements);
-  }
-
-  // Surface the aggregated palette at the manifest level (U9) so the
-  // consistency report can pick it up without having to walk every slide.
-  // The shape mirrors the per-slide `paletteResolution` returned above.
-  if (options.returnMetadata || options.exposePaletteResolution) {
-    manifest._paletteResolution = aggregatedPalette;
-  }
-  if (options.returnMetadata || options.designMode === "replica") {
-    manifest._replicaCoverage = aggregatedReplicaCoverage;
   }
 
   const inputHints = buildInputHints(sourceSlides, options.measurements, options);

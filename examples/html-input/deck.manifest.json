@@ -1,9 +1,17 @@
 {
-  "version": "0.1.1",
+  "version": "0.2.0",
+  "metadata": {
+    "mode": "creative",
+    "inputType": "html",
+    "qualityProfile": "creative",
+    "generator": {
+      "name": "html-to-manifest-core.mjs",
+      "notes": "HTML-input example. Pipeline emits per-deck consistency-report.json + .md (inputType=html)."
+    }
+  },
   "designSystem": {
     "source": "../../design-systems/dashboard-data/DESIGN.md",
-    "name": "Dashboard Data",
-    "mode": "balanced"
+    "name": "Dashboard Data"
   },
   "deck": {
     "title": "运营数据看板",
@@ -296,6 +304,5 @@
         }
       ]
     }
-  ],
-  "_generator.notes": "HTML-input example. Pipeline emits per-deck consistency-report.json + .md (inputType=html)."
+  ]
 }

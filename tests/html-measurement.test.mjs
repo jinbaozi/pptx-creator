@@ -176,7 +176,7 @@ describe("html-to-manifest with measurements", () => {
     const result = convertHtmlToManifest(html, { measurements, designMode: "replica", returnMetadata: true });
     const slide = result.manifest.slides[0];
 
-    expect(result.manifest.designSystem.mode).toBe("replica");
+    expect(result.manifest.metadata.mode).toBe("replica");
     expect(slide.path).toBe("replica");
     expect(slide.background).toEqual({ type: "solid", color: "#EEF2FF" });
     expect(slide.elements).toContainEqual(
@@ -3786,7 +3786,7 @@ Second line</p>
     expect(result.replicaCoverage.droppedElements).toContainEqual(
       expect.objectContaining({ elementId: "fancy", kind: "css-gradient", reason: "unsupported-kind" })
     );
-    expect(result.manifest._replicaCoverage.coverage).toBe(0.5);
+    expect(result.replicaCoverage.coverage).toBe(0.5);
   });
 
   it("writes manifest via CLI helper with measurements path", async () => {

@@ -1,9 +1,14 @@
 {
-  "version": "0.1.1",
+  "version": "0.2.0",
+  "metadata": {
+    "mode": "creative",
+    "inputType": "text",
+    "qualityProfile": "creative",
+    "generator": { "name": "host-agent" }
+  },
   "designSystem": {
     "source": "../../../design-systems/warm-editorial/DESIGN.md",
-    "name": "Warm Editorial",
-    "mode": "balanced"
+    "name": "Warm Editorial"
   },
   "deck": {
     "title": "古籍数字化方法论白皮书",
@@ -421,11 +426,5 @@
         "skipped": false
       }
     }
-  ],
-  "_paletteResolution": {
-    "matches": [],
-    "unmapped": [],
-    "paletteMatch": 1,
-    "skipped": false
-  }
+  ]
 }

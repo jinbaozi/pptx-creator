@@ -1,9 +1,19 @@
 {
-  "version": "0.1.1",
+  "version": "0.2.0",
+  "metadata": {
+    "mode": "replica",
+    "inputType": "image",
+    "qualityProfile": "replica",
+    "replicaSource": { "type": "image", "path": "business-slide.png" },
+    "generator": {
+      "name": "image_inspect_core.py",
+      "skeleton": true,
+      "notes": "Image-input skeleton. After host agent fills placeholders, pipeline emits per-deck consistency-report.json + .md (inputType=image)."
+    }
+  },
   "designSystem": {
     "source": "../../design-systems/business-neutral/DESIGN.md",
-    "name": "business-neutral",
-    "mode": "balanced"
+    "name": "business-neutral"
   },
   "deck": {
     "title": "产品能力概览",
@@ -82,7 +92,5 @@
         }
       ]
     }
-  ],
-  "_skeleton": true,
-  "_generator.notes": "Image-input skeleton. After host agent fills placeholders, pipeline emits per-deck consistency-report.json + .md (inputType=image)."
+  ]
 }

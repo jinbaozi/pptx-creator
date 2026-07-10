@@ -13,7 +13,9 @@ describe("manifest compiler", () => {
       designSystemSource: "design-systems/product-roadshow/DESIGN.md",
       designSystemName: "Product Roadshow"
     });
-    expect(manifest.version).toBe("0.1.1");
+    expect(manifest.version).toBe("0.2.0");
+    expect(manifest.metadata).toMatchObject({ mode: "creative", inputType: "text", qualityProfile: "creative" });
+    expect(manifest.designSystem).not.toHaveProperty("mode");
     expect(manifest.designSystem.name).toBe("Product Roadshow");
     expect(manifest.slides.length).toBe(3);
     expect(manifest.slides[0].elements.some((el) => el.type === "text")).toBe(true);
@@ -35,4 +37,3 @@ describe("manifest compiler", () => {
     expect(manifest.slides.length).toBe(3);
   });
 });
-

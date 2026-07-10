@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "pptx": "node scripts/pptx.mjs",
     "setup": "node scripts/setup.mjs",
     "parse:design": "node scripts/parse-design-md.mjs",
     "validate:design": "node scripts/validate-design-md.mjs",

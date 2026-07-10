@@ -64,8 +64,10 @@ async function detectLibreOffice() {
 }
 
 function normalizeInputType(value, manifest) {
-  if (["html", "image", "design-first"].includes(value)) return value;
-  if (manifest?.designSystem?.mode === "replica") return "html";
+  if (["html", "image", "pdf", "text", "manifest", "mixed", "design-first"].includes(value)) return value;
+  if (["html", "image", "pdf", "text", "manifest", "mixed"].includes(manifest?.metadata?.inputType)) {
+    return manifest.metadata.inputType;
+  }
   return "design-first";
 }
 
@@ -253,10 +255,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         ? new Date().toISOString()
         : (existingFeedback?.acceptedAt ?? null)
     };
-    const qualityTargets = {
-      ...(options.qualityTargets ?? {}),
-      ...(manifestJson._replicaCoverage ? { replicaCoverage: manifestJson._replicaCoverage } : {})
-    };
+    const qualityTargets = { ...(options.qualityTargets ?? {}) };
 
     const reportOptions = {
       inputType,

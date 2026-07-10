@@ -174,7 +174,7 @@ Wrapper responsibilities:
   `image-replica-analyze.py` + `image-replica-plan.py` (`--mode replica`).
 - Forward `--ocr-confidence` to `image-replica-plan.py` when the upstream
   script advertises support (probed via `--help`); otherwise persist the
-  configured value in the manifest `_generator` block so U10 calibration can
+  configured value in the manifest `metadata.generator` block so U10 calibration can
   read it.
 - When `--input` is a directory, run the chosen flow per PNG and concatenate
   the per-image manifests into one deck. `designSystem` and `deck.size` are

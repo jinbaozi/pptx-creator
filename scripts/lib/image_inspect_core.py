@@ -99,7 +99,7 @@ SLIDE_PRESETS: dict[str, dict[str, float | str]] = {
 
 HINTS_VERSION = "0.1.0"
 REPLICA_VERSION = "0.2.0"
-MANIFEST_VERSION = "0.1.1"
+MANIFEST_VERSION = "0.2.0"
 
 
 @dataclass(frozen=True)
@@ -558,6 +558,7 @@ def build_manifest_skeleton(
     design_system: dict[str, str],
     deck_title: str = "Image Replication Draft",
     palette_resolution: dict[str, Any] | None = None,
+    mode: str = "creative",
 ) -> dict[str, Any]:
     design_id = design_system["id"]
     elements: list[dict[str, Any]] = []
@@ -624,10 +625,16 @@ def build_manifest_skeleton(
         )
     return {
         "version": MANIFEST_VERSION,
+        "metadata": {
+            "mode": "replica" if mode == "replica" else "creative",
+            "inputType": "image",
+            "qualityProfile": "replica" if mode == "replica" else "creative",
+            **({"replicaSource": {"type": "image", "path": image_path.name}} if mode == "replica" else {}),
+            "generator": {"name": "image_inspect_core.py", "skeleton": True},
+        },
         "designSystem": {
             "source": f"../../design-systems/{design_id}/DESIGN.md",
             "name": design_id,
-            "mode": "balanced",
         },
         "deck": {
             "title": deck_title,
@@ -657,7 +664,6 @@ def build_manifest_skeleton(
                 "elements": elements,
             }
         ],
-        "_skeleton": True,
         "paletteMatch": (palette_resolution or {}).get("paletteMatch", 0),
         "inlineColors": [
             {
@@ -700,6 +706,7 @@ def build_manifest_hints(
         design,
         title,
         palette_resolution=palette_resolution,
+        mode=mode,
     )
     return {
         "version": HINTS_VERSION,

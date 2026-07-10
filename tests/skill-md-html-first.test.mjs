@@ -10,22 +10,22 @@ async function read(relativePath) {
   return readFile(join(root, relativePath), "utf8");
 }
 
-describe("SKILL.md HTML-first 推荐流程 subsection", () => {
-  it("contains the bilingual subsection header", async () => {
+describe("SKILL.md exclusive router", () => {
+  it("routes HTML through only the HTML replica contract", async () => {
     const skill = await read("SKILL.md");
-    expect(skill).toContain("HTML-first 推荐流程");
+    expect(skill).toContain("`html-replica`");
+    expect(skill).toContain("`references/routes/html-replica.md`");
   });
 
-  it("lists all three HTML-first trigger conditions", async () => {
+  it("isolates creative and replica rules", async () => {
     const skill = await read("SKILL.md");
-    expect(skill).toMatch(/design-first creative/i);
-    expect(skill).toMatch(/rich visual/i);
-    expect(skill).toMatch(/host agent explicit judgment/i);
+    expect(skill).toContain("Do not combine creative rules with replica rules");
+    expect(skill).toContain("Creative exploration belongs only to the text route");
   });
 
-  it("makes the default text-to-manifest path explicit", async () => {
+  it("exposes only the unified public CLI", async () => {
     const skill = await read("SKILL.md");
-    expect(skill).toMatch(/Default:\s*text\s*[→>\-]+\s*manifest/i);
+    expect(skill).toContain("npm run pptx -- <text|html|image|pdf|manifest>");
   });
 });
 

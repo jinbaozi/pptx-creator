@@ -150,11 +150,17 @@ export function compileDesignFirstManifest(artifacts, options = {}) {
     return compileGenericSlide(slideSpec, index, designDirection);
   });
   return {
-    version: "0.1.1",
+    version: "0.2.0",
+    metadata: {
+      mode: "creative",
+      inputType: "text",
+      qualityProfile: "creative",
+      designIntent: { source: "design-first" },
+      generator: { name: "manifest-compiler.mjs" }
+    },
     designSystem: {
       source: options.designSystemSource || "design-systems/business-neutral/DESIGN.md",
-      name: options.designSystemName || "Business Neutral",
-      mode: options.designSystemMode || "creative"
+      name: options.designSystemName || "Business Neutral"
     },
     deck: {
       title: storyboard.title,
