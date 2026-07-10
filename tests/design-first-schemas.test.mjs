@@ -4,6 +4,9 @@ import { validateJsonSchema } from "../scripts/lib/schema-utils.mjs";
 import { validateDeckPlan } from "../scripts/lib/deck-plan.mjs";
 
 describe("creative deck plan schema", () => {
+  const load = () => JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+  const schema = JSON.parse(fs.readFileSync("schemas/deck-plan.schema.json", "utf8"));
+
   it("accepts the canonical coordinate-free plan", () => {
     const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
     const schema = JSON.parse(fs.readFileSync("schemas/deck-plan.schema.json", "utf8"));
@@ -15,6 +18,32 @@ describe("creative deck plan schema", () => {
     const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
     delete plan.dials.visualEnergy;
     expect(validateDeckPlan(plan).valid).toBe(false);
+  });
+
+  it("direct consumers reject coordinate keys recursively from the public schema", () => {
+    for (const key of ["x", "y", "w", "h", "left", "top", "right", "bottom", "width", "height"]) {
+      const plan = load();
+      plan.intentOverride = { nested: { deeper: [{ [key]: 1 }] } };
+      expect(validateJsonSchema(plan, schema).valid, key).toBe(false);
+    }
+  });
+
+  it("direct consumers enforce every advertised family content contract", () => {
+    const invalidContent = {
+      cover: { headline: "Missing subtitle" },
+      architecture: { headline: "Missing layers" },
+      comparison: { headline: "Missing choices" },
+      process: { headline: "Missing steps" },
+      dashboard: { headline: "Missing metrics" },
+      quote: { quote: "Missing attribution" },
+      matrix: { headline: "Missing axes and quadrants" },
+      closing: { headline: "Missing action" }
+    };
+    for (const [family, content] of Object.entries(invalidContent)) {
+      const plan = load();
+      plan.slides.find((slide) => slide.layoutFamily === family).content = content;
+      expect(validateJsonSchema(plan, schema).valid, family).toBe(false);
+    }
   });
 });
 

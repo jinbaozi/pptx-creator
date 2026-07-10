@@ -204,8 +204,16 @@ describe("stable bilingual brief corpus and text output contract", () => {
     const publicEntries = ["README.md", "README.en.md", "AGENTS.md", "SKILL.md", ...["references", "scripts", "layout-archetypes", "slide-archetypes"].flatMap(walkFiles)]
       .filter((relative) => /\.(?:md|mjs)$/.test(relative));
     for (const relative of publicEntries) {
-      expect(fs.readFileSync(relative, "utf8"), relative).not.toMatch(/deck\.storyboard|deck\.design-direction|slide-design-specs|compile-design-first|design-first-loader/);
+      expect(fs.readFileSync(relative, "utf8"), relative).not.toMatch(/storyboard|design[ -]direction|slide[ -]design[ -]specs|compile-design-first|design-first-loader/i);
     }
+  });
+
+  it("derives a plan from fixture input without consulting the expected oracle", () => {
+    const fixture = JSON.parse(fs.readFileSync("examples/text-input/bilingual-briefs.json", "utf8"))[0];
+    const original = buildPlanFromBriefFixture(fixture);
+    const mutated = structuredClone(fixture);
+    mutated.expected = { domain: "wrong", layoutFamily: "quote", tasteBand: "risky", tasteTraits: [] };
+    expect(buildPlanFromBriefFixture(mutated)).toEqual(original);
   });
 
   it("ships 24 deterministic bilingual fixtures across six deck domains", () => {
@@ -217,6 +225,7 @@ describe("stable bilingual brief corpus and text output contract", () => {
     expect(corpus.filter((item) => item.language === "zh-CN")).toHaveLength(12);
     expect(corpus.filter((item) => item.language === "en-US")).toHaveLength(12);
     for (const item of corpus) {
+      expect(item.input?.intent, item.id).toBeTruthy();
       expect(item.expected.domain, item.id).toBe(item.domain);
       const plan = buildPlanFromBriefFixture(item);
       expect(validateDeckPlan(plan), item.id).toEqual({ valid: true, errors: [] });

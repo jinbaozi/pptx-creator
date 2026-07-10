@@ -2,12 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://pptx-creator.local/deck-plan.schema.json",
   "title": "Creative Deck Plan 0.1",
+  "allOf": [{ "$ref": "#/$defs/coordinateFree" }],
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "title", "language", "designRead", "dials", "audience", "narrativeBeats", "slides"],
   "properties": {
     "version": { "const": "0.1.0" },
-    "title": { "type": "string", "minLength": 1 },
+    "title": { "$ref": "#/$defs/nonEmptyString" },
     "language": { "type": "string", "minLength": 2 },
     "designRead": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]+$" },
     "dials": {
@@ -19,22 +20,57 @@
         "visualEnergy": { "type": "number", "minimum": 0, "maximum": 100 }
       }
     },
-    "audience": { "type": "string", "minLength": 1 },
-    "narrativeBeats": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "audience": { "$ref": "#/$defs/nonEmptyString" },
+    "narrativeBeats": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } },
     "intentOverride": { "type": "object" },
-    "slides": {
-      "type": "array", "minItems": 1,
-      "items": {
-        "type": "object", "additionalProperties": false,
-        "required": ["id", "message", "layoutFamily", "contentReferences", "assetReferences", "content"],
-        "properties": {
-          "id": { "type": "string", "minLength": 1 }, "message": { "type": "string", "minLength": 1 },
-          "layoutFamily": { "enum": ["cover", "architecture", "comparison", "process", "dashboard", "quote", "matrix", "closing"] },
-          "contentReferences": { "type": "array", "items": { "type": "string" } },
-          "assetReferences": { "type": "array", "items": { "type": "string" } },
-          "content": { "type": "object" }
-        }
-      }
+    "slides": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/slide" } }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "stringList": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/nonEmptyString" } },
+    "coordinateFree": {
+      "oneOf": [
+        { "type": "object", "propertyNames": { "not": { "enum": ["x", "y", "w", "h", "left", "top", "right", "bottom", "width", "height"] } }, "additionalProperties": { "$ref": "#/$defs/coordinateFree" } },
+        { "type": "array", "items": { "$ref": "#/$defs/coordinateFree" } },
+        { "type": ["string", "number", "boolean", "null"] }
+      ]
+    },
+    "namedItems": {
+      "type": "object", "additionalProperties": false, "required": ["title", "items"],
+      "properties": { "title": { "$ref": "#/$defs/nonEmptyString" }, "items": { "$ref": "#/$defs/stringList" } }
+    },
+    "metric": {
+      "type": "object", "additionalProperties": false, "required": ["label", "value"],
+      "properties": { "label": { "$ref": "#/$defs/nonEmptyString" }, "value": { "anyOf": [{ "$ref": "#/$defs/nonEmptyString" }, { "type": "number" }] } }
+    },
+    "coverContent": { "type": "object", "additionalProperties": false, "required": ["headline", "subtitle"], "properties": { "headline": { "$ref": "#/$defs/nonEmptyString" }, "subtitle": { "$ref": "#/$defs/nonEmptyString" } } },
+    "architectureContent": { "type": "object", "additionalProperties": false, "required": ["headline", "layers"], "properties": { "headline": { "$ref": "#/$defs/nonEmptyString" }, "layers": { "type": "array", "minItems": 2, "maxItems": 4, "items": { "$ref": "#/$defs/nonEmptyString" } } } },
+    "comparisonContent": { "type": "object", "additionalProperties": false, "required": ["headline", "primary", "secondary"], "properties": { "headline": { "$ref": "#/$defs/nonEmptyString" }, "primary": { "$ref": "#/$defs/namedItems" }, "secondary": { "$ref": "#/$defs/namedItems" } } },
+    "processContent": { "type": "object", "additionalProperties": false, "required": ["headline", "steps"], "properties": { "headline": { "$ref": "#/$defs/nonEmptyString" }, "steps": { "type": "array", "minItems": 2, "maxItems": 5, "items": { "$ref": "#/$defs/nonEmptyString" } } } },
+    "dashboardContent": { "type": "object", "additionalProperties": false, "required": ["headline", "metrics"], "properties": { "headline": { "$ref": "#/$defs/nonEmptyString" }, "metrics": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "$ref": "#/$defs/metric" } } } },
+    "quoteContent": { "type": "object", "additionalProperties": false, "required": ["quote", "attribution"], "properties": { "quote": { "$ref": "#/$defs/nonEmptyString" }, "attribution": { "$ref": "#/$defs/nonEmptyString" } } },
+    "matrixContent": { "type": "object", "additionalProperties": false, "required": ["headline", "xAxis", "yAxis", "quadrants"], "properties": { "headline": { "$ref": "#/$defs/nonEmptyString" }, "xAxis": { "$ref": "#/$defs/nonEmptyString" }, "yAxis": { "$ref": "#/$defs/nonEmptyString" }, "quadrants": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/nonEmptyString" } } } },
+    "closingContent": { "type": "object", "additionalProperties": false, "required": ["headline", "callToAction"], "properties": { "headline": { "$ref": "#/$defs/nonEmptyString" }, "callToAction": { "$ref": "#/$defs/nonEmptyString" } } },
+    "slide": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "message", "layoutFamily", "contentReferences", "assetReferences", "content"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" }, "message": { "$ref": "#/$defs/nonEmptyString" },
+        "layoutFamily": { "enum": ["cover", "architecture", "comparison", "process", "dashboard", "quote", "matrix", "closing"] },
+        "contentReferences": { "type": "array", "items": { "type": "string" } },
+        "assetReferences": { "type": "array", "items": { "type": "string" } },
+        "content": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "required": ["layoutFamily"], "properties": { "layoutFamily": { "const": "cover" } } }, "then": { "properties": { "content": { "$ref": "#/$defs/coverContent" } } } },
+        { "if": { "required": ["layoutFamily"], "properties": { "layoutFamily": { "const": "architecture" } } }, "then": { "properties": { "content": { "$ref": "#/$defs/architectureContent" } } } },
+        { "if": { "required": ["layoutFamily"], "properties": { "layoutFamily": { "const": "comparison" } } }, "then": { "properties": { "content": { "$ref": "#/$defs/comparisonContent" } } } },
+        { "if": { "required": ["layoutFamily"], "properties": { "layoutFamily": { "const": "process" } } }, "then": { "properties": { "content": { "$ref": "#/$defs/processContent" } } } },
+        { "if": { "required": ["layoutFamily"], "properties": { "layoutFamily": { "const": "dashboard" } } }, "then": { "properties": { "content": { "$ref": "#/$defs/dashboardContent" } } } },
+        { "if": { "required": ["layoutFamily"], "properties": { "layoutFamily": { "const": "quote" } } }, "then": { "properties": { "content": { "$ref": "#/$defs/quoteContent" } } } },
+        { "if": { "required": ["layoutFamily"], "properties": { "layoutFamily": { "const": "matrix" } } }, "then": { "properties": { "content": { "$ref": "#/$defs/matrixContent" } } } },
+        { "if": { "required": ["layoutFamily"], "properties": { "layoutFamily": { "const": "closing" } } }, "then": { "properties": { "content": { "$ref": "#/$defs/closingContent" } } } }
+      ]
     }
   }
 }

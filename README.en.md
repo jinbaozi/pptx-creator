@@ -21,7 +21,7 @@ Core principle: **author a structured manifest first, then render PPTX determini
 | Capability | Description |
 | --- | --- |
 | Text to PPTX | The host agent turns raw content into an outline, slide plan, copy, and `deck.manifest.json`; the pipeline renders the deck. |
-| Design-first creation | Uses `storyboard -> design direction -> slide design specs -> deck manifest -> PPTX` so story, visual direction, and slide design can be reviewed before rendering. |
+| Creative text generation | Uses the coordinate-free `deck.plan.json -> deck.manifest.json -> PPTX` flow so design judgment, narrative beats, and layout families remain reviewable before rendering. |
 | Layout archetypes and compilation | Built-in layout archetypes, design system parsing, and manifest compilation turn design specs into deterministic PPTX manifests. |
 | HTML to PPTX | Supports semantic HTML, CSS-positioned HTML, DOM measurement, remote image localization, and multi-slide conversion. |
 | Image/PDF input | Provides image inspection, palette extraction, OCR, cropping, image replica analysis, layer planning, and PDF page hint helpers. |
@@ -194,7 +194,7 @@ final.pptx
 | `references/` | Detailed workflows loaded progressively by input type and task stage. |
 | `design-systems/` | Built-in generic design systems. |
 | `layout-archetypes/` | Slide layout archetypes for design-first compilation. |
-| `schemas/` | JSON Schemas for deck, storyboard, design direction, registry, repair, and review artifacts. |
+| `schemas/` | JSON Schemas for deck, deck plan, registry, repair, and review artifacts. |
 | `scripts/` | Conversion, rendering, validation, repair, and regression scripts. |
 | `scripts/lib/` | Reusable core logic. |
 | `references/` | Workflow, manifest, HTML/image/PDF, and QA references. |

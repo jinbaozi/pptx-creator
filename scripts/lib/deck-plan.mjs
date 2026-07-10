@@ -185,9 +185,24 @@ function fixtureContent(family, brief) {
   return content[family];
 }
 
+function familyFromIntent(intent) {
+  const normalized = String(intent ?? "").trim().toLowerCase();
+  const rules = [
+    [/metric/, "dashboard"],
+    [/compar|option/, "comparison"],
+    [/quot/, "quote"],
+    [/architect/, "architecture"],
+    [/process|roadmap/, "process"],
+    [/matrix|prioriti/, "matrix"],
+    [/call to action|clos/, "closing"],
+    [/opening|story/, "cover"]
+  ];
+  return rules.find(([pattern]) => pattern.test(normalized))?.[1] ?? null;
+}
+
 export function buildPlanFromBriefFixture(fixture) {
   const intent = BRIEF_DOMAIN_INTENT[fixture?.domain];
-  const family = fixture?.expected?.layoutFamily;
+  const family = familyFromIntent(fixture?.input?.intent);
   if (!intent || !REGISTRY[family]) throw new Error(`unsupported brief fixture ${fixture?.id ?? "(unknown)"}`);
   return {
     version: "0.1.0",
@@ -195,7 +210,7 @@ export function buildPlanFromBriefFixture(fixture) {
     language: fixture.language,
     designRead: intent.designRead,
     dials: { ...intent.dials },
-    audience: `${fixture.domain} decision makers`,
+    audience: fixture.input.audience || `${fixture.domain} decision makers`,
     narrativeBeats: ["Frame", "Explain", "Decide"],
     slides: [{
       id: `${fixture.id}-slide-1`, message: fixture.brief, layoutFamily: family,

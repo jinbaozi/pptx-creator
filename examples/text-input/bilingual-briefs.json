@@ -4,6 +4,7 @@
     "domain": "business",
     "language": "en-US",
     "brief": "Board update on profitable growth",
+    "input": { "intent": "metrics", "audience": "board members" },
     "expected": {
       "domain": "business",
       "layoutFamily": "dashboard",
@@ -20,6 +21,7 @@
     "domain": "business",
     "language": "en-US",
     "brief": "Market entry decision memo",
+    "input": { "intent": "compare options", "audience": "executive team" },
     "expected": {
       "domain": "business",
       "layoutFamily": "comparison",
@@ -36,6 +38,7 @@
     "domain": "business",
     "language": "zh-CN",
     "brief": "年度经营复盘与增长重点",
+    "input": { "intent": "metrics", "audience": "管理层" },
     "expected": {
       "domain": "business",
       "layoutFamily": "dashboard",
@@ -52,6 +55,7 @@
     "domain": "business",
     "language": "zh-CN",
     "brief": "新市场进入决策简报",
+    "input": { "intent": "compare options", "audience": "决策委员会" },
     "expected": {
       "domain": "business",
       "layoutFamily": "comparison",
@@ -68,6 +72,7 @@
     "domain": "editorial",
     "language": "en-US",
     "brief": "Museum exhibition opening essay",
+    "input": { "intent": "editorial quotation", "audience": "museum visitors" },
     "expected": {
       "domain": "editorial",
       "layoutFamily": "quote",
@@ -85,6 +90,7 @@
     "domain": "editorial",
     "language": "en-US",
     "brief": "Magazine feature on urban memory",
+    "input": { "intent": "editorial opening", "audience": "magazine readers" },
     "expected": {
       "domain": "editorial",
       "layoutFamily": "cover",
@@ -102,6 +108,7 @@
     "domain": "editorial",
     "language": "zh-CN",
     "brief": "博物馆新展策展导语",
+    "input": { "intent": "editorial quotation", "audience": "展览观众" },
     "expected": {
       "domain": "editorial",
       "layoutFamily": "quote",
@@ -119,6 +126,7 @@
     "domain": "editorial",
     "language": "zh-CN",
     "brief": "城市记忆专题报道",
+    "input": { "intent": "editorial opening", "audience": "专题读者" },
     "expected": {
       "domain": "editorial",
       "layoutFamily": "cover",
@@ -136,6 +144,7 @@
     "domain": "technical",
     "language": "en-US",
     "brief": "Explain a compiler platform architecture",
+    "input": { "intent": "explain architecture", "audience": "engineering leaders" },
     "expected": {
       "domain": "technical",
       "layoutFamily": "architecture",
@@ -152,6 +161,7 @@
     "domain": "technical",
     "language": "en-US",
     "brief": "Incident response lifecycle",
+    "input": { "intent": "explain process", "audience": "incident responders" },
     "expected": {
       "domain": "technical",
       "layoutFamily": "process",
@@ -168,6 +178,7 @@
     "domain": "technical",
     "language": "zh-CN",
     "brief": "编译平台分层架构说明",
+    "input": { "intent": "explain architecture", "audience": "技术负责人" },
     "expected": {
       "domain": "technical",
       "layoutFamily": "architecture",
@@ -184,6 +195,7 @@
     "domain": "technical",
     "language": "zh-CN",
     "brief": "事故响应全流程复盘",
+    "input": { "intent": "explain process", "audience": "响应团队" },
     "expected": {
       "domain": "technical",
       "layoutFamily": "process",
@@ -200,6 +212,7 @@
     "domain": "public-sector",
     "language": "en-US",
     "brief": "Municipal service modernization roadmap",
+    "input": { "intent": "explain process", "audience": "civic stakeholders" },
     "expected": {
       "domain": "public-sector",
       "layoutFamily": "process",
@@ -216,6 +229,7 @@
     "domain": "public-sector",
     "language": "en-US",
     "brief": "Public health policy options",
+    "input": { "intent": "compare options", "audience": "policy committee" },
     "expected": {
       "domain": "public-sector",
       "layoutFamily": "comparison",
@@ -232,6 +246,7 @@
     "domain": "public-sector",
     "language": "zh-CN",
     "brief": "城市公共服务现代化路径",
+    "input": { "intent": "explain process", "audience": "公共服务管理者" },
     "expected": {
       "domain": "public-sector",
       "layoutFamily": "process",
@@ -248,6 +263,7 @@
     "domain": "public-sector",
     "language": "zh-CN",
     "brief": "公共卫生政策方案对比",
+    "input": { "intent": "compare options", "audience": "政策委员会" },
     "expected": {
       "domain": "public-sector",
       "layoutFamily": "comparison",
@@ -264,6 +280,7 @@
     "domain": "data",
     "language": "en-US",
     "brief": "Quarterly product adoption metrics",
+    "input": { "intent": "metrics", "audience": "product leaders" },
     "expected": {
       "domain": "data",
       "layoutFamily": "dashboard",
@@ -280,6 +297,7 @@
     "domain": "data",
     "language": "en-US",
     "brief": "Portfolio prioritization matrix",
+    "input": { "intent": "prioritize matrix", "audience": "portfolio owners" },
     "expected": {
       "domain": "data",
       "layoutFamily": "matrix",
@@ -296,6 +314,7 @@
     "domain": "data",
     "language": "zh-CN",
     "brief": "季度产品采用率分析",
+    "input": { "intent": "metrics", "audience": "产品负责人" },
     "expected": {
       "domain": "data",
       "layoutFamily": "dashboard",
@@ -312,6 +331,7 @@
     "domain": "data",
     "language": "zh-CN",
     "brief": "项目组合优先级矩阵",
+    "input": { "intent": "prioritize matrix", "audience": "项目组合负责人" },
     "expected": {
       "domain": "data",
       "layoutFamily": "matrix",
@@ -328,6 +348,7 @@
     "domain": "narrative",
     "language": "en-US",
     "brief": "Founder story for an investor meeting",
+    "input": { "intent": "narrative opening", "audience": "investors" },
     "expected": {
       "domain": "narrative",
       "layoutFamily": "cover",
@@ -344,6 +365,7 @@
     "domain": "narrative",
     "language": "en-US",
     "brief": "Close a transformation keynote",
+    "input": { "intent": "call to action", "audience": "keynote audience" },
     "expected": {
       "domain": "narrative",
       "layoutFamily": "closing",
@@ -360,6 +382,7 @@
     "domain": "narrative",
     "language": "zh-CN",
     "brief": "投资人会议创始人故事",
+    "input": { "intent": "narrative opening", "audience": "投资人" },
     "expected": {
       "domain": "narrative",
       "layoutFamily": "cover",
@@ -376,6 +399,7 @@
     "domain": "narrative",
     "language": "zh-CN",
     "brief": "转型主题演讲收束页",
+    "input": { "intent": "call to action", "audience": "演讲听众" },
     "expected": {
       "domain": "narrative",
       "layoutFamily": "closing",

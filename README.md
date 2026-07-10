@@ -21,7 +21,7 @@
 | 能力 | 说明 |
 | --- | --- |
 | 文本到 PPTX | 宿主 Agent 根据原始内容生成故事线、页面结构、文案和 `deck.manifest.json`，再由 pipeline 渲染。 |
-| Design-first 创作 | 通过 `storyboard -> design direction -> slide design specs -> deck manifest -> PPTX` 的流程，让故事、视觉方向和页面设计在渲染前可审查。 |
+| 创意文本生成 | 通过无坐标的 `deck.plan.json -> deck.manifest.json -> PPTX` 流程，让设计判断、叙事节拍和布局族在渲染前可审查。 |
 | 布局原型与编译 | 内置 layout archetypes、设计系统解析和 manifest 编译器，把设计规格转换成确定性的 PPTX manifest。 |
 | HTML 到 PPTX | 支持语义 HTML、CSS 定位 HTML、DOM 测量、远程图片本地化和多页转换。 |
 | 图片/PDF 输入 | 提供图片检查、颜色提取、OCR、裁剪、图片复刻分析、图层规划、PDF 页面 hints 等辅助脚本，由 Agent 重建可编辑对象。 |
@@ -195,7 +195,7 @@ final.pptx
 | `references/` | 按输入类型和任务阶段渐进加载的详细流程。 |
 | `design-systems/` | 内置通用设计系统。 |
 | `layout-archetypes/` | 设计优先流程使用的页面布局原型。 |
-| `schemas/` | deck、storyboard、design direction、registry、repair、review 等 JSON Schema。 |
+| `schemas/` | deck、deck plan、registry、repair、review 等 JSON Schema。 |
 | `scripts/` | 转换、渲染、校验、修复和回归脚本。 |
 | `scripts/lib/` | 可复用核心逻辑。 |
 | `references/` | workflow、manifest、HTML/image/PDF 和 QA 参考。 |

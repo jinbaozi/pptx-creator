@@ -56,7 +56,7 @@ output/
   output-manifest.json
 ```
 
-Design-first runs may also produce storyboard, design direction, slide specifications, visual review, vision review, run index, registry, and preview artifacts. These remain intermediate evidence; they never replace `deck.manifest.json` or `final.pptx`.
+Creative text runs may also produce a coordinate-free deck plan, visual review, registry, and static preview artifacts. These remain intermediate evidence; they never replace `deck.manifest.json` or `final.pptx`.
 
 ## Research and assets
 

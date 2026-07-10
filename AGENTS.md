@@ -100,7 +100,7 @@ The visual critic (`scripts/lib/visual-critic.mjs` + `scripts/run-visual-critic.
 |---|---|
 | `SKILL.md` | Universal skill entry, host-agent contract, and progressive routing |
 | `agents/openai.yaml` | Optional Codex/OpenAI interface metadata |
-| `schemas/` | JSON Schemas (deck, storyboard, design-direction, slide-spec, registry, repair, review) |
+| `schemas/` | JSON Schemas (deck, deck-plan, registry, repair, review) |
 | `scripts/` | Entry scripts; heavy logic in `scripts/lib/` |
 | `scripts/lib/` | Reusable JS/Python cores (`deck-plan.mjs`, `chart-renderer.mjs`, `diagram-compiler.mjs`, `visual-critic.mjs`, `run-index.mjs`, `registry.mjs`, `python-utils.mjs`, `*_core.py`) |
 | `design-systems/<name>/DESIGN.md` | Built-in visual systems |
@@ -114,7 +114,7 @@ The visual critic (`scripts/lib/visual-critic.mjs` + `scripts/run-visual-critic.
 - All JS scripts are ESM (`"type": "module"`). Run with `node`, not via build step.
 - Python helpers must be invoked through `scripts/run-python.mjs` so interpreter selection (`PPTX_CREATOR_PYTHON`) is consistent.
 - Web search is permitted inside the host agent (you) but **prohibited** inside scripts. Remote assets found by search must be localized under `output/assets/` before being referenced from the manifest.
-- Strict replica mode (1:1 HTML/image/PDF) must not run creative design-direction exploration on top of the source — preserve original layout, color, typography, tone.
+- Strict replica mode (1:1 HTML/image/PDF) must not run creative direction exploration on top of the source — preserve original layout, color, typography, tone.
 - Never treat a full-slide raster as an editable PPTX. If the host agent cannot achieve Level 3+, report the gap honestly.
 - Do not commit `node_modules/`, `output/`, `.pptx-creator/`, or `docs/` (per `.gitignore`).
 - `package.json` is private (`"private": true`); do not publish.
