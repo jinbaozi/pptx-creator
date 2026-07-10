@@ -206,6 +206,11 @@ describe("stable bilingual brief corpus and text output contract", () => {
     for (const relative of publicEntries) {
       expect(fs.readFileSync(relative, "utf8"), relative).not.toMatch(/storyboard|design[ -]direction|slide[ -]design[ -]specs|compile-design-first|design-first-loader/i);
     }
+    const agents = fs.readFileSync("AGENTS.md", "utf8");
+    expect(agents).toContain("examples/text-input/creative/deck.plan.json");
+    expect(agents).not.toContain("examples/design-first/compiler-roadshow");
+    const showcase = fs.readFileSync("examples/design-first/compiler-roadshow-html/deck.html", "utf8");
+    expect(showcase).not.toMatch(/ships through the design-first path/i);
   });
 
   it("derives a plan from fixture input without consulting the expected oracle", () => {

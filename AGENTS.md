@@ -29,8 +29,8 @@ npm run test:py                        # python unittest in tests/
 # Quick run on a built-in text example
 npm run pptx -- text examples/text-input/deck.manifest.json output
 
-# Design-first end-to-end
-npm run pptx -- text examples/design-first/compiler-roadshow output/design-first --creative
+# Creative text end-to-end
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --creative
 
 # Replica routes (image/PDF block until a fidelity-proof compiler exists)
 npm run pptx -- html input.html output/html

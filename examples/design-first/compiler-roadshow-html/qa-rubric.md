@@ -4,7 +4,7 @@ This rubric is **qualitative only**. It documents design rationale, tradeoffs, a
 
 ## Showcase scope
 
-- Mirrors `examples/design-first/compiler-roadshow/` outline: same compiler-roadshow narrative arc (cover → problem/solution → three-stage pipeline), extended to nine slides to demonstrate archetype variety on the HTML-first path.
+- Mirrors the compiler-roadshow narrative in the current creative text flow: cover → problem/solution → three-stage pipeline, extended to nine slides to demonstrate archetype variety on the HTML-first path.
 - Uses the new `slide-archetypes/*` (U8) and existing `layout-archetypes/*` catalogs via `data-archetype` attributes.
 - HTML-first path: `deck.html` → HTML audit/repair → measurement → `deck.manifest.json` → strict pipeline.
 - Deck-plan alignment (verbatim titles, identical content points for the first three slides):
