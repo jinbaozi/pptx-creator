@@ -11,7 +11,8 @@ import { applyContextualTaste, editabilityLevelFromCounter, qualityFromReview } 
 import { preflightFonts } from "./lib/font-preflight.mjs";
 import { writePipelineReports } from "./lib/pipeline-report-writer.mjs";
 import { runPython } from "./lib/python-utils.mjs";
-import { evaluateReplicaEvidence } from "./lib/replica-evidence.mjs";
+import { verifyReplicaEvidence } from "./lib/replica-evidence.mjs";
+import { validateJsonSchema } from "./lib/schema-utils.mjs";
 import { reviewManifest } from "./lib/visual-critic.mjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
 
@@ -215,32 +216,46 @@ export async function buildReplicaEvidence({ pptxPath, manifest, coverage, inter
   const structuralProof = await proveReplicaFidelity(pptxPath, manifest, coverage, intermediate, route);
   const pageCount = manifest.slides?.length ?? 0;
   const nominalSize = { width: manifest.deck?.size?.width ?? 0, height: manifest.deck?.size?.height ?? 0 };
-  const level = editabilityLevelFromCounter(intermediate.editabilityCounter);
+  const counters = intermediate.countersBySlide ?? [intermediate.editabilityCounter ?? {}];
   const nativeCoverage = Number.isFinite(Number(coverage?.coverage))
     ? { status: "available", value: Number(coverage.coverage) }
     : unavailableMetric("native-coverage-not-measured");
   const fidelity = unavailableFidelity(route);
-  const perSlide = Array.from({ length: pageCount }, (_, slideIndex) => ({
-    slideIndex,
-    fidelity: structuredClone(fidelity),
-    nativeCoverage: coverage?.slides?.[slideIndex]?.coverage === undefined
-      ? structuredClone(nativeCoverage)
-      : { status: "available", value: Number(coverage.slides[slideIndex].coverage) },
-    editability: { level },
-    fallbacks: []
-  }));
-  return evaluateReplicaEvidence({
+  let fallbackInventory = true;
+  const perSlide = Array.from({ length: pageCount }, (_, slideIndex) => {
+    const slide = manifest.slides?.[slideIndex] ?? {};
+    const explicit = slide.replicaFallbacks ?? coverage?.slides?.[slideIndex]?.fallbacks;
+    const cropped = (slide.elements ?? []).filter((element) => element.type === "cropped-asset");
+    const unsupported = slide.replicaUnsupportedEffects ?? coverage?.slides?.[slideIndex]?.unsupportedEffects ?? [];
+    if (explicit === undefined && (cropped.length > 0 || unsupported.length > 0)) fallbackInventory = false;
+    return {
+      slideIndex,
+      fidelity: structuredClone(fidelity),
+      nativeCoverage: coverage?.slides?.[slideIndex]?.coverage === undefined ? structuredClone(nativeCoverage) : { status: "available", value: Number(coverage.slides[slideIndex].coverage) },
+      editability: { level: editabilityLevelFromCounter(counters[slideIndex] ?? {}) },
+      fallbacks: structuredClone(explicit ?? [])
+    };
+  });
+  const aggregateFallbacks = perSlide.flatMap((slide) => slide.fallbacks);
+  const aggregateLevel = Math.min(...perSlide.map((slide) => slide.editability.level));
+  return verifyReplicaEvidence({
     version: "0.1.0", mode: "replica", route,
-    paths: { source: String(sourcePath ?? ""), render: String(renderPath ?? "") },
+    paths: {
+      source: sourcePath ? { status: "available", path: String(sourcePath) } : { status: "unavailable", path: null, reason: "source-path-missing" },
+      render: renderPath ? { status: "available", path: String(renderPath) } : { status: "unavailable", path: null, reason: "render-artifact-not-generated" }
+    },
     capabilities: {
       sourceRenderComparison: false,
-      nativeObjectInspection: structuralProof.status !== "unavailable"
+      nativeObjectInspection: structuralProof.status !== "unavailable",
+      fallbackInventory
     },
-    thresholds: {}, retryCount, accepted: true,
+    thresholds: {},
+    retry: { status: "unavailable", attempts: [], reason: "bounded-repair-loop-not-implemented" },
+    accepted: true,
     source: { pageCount, size: nominalSize },
     render: { pageCount: structuralProof.renderedSlides ?? pageCount, size: nominalSize },
     perSlide,
-    aggregate: { fidelity, nativeCoverage, editability: { level }, fallbacks: [] },
+    aggregate: { fidelity, nativeCoverage, editability: { level: aggregateLevel }, fallbacks: aggregateFallbacks },
     blockingFindings: structuralProof.status === "passed" ? [] : [`structural-proof-${structuralProof.status}`]
   });
 }
@@ -422,10 +437,15 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const replicaProof = mode === "replica"
     ? await buildReplicaEvidence({
       pptxPath: join(resolvedOutput, "final.pptx"), manifest, coverage, intermediate, route,
-      sourcePath: inputSource, renderPath: join(resolvedOutput, "preview"), retryCount: 0
+      sourcePath: inputSource, renderPath: null
     })
     : null;
   if (replicaProof) {
+    const replicaEvidenceSchema = JSON.parse(await readFile(join(root, "schemas/replica-evidence.schema.json"), "utf8"));
+    const contractValidation = validateJsonSchema(replicaProof, replicaEvidenceSchema);
+    if (!contractValidation.valid) {
+      throw new Error(`replica evidence contract invalid: ${contractValidation.errors.map((item) => `${item.path} ${item.message}`).join("; ")}`);
+    }
     await writeFile(join(resolvedOutput, "replica-evidence.json"), `${JSON.stringify(replicaProof, null, 2)}\n`, "utf8");
   }
   const creativeQuality = mode === "creative"

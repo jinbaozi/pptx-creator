@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import JSZip from "jszip";
-import { evaluateReplicaEvidence } from "../scripts/lib/replica-evidence.mjs";
+import { evaluateReplicaEvidence, verifyReplicaEvidence } from "../scripts/lib/replica-evidence.mjs";
 import { buildReplicaEvidence } from "../scripts/run-deck-pipeline.mjs";
 import { validateJsonSchema } from "../scripts/lib/schema-utils.mjs";
 
@@ -24,9 +24,9 @@ function validEvidence(route = "html") {
   };
   return {
     version: "0.1.0", mode: "replica", route,
-    paths: { source: `/tmp/source.${route === "html" ? "html" : "png"}`, render: "/tmp/render" },
-    capabilities: { sourceRenderComparison: true, nativeObjectInspection: true },
-    thresholds: {}, retryCount: 0, accepted: true,
+    paths: { source: { status: "available", path: "/tmp/source" }, render: { status: "available", path: "/tmp/render" } },
+    capabilities: { sourceRenderComparison: true, nativeObjectInspection: true, fallbackInventory: true },
+    thresholds: {}, retry: { status: "available", attempts: [] }, accepted: true,
     source: { pageCount: 1, size: { width: 1600, height: 900 } },
     render: { pageCount: 1, size: { width: 1600, height: 900 } },
     perSlide: [{ slideIndex: 0, fidelity, nativeCoverage: metric(route === "html" ? 0.96 : 0.91), editability: { level: route === "html" ? 4 : 3 }, fallbacks: [] }],
@@ -42,15 +42,25 @@ describe("strict replica evidence evaluator", () => {
     expect(schema.$defs.metric.oneOf[1].properties.value.type).toBe("null");
     expect(schema.$defs.metric.oneOf[1].required).toContain("reason");
     expect(schema.$defs.slideEvidence.required).toEqual(expect.arrayContaining(["fidelity", "nativeCoverage", "editability", "fallbacks"]));
-    const evaluated = evaluateReplicaEvidence(validEvidence("html"));
+    const dir = await mkdtemp(join(tmpdir(), "replica-schema-"));
+    const source = join(dir, "source.html"); const render = join(dir, "render.png");
+    await writeFile(source, "source"); await writeFile(render, "render");
+    const input = validEvidence("html"); input.paths = { source: { status: "available", path: source }, render: { status: "available", path: render } };
+    const evaluated = await verifyReplicaEvidence(input);
     expect(validateJsonSchema(evaluated, schema)).toEqual({ valid: true, errors: [] });
     evaluated.aggregate.fidelity.ssim = { status: "unavailable", value: 1 };
     expect(validateJsonSchema(evaluated, schema).valid).toBe(false);
+    const routeDrift = structuredClone(evaluated); routeDrift.route = "image";
+    expect(validateJsonSchema(routeDrift, schema).valid).toBe(false);
   });
-  it.each(["html", "image"])("accepts a complete %s proof and derives acceptance", (route) => {
+  it.each(["html", "image"])("accepts a complete %s proof and derives acceptance", async (route) => {
+    const dir = await mkdtemp(join(tmpdir(), "replica-authority-"));
+    const source = join(dir, "source"); const render = join(dir, "render");
+    await writeFile(source, "source"); await writeFile(render, "render");
     const input = validEvidence(route);
+    input.paths = { source: { status: "available", path: source }, render: { status: "available", path: render } };
     input.accepted = false;
-    const result = evaluateReplicaEvidence(input);
+    const result = await verifyReplicaEvidence(input);
     expect(result.accepted).toBe(true);
     expect(result.blockingFindings).toEqual([]);
     expect(result.thresholds).toBeTruthy();
@@ -68,7 +78,7 @@ describe("strict replica evidence evaluator", () => {
     ["aggregate mismatch", (x) => { x.aggregate.nativeCoverage = metric(0.99); }],
     ["low editability", (x) => { x.aggregate.editability.level = 3; x.perSlide[0].editability.level = 3; }],
     ["full slide fallback", (x) => { x.aggregate.fallbacks.push({ kind: "raster", fullSlide: true, reason: "unsupported", bbox: { x: 0, y: 0, width: 1600, height: 900 }, zOrder: 0, nativeAlternativesAttempted: [] }); }],
-    ["too many retries", (x) => { x.retryCount = 4; }]
+    ["too many retries", (x) => { x.retry.attempts = [{}, {}, {}, {}]; }]
   ])("blocks %s", (_name, mutate) => {
     const input = validEvidence("html");
     mutate(input);
@@ -96,6 +106,30 @@ describe("strict replica evidence evaluator", () => {
     expect(result.blockingFindings.join(" ")).toMatch(/unavailable.*null.*reason/i);
   });
 
+  it("never accepts unverified self-reported paths and capabilities", () => {
+    expect(evaluateReplicaEvidence(validEvidence("html")).blockingFindings.join(" ")).toMatch(/artifact-verification-required/);
+  });
+
+  it("blocks missing artifacts and digest mismatches", async () => {
+    const missing = validEvidence("html");
+    expect((await verifyReplicaEvidence(missing)).blockingFindings.join(" ")).toMatch(/artifact-unavailable/);
+    const dir = await mkdtemp(join(tmpdir(), "replica-digest-")); const source = join(dir, "source"); const render = join(dir, "render");
+    await writeFile(source, "source"); await writeFile(render, "render");
+    const mismatch = validEvidence("html");
+    mismatch.paths = { source: { status: "available", path: source, sha256: "0".repeat(64) }, render: { status: "available", path: render } };
+    expect((await verifyReplicaEvidence(mismatch)).blockingFindings.join(" ")).toMatch(/artifact-digest-mismatch/);
+  });
+
+  it("blocks duplicate slide indexes and aggregate fallback drift", () => {
+    const input = validEvidence("html");
+    input.source.pageCount = 2; input.render.pageCount = 2;
+    input.perSlide.push(structuredClone(input.perSlide[0]));
+    expect(evaluateReplicaEvidence(input).blockingFindings.join(" ")).toMatch(/slide-index-invalid/);
+    input.perSlide[1].slideIndex = 1;
+    input.perSlide[0].fallbacks.push({ kind: "raster", fullSlide: false, reason: "blur", bbox: { x: 1, y: 1, width: 2, height: 2 }, zOrder: 1, nativeAlternativesAttempted: ["shape"] });
+    expect(evaluateReplicaEvidence(input).blockingFindings.join(" ")).toMatch(/aggregate-inconsistent: fallbacks/);
+  });
+
   it("adapts legacy structural facts without fabricating visual fidelity", async () => {
     const dir = await mkdtemp(join(tmpdir(), "replica-evidence-"));
     const pptxPath = join(dir, "final.pptx");
@@ -107,11 +141,33 @@ describe("strict replica evidence evaluator", () => {
       manifest: { deck: { size: { width: 13.333, height: 7.5 } }, slides: [{}] },
       coverage: { coverage: 1, coveredElements: 1, droppedElements: [], unsupportedEffects: [] },
       intermediate: { editabilityCounter: { shape: 1 }, countersBySlide: [{ shape: 1 }] },
-      route: "html", sourcePath: "/tmp/source.html", renderPath: "/tmp/preview"
+      route: "html", sourcePath: pptxPath, renderPath: null
     });
     expect(result.aggregate.fidelity.ssim).toEqual({ status: "unavailable", value: null, reason: "source-render-comparison-not-implemented" });
     expect(result.capabilities.sourceRenderComparison).toBe(false);
+    expect(result.paths.render).toMatchObject({ status: "unavailable", path: null });
+    expect(result.retry).toMatchObject({ status: "unavailable", attempts: [] });
     expect(result.accepted).toBe(false);
     expect(result.blockingFindings.join(" ")).toMatch(/capability-unavailable|required-metric-unavailable/);
+    const schema = JSON.parse(await readFile(join(root, "schemas/replica-evidence.schema.json"), "utf8"));
+    expect(validateJsonSchema(result, schema)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("derives per-slide editability and explicit fallback inventory instead of copying globals", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "replica-multipage-")); const pptxPath = join(dir, "final.pptx");
+    const zip = new JSZip();
+    zip.file("ppt/slides/slide1.xml", "<p:sld xmlns:p=\"p\"><p:sp/><p:sp/></p:sld>");
+    zip.file("ppt/slides/slide2.xml", "<p:sld xmlns:p=\"p\"><p:pic/></p:sld>");
+    await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+    const fallback = { kind: "raster", fullSlide: true, reason: "complex-source", bbox: { x: 0, y: 0, width: 1600, height: 900 }, zOrder: 0, nativeAlternativesAttempted: ["shape"] };
+    const result = await buildReplicaEvidence({
+      pptxPath, sourcePath: pptxPath, renderPath: null, route: "html",
+      manifest: { deck: { size: { width: 13.333, height: 7.5 } }, slides: [{ replicaFallbacks: [] }, { replicaFallbacks: [fallback] }] },
+      coverage: { coverage: 1, coveredElements: 3, droppedElements: [], unsupportedEffects: [], slides: [{ coverage: 1 }, { coverage: 1 }] },
+      intermediate: { editabilityCounter: { text: 1, shape: 1, image: 1 }, countersBySlide: [{ text: 1, shape: 1 }, { image: 1 }] }
+    });
+    expect(result.perSlide.map((slide) => slide.editability.level)).toEqual([5, 1]);
+    expect(result.aggregate.fallbacks).toEqual([fallback]);
+    expect(result.blockingFindings.join(" ")).toMatch(/full-slide-fallback|editability-failed/);
   });
 });
