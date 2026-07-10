@@ -170,39 +170,32 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
     expect(repaired).toContain("marker-end=\"url(#pptx-auto-arrowhead-flow)\"");
   });
 
-  it("runs the guarded HTML-to-PPTX pipeline end to end", async () => {
+  it("blocks strict HTML replica until real source-render comparison is available", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-html-pipeline-"));
-    const { stdout } = await execFileAsync(process.execPath, [
+    await expect(execFileAsync(process.execPath, [
       join(root, "scripts/pptx.mjs"),
       "html",
       join(root, "examples/html-input/css-positioned-dashboard.html"),
       dir
-    ], { cwd: root });
-    const summary = JSON.parse(stdout);
-    expect(summary).toMatchObject({
-      status: "passed",
-      htmlLayout: { criticalCount: 0, blocked: false },
-      contentCoverage: { ratio: 1 }
-    });
-    expect(summary.steps.map((step) => step.label)).toEqual([
-      "validate", "replica-preflight", "render", "fidelity-proof", "bounded-repair", "package"
-    ]);
+    ], { cwd: root })).rejects.toThrow();
     for (const file of [
       "html-layout-report.json",
       "layout-measurements.json",
       "deck.manifest.json",
-      "final.pptx"
+      "final.pptx",
+      "replica-evidence.json",
+      "pipeline-blocked.json"
     ]) {
       await expect(access(join(dir, file))).resolves.toBeUndefined();
     }
     const layoutSchema = JSON.parse(await readFile(join(root, "schemas/html-layout-report.schema.json"), "utf8"));
     const layoutReport = JSON.parse(await readFile(join(dir, "html-layout-report.json"), "utf8"));
     const manifest = JSON.parse(await readFile(join(dir, "deck.manifest.json"), "utf8"));
-    const outputManifest = JSON.parse(await readFile(join(dir, "output-manifest.json"), "utf8"));
-    expect(outputManifest.files).toContain("html-pipeline-summary.json");
-    expect(outputManifest.files).toContain("replica-fidelity-proof.json");
-    const fidelityProof = JSON.parse(await readFile(join(dir, "replica-fidelity-proof.json"), "utf8"));
-    expect(fidelityProof).toMatchObject({ status: "passed", route: "html" });
+    const evidence = JSON.parse(await readFile(join(dir, "replica-evidence.json"), "utf8"));
+    const blocked = JSON.parse(await readFile(join(dir, "pipeline-blocked.json"), "utf8"));
+    expect(evidence).toMatchObject({ accepted: false, route: "html", capabilities: { sourceRenderComparison: false } });
+    expect(blocked).toMatchObject({ status: "blocked", blockedBy: "bounded-repair" });
+    await expect(access(join(dir, "output-manifest.json"))).rejects.toThrow();
     expect(manifest.metadata).toMatchObject({ mode: "replica", inputType: "html", qualityProfile: "replica" });
     await expect(access(join(dir, "visual-review.json"))).rejects.toThrow();
     expect(validateJsonSchema(layoutReport, layoutSchema)).toMatchObject({ valid: true, errors: [] });

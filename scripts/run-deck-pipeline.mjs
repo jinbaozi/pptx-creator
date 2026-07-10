@@ -11,6 +11,7 @@ import { applyContextualTaste, editabilityLevelFromCounter, qualityFromReview } 
 import { preflightFonts } from "./lib/font-preflight.mjs";
 import { writePipelineReports } from "./lib/pipeline-report-writer.mjs";
 import { runPython } from "./lib/python-utils.mjs";
+import { evaluateReplicaEvidence } from "./lib/replica-evidence.mjs";
 import { reviewManifest } from "./lib/visual-critic.mjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
 
@@ -47,7 +48,6 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "quality-report.md",
   "replica-evidence.json",
   "visual-regression-report.json",
-  "replica-fidelity-proof.json",
   "visual-review.json",
   "html-pipeline-summary.json",
   "run.json",
@@ -198,6 +198,51 @@ export async function proveReplicaFidelity(pptxPath, manifest, coverage, interme
     renderedNativeObjects,
     archiveObjectCount
   };
+}
+
+function unavailableMetric(reason) {
+  return { status: "unavailable", value: null, reason };
+}
+
+function unavailableFidelity(route) {
+  const names = route === "html"
+    ? ["ssim", "normalizedMae", "bboxP95Drift", "fontMapping", "colorMapping"]
+    : ["ssim", "ocrCer", "bboxIou", "paletteDeltaE2000P95", "nativeHighConfidenceTextRecall"];
+  return Object.fromEntries(names.map((name) => [name, unavailableMetric("source-render-comparison-not-implemented")]));
+}
+
+export async function buildReplicaEvidence({ pptxPath, manifest, coverage, intermediate, route, sourcePath, renderPath, retryCount = 0 }) {
+  const structuralProof = await proveReplicaFidelity(pptxPath, manifest, coverage, intermediate, route);
+  const pageCount = manifest.slides?.length ?? 0;
+  const nominalSize = { width: manifest.deck?.size?.width ?? 0, height: manifest.deck?.size?.height ?? 0 };
+  const level = editabilityLevelFromCounter(intermediate.editabilityCounter);
+  const nativeCoverage = Number.isFinite(Number(coverage?.coverage))
+    ? { status: "available", value: Number(coverage.coverage) }
+    : unavailableMetric("native-coverage-not-measured");
+  const fidelity = unavailableFidelity(route);
+  const perSlide = Array.from({ length: pageCount }, (_, slideIndex) => ({
+    slideIndex,
+    fidelity: structuredClone(fidelity),
+    nativeCoverage: coverage?.slides?.[slideIndex]?.coverage === undefined
+      ? structuredClone(nativeCoverage)
+      : { status: "available", value: Number(coverage.slides[slideIndex].coverage) },
+    editability: { level },
+    fallbacks: []
+  }));
+  return evaluateReplicaEvidence({
+    version: "0.1.0", mode: "replica", route,
+    paths: { source: String(sourcePath ?? ""), render: String(renderPath ?? "") },
+    capabilities: {
+      sourceRenderComparison: false,
+      nativeObjectInspection: structuralProof.status !== "unavailable"
+    },
+    thresholds: {}, retryCount, accepted: true,
+    source: { pageCount, size: nominalSize },
+    render: { pageCount: structuralProof.renderedSlides ?? pageCount, size: nominalSize },
+    perSlide,
+    aggregate: { fidelity, nativeCoverage, editability: { level }, fallbacks: [] },
+    blockingFindings: structuralProof.status === "passed" ? [] : [`structural-proof-${structuralProof.status}`]
+  });
 }
 
 async function runStep(label, command, args) {
@@ -375,17 +420,20 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const proofLabel = mode === "creative" ? "creative-proof" : mode === "replica" ? "fidelity-proof" : "editability-proof";
   stageGuard.enter(proofLabel);
   const replicaProof = mode === "replica"
-    ? await proveReplicaFidelity(join(resolvedOutput, "final.pptx"), manifest, coverage, intermediate, route)
+    ? await buildReplicaEvidence({
+      pptxPath: join(resolvedOutput, "final.pptx"), manifest, coverage, intermediate, route,
+      sourcePath: inputSource, renderPath: join(resolvedOutput, "preview"), retryCount: 0
+    })
     : null;
   if (replicaProof) {
-    await writeFile(join(resolvedOutput, "replica-fidelity-proof.json"), `${JSON.stringify(replicaProof, null, 2)}\n`, "utf8");
+    await writeFile(join(resolvedOutput, "replica-evidence.json"), `${JSON.stringify(replicaProof, null, 2)}\n`, "utf8");
   }
   const creativeQuality = mode === "creative"
     ? qualityFromReview(creativeReview, editabilityLevelFromCounter(intermediate.editabilityCounter), fontPreflight)
     : null;
   const proofOk = mode === "creative"
     ? creativeQuality.gate.passed
-    : mode === "replica" ? replicaProof.status === "passed" : (intermediate.editabilityCounter?.text ?? 0) > 0;
+    : mode === "replica" ? replicaProof.accepted === true : (intermediate.editabilityCounter?.text ?? 0) > 0;
   steps.push({ label: proofLabel, ok: proofOk });
   const repairLimit = normalizeRepairLimit(options.maxRepairAttempts ?? 3);
   stageGuard.enter("bounded-repair");
