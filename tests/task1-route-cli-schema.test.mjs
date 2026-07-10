@@ -52,15 +52,15 @@ describe("Task 1 progressive-disclosure router", () => {
 describe("Task 1 public CLI", () => {
   it("selects real existing-script invocations for every route", async () => {
     const { buildInvocation } = await import("../scripts/pptx.mjs");
-    expect(buildInvocation(["text", "deck.json", "out"])).toMatchObject({ route: "text", script: "run-deck-pipeline.mjs" });
-    expect(buildInvocation(["text", "artifacts", "out", "--creative"])).toMatchObject({ route: "text", script: "run-design-first-pipeline.mjs" });
+    expect(buildInvocation(["text", "deck.json", "out"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "direct", "deck.json", "out"] });
+    expect(buildInvocation(["text", "artifacts", "out", "--creative"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "creative", "artifacts", "out"] });
     expect(buildInvocation(["html", "input.html", "out"])).toMatchObject({
       route: "html-replica",
-      script: "run-html-pipeline.mjs",
-      args: ["input.html", "out", "--mode", "replica"]
+      script: "run-route-pipeline.mjs",
+      args: ["html", "replica", "input.html", "out"]
     });
-    expect(buildInvocation(["image", "input.png", "analysis.json"])).toMatchObject({ route: "image-replica", script: "run-python.mjs" });
-    expect(buildInvocation(["pdf", "input.pdf", "pages", "hints.json"])).toMatchObject({ route: "pdf-replica", script: "run-python.mjs" });
+    expect(buildInvocation(["image", "input.png", "out"])).toMatchObject({ route: "image-replica", script: "run-route-pipeline.mjs" });
+    expect(buildInvocation(["pdf", "input.pdf", "out"])).toMatchObject({ route: "pdf-replica", script: "run-route-pipeline.mjs" });
     expect(buildInvocation(["manifest", "deck.json", "patch.json", "repaired.json"])).toMatchObject({ route: "manifest-repair", script: "run-manifest-repair.mjs" });
   });
 

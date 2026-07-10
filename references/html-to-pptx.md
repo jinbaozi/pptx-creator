@@ -91,7 +91,7 @@ See `references/html-measurement.md` for the full measure → merge workflow.
 ## Guarded creative workflow
 
 ```bash
-npm run pipeline:html -- examples/html-input/one-page-dashboard.html output/html
+npm run pptx -- html examples/html-input/one-page-dashboard.html output/html
 ```
 
 The command writes `deck.repaired.html`, `html-layout-report.json`, `html-repair-report.json`, per-slide screenshots, measurements, the Manifest, and the final PPTX. It never overwrites the source HTML. Chromium checks the HTML before conversion; any remaining critical blocks Manifest/PPTX generation.
@@ -101,9 +101,7 @@ Automatic repair order is fixed: normalize slide bounds, reflow cards, fit text,
 Use the lower-level commands only for diagnosis:
 
 ```bash
-npm run html:check -- input.html output/html-check
-npm run html:repair -- input.html output/html-repair
-npm run html:measure -- output/html-repair/deck.repaired.html output/html-repair/layout-measurements.json
+npm run pptx -- html input.html output/html
 ```
 
 ### Connector contract

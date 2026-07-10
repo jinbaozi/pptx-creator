@@ -16,7 +16,8 @@ describe("design-first pipeline", () => {
       "--design-system-name",
       "Product Roadshow",
       "--mode",
-      "creative"
+      "creative",
+      "--emit-run-index"
     ], { stdio: "pipe" });
 
     expect(fs.existsSync(path.join(outputDir, "deck.manifest.json"))).toBe(true);
@@ -24,6 +25,7 @@ describe("design-first pipeline", () => {
     expect(fs.existsSync(path.join(outputDir, "visual-review.json"))).toBe(true);
     const review = JSON.parse(fs.readFileSync(path.join(outputDir, "visual-review.json"), "utf8"));
     expect(review.deckScore).toBeGreaterThan(0);
+    const outputManifest = JSON.parse(fs.readFileSync(path.join(outputDir, "output-manifest.json"), "utf8"));
+    expect(outputManifest.files).toContain("run.json");
   });
 });
-

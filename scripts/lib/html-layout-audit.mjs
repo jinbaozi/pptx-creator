@@ -1,9 +1,14 @@
-import { mkdir } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { mkdir, readFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const HTML_LAYOUT_REPORT_VERSION = "0.1.0";
 export const DEFAULT_HTML_VIEWPORT = Object.freeze({ width: 1280, height: 720 });
+export const HTML_BROWSER_DEFAULTS = Object.freeze({
+  javaScriptEnabled: false,
+  networkEnabled: false,
+  totalTimeoutMs: 30_000
+});
 
 const STABILIZE_CSS = `
   *, *::before, *::after {
@@ -25,8 +30,29 @@ async function loadChromium() {
   }
 }
 
+export async function installBrowserSecurity(page, options = {}) {
+  const networkEnabled = options.networkEnabled ?? HTML_BROWSER_DEFAULTS.networkEnabled;
+  await page.route("**/*", async (route) => {
+    const url = route.request?.().url?.() ?? "http://blocked.invalid";
+    if (networkEnabled || /^(?:file|data|blob):/i.test(url)) await route.continue();
+    else await route.abort("blockedbyclient");
+  });
+}
+
 export async function settleHtmlPage(page, inputPath) {
-  await page.goto(pathToFileURL(resolve(inputPath)).href, { waitUntil: "load" });
+  const resolvedInput = resolve(inputPath);
+  const source = await readFile(resolvedInput, "utf8");
+  const sanitized = source
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  const securityHead = `<base href="${pathToFileURL(dirname(resolvedInput) + "/").href}">`
+    + `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: file:; style-src 'unsafe-inline' file:; font-src data: file:;">`;
+  const securedHtml = /<head\b[^>]*>/i.test(sanitized)
+    ? sanitized.replace(/<head\b[^>]*>/i, (match) => `${match}${securityHead}`)
+    : `${securityHead}${sanitized}`;
+  const inputUrl = pathToFileURL(resolvedInput).href;
+  await page.route(inputUrl, (route) => route.fulfill({ status: 200, contentType: "text/html", body: securedHtml }));
+  await page.goto(inputUrl, { waitUntil: "load" });
   await page.evaluate((css) => {
     if (document.querySelector("style[data-pptx-stabilize]")) return;
     const style = document.createElement("style");
@@ -58,11 +84,33 @@ export async function withSettledHtmlPage(inputPath, options, callback) {
     width: options?.viewportWidth ?? DEFAULT_HTML_VIEWPORT.width,
     height: options?.viewportHeight ?? DEFAULT_HTML_VIEWPORT.height
   };
-  const browser = await chromium.launch({ headless: true });
+  const totalTimeoutMs = options?.totalTimeoutMs ?? HTML_BROWSER_DEFAULTS.totalTimeoutMs;
+  const browser = await chromium.launch({ headless: true, timeout: totalTimeoutMs });
   try {
-    const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
-    await settleHtmlPage(page, inputPath);
-    return await callback(page, viewport);
+    const page = await browser.newPage({
+      viewport,
+      deviceScaleFactor: 1,
+      // Author scripts are stripped and blocked by CSP before loading. Keep
+      // the engine enabled so deterministic measurement page.evaluate calls work.
+      javaScriptEnabled: true
+    });
+    page.setDefaultTimeout(totalTimeoutMs);
+    page.setDefaultNavigationTimeout(totalTimeoutMs);
+    await installBrowserSecurity(page, options);
+    let timeoutId;
+    try {
+      return await Promise.race([
+        (async () => {
+          await settleHtmlPage(page, inputPath);
+          return callback(page, viewport);
+        })(),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(`HTML browser execution exceeded total timeout (${totalTimeoutMs}ms)`)), totalTimeoutMs);
+        })
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } finally {
     await browser.close();
   }

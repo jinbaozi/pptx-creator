@@ -13,19 +13,9 @@
     "manifest": null,
     "pptx": null,
     "previews": [],
-    "reviews": [
-      "vision-review.json"
-    ],
+    "reviews": [],
     "sources": "sources.json",
     "assetRegistry": "assets/asset-registry.json"
   },
-  "directions": [
-    {
-      "id": "direction-001",
-      "label": "direction-001",
-      "status": "approved",
-      "score": 90,
-      "path": "directions/direction-001/direction.json"
-    }
-  ]
+  "directions": []
 }

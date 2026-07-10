@@ -120,7 +120,7 @@ describe("html-to-manifest", () => {
 
     expect((await stat(pptxPath)).size).toBeGreaterThan(1000);
     expect(await slideXml(pptxPath)).toContain("运营数据看板");
-    expect(await readFile(join(outputDir, "editable-report.md"), "utf8")).toContain("Overall editability");
+    await expect(readFile(join(outputDir, "editable-report.md"), "utf8")).rejects.toThrow();
   });
 
   it("supports explicit data-pptx-type elements", async () => {
@@ -271,6 +271,7 @@ describe("html-to-manifest", () => {
     );
 
     const { manifest } = await writeManifestFromHtml(inputPath, manifestPath, {
+      allowRemoteAssets: true,
       fetchRemoteAsset: async () => Buffer.from("fake-image")
     });
     const image = manifest.slides[0].elements.find((element) => element.type === "image");

@@ -4,7 +4,6 @@ import { loadDesignFirstArtifacts } from "./lib/design-first-loader.mjs";
 import { compileDesignFirstManifest } from "./lib/manifest-compiler.mjs";
 import { buildRunIndex, writeRunIndex } from "./lib/run-index.mjs";
 import { validateAssetRegistry, validateSourceRegistry } from "./lib/registry.mjs";
-import { reviewManifest } from "./lib/visual-critic.mjs";
 import { runDeckPipeline } from "./run-deck-pipeline.mjs";
 
 function parseArgs(argv) {
@@ -73,41 +72,24 @@ async function main() {
     inputSource: path.join(inputDir, "deck.storyboard.json"),
     copyManifest: false,
     mode: options.mode,
-    strictLayoutSafety: true
+    strictLayoutSafety: true,
+    beforePackage: async () => {
+      if (options.validateRegistry) validateRegistries(outputDir);
+      if (options.emitRunIndex) {
+        const run = await buildRunIndex(outputDir, {
+          runId: options.runId ?? new Date().toISOString().slice(0, 10),
+          mode: options.mode,
+          input: {
+            type: "design-first",
+            summary: options.inputSummary ?? artifacts.storyboard?.title ?? "design-first deck"
+          }
+        });
+        await writeRunIndex(outputDir, run);
+      }
+    }
   };
   await runDeckPipeline(manifestPath, outputDir, designFirstOptions);
   console.log(`Consistency report written: ${path.join(outputDir, "consistency-report.json")}`);
-
-  let consistencyReport = null;
-  const consistencyReportPath = path.join(outputDir, "consistency-report.json");
-  if (fs.existsSync(consistencyReportPath)) {
-    try {
-      consistencyReport = JSON.parse(fs.readFileSync(consistencyReportPath, "utf8"));
-    } catch {
-      consistencyReport = null;
-    }
-  }
-
-  if (options.mode !== "replica") {
-    const review = reviewManifest(manifest, { mode: options.mode }, consistencyReport);
-    fs.writeFileSync(path.join(outputDir, "visual-review.json"), `${JSON.stringify(review, null, 2)}\n`, "utf8");
-  }
-
-  if (options.validateRegistry) {
-    validateRegistries(outputDir);
-  }
-
-  if (options.emitRunIndex) {
-    const run = await buildRunIndex(outputDir, {
-      runId: options.runId ?? new Date().toISOString().slice(0, 10),
-      mode: options.mode,
-      input: {
-        type: "design-first",
-        summary: options.inputSummary ?? artifacts.storyboard?.title ?? "design-first deck"
-      }
-    });
-    await writeRunIndex(outputDir, run);
-  }
 
   console.log(`Design-first pipeline complete: ${path.join(outputDir, "final.pptx")}`);
 }

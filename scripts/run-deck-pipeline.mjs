@@ -1,26 +1,110 @@
-/**
- * End-to-end deterministic pipeline: validate manifest → render PPTX → package output.
- * Host agent must author deck.manifest.json before invoking this script.
- */
+#!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { runPython } from "./lib/python-utils.mjs";
+import { fileURLToPath } from "node:url";
+import JSZip from "jszip";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
 import { preflightFonts } from "./lib/font-preflight.mjs";
-import { parseDesignFile } from "./parse-design-md.mjs";
+import { writePipelineReports } from "./lib/pipeline-report-writer.mjs";
+import { runPython } from "./lib/python-utils.mjs";
 import { reviewManifest } from "./lib/visual-critic.mjs";
-import { scoreSlopRisk } from "./lib/slop-risk.mjs";
+import { parseDesignFile } from "./parse-design-md.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-function fail(message) {
-  console.error(message);
-  process.exit(1);
+export function normalizeRepairLimit(value = 3) {
+  const numeric = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 3;
+  return Math.max(0, Math.min(3, numeric));
+}
+
+export function hasCompleteReplicaProof(coverage) {
+  if (!coverage || Number(coverage.coverage) !== 1) return false;
+  if ((coverage.droppedElements?.length ?? 0) > 0 || (coverage.unsupportedEffects?.length ?? 0) > 0) return false;
+  return (coverage.slides ?? []).every((slide) => Number(slide.coverage) === 1
+    && (slide.droppedElements?.length ?? 0) === 0
+    && (slide.unsupportedEffects?.length ?? 0) === 0);
+}
+
+export function buildPipelinePlan({ route = "text", mode = "direct", proofAvailable = true } = {}) {
+  if (mode === "replica") {
+    if (!["html", "image", "pdf"].includes(route)) throw new Error(`replica mode is unsupported for route ${route}`);
+    if (!proofAvailable) throw new Error(`strict replica fidelity proof is unavailable for route ${route}`);
+    return ["validate", "replica-preflight", "render", "fidelity-proof", "bounded-repair", "package"];
+  }
+  if (route !== "text") throw new Error(`${route} requires replica mode`);
+  if (mode === "creative") {
+    return ["validate", "creative-layout-taste-preflight", "render", "creative-proof", "bounded-repair", "package"];
+  }
+  if (mode === "direct") {
+    return ["validate", "light-preflight", "render", "editability-proof", "bounded-repair", "package"];
+  }
+  throw new Error(`unsupported route mode: ${mode}`);
+}
+
+export async function executePipelinePlan(plan, executeStep) {
+  const results = [];
+  for (const stage of plan) {
+    const result = await executeStep(stage);
+    results.push({ stage, ...result });
+    if (!result?.ok) {
+      const error = new Error(`pipeline failed at ${stage}`);
+      error.stage = stage;
+      error.results = results;
+      throw error;
+    }
+  }
+  return results;
+}
+
+function createStageGuard(plan) {
+  let cursor = 0;
+  return {
+    enter(stage) {
+      const expected = plan[cursor];
+      if (stage !== expected) throw new Error(`pipeline contract violation: expected ${expected}, received ${stage}`);
+      cursor += 1;
+    },
+    complete() {
+      if (cursor !== plan.length) throw new Error(`pipeline contract incomplete: ${cursor}/${plan.length} stages`);
+    }
+  };
+}
+
+export async function proveReplicaFidelity(pptxPath, manifest, coverage, intermediate, route) {
+  if (route !== "html") {
+    return { status: "unavailable", route, capability: "openxml-structural-proof" };
+  }
+  if (!hasCompleteReplicaProof(coverage)) {
+    return { status: "failed", route, capability: "openxml-structural-proof", reason: "incomplete-source-coverage" };
+  }
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  const slideNames = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const slideXml = await Promise.all(slideNames.map((name) => zip.files[name].async("string")));
+  const archiveObjectCount = slideXml.reduce((sum, xml) => sum + (xml.match(/<p:(?:sp|pic|graphicFrame)\b/g) ?? []).length, 0);
+  const counters = intermediate.countersBySlide ?? [intermediate.editabilityCounter ?? {}];
+  const renderedNativeObjects = counters.reduce((sum, item) => sum
+    + (item.text ?? 0) + (item.shape ?? 0) + (item.image ?? 0) + (item.table ?? 0), 0);
+  const expectedSlides = manifest.slides?.length ?? 0;
+  const coveredElements = Number(coverage.coveredElements ?? 0);
+  const ok = slideNames.length === expectedSlides
+    && archiveObjectCount >= coveredElements
+    && renderedNativeObjects >= coveredElements;
+  return {
+    status: ok ? "passed" : "failed",
+    route,
+    capability: "openxml-structural-proof",
+    expectedSlides,
+    renderedSlides: slideNames.length,
+    coveredElements,
+    renderedNativeObjects,
+    archiveObjectCount
+  };
 }
 
 async function runStep(label, command, args) {
@@ -51,347 +135,219 @@ async function runPythonStep(label, args) {
   }
 }
 
-async function detectLibreOffice() {
-  for (const binary of ["libreoffice", "soffice"]) {
-    try {
-      await execFileAsync("which", [binary]);
-      return true;
-    } catch {
-      // continue
-    }
-  }
-  return false;
-}
-
 function normalizeInputType(value, manifest) {
   if (["html", "image", "pdf", "text", "manifest", "mixed", "design-first"].includes(value)) return value;
   if (["html", "image", "pdf", "text", "manifest", "mixed"].includes(manifest?.metadata?.inputType)) {
     return manifest.metadata.inputType;
   }
-  return "design-first";
+  return "text";
+}
+
+async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy, detail = null) {
+  const summary = {
+    manifest: resolvedManifest,
+    outputDir: resolvedOutput,
+    steps: steps.map(({ label, ok }) => ({ label, ok })),
+    status: "blocked",
+    blockedBy,
+    ...(detail ? { detail } : {})
+  };
+  await writeFile(join(resolvedOutput, "pipeline-blocked.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  const error = new Error(`pipeline blocked at ${blockedBy}${detail ? `: ${detail}` : ""}`);
+  error.summary = summary;
+  throw error;
 }
 
 export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const resolvedManifest = resolve(manifestPath);
   const resolvedOutput = resolve(outputDir);
   await mkdir(resolvedOutput, { recursive: true });
+  await rm(join(resolvedOutput, "pipeline-blocked.json"), { force: true });
 
-  const manifestJson = JSON.parse(await readFile(resolvedManifest, "utf8"));
-  const inputType = normalizeInputType(options.inputType, manifestJson);
-  const inputSource = options.inputSource ?? resolvedManifest;
-
+  const manifest = JSON.parse(await readFile(resolvedManifest, "utf8"));
+  const inputType = normalizeInputType(options.inputType, manifest);
+  const route = ["html", "image", "pdf"].includes(inputType) ? inputType : "text";
+  const mode = options.mode ?? manifest.metadata?.mode ?? (route === "text" ? "direct" : "replica");
+  const inputSource = options.inputSource ?? manifest.metadata?.replicaSource?.path ?? resolvedManifest;
   const steps = [];
-  steps.push(await runPythonStep("validate-manifest", [join(root, "scripts/validate-manifest.py"), resolvedManifest]));
+  const contract = buildPipelinePlan({ route, mode, proofAvailable: true });
+  const stageGuard = createStageGuard(contract);
+  if (mode === "replica") await rm(join(resolvedOutput, "visual-review.json"), { force: true });
 
-  // U4 layout-safety pre-render gate.
-  const layoutSafetyPath = join(resolvedOutput, "layout-safety-report.json");
-  const layoutSafetyFlags = [];
-  const hardLayoutSafety = options.allowLayoutViolation !== true && options.strictLayoutSafety !== false;
-  if (hardLayoutSafety) layoutSafetyFlags.push("--strict-layout-safety");
-  if (options.allowLayoutViolation === true) layoutSafetyFlags.push("--allow-layout-violation");
-  if (options.mode === "replica") layoutSafetyFlags.push("--replica-mode");
-  const layoutSafetyResult = await runStep("layout-safety", process.execPath, [
-    join(root, "scripts/run-layout-safety-check.mjs"),
-    resolvedManifest,
-    "--output",
-    layoutSafetyPath,
-    ...layoutSafetyFlags
-  ]);
-  steps.push(layoutSafetyResult);
+  stageGuard.enter("validate");
+  const validation = await runPythonStep("validate", [join(root, "scripts/validate-manifest.py"), resolvedManifest]);
+  steps.push(validation);
+  if (!validation.ok) await blockPipeline(resolvedManifest, resolvedOutput, steps, "validate", validation.stderr || validation.stdout);
 
-  // Hard-block path: layout-safety returned non-zero AND --strict was set.
-  // The CLI already enforces this; mirror the block here so the pipeline
-  // summary contains a `pipeline-blocked.json` and the render step is skipped.
-  if (!layoutSafetyResult.ok && hardLayoutSafety) {
-    let layoutReport = null;
-    try {
-      layoutReport = JSON.parse(await readFile(layoutSafetyPath, "utf8"));
-    } catch {
-      layoutReport = null;
-    }
-    const blockedSummary = {
-      manifest: resolvedManifest,
-      outputDir: resolvedOutput,
-      steps: steps.map(({ label, ok }) => ({ label, ok })),
-      status: "blocked",
-      blockedBy: "layout-safety",
-      layoutSafety: layoutReport?.summary ?? null
-    };
-    await writeFile(
-      join(resolvedOutput, "pipeline-blocked.json"),
-      `${JSON.stringify(blockedSummary, null, 2)}\n`,
-      "utf8"
-    );
-    const error = new Error(
-      `pipeline blocked at layout-safety: ${layoutSafetyResult.stderr || layoutSafetyResult.stdout}`
-    );
-    error.summary = blockedSummary;
-    throw error;
-  }
-
-  const pptxPath = join(resolvedOutput, "final.pptx");
-  const renderResult = await runStep("render-pptx", process.execPath, [
-    join(root, "scripts/render-pptx.mjs"),
-    resolvedManifest,
-    pptxPath
-  ]);
-  steps.push(renderResult);
-
-  let intermediate = {
-    sourceCoordinates: [],
-    fontNames: [],
-    paletteMatches: [],
-    paletteUnmapped: [],
-    inlineColors: [],
-    editabilityCounter: { text: 0, shape: 0, image: 0, table: 0, croppedAsset: 0 },
-    preview: { libreofficeAvailable: false, status: "deferred" },
-    layoutPaths: {},
-    inputHints: {}
-  };
-  if (renderResult.ok) {
-    try {
-      const parsed = JSON.parse(renderResult.stdout);
-      if (parsed && parsed.intermediate && typeof parsed.intermediate === "object") {
-        intermediate = { ...intermediate, ...parsed.intermediate };
-      }
-    } catch {
-      // Render succeeded but emitted no JSON; intermediate stays as defaults.
-    }
-  }
-
-  // preflight-fonts: populate intermediate.fontNames / .fontFallback
-  let preflightResult;
-  let design = null;
+  let design;
+  let fontPreflight;
   try {
-    if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
-    if (manifestJson.designSystem && manifestJson.designSystem.source) {
-      const baseDir = dirname(resolvedManifest);
-      try {
-        design = await parseDesignFile(resolve(baseDir, manifestJson.designSystem.source));
-      } catch {
-        design = null;
-      }
-    }
-    const preflight = await preflightFonts(manifestJson, design);
-    const fallbackEntries = (preflight.fallback ?? []).map((entry) => ({
-      element: "design-tokens",
-      requested: entry.requested,
-      fallback: entry.fallback
-    }));
-    intermediate.fontNames = fallbackEntries;
-    intermediate.fontFallback = preflight.fallback ?? [];
-    preflightResult = { label: "preflight-fonts", ok: true, stdout: preflight.source, stderr: "" };
+    design = await parseDesignFile(resolve(dirname(resolvedManifest), manifest.designSystem.source));
+    fontPreflight = await preflightFonts(manifest, design);
   } catch (error) {
-    preflightResult = {
-      label: "preflight-fonts",
-      ok: false,
-      stdout: "",
-      stderr: error instanceof Error ? error.message : String(error)
-    };
+    steps.push({ label: `${mode}-preflight`, ok: false });
+    await blockPipeline(resolvedManifest, resolvedOutput, steps, `${mode}-preflight`, error instanceof Error ? error.message : String(error));
   }
-  steps.push(preflightResult);
 
-  // preview-diff: LibreOffice-gated
-  const libreofficeAvailable = await detectLibreOffice();
-  intermediate.preview = libreofficeAvailable
-    ? { libreofficeAvailable: true, status: "deferred" }
-    : { libreofficeAvailable: false, status: "deferred" };
-  const previewStep = {
-    label: "preview-diff",
-    ok: true,
-    stdout: libreofficeAvailable ? "libreoffice-detected" : "libreoffice-missing",
-    stderr: ""
+  const layoutSafetyPath = join(resolvedOutput, "layout-safety-report.json");
+  const layoutFlags = ["--output", layoutSafetyPath];
+  if (mode !== "direct" && options.allowLayoutViolation !== true) layoutFlags.push("--strict-layout-safety");
+  if (options.allowLayoutViolation === true) layoutFlags.push("--allow-layout-violation");
+  if (mode === "replica") layoutFlags.push("--replica-mode");
+  const layout = await runStep("layout-safety", process.execPath, [
+    join(root, "scripts/run-layout-safety-check.mjs"), resolvedManifest, ...layoutFlags
+  ]);
+
+  const coverage = manifest.metadata?.replicaSource?.coverage;
+  const replicaProofAvailable = hasCompleteReplicaProof(coverage);
+  const creativeReview = mode === "creative" ? reviewManifest(manifest, { mode: "creative" }) : null;
+  const preflightLabel = mode === "creative"
+    ? "creative-layout-taste-preflight"
+    : mode === "replica" ? "replica-preflight" : "light-preflight";
+  const preflight = {
+    label: preflightLabel,
+    ok: layout.ok
+      && (mode !== "creative" || (creativeReview.deckScore >= 70 && creativeReview.slopRisk <= 60))
+      && (mode !== "replica" || replicaProofAvailable),
+    stdout: mode === "creative" ? `deckScore=${creativeReview.deckScore}; slopRisk=${creativeReview.slopRisk}` : fontPreflight.source,
+    stderr: !layout.ok ? layout.stderr : (mode === "replica" && !replicaProofAvailable ? "strict replica fidelity proof capability unavailable" : "")
   };
-  steps.push(previewStep);
+  stageGuard.enter(preflightLabel);
+  steps.push(preflight);
+  if (!preflight.ok) await blockPipeline(resolvedManifest, resolvedOutput, steps, preflightLabel, preflight.stderr || preflight.stdout);
 
-  // U4: read layout-safety result, compute status string for consistency report.
+  stageGuard.enter("render");
+  const render = await runStep("render", process.execPath, [
+    join(root, "scripts/render-pptx.mjs"), resolvedManifest, join(resolvedOutput, "final.pptx")
+  ]);
+  steps.push(render);
+  if (!render.ok) await blockPipeline(resolvedManifest, resolvedOutput, steps, "render", render.stderr || render.stdout);
+
+  let intermediate;
+  try {
+    intermediate = JSON.parse(render.stdout).intermediate;
+  } catch {
+    steps.push({ label: "render-contract", ok: false });
+    await blockPipeline(resolvedManifest, resolvedOutput, steps, "render-contract", "renderer did not emit intermediate facts");
+  }
+  intermediate.fontNames = (fontPreflight.fallback ?? []).map((entry) => ({ element: "design-tokens", ...entry }));
+  intermediate.fontFallback = fontPreflight.fallback ?? [];
+  intermediate.preview = { status: "unavailable", reason: "preview-diff-capability-not-selected" };
+
+  const proofLabel = mode === "creative" ? "creative-proof" : mode === "replica" ? "fidelity-proof" : "editability-proof";
+  stageGuard.enter(proofLabel);
+  const replicaProof = mode === "replica"
+    ? await proveReplicaFidelity(join(resolvedOutput, "final.pptx"), manifest, coverage, intermediate, route)
+    : null;
+  if (replicaProof) {
+    await writeFile(join(resolvedOutput, "replica-fidelity-proof.json"), `${JSON.stringify(replicaProof, null, 2)}\n`, "utf8");
+  }
+  const proofOk = mode === "creative"
+    ? creativeReview.deckScore >= 70 && creativeReview.slopRisk <= 60
+    : mode === "replica" ? replicaProof.status === "passed" : (intermediate.editabilityCounter?.text ?? 0) > 0;
+  steps.push({ label: proofLabel, ok: proofOk });
+  const repairLimit = normalizeRepairLimit(options.maxRepairAttempts ?? 3);
+  stageGuard.enter("bounded-repair");
+  if (!proofOk) {
+    steps.push({ label: "bounded-repair", ok: false, attempts: 0, maxAttempts: repairLimit });
+    await blockPipeline(resolvedManifest, resolvedOutput, steps, "bounded-repair", `${proofLabel} failed and no deterministic repair was available`);
+  }
+  steps.push({ label: "bounded-repair", ok: true, attempts: 0, maxAttempts: repairLimit });
+
+  if (mode === "creative") {
+    await writeFile(join(resolvedOutput, "visual-review.json"), `${JSON.stringify(creativeReview, null, 2)}\n`, "utf8");
+  }
   let layoutSafetyStatus;
   try {
-    const layoutReport = JSON.parse(await readFile(layoutSafetyPath, "utf8"));
-    const critical = layoutReport?.summary?.criticalCount ?? 0;
-    if (critical === 0) layoutSafetyStatus = "passed";
-    else if (hardLayoutSafety) layoutSafetyStatus = "violated-blocked";
-    else layoutSafetyStatus = "violated-with-flag";
-  } catch {
-    // layout-safety step itself failed — leave undefined so the report omits it.
-  }
-
-  // U3: deck-level slopRisk (deck score 0..100, higher = more slop). The
-  // visual-review.json file is the canonical per-slide artifact; we mirror
-  // the deck-level score into the consistency report so the batch
-  // aggregate can average it. Re-read the (now-written) consistency report
-  // to also generate the visual-review sidecar.
-  let slopRiskDeck = null;
-  if (options.mode !== "replica") {
-    try {
-      const tokens = design?.tokens ?? manifestJson?.designSystem?.tokens ?? {};
-      const slop = scoreSlopRisk(manifestJson, tokens);
-      slopRiskDeck = slop.score;
-    } catch {
-      slopRiskDeck = null;
-    }
-  }
-
-  // consistency-report: always emitted (previewDiff deferred when LO missing)
+    const report = JSON.parse(await readFile(layoutSafetyPath, "utf8"));
+    layoutSafetyStatus = (report?.summary?.criticalCount ?? 0) === 0 ? "passed" : "violated-with-flag";
+  } catch { layoutSafetyStatus = undefined; }
   try {
-    if (!manifestJson) throw new Error("failed to parse deck.manifest.json");
-
-    // R22 / U10: load existing feedback block (if any) and increment
-    // retryCount. --accept-result flips accepted=true with an ISO timestamp.
-    let existingFeedback = null;
-    try {
-      const existing = JSON.parse(await readFile(join(resolvedOutput, "consistency-report.json"), "utf8"));
-      if (existing && typeof existing === "object" && existing.feedback && typeof existing.feedback === "object") {
-        existingFeedback = existing.feedback;
-      }
-    } catch {
-      // No prior report; treat as fresh.
-    }
-    const nextRetryCount = (existingFeedback?.retryCount ?? 0) + 1;
-    const feedback = {
-      retryCount: nextRetryCount,
-      accepted: options.acceptResult === true ? true : (existingFeedback?.accepted ?? null),
-      acceptedAt: options.acceptResult === true
-        ? new Date().toISOString()
-        : (existingFeedback?.acceptedAt ?? null)
-    };
-    const replicaCoverage = manifestJson.metadata?.replicaSource?.coverage;
-    const qualityTargets = {
-      ...(options.qualityTargets ?? {}),
-      ...(replicaCoverage ? { replicaCoverage } : {})
-    };
-
     const reportOptions = {
       inputType,
       inputSource,
-      feedback,
-      qualityTargets,
-      ...(layoutSafetyStatus !== undefined ? { layoutSafety: layoutSafetyStatus } : {}),
-      ...(slopRiskDeck !== null ? { slopRisk: slopRiskDeck } : {})
+      feedback: {
+        retryCount: 0,
+        accepted: options.acceptResult === true ? true : null,
+        acceptedAt: options.acceptResult === true ? new Date().toISOString() : null
+      },
+      qualityTargets: coverage ? { ...(options.qualityTargets ?? {}), replicaCoverage: coverage } : (options.qualityTargets ?? {}),
+      ...(layoutSafetyStatus ? { layoutSafety: layoutSafetyStatus } : {}),
+      ...(creativeReview ? { slopRisk: creativeReview.slopRisk } : {})
     };
-    const { json, md } = buildConsistencyReport(manifestJson, intermediate, reportOptions);
-    await writeFile(join(resolvedOutput, "consistency-report.json"), json + "\n", "utf8");
-    await writeFile(join(resolvedOutput, "consistency-report.md"), md + "\n", "utf8");
-    steps.push({ label: "consistency-report", ok: true, stdout: "written", stderr: "" });
-  } catch (error) {
-    steps.push({
-      label: "consistency-report",
-      ok: false,
-      stdout: "",
-      stderr: error instanceof Error ? error.message : String(error)
-    });
-  }
-
-  // U3 / U11: emit visual-review.json (per-slide scores + deck-level
-  // slopRisk) when not in replica mode. Pure function over the manifest;
-  // never fails the pipeline — the slopRisk is purely diagnostic.
-  try {
-    if (options.mode === "replica") {
-      await rm(join(resolvedOutput, "visual-review.json"), { force: true });
-    } else if (manifestJson) {
-      const review = reviewManifest(manifestJson, { mode: options.mode ?? "creative" });
-      await writeFile(
-        join(resolvedOutput, "visual-review.json"),
-        JSON.stringify(review, null, 2) + "\n",
-        "utf8"
-      );
+    const { json, md } = buildConsistencyReport(manifest, intermediate, reportOptions);
+    await writeFile(join(resolvedOutput, "consistency-report.json"), `${json}\n`, "utf8");
+    await writeFile(join(resolvedOutput, "consistency-report.md"), `${md}\n`, "utf8");
+    await writePipelineReports(
+      resolvedOutput,
+      manifest,
+      design,
+      intermediate.countersBySlide ?? [intermediate.editabilityCounter],
+      { proofStatus: "passed" }
+    );
+    if (typeof options.beforePackage === "function") {
+      await options.beforePackage({ route, mode, status: "passed", outputDir: resolvedOutput });
     }
-  } catch {
-    // best-effort; visual-review is diagnostic.
+  } catch (error) {
+    steps.push({ label: "reports", ok: false });
+    await blockPipeline(resolvedManifest, resolvedOutput, steps, "reports", error instanceof Error ? error.message : String(error));
   }
 
-  if (options.copyManifest !== false) {
-    await copyFile(resolvedManifest, join(resolvedOutput, "deck.manifest.json"));
-  }
+  if (options.copyManifest !== false) await copyFile(resolvedManifest, join(resolvedOutput, "deck.manifest.json"));
+  stageGuard.enter("package");
+  const packaged = await runPythonStep("package", [join(root, "scripts/package-output.py"), resolvedOutput]);
+  steps.push(packaged);
+  if (!packaged.ok) await blockPipeline(resolvedManifest, resolvedOutput, steps, "package", packaged.stderr || packaged.stdout);
 
-  steps.push(await runPythonStep("package-output", [join(root, "scripts/package-output.py"), resolvedOutput]));
-
-  const failed = steps.find((step) => !step.ok);
-  const summary = {
+  stageGuard.complete();
+  return {
     manifest: resolvedManifest,
     outputDir: resolvedOutput,
-    steps: steps.map(({ label, ok }) => ({ label, ok })),
-    status: failed ? "failed" : "passed"
+    route,
+    mode,
+    contract,
+    steps: steps.map(({ label, ok, attempts, maxAttempts }) => ({
+      label,
+      ok,
+      ...(attempts !== undefined ? { attempts, maxAttempts } : {})
+    })),
+    status: "passed"
   };
-
-  if (failed) {
-    const error = new Error(`pipeline failed at ${failed.label}: ${failed.stderr || failed.stdout}`);
-    error.summary = summary;
-    throw error;
-  }
-
-  return summary;
 }
 
 function parseArgs(argv) {
   const positional = [];
-  const options = {
-    strictLayoutSafety: true,
-    allowLayoutViolation: false,
-    acceptResult: false,
-    mode: "creative"
-  };
+  const options = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--input-type") {
-      options.inputType = argv[index + 1];
-      index += 1;
-    } else if (arg === "--input-source") {
-      options.inputSource = argv[index + 1];
-      index += 1;
-    } else if (arg === "--strict-layout-safety") {
-      options.strictLayoutSafety = true;
-    } else if (arg === "--allow-layout-violation") {
-      options.allowLayoutViolation = true;
-    } else if (arg === "--accept-result") {
-      options.acceptResult = true;
-    } else if (arg === "--mode") {
-      options.mode = argv[index + 1];
-      index += 1;
-    } else {
-      positional.push(arg);
-    }
+    if (arg === "--input-type") options.inputType = argv[++index];
+    else if (arg === "--input-source") options.inputSource = argv[++index];
+    else if (arg === "--allow-layout-violation") options.allowLayoutViolation = true;
+    else if (arg === "--accept-result") options.acceptResult = true;
+    else if (arg === "--mode") options.mode = argv[++index];
+    else if (arg === "--max-repair-attempts") options.maxRepairAttempts = Number(argv[++index]);
+    else if (arg.startsWith("--")) throw new Error(`unknown option: ${arg}`);
+    else positional.push(arg);
   }
-  return { manifestArg: positional[0], outputArg: positional[1] ?? "output", options };
+  return { manifest: positional[0], outputDir: positional[1] ?? "output", options };
 }
 
 async function main() {
-  const { manifestArg, outputArg, options } = parseArgs(process.argv.slice(2));
-  if (!new Set(["creative", "replica"]).has(options.mode)) {
-    fail(`unsupported pipeline mode: ${options.mode}; expected creative or replica`);
+  const { manifest, outputDir, options } = parseArgs(process.argv.slice(2));
+  if (!manifest) throw new Error("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir] [--mode direct|creative|replica]");
+  if (options.mode !== undefined && !["direct", "creative", "replica"].includes(options.mode)) {
+    throw new Error(`unsupported pipeline mode: ${options.mode}; expected direct, creative or replica`);
   }
-  if (!manifestArg) {
-    fail("usage: run-deck-pipeline.mjs <deck.manifest.json> [output-dir] [--mode creative|replica] [--input-type html|image|design-first] [--input-source source] [--strict-layout-safety] [--allow-layout-violation] [--accept-result]");
-  }
-
-  try {
-    const summary = await runDeckPipeline(manifestArg, outputArg, options);
-    console.log(JSON.stringify(summary, null, 2));
-  } catch (error) {
-    if (error.summary) {
-      console.error(JSON.stringify(error.summary, null, 2));
-    }
-    fail(error instanceof Error ? error.message : String(error));
-  }
+  const summary = await runDeckPipeline(manifest, outputDir, options);
+  console.log(JSON.stringify(summary, null, 2));
 }
 
-const invokedDirectly = (() => {
-  if (!process.argv[1]) return false;
-  try {
-    // macOS resolves /tmp/... to /private/tmp/... and /Users/... to
-    // /private/Users/...; use realpath for a stable match.
-    const realScript = realpathSync(process.argv[1]);
-    const realUrl = new URL(`file://${realScript}`).href;
-    if (import.meta.url === realUrl) return true;
-  } catch {
-    // fall through to legacy checks
-  }
-  return (
-    import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href ||
-    import.meta.url === new URL(`file:///${resolve(process.argv[1]).replace(/\\/g, "/")}`).href
-  );
-})();
-
+let invokedDirectly = false;
+try { invokedDirectly = process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch {}
 if (invokedDirectly) {
-  main();
+  main().catch((error) => {
+    if (error?.summary) console.error(JSON.stringify(error.summary, null, 2));
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
 }

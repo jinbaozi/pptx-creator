@@ -14,6 +14,23 @@ async function commandWorks(command, args = ["--version"]) {
   }
 }
 
+async function pythonVersion(command) {
+  const args = command === "py" ? ["-3", "--version"] : ["--version"];
+  try {
+    const result = await execFileAsync(command, args, { timeout: 5000 });
+    const text = `${result.stdout ?? ""} ${result.stderr ?? ""}`.trim();
+    const match = text.match(/Python\s+(\d+)\.(\d+)(?:\.(\d+))?/i);
+    if (!match) return null;
+    return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3] ?? 0), text };
+  } catch {
+    return null;
+  }
+}
+
+function isSupportedPython(version) {
+  return version && (version.major > 3 || (version.major === 3 && version.minor >= 10));
+}
+
 async function fileExists(path) {
   try {
     await access(path);
@@ -25,12 +42,20 @@ async function fileExists(path) {
 
 export async function findPython() {
   const explicit = process.env.PPTX_CREATOR_PYTHON || process.env.PYTHON;
-  if (explicit && (await fileExists(explicit))) {
+  if (explicit) {
+    const looksLikePath = explicit.includes("/") || explicit.includes("\\");
+    if (looksLikePath && !(await fileExists(explicit))) {
+      throw new Error(`Configured Python executable not found: ${explicit}`);
+    }
+    const version = await pythonVersion(explicit);
+    if (!isSupportedPython(version)) {
+      throw new Error(`PPTX Creator requires Python 3.10+; configured executable reported ${version?.text ?? "an unsupported version"}`);
+    }
     return explicit;
   }
 
   for (const command of ["python", "python3"]) {
-    if (await commandWorks(command)) {
+    if (isSupportedPython(await pythonVersion(command))) {
       return command;
     }
   }
@@ -46,16 +71,16 @@ export async function findPython() {
       "python",
       "python.exe"
     );
-    if (await fileExists(codexPython)) {
+    if ((await fileExists(codexPython)) && isSupportedPython(await pythonVersion(codexPython))) {
       return codexPython;
     }
   }
 
-  if (await commandWorks("py", ["-3", "--version"])) {
+  if (isSupportedPython(await pythonVersion("py"))) {
     return "py";
   }
 
-  throw new Error("Python not found. Set PPTX_CREATOR_PYTHON to a Python 3 executable.");
+  throw new Error("Python 3.10+ not found. Set PPTX_CREATOR_PYTHON to a supported executable.");
 }
 
 export async function runPython(args, options = {}) {

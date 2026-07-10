@@ -67,11 +67,7 @@ describe("HTML layout contracts", () => {
 
   it("ships schemas and public package commands", async () => {
     const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-    expect(pkg.scripts).toMatchObject({
-      "html:check": "node scripts/run-html-layout-check.mjs",
-      "html:repair": "node scripts/run-html-repair.mjs",
-      "pipeline:html": "node scripts/run-html-pipeline.mjs"
-    });
+    expect(Object.keys(pkg.scripts)).toEqual(["pptx", "test", "test:unit", "test:browser", "test:visual", "test:py", "setup"]);
     for (const schema of ["html-layout-report.schema.json", "html-repair-report.schema.json"]) {
       expect(JSON.parse(await readFile(join(root, "schemas", schema), "utf8"))).toHaveProperty("$schema");
     }
@@ -203,6 +199,11 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
     const layoutReport = JSON.parse(await readFile(join(dir, "html-layout-report.json"), "utf8"));
     const repairReport = JSON.parse(await readFile(join(dir, "html-repair-report.json"), "utf8"));
     const manifest = JSON.parse(await readFile(join(dir, "deck.manifest.json"), "utf8"));
+    const outputManifest = JSON.parse(await readFile(join(dir, "output-manifest.json"), "utf8"));
+    expect(outputManifest.files).toContain("html-pipeline-summary.json");
+    expect(outputManifest.files).toContain("replica-fidelity-proof.json");
+    const fidelityProof = JSON.parse(await readFile(join(dir, "replica-fidelity-proof.json"), "utf8"));
+    expect(fidelityProof).toMatchObject({ status: "passed", route: "html" });
     expect(manifest.metadata).toMatchObject({ mode: "replica", inputType: "html", qualityProfile: "replica" });
     await expect(access(join(dir, "visual-review.json"))).rejects.toThrow();
     expect(validateJsonSchema(layoutReport, layoutSchema)).toMatchObject({ valid: true, errors: [] });

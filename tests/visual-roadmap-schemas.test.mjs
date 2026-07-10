@@ -24,13 +24,4 @@ describe("visual roadmap next schemas", () => {
     expect(validateJsonSchema(sources, sourceSchema).valid).toBe(true);
     expect(validateJsonSchema(assets, assetSchema).valid).toBe(true);
   });
-
-  it("validates direction, scorecard, and vision review examples", async () => {
-    const directionSchema = await loadJson("schemas/direction-candidate.schema.json");
-    const scorecardSchema = await loadJson("schemas/direction-scorecard.schema.json");
-    const visionSchema = await loadJson("schemas/vision-review.schema.json");
-    expect(validateJsonSchema(await loadJson("examples/visual-roadmap-next/directions/direction-001/direction.json"), directionSchema).valid).toBe(true);
-    expect(validateJsonSchema(await loadJson("examples/visual-roadmap-next/directions/direction-001/scorecard.json"), scorecardSchema).valid).toBe(true);
-    expect(validateJsonSchema(await loadJson("examples/visual-roadmap-next/vision-review.json"), visionSchema).valid).toBe(true);
-  });
 });

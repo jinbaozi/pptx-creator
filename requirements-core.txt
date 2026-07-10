@@ -1,0 +1,1 @@
+# Core validation and PPTX rendering use the Python standard library only.

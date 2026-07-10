@@ -26,8 +26,13 @@ def main() -> None:
     missing = [name for name in REQUIRED if not (output_dir / name).exists()]
     if missing:
         fail(f"missing output files: {', '.join(missing)}")
-    manifest = {"outputDir": str(output_dir), "files": sorted(path.name for path in output_dir.iterdir())}
-    (output_dir / "output-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    manifest = {
+        "outputDir": str(output_dir),
+        "files": sorted(path.name for path in output_dir.iterdir() if path.name != "output-manifest.json"),
+    }
+    (output_dir / "output-manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
     print(json.dumps(manifest, ensure_ascii=False))
 
 

@@ -109,10 +109,9 @@ node scripts/run-visual-critic.mjs output/deck.manifest.json output/visual-revie
 node scripts/analyze-accessibility.mjs output/deck.manifest.json output/accessibility-report.md
 node scripts/openxml-repair.mjs output/final.pptx output/openxml-repair-report.json
 node scripts/run-visual-regression.mjs output/deck.manifest.json output
-node scripts/run-vision-review.mjs output --provider mock
 ```
 
-Use `--mode replica` for strict reconstruction. Treat mock vision review as contract validation, not visual judgment.
+Use `--mode replica` for strict reconstruction.
 
 ## Failure handling
 

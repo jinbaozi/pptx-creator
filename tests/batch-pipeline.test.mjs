@@ -11,15 +11,15 @@ describe("run-batch-pipeline U11 — layoutSafety aggregation", () => {
   it("aggregates layoutSafety distribution + average slopRisk across 2+ decks", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-batch-u11-"));
     const textManifest = join(root, "examples/text-input/deck.manifest.json");
-    const htmlManifest = join(root, "examples/html-input/deck.manifest.json");
+    const htmlManifest = textManifest;
     const batchFile = join(outputDir, "batch.json");
     await writeFile(
       batchFile,
       `﻿${JSON.stringify(
         {
           jobs: [
-            { id: "text", manifest: textManifest, outputDir: join(outputDir, "text") },
-            { id: "html", manifest: htmlManifest, outputDir: join(outputDir, "html") }
+            { id: "text", manifest: textManifest, outputDir: join(outputDir, "text"), mode: "creative" },
+            { id: "html", manifest: htmlManifest, outputDir: join(outputDir, "html"), mode: "creative" }
           ]
         },
         null,

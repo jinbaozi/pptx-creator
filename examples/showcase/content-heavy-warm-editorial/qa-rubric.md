@@ -3,9 +3,8 @@
 > Qualitative review of the content-heavy-warm-editorial showcase.
 > This rubric deliberately avoids numeric scores (per R17 / U9 update):
 > every claim is grounded in observable design intent, render
-> tradeoffs, and known limitations. Use the workbench Visual Quality
-> tab to inspect the traffic-light readouts; use this document to
-> understand the *why* behind the readouts.
+> tradeoffs, and known limitations. Use the generated JSON reports for
+> machine-readable checks and this document for design rationale.
 
 ## Design rationale
 
@@ -66,7 +65,7 @@ doc was missing) without forcing the content into a corporate layout.
 
 - **Color contrast on muted text.** Warm-editorial's `textMuted`
   (#78716C) sits close to its surface tones, which is faithful to
-  the printed-report feel but means the workbench contrast-fail
+  the printed-report feel but means the contrast check may
   check will *occasionally* flag a low-severity contrast issue on
   secondary paragraphs. That is a *known* and accepted outcome; the
   design system is documented to prioritize warmth over maximum
@@ -75,8 +74,8 @@ doc was missing) without forcing the content into a corporate layout.
   `text-overflow` and `line-height-too-tight` checks may fire on
   chapters with particularly long Chinese paragraphs once the
   renderer has produced the PPTX. We have not patched this in the
-  showcase; the workbench Visual Quality tab is the right place to
-  read the resulting tone grid and decide whether a per-deck
+  showcase; the generated visual report is the right place to
+  inspect the result and decide whether a per-deck
   repair patch is needed.
 - **Auto-pagination may split paragraphs across two slides.** This
   is consistent with the `autoPaginate: true` manifest flag, but it
@@ -91,12 +90,9 @@ doc was missing) without forcing the content into a corporate layout.
 
 ## How to inspect
 
-1. Run `npm run pipeline -- examples/showcase/content-heavy-warm-editorial/deck.manifest.json output/showcase-content-heavy`.
-2. Open `workbench/index.html` and switch to the **Visual Quality** tab.
-3. The tab fetches `output/showcase-content-heavy/visual-review.json`
-   and `output/showcase-content-heavy/layout-safety-report.json` in
-   parallel and renders two side-by-side traffic-light grids using
-   the same cell shape as the Consistency report.
-4. Use the traffic lights (pass / warn / fail) as a *signal*, not a
+1. Run `npm run pptx -- text examples/showcase/content-heavy-warm-editorial/deck.manifest.json output/showcase-content-heavy --creative`.
+2. Inspect `output/showcase-content-heavy/visual-review.json` and
+   `output/showcase-content-heavy/layout-safety-report.json`.
+3. Use pass / warn / fail as a *signal*, not a
    verdict; this rubric is the place where design intent and known
    tradeoffs are recorded.

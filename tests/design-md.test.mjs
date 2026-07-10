@@ -29,7 +29,8 @@ describe("DESIGN.md tooling", () => {
     const profile = JSON.parse(stdout);
     expect(profile.name).toBe("Business Neutral");
     expect(profile.tokens.colors.primary).toBe("#2563EB");
-    expect(profile.sections["PPTX Export Rules"]).toContain("native PowerPoint text boxes");
+    expect(profile.sections["PPTX Export Rules"]).toContain("shared native export and editability baseline");
+    expect(await readFile(join(root, "design-systems/_shared/editability-baseline.md"), "utf8")).toContain("native PowerPoint text boxes");
   });
 
   it("validates required tokens and sections", async () => {

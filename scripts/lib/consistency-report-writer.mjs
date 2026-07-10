@@ -27,7 +27,7 @@
  *    pass/warn/fail glyph, the dimension name, and either a one-line
  *    summary or a list of contributing element IDs.
  *
- *  - `previewDiff` policy: `status: "deferred"` is allowed without
+ *  - `previewDiff` policy: `status: "unavailable"` is allowed without
  *    `perSlide`. `status: "ok"` requires `perSlide` (validated by the
  *    schema's `allOf` conditional).
  *
@@ -313,7 +313,7 @@ export function buildConsistencyReport(manifest, intermediate, options = {}) {
   report.editabilityFloor = editabilityFloor;
   report.previewDiff = previewDiff;
 
-  // R22 / U10: optional `feedback` block (workbench termination signals).
+  // R22 / U10: optional `feedback` block (review termination signals).
   // Defaults: retryCount=0, accepted=null, acceptedAt=null. When the caller
   // omits the option, the block is omitted entirely so byte-equality across
   // runs is preserved for callers that don't care.
@@ -381,12 +381,12 @@ function previewDiffShape(preview, override) {
       ...(Array.isArray(override.perSlide) ? { perSlide: override.perSlide } : {})
     };
   }
-  if (preview?.status === "deferred") {
-    return { status: "deferred" };
+  if (preview?.status === "unavailable") {
+    return { status: "unavailable", reason: preview.reason ?? "capability-not-selected" };
   }
   const libreofficeAvailable = preview.libreofficeAvailable === true;
   if (!libreofficeAvailable) {
-    return { status: "deferred" };
+    return { status: "unavailable", reason: "capability-not-selected" };
   }
   const perSlide = Array.isArray(preview.perSlide) ? preview.perSlide : [];
   return { status: "ok", perSlide };
@@ -496,8 +496,8 @@ function sectionBody(section, report, intermediate) {
     }
     case "previewDiff": {
       const preview = report.previewDiff;
-      if (preview.status === "deferred") {
-        return ["- Preview diff deferred (LibreOffice not available)."];
+      if (preview.status === "unavailable") {
+        return [`- Preview diff unavailable: ${preview.reason ?? "capability not selected"}.`];
       }
       const perSlide = preview.perSlide ?? [];
       if (perSlide.length === 0) {

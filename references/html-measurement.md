@@ -62,7 +62,7 @@ node scripts/measure-html.mjs input.html output/layout-measurements.json `
 Generated creative HTML should use the guarded pipeline, which performs audit, repair, measurement, conversion, and PPTX generation in one command:
 
 ```powershell
-npm run pipeline:html -- input.html output/html
+npm run pptx -- html input.html output/html
 ```
 
 Use the steps below only when diagnosing measurement behavior.

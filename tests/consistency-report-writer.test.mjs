@@ -152,7 +152,7 @@ describe("consistency-report-writer", () => {
   });
 
   describe("previewDiff conditional validation", () => {
-    it("passes when status is 'deferred' (perSlide optional)", async () => {
+    it("passes when status is 'unavailable' (perSlide optional)", async () => {
       const { json } = buildConsistencyReport(SAMPLE_MANIFEST, {}, { inputType: "html", inputSource: "demo.html" });
       const result = await validatePerDeckReport(JSON.parse(json));
       expect(result.valid).toBe(true);

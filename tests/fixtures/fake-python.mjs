@@ -25,6 +25,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 const args = process.argv.slice(2);
+if (args.length === 1 && args[0] === "--version") {
+  process.stdout.write("Python 3.12.0\n");
+  process.exit(0);
+}
 if (args.length === 0) {
   console.error("fake-python: no script provided");
   process.exit(2);

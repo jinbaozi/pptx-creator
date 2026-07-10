@@ -55,23 +55,9 @@ describe("run-deck-pipeline", () => {
       inputSource: manifest
     });
 
-    // U2: pipeline summary must include every step.
     const labels = summary.steps.map((step) => step.label);
-    expect(labels).toContain("validate-manifest");
-    expect(labels).toContain("render-pptx");
-    expect(labels).toContain("preflight-fonts");
-    expect(labels).toContain("preview-diff");
-    expect(labels).toContain("consistency-report");
-    expect(labels).toContain("package-output");
-    // U4: layout-safety pre-render gate appears in pipeline summary.
-    expect(labels).toContain("layout-safety");
-    // U4: layout-safety step must succeed (text-input example is clean).
-    const layoutStep = summary.steps.find((step) => step.label === "layout-safety");
-    expect(layoutStep.ok).toBe(true);
-
-    // U2: consistency-report step must succeed.
-    const consistencyStep = summary.steps.find((step) => step.label === "consistency-report");
-    expect(consistencyStep.ok).toBe(true);
+    expect(labels).toEqual(["validate", "light-preflight", "render", "editability-proof", "bounded-repair", "package"]);
+    expect(summary.contract).toEqual(["validate", "light-preflight", "render", "editability-proof", "bounded-repair", "package"]);
 
     // U2: every report must be on disk.
     await access(join(outputDir, "final.pptx"));
@@ -112,18 +98,14 @@ describe("run-deck-pipeline", () => {
     // U2: editability is one of the 5 levels.
     expect([1, 2, 3, 4, 5]).toContain(json.editabilityLevel);
 
-    // U2: previewDiff shape is "deferred" when LibreOffice is missing.
-    expect(json.previewDiff).toEqual({ status: "deferred" });
+    expect(json.previewDiff).toEqual({ status: "unavailable", reason: "preview-diff-capability-not-selected" });
   }, 30000);
 
-  it("marks previewDiff as deferred when LibreOffice is missing", async () => {
-    // The pipeline does not run preview rendering in this step. Even if
-    // LibreOffice exists on the host, previewDiff must remain deferred until
-    // an actual preview comparison is produced.
+  it("marks previewDiff explicitly unavailable when the profile lacks that capability", async () => {
     const manifest = join(root, "examples/text-input/deck.manifest.json");
     const outputDir = join(root, "output", "pipeline-text");
     const json = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
-    expect(json.previewDiff.status).toBe("deferred");
+    expect(json.previewDiff.status).toBe("unavailable");
   }, 10000);
 
   it("runs from the CLI entrypoint and writes final.pptx", async () => {
@@ -136,10 +118,8 @@ describe("run-deck-pipeline", () => {
         join(root, "scripts/run-deck-pipeline.mjs"),
         manifest,
         outputDir,
-        "--input-type",
-        "html",
         "--input-source",
-        "examples/html-input/smoke.html"
+        "examples/text-input/deck.manifest.json"
       ],
       { cwd: root }
     );
@@ -149,8 +129,8 @@ describe("run-deck-pipeline", () => {
     await access(join(outputDir, "final.pptx"));
     await access(join(outputDir, "consistency-report.json"));
     const report = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
-    expect(report.inputType).toBe("html");
-    expect(report.inputSource).toBe("examples/html-input/smoke.html");
+    expect(report.inputType).toBe("text");
+    expect(report.inputSource).toBe("examples/text-input/deck.manifest.json");
   }, 60000);
 
   it("uses canonical replica metadata to classify the pipeline input", async () => {
@@ -177,15 +157,10 @@ describe("run-deck-pipeline", () => {
     const manifest = join(outputDir, "deck.manifest.json");
     await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
 
-    await runDeckPipeline(manifest, outputDir, { inputSource: "replica.html" });
-    const report = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
-
-    expect(report.inputType).toBe("html");
-    expect(report.qualityTargets.replicaCoverage).toMatchObject({
-      measuredElements: 2,
-      coveredElements: 1,
-      coverage: 0.5
-    });
+    await expect(runDeckPipeline(manifest, outputDir, { inputSource: "replica.html" }))
+      .rejects.toThrow(/fidelity proof capability unavailable/);
+    const blocked = JSON.parse(await readFile(join(outputDir, "pipeline-blocked.json"), "utf8"));
+    expect(blocked.blockedBy).toBe("replica-preflight");
   }, 60000);
 
   it("emits consistency-report.md with the 8 dimension sections", async () => {
@@ -271,22 +246,18 @@ describe("U11 AC1 — archetype rules.md standards", () => {
 });
 
 describe("U11 AC2 — happy-path layout-safety critical = 0", () => {
-  it("html-input deck produces a layout-safety report (relaxed)", async () => {
+  it("rejects creative grading on the HTML replica-only route", async () => {
     // The examples/html-input fixture is a known fixture with measurable
     // overlaps and small fonts; the report IS produced, the pipeline
     // completes, and the gate is wired. Strict critical=0 is verified
     // separately against the clean compiler-roadshow-html showcase below.
     const manifest = join(root, "examples/html-input/deck.manifest.json");
     const outputDir = join(root, "output", "pipeline-html");
-    const summary = await runDeckPipeline(manifest, outputDir, {
+    await expect(runDeckPipeline(manifest, outputDir, {
       inputType: "html",
       inputSource: "examples/html-input/one-page-dashboard.html",
       allowLayoutViolation: true
-    });
-    expect(summary.status).toBe("passed");
-    const report = JSON.parse(await readFile(join(outputDir, "layout-safety-report.json"), "utf8"));
-    expect(report.summary).toHaveProperty("criticalCount");
-    expect(typeof report.summary.criticalCount).toBe("number");
+    })).rejects.toThrow(/html requires replica mode/);
   }, 60000);
 
   it("content-heavy showcase deck produces a layout-safety report (relaxed)", async () => {
@@ -424,24 +395,19 @@ describe("replica and HTML-first regression coverage", () => {
     expect(report.checks.find((check) => check.type === "overlap")).toBeUndefined();
   });
 
-  it("keeps replica layout checks fidelity-safe and omits creative visual review", async () => {
+  it("blocks replica without fidelity capability and never emits creative review", async () => {
     const manifest = join(root, "examples/image-input/deck.manifest.skeleton.json");
     const outputDir = join(root, "output", `pipeline-replica-${Date.now()}`);
     await mkdir(outputDir, { recursive: true });
     await writeFile(join(outputDir, "visual-review.json"), "{\"stale\":true}\n", "utf8");
 
-    const summary = await runDeckPipeline(manifest, outputDir, {
+    await expect(runDeckPipeline(manifest, outputDir, {
       inputType: "image",
       inputSource: "examples/image-input/business-slide.png",
       mode: "replica",
       strictLayoutSafety: true
-    });
-
-    expect(summary.status).toBe("passed");
-    const layout = JSON.parse(await readFile(join(outputDir, "layout-safety-report.json"), "utf8"));
-    expect(layout.summary.criticalCount).toBe(0);
-    const consistency = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
-    expect(consistency).not.toHaveProperty("slopRisk");
+    })).rejects.toThrow(/fidelity proof capability unavailable/);
+    await expect(access(join(outputDir, "final.pptx"))).rejects.toThrow();
     await expect(access(join(outputDir, "visual-review.json"))).rejects.toThrow();
   }, 60000);
 });

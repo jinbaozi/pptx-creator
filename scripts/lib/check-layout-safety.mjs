@@ -812,7 +812,7 @@ export function preflightLayout(manifest, options = {}) {
  * Mapping from internal `type` strings (used by the preflight checks and the
  * legacy visual-critic issue shape) to the stable `kind` enum exposed in
  * `schemas/layout-safety-report.schema.json`. Downstream tooling (U6 repair
- * adapter, workbench) switches on `kind`; the schema enum is the contract.
+ * adapter switches on `kind`; the schema enum is the contract.
  */
 const KIND_MAP = Object.freeze({
   bounds: "bounds",

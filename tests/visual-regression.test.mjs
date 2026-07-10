@@ -8,7 +8,7 @@ import { runVisualRegression } from "../scripts/run-visual-regression.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 describe("runVisualRegression", () => {
-  it("returns a deferred report when preview rendering is unavailable", async () => {
+  it("returns an unavailable report when preview capability is not installed", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-visual-deferred-"));
     const manifest = join(root, "examples/text-input/deck.manifest.json");
 
@@ -20,12 +20,12 @@ describe("runVisualRegression", () => {
       })
     });
 
-    expect(report.status).toBe("deferred");
+    expect(report.status).toBe("unavailable");
     expect(report.steps.map((step) => step.label)).toEqual(["pipeline", "render-preview"]);
     expect(report.steps.every((step) => step.ok)).toBe(true);
 
     const saved = JSON.parse(await readFile(join(outputDir, "visual-regression-report.json"), "utf8"));
-    expect(saved.status).toBe("deferred");
+    expect(saved.status).toBe("unavailable");
   }, 60000);
 
   it("compares previews against a reference directory", async () => {

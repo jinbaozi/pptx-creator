@@ -77,7 +77,7 @@ describe("theme packs, layouts, backend selection, and richer charts", () => {
     expect(xml).toContain("Mar");
     expect(xml).toContain("A");
     expect(xml).toContain("60%");
-    expect(await readFile(join(outputDir, "qa-report.md"), "utf8")).toContain("Layouts used: dashboard");
+    await expect(readFile(join(outputDir, "qa-report.md"), "utf8")).rejects.toThrow();
   }, 60000);
 
   it("keeps the deck schema aligned with supported component kinds", async () => {

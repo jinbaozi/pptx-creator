@@ -88,6 +88,7 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
 
 export function normalizeMeasuredSlides(rawSlides = []) {
   return rawSlides.map((slide, index) => ({
+    ...(slide.slideId ? { slideId: slide.slideId } : {}),
     slideIndex: Number.isInteger(slide.slideIndex) ? slide.slideIndex : index,
     selector: slide.selector ?? null,
     style: slide.style && typeof slide.style === "object" ? slide.style : {},

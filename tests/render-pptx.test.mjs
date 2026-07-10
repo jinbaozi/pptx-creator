@@ -19,23 +19,16 @@ async function slideXml(pptxPath) {
 }
 
 describe("render-pptx", () => {
-  it("renders tokenized manifest to pptx with editable text and reports design source", async () => {
+  it("renders tokenized manifest to pptx without owning pipeline reports", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-creator-"));
     const manifest = join(root, "examples/text-input/deck.manifest.json");
     const pptxPath = join(outputDir, "final.pptx");
     await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifest, pptxPath], { cwd: root });
 
     expect((await stat(pptxPath)).size).toBeGreaterThan(1000);
-    expect(await readFile(join(outputDir, "editable-report.md"), "utf8")).toContain("Overall editability");
-
-    const qa = await readFile(join(outputDir, "qa-report.md"), "utf8");
-    expect(qa).toContain("PPTX render: passed");
-    expect(qa).toContain("Manifest schema: not validated in render step");
-    expect(qa).toContain("Design system: Business Neutral");
-
-    const compatibility = await readFile(join(outputDir, "compatibility-report.md"), "utf8");
-    expect(compatibility).toContain("WPS Compatibility Report");
-    expect(compatibility).toContain("Overall risk");
+    for (const report of ["editable-report.md", "qa-report.md", "compatibility-report.md"]) {
+      await expect(readFile(join(outputDir, report), "utf8")).rejects.toThrow();
+    }
 
     expect(await slideXml(pptxPath)).toContain("AI");
   });

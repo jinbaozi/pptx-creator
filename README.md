@@ -23,18 +23,15 @@
 | 文本到 PPTX | 宿主 Agent 根据原始内容生成故事线、页面结构、文案和 `deck.manifest.json`，再由 pipeline 渲染。 |
 | Design-first 创作 | 通过 `storyboard -> design direction -> slide design specs -> deck manifest -> PPTX` 的流程，让故事、视觉方向和页面设计在渲染前可审查。 |
 | 布局原型与编译 | 内置 layout archetypes、设计系统解析和 manifest 编译器，把设计规格转换成确定性的 PPTX manifest。 |
-| 多方向设计探索 | 生成多个设计方向候选、scorecard 和 run index，帮助 Agent 在完整出稿前选择更合适的视觉路线。 |
 | HTML 到 PPTX | 支持语义 HTML、CSS 定位 HTML、DOM 测量、远程图片本地化和多页转换。 |
 | 图片/PDF 输入 | 提供图片检查、颜色提取、OCR、裁剪、图片复刻分析、图层规划、PDF 页面 hints 等辅助脚本，由 Agent 重建可编辑对象。 |
 | 可编辑渲染 | 优先输出 PPT 原生文本、形状、线条、表格、图表、图标和语义图解。 |
 | 图表与图解 | 支持 `bar`、`line`、`pie`、`stackedBar`、`horizontalBar`、`groupedBar`、`kpiGroup`、`sparkline` 等图表，以及 `layeredArchitecture`、`compilerPipeline`、`capabilityStack`、`swimlane`、`matrixMap` 等语义图解，均会展开成可编辑 PPT 原生对象。 |
 | 设计系统 | 使用 `DESIGN.md` 提供颜色、字体、组件、布局规则和导出规则。 |
 | 视觉评审与修复 | 包含规则化 visual critic、visual review 契约、repair patch、bounded repair loop 和自动修复 CLI；会拦截小字号、越界、过密图表、缺少描述、空图解层和超大空白装饰容器等问题。 |
-| Screenshot-Level Vision Model Review | 提供 mock CLI、review 合并逻辑和稳定输出契约，为后续接入真实截图级视觉模型评审预留接口。 |
-| 质量检查 | 包含 manifest 校验、可编辑性报告、QA 报告、WPS 兼容性、可访问性、OpenXML 检查、视觉回归和截图级视觉评审。 |
+| 质量检查 | 包含 manifest 校验、可编辑性报告、QA 报告、WPS 兼容性、可访问性、OpenXML 检查和视觉回归。 |
 | Registry | 支持来源 registry 和素材 registry，记录事实来源、素材来源、授权状态和使用位置。 |
-| Metadata Flow | 将 registry 校验、run index、方向探索、design-first pipeline flags 和报告产物串联，便于批量生成、审计和复盘。 |
-| Visual Workbench | 提供本地可视化工作台外壳，用于浏览设计方向、报告和生成产物。 |
+| Metadata Flow | 将 registry 校验、run index、design-first pipeline flags 和报告产物串联，便于批量生成、审计和复盘。 |
 
 ## 安装部署
 
@@ -53,7 +50,7 @@
 
 可选：
 
-- Playwright Chromium：用于 CSS 定位 HTML 的 DOM 测量和 Workbench 测试
+- Playwright Chromium：用于 CSS 定位 HTML 的 DOM 测量
 - Tesseract OCR：用于本地 OCR
 - LibreOffice：用于 PPTX 预览渲染和视觉回归
 - PyMuPDF：用于 PDF 页面渲染
@@ -62,24 +59,28 @@
 
 ```bash
 npm install
-pip install -r requirements.txt
+pip install -r requirements-core.txt
 npx playwright install chromium
-node scripts/setup.mjs
+npm run setup -- core
 ```
 
 如需指定 Python：
 
 ```powershell
 $env:PPTX_CREATOR_PYTHON="C:\Path\To\python.exe"
-npm run setup
+npm run setup -- core
 ```
 
 ## 快速开始
 
+按 profile 安装 Python 依赖：core 无第三方 Python 包；image 使用
+`pip install -r requirements-image.txt`；pdf 使用
+`pip install -r requirements-pdf.txt`。HTML 浏览器依赖由 Node/Playwright 提供。
+
 运行内置文本示例：
 
 ```bash
-npm run pipeline -- examples/text-input/deck.manifest.json output
+npm run pptx -- text examples/text-input/deck.manifest.json output
 ```
 
 成功后输出：
@@ -94,22 +95,12 @@ output/
   output-manifest.json
 ```
 
-分步执行：
-
-```bash
-node scripts/validate-design-md.mjs design-systems/business-neutral/DESIGN.md
-python scripts/validate-manifest.py examples/text-input/deck.manifest.json
-node scripts/render-pptx.mjs examples/text-input/deck.manifest.json output/final.pptx
-python scripts/package-output.py output
-```
-
 ## Design-first 创作流程
 
 适合从文本生成更精美、更有变化的商务或技术 PPT：
 
 ```bash
-npm run design:first -- examples/design-first/compiler-roadshow output/design-first/deck.manifest.json
-npm run pipeline:design-first -- examples/design-first/compiler-roadshow output/design-first --emit-run-index --validate-registry --run-id compiler-roadshow --input-summary "Compiler Roadshow"
+npm run pptx -- text examples/design-first/compiler-roadshow output/design-first --creative
 ```
 
 核心中间产物（design artifacts）：
@@ -124,75 +115,29 @@ visual-review.json
 run.json
 ```
 
-设计产物（design artifacts）由 storyboard、design direction、slide design specs、UI component spec、preview artifacts 等组成，按 schema 落盘后由编译器转成确定性的 `deck.manifest.json`，再渲染为可在 PowerPoint/WPS 中继续编辑的 editable PPTX。preview artifacts 用于离线查看设计走向，screenshot-level review 走 mock provider 边界，未来可平替为真实视觉模型。
-
-多方向探索：
-
-```bash
-npm run explore:directions -- examples/design-first/compiler-roadshow/deck.storyboard.json output/directions
-```
+设计产物由 storyboard、design direction 和 slide design specs 组成，按 schema 落盘后由编译器转成确定性的 `deck.manifest.json`，再进入统一管线。
 
 ## HTML、图片和 PDF 输入
 
-语义 HTML：
+HTML（语义或 CSS 定位）：
 
 ```bash
-npm run html:manifest -- input.html output/deck.manifest.json
-npm run pipeline -- output/deck.manifest.json output
-```
-
-CSS 定位 HTML：
-
-```bash
-npm run html:measure -- input.html output/layout-measurements.json
-node scripts/html-to-manifest.mjs input.html output/deck.manifest.json --measurements output/layout-measurements.json
-npm run pipeline -- output/deck.manifest.json output
-```
-
-严格 1:1 HTML 复刻：
-
-```bash
-node scripts/measure-html.mjs input.html output/layout-measurements.json --replica
-node scripts/html-to-manifest.mjs input.html output/deck.manifest.json --measurements output/layout-measurements.json --design-mode replica --force-measured
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output --input-type html --input-source input.html
-node scripts/run-visual-critic.mjs output/deck.manifest.json output/visual-review.json --mode replica
+npm run pptx -- html input.html output/html
 ```
 
 Replica 模式会从浏览器真实渲染结果提取 DOM 坐标与计算样式，优先转成可编辑 PPT 原生文本、形状、表格、线条、图片和单层外阴影；非 `drop-shadow(...)` 滤镜、backdrop-filter、clip-path、复杂渐变、多重阴影等 PPT 原生难以表达的效果会进入视觉评审报告，避免把整页悄悄退化成截图。
 
-图片或截图：
-
-```bash
-npm run image:inspect -- reference.png
-npm run image:hints -- reference.png output/image-hints.json
-npm run image:replica:analyze -- reference.png output/image-replica-analysis.json
-npm run image:replica:plan -- output/image-replica-analysis.json output/replica-layer-plan.json
-npm run image:ocr -- reference.png -o output/ocr.json
-npm run image:palette -- reference.png output/palette.json
-npm run image:crop -- reference.png crops.json output/assets
-```
+图片或截图的严格复刻入口为 `npm run pptx -- image reference.png output/image`；在 fidelity-proof compiler 尚未实现时会明确阻断。
 
 PDF 页面：
 
-```bash
-npm run pdf:hints -- source.pdf output/pdf-pages -o output/pdf-page-hints.json
-```
+严格 PDF 入口为 `npm run pptx -- pdf source.pdf output/pdf`；在 fidelity-proof compiler 尚未实现时会明确阻断。
 
 PDF 支持是页面级 hints：最终仍应由 Agent 重建可编辑文本、形状、表格和图表，而不是直接整页栅格化。
 
 ## 质量检查与修复
 
-```bash
-npm run accessibility:check -- output/deck.manifest.json output/accessibility-report.md
-npm run openxml:repair -- output/final.pptx output/openxml-repair-report.json
-npm run visual:critic -- output/deck.manifest.json output/visual-review.json --mode creative
-npm run repair:apply -- output/deck.manifest.json output/repair-patch.json output/deck.repaired.json
-npm run visual:regression -- output/deck.manifest.json output
-npm run vision:review -- output --provider mock
-npm run run:index -- output run-001 creative "deck summary"
-```
-
-`visual:critic` 会检查越界、小字号、过密图表、缺少图表/图解描述、空图解层，以及影响美观的超大空白装饰容器。
+统一管线负责 layout、taste/fidelity proof、可编辑性、兼容性和一致性报告，并在硬失败时停止后续阶段。
 
 ## 整体架构
 
@@ -238,7 +183,6 @@ Reports and QA
   compatibility-report.md
   accessibility-report.md
   visual-review.json
-  vision-review.json
   visual-regression-report.json
         |
         v
@@ -255,11 +199,10 @@ final.pptx
 | `design-systems/` | 内置通用设计系统。 |
 | `layout-archetypes/` | 设计优先流程使用的页面布局原型。 |
 | `schemas/` | deck、storyboard、design direction、registry、repair、review 等 JSON Schema。 |
-| `scripts/` | 转换、渲染、校验、修复、回归和工作台脚本。 |
+| `scripts/` | 转换、渲染、校验、修复和回归脚本。 |
 | `scripts/lib/` | 可复用核心逻辑。 |
-| `references/` | workflow、manifest、HTML/image/PDF、QA 和 prompt 参考。 |
+| `references/` | workflow、manifest、HTML/image/PDF 和 QA 参考。 |
 | `examples/` | 文本、HTML、图片、design-first 和 visual-roadmap 示例。 |
-| `workbench/` | 本地可视化工作台前端。 |
 | `tests/` | JavaScript 与 Python 回归测试。 |
 
 ## 内置设计系统
@@ -286,22 +229,11 @@ final.pptx
 
 | 命令 | 说明 |
 | --- | --- |
-| `npm run setup` | 初始化示例和环境报告。 |
-| `npm run pipeline` | 校验 manifest、渲染 PPTX、打包输出。 |
-| `npm run pipeline:design-first` | 运行 design-first 端到端流程。 |
-| `npm run explore:directions` | 生成多方向设计候选。 |
-| `npm run render` | 仅从 manifest 渲染 PPTX。 |
-| `npm run html:manifest` | HTML 转 manifest。 |
-| `npm run html:measure` | 测量 CSS 定位 HTML。 |
-| `npm run image:hints` | 图片转重建 hints。 |
-| `npm run image:replica:analyze` | 输出图片复刻分析 JSON，包含版面区域、对象候选、检测器状态和质量目标。 |
-| `npm run image:replica:plan` | 从复刻分析 JSON 生成图层规划，明确参考层、背景修补层、可编辑文本/形状层和裁剪兜底层。 |
-| `npm run pdf:hints` | PDF 页面转 hints。 |
-| `npm run visual:critic` | 规则化视觉评审。 |
-| `npm run vision:review` | mock 截图级视觉评审。 |
-| `npm run registry:validate` | 校验来源和素材 registry。 |
-| `npm run run:index` | 生成 run index。 |
-| `npm test` | JavaScript 测试。 |
+| `npm run pptx -- ...` | 唯一公开操作入口。 |
+| `npm run setup -- core\|html\|image\|pdf` | 检查指定环境 profile。 |
+| `npm test` / `npm run test:unit` | JavaScript 单元测试。 |
+| `npm run test:browser` | 浏览器集成测试。 |
+| `npm run test:visual` | 视觉管线测试。 |
 | `npm run test:py` | Python 测试。 |
 
 ## 测试

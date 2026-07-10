@@ -73,8 +73,8 @@ export async function runVisualRegression(manifestPath, outputDir, options = {})
     steps,
     preview,
     comparisons: [],
-    status: "deferred",
-    note: "Preview rendering was deferred; install LibreOffice to enable visual regression."
+    status: "unavailable",
+    note: "Preview capability is unavailable; install LibreOffice to enable visual regression."
   };
 
   if (preview.status === "failed") {

@@ -69,13 +69,13 @@ export async function measureHtmlFile(inputPath, options = {}) {
   const selector = options.selector ?? "[data-pptx-kind],[data-pptx-type]";
   const replica = Boolean(options.replica);
 
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const page = await browser.newPage({ viewport });
-    await page.goto(pathToFileURL(resolvedInput).href, { waitUntil: "networkidle" });
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
-
+  return withSettledHtmlPage(resolvedInput, {
+    viewportWidth: viewport.width,
+    viewportHeight: viewport.height,
+    javaScriptEnabled: false,
+    networkEnabled: false,
+    totalTimeoutMs: options.totalTimeoutMs
+  }, async (page) => {
     const rawElements = await page.evaluate(({ measureSelector, replicaMode }) => {
       function parseCssColor(value) {
         if (!value || value === "transparent") return null;
@@ -345,7 +345,9 @@ export async function measureHtmlFile(inputPath, options = {}) {
       sourceSlides.forEach((slide, slideIndex) => {
         const slideRect = slide.getBoundingClientRect();
         const slideStyle = window.getComputedStyle(slide);
+        const slideId = slide.getAttribute("data-slide-id") || slide.id || `slide-${String(slideIndex + 1).padStart(3, "0")}`;
         rawSlides.push({
+          slideId,
           slideIndex,
           selector: slide.id ? `#${slide.id}` : slide.matches(".pptx-slide") ? ".pptx-slide" : slide.tagName.toLowerCase(),
           style: computedStyleFor(slideStyle, slideRect),
@@ -379,6 +381,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
               if (textRect.width <= 0 || textRect.height <= 0) return;
               raw.push({
                 id: `${id}-text-${textIndex + 1}`,
+                slideId,
                 kind: "text",
                 slideIndex,
                 tagName,
@@ -416,6 +419,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
 	          const visibleText = kind === "text" ? renderedEllipsisText(node, style, text) : null;
 	          raw.push({
 	            id,
+	            slideId,
 	            kind,
             slideIndex,
             tagName,
@@ -467,9 +471,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
       elements,
       slides: rawSlides
     });
-  } finally {
-    await browser.close();
-  }
+  });
 }
 
 export async function writeMeasurements(inputPath, outputPath, options = {}) {

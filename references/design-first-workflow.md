@@ -12,8 +12,6 @@ Required artifacts (design artifacts):
 output/deck.storyboard.json
 output/deck.design-direction.json
 output/slide-design-specs.json
-output/ui-component-spec.json         # optional, when UI components are referenced
-output/preview/                      # preview artifacts, when preview generation is enabled
 output/deck.manifest.json
 output/final.pptx                    # editable PPTX
 output/visual-review.json
@@ -27,10 +25,8 @@ Flow:
 3. Slide Designer writes `slide-design-specs.json`.
 4. Compiler resolves layout archetypes and writes `deck.manifest.json`.
 5. Existing pipeline renders `final.pptx` (editable PPTX).
-6. Preview generator writes preview artifacts under `output/preview/` for offline inspection.
-7. Visual critic writes `visual-review.json`.
-8. Screenshot-level review runs through the mock provider boundary by default; real vision providers must keep the same JSON contract and never mutate `final.pptx` directly.
-9. Repair loop applies bounded changes when scores are below threshold.
+6. Visual critic writes `visual-review.json`.
+7. Repair loop applies bounded changes when scores are below threshold.
 
 ### Strict replica boundary
 
@@ -49,11 +45,3 @@ Replica mode may bypass design-first artifacts and write `deck.manifest.json` di
 - Prefer native PPTX text, shapes, tables, charts, and lines.
 - Do not lower editability to hide layout problems.
 - Report rasterized regions honestly.
-
-## Multi-Direction Exploration
-
-For creative decks, run direction exploration before full deck generation. The explorer creates three direction folders, each with a direction contract and scorecard. The approved direction should be copied into the full deck generation path and recorded in `run.json`.
-
-## Visual Workbench and Artifact Inspection
-
-The local Visual Workbench shell browses design artifacts, preview artifacts, repair patches, and review reports under `output/`. It does not own rendering: the deterministic pipeline still writes the editable PPTX. screenshot-level review results appear alongside other review outputs but never replace the deterministic render step.

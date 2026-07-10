@@ -13,14 +13,14 @@
 
 ```powershell
 cd pptx-creator
-npm run pipeline:html -- examples/html-input/one-page-dashboard.html output/html-semantic
+npm run pptx -- html examples/html-input/one-page-dashboard.html output/html-semantic
 ```
 
 ## CSS measurement pipeline
 
 ```powershell
 npx playwright install chromium
-npm run pipeline:html -- examples/html-input/css-positioned-dashboard.html output/html-css
+npm run pptx -- html examples/html-input/css-positioned-dashboard.html output/html-css
 ```
 
 ## Notes

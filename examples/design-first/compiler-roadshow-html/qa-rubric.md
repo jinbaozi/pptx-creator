@@ -34,6 +34,6 @@ This rubric is **qualitative only**. It documents design rationale, tradeoffs, a
 
 ## Verification
 
-- `npm run pipeline:html -- deck.html output` is the authoritative verification command.
+- `npm run pptx -- html deck.html output` is the authoritative verification command.
 - `html-layout-report.json` must contain zero criticals before conversion.
 - Manifest layout safety, content coverage, and final PPTX reports remain mandatory after the HTML gate.

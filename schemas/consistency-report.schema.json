@@ -98,12 +98,13 @@
       "properties": {
         "status": {
           "type": "string",
-          "enum": ["ok", "deferred"]
+          "enum": ["ok", "unavailable"]
         },
         "perSlide": {
           "type": "array",
           "items": { "type": "object" }
-        }
+        },
+        "reason": { "type": "string" }
       },
       "allOf": [
         {

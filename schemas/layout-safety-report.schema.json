@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://pptx-creator.local/layout-safety-report.schema.json",
   "title": "Layout-Safety Preflight Report",
-  "description": "Deterministic JSON emitted by scripts/run-layout-safety-check.mjs (and the in-process preflightLayout from scripts/lib/check-layout-safety.mjs). Consumers: U6 repair-patch adapter, run-deck-pipeline summary block, workbench Visual Quality tab.",
+  "description": "Deterministic JSON emitted by scripts/run-layout-safety-check.mjs and the in-process preflightLayout helper.",
   "type": "object",
   "additionalProperties": false,
   "required": ["deckSize", "checks", "summary"],

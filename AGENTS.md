@@ -16,44 +16,26 @@ Core invariant: the **manifest is the single source of truth**. Scripts render e
 ```bash
 # One-time setup
 npm install
-pip install -r requirements.txt
+pip install -r requirements-core.txt
 npx playwright install chromium
-npm run setup                          # writes env-report.json
+npm run setup -- core                  # writes env-report.json
 
 # Tests
 npm test                               # vitest (JS, 120s timeout)
+npm run test:browser                   # Playwright-backed HTML checks
+npm run test:visual                    # visual pipeline tests
 npm run test:py                        # python unittest in tests/
-npm run workbench:test                 # workbench tests only
 
 # Quick run on a built-in text example
-npm run pipeline -- examples/text-input/deck.manifest.json output
-
-# Render-only path (no validation, no packaging)
-npm run render -- output/deck.manifest.json output/final.pptx
+npm run pptx -- text examples/text-input/deck.manifest.json output
 
 # Design-first end-to-end
-npm run design:first -- examples/design-first/compiler-roadshow output/design-first/deck.manifest.json
-npm run pipeline:design-first -- examples/design-first/compiler-roadshow output/design-first --emit-run-index --run-id compiler-roadshow --input-summary "Compiler Roadshow"
+npm run pptx -- text examples/design-first/compiler-roadshow output/design-first --creative
 
-# Explore multiple design directions before committing
-npm run explore:directions -- examples/design-first/compiler-roadshow/deck.storyboard.json output/directions
-
-# Quality + repair
-npm run visual:critic -- output/deck.manifest.json output/visual-review.json --mode creative
-npm run repair:apply -- output/deck.manifest.json output/repair-patch.json output/deck.repaired.json
-npm run accessibility:check -- output/deck.manifest.json output/accessibility-report.md
-npm run openxml:repair -- output/final.pptx output/openxml-repair-report.json
-npm run vision:review -- output --provider mock   # mock provider; swap to real later
-npm run registry:validate                          # sources.json + asset-registry.json
-npm run run:index -- output run-001 creative "deck summary"
-
-# Input-specific helpers
-npm run html:manifest -- input.html output/deck.manifest.json
-npm run html:measure  -- input.html output/layout-measurements.json
-npm run image:hints   -- reference.png output/image-hints.json
-npm run image:replica:analyze -- reference.png output/image-replica-analysis.json
-npm run image:replica:plan    -- output/image-replica-analysis.json output/replica-layer-plan.json
-npm run pdf:hints    -- source.pdf output/pdf-pages -o output/pdf-page-hints.json
+# Replica routes (image/PDF block until a fidelity-proof compiler exists)
+npm run pptx -- html input.html output/html
+npm run pptx -- image reference.png output/image
+npm run pptx -- pdf source.pdf output/pdf
 ```
 
 All Python helpers are invoked through `node scripts/run-python.mjs` (honors `PPTX_CREATOR_PYTHON` env var for interpreter selection). The pipeline runner (`run-deck-pipeline.mjs`) chains: `validate-manifest.py` → `render-pptx.mjs` → `package-output.py`.
@@ -112,15 +94,11 @@ Every pipeline run writes to `output/`:
 - `deck.manifest.json` — copy of the input manifest
 - `editable-report.md`, `qa-report.md`, `compatibility-report.md` — quality dimensions
 - `output-manifest.json` — packaged output index
-- (design-first) `visual-review.json`, `vision-review.json`, `run.json`, `preview/`
+- (creative) `visual-review.json`
 
 Editability ladder (`references/qa-rubric.md`): Level 5 = fully native objects, Level 4 = text + main shapes editable, Level 3 = text editable, Levels 1-2 = replica/screenshot. **Never** package a single full-slide raster as "editable PPTX".
 
 The visual critic (`scripts/lib/visual-critic.mjs` + `scripts/run-visual-critic.mjs`) flags overflow, tiny fonts, dense charts, empty diagram layers, oversized decorative containers. The bounded repair loop applies at most three automatic patches before asking the user (per `SKILL.md`).
-
-### 5. Workbench (browse, do not render)
-
-`workbench/` is a static browser shell (`index.html`, `app.js`, `styles.css`) that browses design artifacts and reports under `output/`. It does not render — the deterministic pipeline still owns rendering. Vision-review outputs sit alongside other reports and never bypass the render step.
 
 ## Repository layout
 
@@ -133,9 +111,8 @@ The visual critic (`scripts/lib/visual-critic.mjs` + `scripts/run-visual-critic.
 | `scripts/lib/` | Reusable JS/Python cores (`manifest-compiler.mjs`, `chart-renderer.mjs`, `diagram-compiler.mjs`, `visual-critic.mjs`, `run-index.mjs`, `registry.mjs`, `python-utils.mjs`, `*_core.py`) |
 | `design-systems/<name>/DESIGN.md` | Built-in visual systems |
 | `layout-archetypes/` | Page layout primitives consumed by `lib/archetype-resolver.mjs` |
-| `references/` | Workflows, manifest spec, QA rubric, prompt library |
+| `references/` | Workflows, manifest spec, and QA rubric |
 | `examples/{text-input,html-input,image-input,design-first,visual-roadmap-next}/` | Reference inputs |
-| `workbench/` | Static visual browser |
 | `tests/` | Vitest + Python unittest suites |
 
 ## Conventions specific to this codebase

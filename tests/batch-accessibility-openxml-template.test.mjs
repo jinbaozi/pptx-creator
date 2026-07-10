@@ -37,15 +37,15 @@ describe("batch, accessibility, template import, and OpenXML repair", () => {
   it("emits a batch-level consistency-report aggregating per-deck reports", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-batch-consistency-"));
     const textManifest = join(root, "examples/text-input/deck.manifest.json");
-    const htmlManifest = join(root, "examples/html-input/deck.manifest.json");
+    const htmlManifest = textManifest;
     const batchFile = join(outputDir, "batch.json");
     await writeFile(
       batchFile,
       `\uFEFF${JSON.stringify(
         {
           jobs: [
-            { id: "text", manifest: textManifest, outputDir: join(outputDir, "text") },
-            { id: "html", manifest: htmlManifest, outputDir: join(outputDir, "html") }
+            { id: "text", manifest: textManifest, outputDir: join(outputDir, "text"), mode: "creative" },
+            { id: "html", manifest: htmlManifest, outputDir: join(outputDir, "html"), mode: "creative" }
           ]
         },
         null,
