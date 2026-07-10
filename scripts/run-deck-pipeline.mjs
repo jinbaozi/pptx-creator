@@ -25,6 +25,21 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "consistency-report.json",
   "consistency-report.md",
   "layout-safety-report.json",
+  "html-layout-report.json",
+  "html-repair-report.json",
+  "layout-measurements.json",
+  "deck.localized-input.html",
+  "deck.repaired.html",
+  "html-preview",
+  "preview",
+  "previews",
+  "deck.plan.json",
+  "deck.storyboard.json",
+  "deck.design-direction.json",
+  "slide-design-specs.json",
+  "quality-report.json",
+  "quality-report.md",
+  "replica-evidence.json",
   "replica-fidelity-proof.json",
   "visual-review.json",
   "html-pipeline-summary.json",
@@ -35,7 +50,7 @@ export async function clearConsumableOutputs(outputDir, protectedPaths = []) {
   const protectedSet = new Set(protectedPaths.map((path) => resolve(path)));
   await Promise.all(CONSUMABLE_OUTPUTS.map(async (name) => {
     const candidate = resolve(outputDir, name);
-    if (!protectedSet.has(candidate)) await rm(candidate, { force: true });
+    if (!protectedSet.has(candidate)) await rm(candidate, { force: true, recursive: true });
   }));
 }
 

@@ -1,4 +1,4 @@
-import { access, chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,12 +78,22 @@ describe("Task 2 single pipeline contract", () => {
     manifest.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
     const manifestPath = join(dir, "deck.manifest.json");
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    for (const name of ["html-layout-report.json", "layout-measurements.json", "deck.localized-input.html"]) {
+      await writeFile(join(dir, name), "stale-html", "utf8");
+    }
+    await mkdir(join(dir, "html-preview"));
+    await writeFile(join(dir, "html-preview", "slide-001.png"), "stale-preview", "utf8");
 
     const summary = await pipeline.runDeckPipeline(manifestPath, dir);
     expect(summary.status).toBe("passed");
     await expect(access(join(dir, "final.pptx"))).resolves.toBeUndefined();
     await expect(access(join(dir, "output-manifest.json"))).resolves.toBeUndefined();
     expect(pipeline.shouldCopyManifest(manifestPath, dir)).toBe(false);
+    const outputManifest = JSON.parse(await readFile(join(dir, "output-manifest.json"), "utf8"));
+    for (const stale of ["html-layout-report.json", "layout-measurements.json", "deck.localized-input.html", "html-preview"]) {
+      expect(outputManifest.files).not.toContain(stale);
+      await expect(access(join(dir, stale))).rejects.toThrow();
+    }
   }, 60000);
 
   it("rejects replica proof when the PPTX archive contains fewer native objects than source coverage", async () => {

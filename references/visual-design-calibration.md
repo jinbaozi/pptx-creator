@@ -85,18 +85,14 @@ hits within ±20 points. The hit rate must reach ≥ 80% for CI to pass.
 ## Pending population (ship-time state)
 
 The "Within ±20 of formula" column is intentionally **blank** at U2 ship time.
-Once U3 ships `scoreSlopRisk`, this table is populated by running:
+This is a maintainer-only calibration artifact. Run its focused test profile with:
 
 ```bash
-node scripts/run-deck-pipeline.mjs examples/slopRisk-corpus/ \
-  output/slopRisk-calibration \
-  --emit-run-index --run-id slopRisk-cal-0 \
-  --input-summary "slopRisk Cal-0 run"
+npm run test:unit -- tests/visual-design-calibration.test.mjs
 ```
 
-The pipeline output's `visual-review.json` (per-deck) and
-`examples/slopRisk-corpus/annotations.csv` are diff'd to fill the column.
-A maintainer commits the populated table back to this artifact.
+The test compares the fixture scores and `examples/slopRisk-corpus/annotations.csv`.
+A maintainer reviews the disagreement report and commits calibrated annotations back to this artifact.
 
 ## Manifest dependency
 
