@@ -31,7 +31,8 @@ def main() -> None:
         "files": sorted(
             path.name
             for path in output_dir.iterdir()
-            if path.name not in {"output-manifest.json", ".pptx-generated-assets.json"}
+            if path.name != "output-manifest.json"
+            and not path.name.startswith(".pptx-generated-assets.")
         ),
     }
     (output_dir / "output-manifest.json").write_text(

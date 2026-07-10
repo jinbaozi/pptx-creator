@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import * as htmlManifest from "../scripts/html-to-manifest.mjs";
 import * as browserRuntime from "../scripts/lib/html-layout-audit.mjs";
 import { localizeHtmlRemoteAssets } from "../scripts/run-html-pipeline.mjs";
+import { clearConsumableOutputs } from "../scripts/run-deck-pipeline.mjs";
 
 describe("Task 2 HTML remote asset security", () => {
   it("exposes remote fetching only through an explicit public CLI opt-in", async () => {
@@ -62,6 +63,27 @@ describe("Task 2 HTML remote asset security", () => {
     expect(html.match(/assets\/remote-source-\d{3}/g)).toHaveLength(4);
     const ownership = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(join(dir, ".pptx-generated-assets.json"), "utf8")));
     expect(ownership.files).toHaveLength(4);
+  });
+
+  it("persists the complete ownership plan before a partial remote download failure", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-html-partial-assets-"));
+    const input = join(dir, "input.html");
+    await writeFile(input, "<img src='https://assets.example.com/a.png'><img src='https://assets.example.com/b.png'>", "utf8");
+    let calls = 0;
+    await expect(localizeHtmlRemoteAssets(input, dir, {
+      allowRemoteAssets: true,
+      fetchRemoteAsset: async () => {
+        calls += 1;
+        if (calls === 2) throw new Error("simulated download failure");
+        return Buffer.from("png");
+      }
+    })).rejects.toThrow(/simulated download failure/);
+
+    const ownership = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(join(dir, ".pptx-generated-assets.json"), "utf8")));
+    expect(ownership.files).toHaveLength(2);
+    await expect(import("node:fs/promises").then((fs) => fs.access(join(dir, ownership.files[0])))).resolves.toBeUndefined();
+    await clearConsumableOutputs(dir);
+    await expect(import("node:fs/promises").then((fs) => fs.access(join(dir, ownership.files[0])))).rejects.toThrow();
   });
 
   it("blocks loopback, private, and link-local destinations even with opt-in", async () => {

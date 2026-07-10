@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeManifestFromHtml } from "./html-to-manifest.mjs";
@@ -54,20 +54,24 @@ export async function localizeHtmlRemoteAssets(inputPath, outputDir, options = {
   const assetsDir = join(resolve(outputDir), "assets");
   await mkdir(assetsDir, { recursive: true });
   let localized = html;
-  const generatedFiles = [];
-  for (const [index, url] of urls.entries()) {
+  const plans = urls.map((url, index) => {
     const suffix = extname(new URL(url).pathname).toLowerCase();
     const extension = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(suffix) ? suffix : ".img";
     const fileName = `remote-source-${String(index + 1).padStart(3, "0")}${extension}`;
-    const data = await (options.fetchRemoteAsset ?? fetchRemoteAssetSecure)(url, options.remoteAssetLimits);
-    await writeFile(join(assetsDir, fileName), data);
-    generatedFiles.push(`assets/${fileName}`);
-    localized = localized.split(url).join(`assets/${fileName}`);
-  }
-  await writeFile(join(resolve(outputDir), ".pptx-generated-assets.json"), `${JSON.stringify({
+    return { url, fileName, relativePath: `assets/${fileName}` };
+  });
+  const ownershipPath = join(resolve(outputDir), ".pptx-generated-assets.json");
+  const ownershipTempPath = `${ownershipPath}.tmp`;
+  await writeFile(ownershipTempPath, `${JSON.stringify({
     version: "0.1.0",
-    files: generatedFiles
+    files: plans.map((plan) => plan.relativePath)
   }, null, 2)}\n`, "utf8");
+  await rename(ownershipTempPath, ownershipPath);
+  for (const plan of plans) {
+    const data = await (options.fetchRemoteAsset ?? fetchRemoteAssetSecure)(plan.url, options.remoteAssetLimits);
+    await writeFile(join(assetsDir, plan.fileName), data);
+    localized = localized.split(plan.url).join(plan.relativePath);
+  }
   const localizedPath = join(resolve(outputDir), "deck.localized-input.html");
   await writeFile(localizedPath, localized, "utf8");
   return localizedPath;

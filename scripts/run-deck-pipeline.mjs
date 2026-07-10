@@ -51,7 +51,8 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "replica-fidelity-proof.json",
   "visual-review.json",
   "html-pipeline-summary.json",
-  "run.json"
+  "run.json",
+  ".pptx-generated-assets.json.tmp"
 ]);
 
 async function removeOwnedPath(candidate, protectedSet) {
