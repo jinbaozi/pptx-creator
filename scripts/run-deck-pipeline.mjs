@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -28,6 +28,12 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "html-layout-report.json",
   "html-repair-report.json",
   "layout-measurements.json",
+  "inputHints.json",
+  "image-hints.json",
+  "image-replica-analysis.json",
+  "replica-layer-plan.json",
+  "pdf-page-hints.json",
+  "pdf-pages",
   "deck.localized-input.html",
   "deck.repaired.html",
   "html-preview",
@@ -40,6 +46,7 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "quality-report.json",
   "quality-report.md",
   "replica-evidence.json",
+  "visual-regression-report.json",
   "replica-fidelity-proof.json",
   "visual-review.json",
   "html-pipeline-summary.json",
@@ -52,6 +59,14 @@ export async function clearConsumableOutputs(outputDir, protectedPaths = []) {
     const candidate = resolve(outputDir, name);
     if (!protectedSet.has(candidate)) await rm(candidate, { force: true, recursive: true });
   }));
+  const assetsDir = resolve(outputDir, "assets");
+  try {
+    const names = await readdir(assetsDir);
+    await Promise.all(names
+      .filter((name) => /^remote-(?:source|asset|background|image)-/i.test(name))
+      .map((name) => rm(resolve(assetsDir, name), { force: true, recursive: true })));
+    if ((await readdir(assetsDir)).length === 0) await rm(assetsDir, { force: true, recursive: true });
+  } catch {}
 }
 
 export function shouldCopyManifest(manifestPath, outputDir) {
@@ -205,7 +220,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   let resolvedManifest = resolvedInput;
   const resolvedOutput = resolve(outputDir);
   await mkdir(resolvedOutput, { recursive: true });
-  await clearConsumableOutputs(resolvedOutput, [resolvedInput]);
+  await clearConsumableOutputs(resolvedOutput, [resolvedInput, ...(options.protectedInputs ?? [])]);
   await rm(join(resolvedOutput, "pipeline-blocked.json"), { force: true });
 
   let manifest = null;

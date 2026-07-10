@@ -81,8 +81,14 @@ describe("Task 2 single pipeline contract", () => {
     for (const name of ["html-layout-report.json", "layout-measurements.json", "deck.localized-input.html"]) {
       await writeFile(join(dir, name), "stale-html", "utf8");
     }
+    for (const name of ["inputHints.json", "image-hints.json", "image-replica-analysis.json", "replica-layer-plan.json", "visual-regression-report.json"]) {
+      await writeFile(join(dir, name), "stale-route", "utf8");
+    }
     await mkdir(join(dir, "html-preview"));
     await writeFile(join(dir, "html-preview", "slide-001.png"), "stale-preview", "utf8");
+    await mkdir(join(dir, "assets"));
+    await writeFile(join(dir, "assets", "remote-source-001.png"), "stale-remote", "utf8");
+    await writeFile(join(dir, "assets", "user-owned.png"), "keep", "utf8");
 
     const summary = await pipeline.runDeckPipeline(manifestPath, dir);
     expect(summary.status).toBe("passed");
@@ -90,10 +96,15 @@ describe("Task 2 single pipeline contract", () => {
     await expect(access(join(dir, "output-manifest.json"))).resolves.toBeUndefined();
     expect(pipeline.shouldCopyManifest(manifestPath, dir)).toBe(false);
     const outputManifest = JSON.parse(await readFile(join(dir, "output-manifest.json"), "utf8"));
-    for (const stale of ["html-layout-report.json", "layout-measurements.json", "deck.localized-input.html", "html-preview"]) {
+    for (const stale of [
+      "html-layout-report.json", "layout-measurements.json", "deck.localized-input.html", "html-preview",
+      "inputHints.json", "image-hints.json", "image-replica-analysis.json", "replica-layer-plan.json", "visual-regression-report.json"
+    ]) {
       expect(outputManifest.files).not.toContain(stale);
       await expect(access(join(dir, stale))).rejects.toThrow();
     }
+    await expect(access(join(dir, "assets", "remote-source-001.png"))).rejects.toThrow();
+    await expect(access(join(dir, "assets", "user-owned.png"))).resolves.toBeUndefined();
   }, 60000);
 
   it("rejects replica proof when the PPTX archive contains fewer native objects than source coverage", async () => {

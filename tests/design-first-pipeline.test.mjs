@@ -5,6 +5,20 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 describe("design-first pipeline", () => {
+  it("preserves creative source artifacts when input and output directories are the same", () => {
+    const dir = fs.mkdtempSync(path.join("/private/tmp", "pptx-design-first-in-place-"));
+    for (const name of ["deck.storyboard.json", "deck.design-direction.json", "slide-design-specs.json"]) {
+      fs.copyFileSync(path.join("examples/design-first/compiler-roadshow", name), path.join(dir, name));
+    }
+
+    execFileSync("node", ["scripts/pptx.mjs", "text", dir, dir, "--creative"], { stdio: "pipe" });
+
+    for (const name of ["deck.storyboard.json", "deck.design-direction.json", "slide-design-specs.json"]) {
+      expect(fs.existsSync(path.join(dir, name)), name).toBe(true);
+    }
+    expect(fs.existsSync(path.join(dir, "final.pptx"))).toBe(true);
+  }, 60000);
+
   it("compiles, renders, and writes visual review for a design-first example", () => {
     const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-design-first-pipeline-"));
     execFileSync("node", [

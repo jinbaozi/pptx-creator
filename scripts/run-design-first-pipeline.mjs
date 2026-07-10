@@ -73,6 +73,11 @@ async function main() {
     copyManifest: false,
     mode: options.mode,
     strictLayoutSafety: true,
+    protectedInputs: [
+      path.join(inputDir, "deck.storyboard.json"),
+      path.join(inputDir, "deck.design-direction.json"),
+      path.join(inputDir, "slide-design-specs.json")
+    ],
     beforePackage: async () => {
       if (options.validateRegistry) validateRegistries(outputDir);
       if (options.emitRunIndex) {
