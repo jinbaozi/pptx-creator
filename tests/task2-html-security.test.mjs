@@ -36,7 +36,7 @@ describe("Task 2 HTML remote asset security", () => {
     });
     const html = await import("node:fs/promises").then((fs) => fs.readFile(localized, "utf8"));
     expect(html).not.toContain("https://");
-    expect(html).toContain("assets/remote-source-001.png");
+    expect(html).toMatch(/assets\/\.pptx-run-[^/]+\/remote-source-001\.png/);
   });
 
   it("localizes unquoted src, srcset candidates, and SVG image href before browser measurement", async () => {
@@ -60,9 +60,29 @@ describe("Task 2 HTML remote asset security", () => {
     const html = await import("node:fs/promises").then((fs) => fs.readFile(localized, "utf8"));
     expect(fetched).toHaveLength(4);
     expect(html).not.toContain("https://");
-    expect(html.match(/assets\/remote-source-\d{3}/g)).toHaveLength(4);
+    expect(html.match(/assets\/\.pptx-run-[^/]+\/remote-source-\d{3}/g)).toHaveLength(4);
     const ownership = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(join(dir, ".pptx-generated-assets.json"), "utf8")));
-    expect(ownership.files).toHaveLength(4);
+    expect(ownership.files).toHaveLength(1);
+    expect(ownership.plannedFiles).toHaveLength(4);
+  });
+
+  it("never overwrites or claims an exact generated-looking user asset name", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-html-asset-collision-"));
+    const input = join(dir, "input.html");
+    await writeFile(input, "<img src='https://assets.example.com/a.png'>", "utf8");
+    await import("node:fs/promises").then((fs) => fs.mkdir(join(dir, "assets"), { recursive: true }));
+    const userAsset = join(dir, "assets", "remote-source-001.png");
+    await writeFile(userAsset, "user-owned", "utf8");
+
+    const localized = await localizeHtmlRemoteAssets(input, dir, {
+      allowRemoteAssets: true,
+      fetchRemoteAsset: async () => Buffer.from("generated")
+    });
+    expect(await import("node:fs/promises").then((fs) => fs.readFile(userAsset, "utf8"))).toBe("user-owned");
+    const html = await import("node:fs/promises").then((fs) => fs.readFile(localized, "utf8"));
+    expect(html).not.toContain("assets/remote-source-001.png");
+    const ownership = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(join(dir, ".pptx-generated-assets.json"), "utf8")));
+    expect(ownership.files).not.toContain("assets/remote-source-001.png");
   });
 
   it("persists the complete ownership plan before a partial remote download failure", async () => {
@@ -80,10 +100,11 @@ describe("Task 2 HTML remote asset security", () => {
     })).rejects.toThrow(/simulated download failure/);
 
     const ownership = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(join(dir, ".pptx-generated-assets.json"), "utf8")));
-    expect(ownership.files).toHaveLength(2);
-    await expect(import("node:fs/promises").then((fs) => fs.access(join(dir, ownership.files[0])))).resolves.toBeUndefined();
+    expect(ownership.files).toHaveLength(1);
+    expect(ownership.plannedFiles).toHaveLength(2);
+    await expect(import("node:fs/promises").then((fs) => fs.access(join(dir, ownership.plannedFiles[0])))).resolves.toBeUndefined();
     await clearConsumableOutputs(dir);
-    await expect(import("node:fs/promises").then((fs) => fs.access(join(dir, ownership.files[0])))).rejects.toThrow();
+    await expect(import("node:fs/promises").then((fs) => fs.access(join(dir, ownership.plannedFiles[0])))).rejects.toThrow();
   });
 
   it("blocks loopback, private, and link-local destinations even with opt-in", async () => {

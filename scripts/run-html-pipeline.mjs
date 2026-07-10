@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeManifestFromHtml } from "./html-to-manifest.mjs";
@@ -53,23 +54,32 @@ export async function localizeHtmlRemoteAssets(inputPath, outputDir, options = {
   }
   const assetsDir = join(resolve(outputDir), "assets");
   await mkdir(assetsDir, { recursive: true });
+  const runDirName = `.pptx-run-${randomUUID()}`;
+  const runAssetsDir = join(assetsDir, runDirName);
+  await mkdir(runAssetsDir);
   let localized = html;
   const plans = urls.map((url, index) => {
     const suffix = extname(new URL(url).pathname).toLowerCase();
     const extension = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(suffix) ? suffix : ".img";
     const fileName = `remote-source-${String(index + 1).padStart(3, "0")}${extension}`;
-    return { url, fileName, relativePath: `assets/${fileName}` };
+    return { url, fileName, relativePath: `assets/${runDirName}/${fileName}` };
   });
   const ownershipPath = join(resolve(outputDir), ".pptx-generated-assets.json");
   const ownershipTempPath = `${ownershipPath}.tmp`;
-  await writeFile(ownershipTempPath, `${JSON.stringify({
-    version: "0.1.0",
-    files: plans.map((plan) => plan.relativePath)
-  }, null, 2)}\n`, "utf8");
-  await rename(ownershipTempPath, ownershipPath);
+  try {
+    await writeFile(ownershipTempPath, `${JSON.stringify({
+      version: "0.1.0",
+      files: [`assets/${runDirName}`],
+      plannedFiles: plans.map((plan) => plan.relativePath)
+    }, null, 2)}\n`, "utf8");
+    await rename(ownershipTempPath, ownershipPath);
+  } catch (error) {
+    await rm(runAssetsDir, { force: true, recursive: true });
+    throw error;
+  }
   for (const plan of plans) {
     const data = await (options.fetchRemoteAsset ?? fetchRemoteAssetSecure)(plan.url, options.remoteAssetLimits);
-    await writeFile(join(assetsDir, plan.fileName), data);
+    await writeFile(join(runAssetsDir, plan.fileName), data);
     localized = localized.split(plan.url).join(plan.relativePath);
   }
   const localizedPath = join(resolve(outputDir), "deck.localized-input.html");
