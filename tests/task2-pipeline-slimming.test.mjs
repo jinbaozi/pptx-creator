@@ -72,6 +72,20 @@ describe("Task 2 single pipeline contract", () => {
     await expect(access(join(dir, "pipeline-blocked.json"))).resolves.toBeUndefined();
   });
 
+  it("supports a successful run when the input is already output/deck.manifest.json", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-in-place-manifest-"));
+    const manifest = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    manifest.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    const manifestPath = join(dir, "deck.manifest.json");
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+    const summary = await pipeline.runDeckPipeline(manifestPath, dir);
+    expect(summary.status).toBe("passed");
+    await expect(access(join(dir, "final.pptx"))).resolves.toBeUndefined();
+    await expect(access(join(dir, "output-manifest.json"))).resolves.toBeUndefined();
+    expect(pipeline.shouldCopyManifest(manifestPath, dir)).toBe(false);
+  }, 60000);
+
   it("rejects replica proof when the PPTX archive contains fewer native objects than source coverage", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-truncated-proof-"));
     const pptxPath = join(dir, "truncated.pptx");
@@ -245,8 +259,12 @@ describe("Task 2 packaging ownership", () => {
   it("documents only the unified CLI in public workflow guides", async () => {
     for (const relativePath of [
       "references/html-to-pptx.md",
+      "references/html-measurement.md",
+      "references/image-to-pptx.md",
+      "references/pdf-to-pptx.md",
       "references/workflow.md",
-      "examples/text-input/README.md"
+      "examples/text-input/README.md",
+      "examples/image-input/README.md"
     ]) {
       const content = await readFile(join(root, relativePath), "utf8");
       expect(content, relativePath).not.toMatch(/\bnode\s+scripts\//);

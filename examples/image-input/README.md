@@ -1,31 +1,20 @@
-# Image input example (M1.3)
+# Image input example
 
-Sample 1920×1080 business slide for image replication workflow.
+`business-slide.png` is a reference image used by image analysis and replica fixtures. `deck.manifest.skeleton.json` and `image-hints.json` are intermediate examples; neither is proof of an editable replica.
 
-## Generate sample image
+The only public route is:
 
-```powershell
-pip install -r requirements.txt
-python scripts/generate-sample-slide.py
+```bash
+npm run pptx -- image examples/image-input/business-slide.png output/image-replica
 ```
 
-## Inspect
+Until the image compiler and fidelity proof are available, this command must block explicitly. Do not bypass the block by rendering the skeleton or packaging the source image as a full-slide raster.
 
-```powershell
-python scripts/inspect-image.py examples/image-input/business-slide.png
-python scripts/image-to-manifest-hints.py examples/image-input/business-slide.png examples/image-input/image-hints.json
+Before image work, install and verify the selected profile:
+
+```bash
+python3 -m pip install -r requirements-image.txt
+npm run setup -- image
 ```
 
-## Host agent next steps
-
-1. Read `image-hints.json` and visually inventory objects on `business-slide.png`.
-2. Complete `deck.manifest.skeleton.json` — replace `<HOST_AGENT: ...>` placeholders.
-3. Remove `assets` reference entry unless rasterizing a region.
-4. Validate and render:
-
-```powershell
-python scripts/validate-manifest.py examples/image-input/deck.manifest.skeleton.json
-node scripts/render-pptx.mjs examples/image-input/deck.manifest.skeleton.json output/image-replica.pptx
-```
-
-See `references/image-to-pptx.md` for full workflow.
+Expected future strict output includes `final.pptx`, `deck.manifest.json`, `quality-report.json/md`, `replica-evidence.json`, `output-manifest.json`, and `preview/index.html`.

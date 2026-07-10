@@ -1,141 +1,49 @@
-# HTML DOM Measurement (M1.4)
+# HTML measurement capability
 
-M1.4 adds Playwright-based DOM measurement for CSS-positioned HTML visual drafts. Host agents still own semantic structure; measurement scripts extract real bounding boxes for manifest coordinates.
+This is an on-demand capability reference for the `html-replica` route. Agents should not load it for text, image, PDF, or manifest-repair work.
 
-## When to use
+## Public workflow
 
-- HTML uses CSS absolute/flex/grid positioning without explicit `data-x/y/w/h`.
-- Agent wants accurate inch coordinates from rendered layout.
-- Combining M1.2 semantic mapping with browser-measured positions.
+```bash
+npm run pptx -- html input.html output/html-replica
+```
 
-## When not to use
-
-- Semantic HTML with auto-layout cards (M1.2 alone is sufficient).
-- Environments without Playwright Chromium installed.
-- Full-page screenshot fallback (still violates editability rules).
+The route owns localization, browser measurement, manifest compilation, validation, rendering, proof, bounded repair, and packaging. Internal measurement and rendering modules are not alternate public workflows.
 
 ## Markup conventions
 
-Mark measurable elements with stable ids and kinds:
+Stable semantic markers improve native reconstruction:
 
 ```html
 <h1 data-pptx-kind="text" data-pptx-id="title">Title</h1>
-<div class="card" data-pptx-kind="card" data-pptx-id="card-1">...</div>
-<table data-pptx-kind="table" data-pptx-id="metrics-table">...</table>
+<div data-pptx-kind="shape" data-pptx-id="card-1">...</div>
+<table data-pptx-kind="table" data-pptx-id="metrics">...</table>
 ```
 
-Supported `data-pptx-kind` values:
+Supported kinds are `text`, `shape`, `card`, `table`, `line`, and `image`. Optional `data-typography`, `data-component`, and `data-color` values may reference the selected design system.
 
-| Kind | Manifest output |
-| --- | --- |
-| `text` | `text` element |
-| `shape` | `shape` element |
-| `card` | `shape` + inner text |
-| `table` | `table` element |
-| `line` | `line` element |
-| `image` | `image` element (requires `src`) |
+## Coordinate model
 
-Optional attributes:
-
-- `data-typography`: typography token key (`h1`, `subtitle`, `body`, …)
-- `data-component`: shape component token
-- `data-color`: text color token
-
-## Viewport and coordinate mapping
-
-Default viewport: **1280 × 720 px** (16:9) maps to slide **13.333 × 7.5 in**.
+The default 1280×720 browser viewport maps to a 13.333×7.5 inch slide:
 
 ```text
-x_in = px_x / viewport_width * slide_width
-y_in = px_y / viewport_height * slide_height
+x_in = px_x / 1280 * 13.333
+y_in = px_y / 720 * 7.5
 ```
 
-Override via CLI flags on `measure-html.mjs`:
+Each measured node records stable id, slide id, kind, pixel box, inch box, computed typography, paint, border, transform, clipping, and supported effect data.
 
-```powershell
-node scripts/measure-html.mjs input.html output/layout-measurements.json `
-  --viewport-width 1280 --viewport-height 720
-```
+## Security and determinism
 
-## Recommended workflow
+- Author scripts and event handlers are stripped.
+- Browser network requests are blocked.
+- Remote images require `--allow-remote-assets`, are downloaded before measurement, and pass URL, DNS/IP, timeout, byte, and content-type checks.
+- Animations and transitions are disabled.
+- Fonts and images settle before boxes are read.
+- Browser execution has one total timeout.
 
-Generated creative HTML should use the guarded pipeline, which performs audit, repair, measurement, conversion, and PPTX generation in one command:
+## Editability
 
-```powershell
-npm run pptx -- html input.html output/html
-```
+Measured text, shapes, tables, and lines should remain native. Unsupported complex effects may use localized crops with an explicit fallback record. Full-slide rasterization is forbidden.
 
-Use the steps below only when diagnosing measurement behavior.
-
-### 1. Measure rendered HTML
-
-```powershell
-cd pptx-creator
-npm install
-npx playwright install chromium
-node scripts/measure-html.mjs examples/html-input/css-positioned-dashboard.html examples/html-input/layout-measurements.json
-```
-
-Output: `layout-measurements.json` with inch + pixel boxes per `data-pptx-id`.
-
-### 2. Convert HTML + measurements → manifest
-
-```powershell
-node scripts/html-to-manifest.mjs examples/html-input/css-positioned-dashboard.html output/deck.manifest.json `
-  --measurements examples/html-input/layout-measurements.json
-```
-
-When measurements are provided and slides contain `[data-pptx-kind]` elements, the adapter uses measured coordinates instead of auto-layout.
-
-### 3. Validate and render
-
-```powershell
-node scripts/run-python.mjs scripts/validate-manifest.py output/deck.manifest.json
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
-```
-
-## Measurement JSON schema
-
-```json
-{
-  "version": "0.1.0",
-  "source": "examples/html-input/css-positioned-dashboard.html",
-  "slideSize": { "preset": "wide", "width": 13.333, "height": 7.5, "unit": "in" },
-  "viewport": { "width": 1280, "height": 720 },
-  "elements": [
-    {
-      "id": "title",
-      "slideId": "slide-001",
-      "kind": "text",
-      "x": 0.938,
-      "y": 0.438,
-      "w": 11.458,
-      "h": 0.604,
-      "px": { "x": 90, "y": 42, "w": 1100, "h": 58 }
-    }
-  ]
-}
-```
-
-## Setup and CI
-
-- `node scripts/setup.mjs` reports Playwright Chromium availability.
-- Unit tests for px→inch conversion and manifest merge always run.
-- Playwright integration tests skip by default; set `PLAYWRIGHT_RUN=1` locally when Chromium is installed.
-
-Install Playwright browser:
-
-```powershell
-npx playwright install chromium
-```
-
-## Host agent responsibilities
-
-- Add `data-pptx-kind` and `data-pptx-id` to elements that need measured coordinates.
-- Keep generated creative slide canvases exactly 1280×720 so browser pixels map to PPT inches without scale drift.
-- Review merged manifest coordinates before rendering.
-- Rasterize only complex decorative regions as `image` assets.
-
-## Editability target
-
-CSS measurement workflow should reach Level 3–5. Prefer native text, shapes, and tables with measured boxes — not full-slide rasterization.
+Use `npm run setup -- html` to verify the selected browser capability and `npm run test:browser` for its integration suite.

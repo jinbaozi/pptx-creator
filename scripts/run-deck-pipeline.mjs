@@ -39,6 +39,10 @@ export async function clearConsumableOutputs(outputDir, protectedPaths = []) {
   }));
 }
 
+export function shouldCopyManifest(manifestPath, outputDir) {
+  return resolve(manifestPath) !== resolve(outputDir, "deck.manifest.json");
+}
+
 export function normalizeRepairLimit(value = 3) {
   const numeric = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 3;
   return Math.max(0, Math.min(3, numeric));
@@ -349,7 +353,9 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     await blockPipeline(resolvedManifest, resolvedOutput, steps, "reports", error instanceof Error ? error.message : String(error));
   }
 
-  if (options.copyManifest !== false) await copyFile(resolvedManifest, join(resolvedOutput, "deck.manifest.json"));
+  if (options.copyManifest !== false && shouldCopyManifest(resolvedManifest, resolvedOutput)) {
+    await copyFile(resolvedManifest, join(resolvedOutput, "deck.manifest.json"));
+  }
   stageGuard.enter("package");
   const packaged = await runPythonStep("package", [join(root, "scripts/package-output.py"), resolvedOutput]);
   steps.push(packaged);
