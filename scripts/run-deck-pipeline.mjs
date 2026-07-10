@@ -446,13 +446,13 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     ok: routePreflight.ok !== false
       && layout.ok
       && (mode !== "creative" || creativePreflightGate.passed)
-      && (mode !== "replica" || replicaProofAvailable),
+      && (mode !== "replica" || replicaProofAvailable || typeof options.buildReplicaProof === "function"),
     stdout: mode === "creative" ? `deckScore=${creativeReview.deckScore}; slopRisk=${creativeReview.slopRisk}; gate=${creativePreflightGate.passed ? "pass" : "block"}` : (routePreflight.stdout || fontPreflight.source),
     stderr: routePreflight.ok === false
       ? routePreflight.stderr
       : !layout.ok ? layout.stderr
         : mode === "creative" && !creativePreflightGate.passed ? creativePreflightGate.reasons.join("; ")
-          : (mode === "replica" && !replicaProofAvailable ? "strict replica fidelity proof capability unavailable" : "")
+          : (mode === "replica" && !replicaProofAvailable && typeof options.buildReplicaProof !== "function" ? "strict replica fidelity proof capability unavailable" : "")
   };
   stageGuard.enter(preflightLabel);
   steps.push(preflight);
@@ -479,10 +479,18 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const proofLabel = mode === "creative" ? "creative-proof" : mode === "replica" ? "fidelity-proof" : "editability-proof";
   stageGuard.enter(proofLabel);
   const replicaProof = mode === "replica"
-    ? await buildReplicaEvidence({
-      pptxPath: join(resolvedOutput, "final.pptx"), manifest, coverage, intermediate, route,
-      sourcePath: inputSource, renderPath: null
-    })
+    ? (typeof options.buildReplicaProof === "function"
+      ? await options.buildReplicaProof({
+        pptxPath: join(resolvedOutput, "final.pptx"), manifest, coverage, intermediate, route,
+        buildBaseEvidence: ({ renderPath, retryCount = 0 }) => buildReplicaEvidence({
+          pptxPath: join(resolvedOutput, "final.pptx"), manifest, coverage, intermediate, route,
+          sourcePath: inputSource, renderPath, retryCount
+        })
+      })
+      : await buildReplicaEvidence({
+        pptxPath: join(resolvedOutput, "final.pptx"), manifest, coverage, intermediate, route,
+        sourcePath: inputSource, renderPath: null
+      }))
     : null;
   if (replicaProof) {
     const replicaEvidenceSchema = JSON.parse(await readFile(join(root, "schemas/replica-evidence.schema.json"), "utf8"));
@@ -516,6 +524,23 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     await mkdir(previewDir, { recursive: true });
     const previewTitle = escapePreviewHtml(manifest.deck.title);
     await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>${previewTitle}</title><main><h1>${previewTitle}</h1><p>Creative quality: ${creativeQuality.gate.passed ? "PASS" : "BLOCK"}</p><ol>${manifest.slides.map((slide) => `<li>${escapePreviewHtml(slide.title)}</li>`).join("")}</ol></main>\n`, "utf8");
+  }
+  if (mode === "replica" && replicaProof) {
+    const quality = {
+      version: "0.1.0", mode: "replica", route,
+      status: replicaProof.accepted ? "passed" : "blocked",
+      fidelity: replicaProof.aggregate.fidelity,
+      nativeCoverage: replicaProof.aggregate.nativeCoverage,
+      editability: replicaProof.aggregate.editability,
+      fallbacks: replicaProof.aggregate.fallbacks,
+      retry: replicaProof.retry,
+      blockingFindings: replicaProof.blockingFindings
+    };
+    await writeFile(join(resolvedOutput, "quality-report.json"), `${JSON.stringify(quality, null, 2)}\n`, "utf8");
+    await writeFile(join(resolvedOutput, "quality-report.md"), `# Replica quality report\n\nStatus: **${replicaProof.accepted ? "PASS" : "BLOCK"}**\n\n- Route: ${route}\n- SSIM: ${replicaProof.aggregate.fidelity.ssim?.value ?? "N/A"}\n- Normalized MAE: ${replicaProof.aggregate.fidelity.normalizedMae?.value ?? "N/A"}\n- Native coverage: ${replicaProof.aggregate.nativeCoverage?.value ?? "N/A"}\n- Editability: L${replicaProof.aggregate.editability?.level ?? "N/A"}\n- Local raster fallbacks: ${replicaProof.aggregate.fallbacks?.length ?? 0}\n- Retry attempts: ${replicaProof.retry?.attempts?.length ?? 0}\n`, "utf8");
+    const previewDir = join(resolvedOutput, "preview");
+    await mkdir(previewDir, { recursive: true });
+    await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>Replica proof</title><main><h1>Replica proof: ${replicaProof.accepted ? "PASS" : "BLOCK"}</h1><p>SSIM ${replicaProof.aggregate.fidelity.ssim?.value ?? "N/A"}; native coverage ${replicaProof.aggregate.nativeCoverage?.value ?? "N/A"}</p><img src="slide-001.png" alt="Rendered slide"></main>\n`, "utf8");
   }
   let layoutSafetyStatus;
   try {

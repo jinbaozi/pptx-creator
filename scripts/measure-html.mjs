@@ -369,7 +369,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
           const style = window.getComputedStyle(node);
           const rect = node.getBoundingClientRect();
           const generatedId = `html-${String(slideIndex + 1).padStart(3, "0")}-${String(nodeIndex + 1).padStart(3, "0")}`;
-          const id = node.getAttribute("data-pptx-id") ?? node.getAttribute("data-id") ?? node.id ?? generatedId;
+          const id = node.getAttribute("data-pptx-id") || node.getAttribute("data-id") || node.id || generatedId;
           const tagName = node.tagName.toLowerCase();
           const pushDirectTextFragments = () => {
             if (!replicaMode || !hasVisibleChildElements(node)) return;

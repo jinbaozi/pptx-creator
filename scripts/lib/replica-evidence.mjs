@@ -163,3 +163,16 @@ export async function evaluateMeasuredReplicaEvidence(raw = {}, measuredBundle =
   };
   return evaluate(merged, { artifactsVerified: true, measurementsTrusted: true });
 }
+
+/** Bind externally computed metrics to the exact artifacts after independently
+ * digesting them. The unforgeable receipt stays private to this module. */
+export async function bindReplicaMeasurementReceipt(sourcePath, renderPath, metrics) {
+  const source = await digestArtifact(sourcePath);
+  const render = await digestArtifact(renderPath);
+  return {
+    ...structuredClone(metrics),
+    sourceSha256: source.sha256,
+    renderSha256: render.sha256,
+    [MEASUREMENT_RECEIPT]: true
+  };
+}

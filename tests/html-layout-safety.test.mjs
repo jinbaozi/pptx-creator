@@ -170,7 +170,7 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
     expect(repaired).toContain("marker-end=\"url(#pptx-auto-arrowhead-flow)\"");
   });
 
-  it("blocks strict HTML replica until real source-render comparison is available", async () => {
+  it("blocks strict HTML replica when real source-render comparison misses policy", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-html-pipeline-"));
     await expect(execFileAsync(process.execPath, [
       join(root, "scripts/pptx.mjs"),
@@ -193,7 +193,8 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
     const manifest = JSON.parse(await readFile(join(dir, "deck.manifest.json"), "utf8"));
     const evidence = JSON.parse(await readFile(join(dir, "replica-evidence.json"), "utf8"));
     const blocked = JSON.parse(await readFile(join(dir, "pipeline-blocked.json"), "utf8"));
-    expect(evidence).toMatchObject({ accepted: false, route: "html", capabilities: { sourceRenderComparison: false } });
+    expect(evidence).toMatchObject({ accepted: false, route: "html", capabilities: { sourceRenderComparison: true } });
+    expect(evidence.blockingFindings.join(" ")).toMatch(/threshold-failed/);
     expect(blocked).toMatchObject({ status: "blocked", blockedBy: "bounded-repair" });
     await expect(access(join(dir, "output-manifest.json"))).rejects.toThrow();
     expect(manifest.metadata).toMatchObject({ mode: "replica", inputType: "html", qualityProfile: "replica" });

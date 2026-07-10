@@ -7,6 +7,75 @@ import { fetchRemoteAssetSecure } from "./html-to-manifest.mjs";
 import { writeMeasurements } from "./measure-html.mjs";
 import { runDeckPipeline } from "./run-deck-pipeline.mjs";
 import { writeHtmlLayoutReport } from "./run-html-layout-check.mjs";
+import { withSettledHtmlPage } from "./lib/html-layout-audit.mjs";
+import { renderAndMeasureHtmlReplica } from "./lib/html-replica-proof.mjs";
+
+async function captureReplicaSourceAndFallbacks(inputPath, outputDir, measurements, manifest) {
+  const evidenceDir = join(outputDir, "evidence");
+  await mkdir(evidenceDir, { recursive: true });
+  const sourcePaths = [];
+  const fallbackPlans = [];
+  await withSettledHtmlPage(inputPath, {
+    viewportWidth: measurements.viewport.width,
+    viewportHeight: measurements.viewport.height,
+    javaScriptEnabled: false,
+    networkEnabled: false
+  }, async (page) => {
+    const slides = page.locator(".pptx-slide, [data-slide]");
+    const count = await slides.count();
+    for (let slideIndex = 0; slideIndex < Math.max(1, count); slideIndex += 1) {
+      const sourcePath = join(evidenceDir, `source-slide-${String(slideIndex + 1).padStart(3, "0")}.png`);
+      if (count) await slides.nth(slideIndex).screenshot({ path: sourcePath });
+      else await page.screenshot({ path: sourcePath, clip: { x: 0, y: 0, width: measurements.viewport.width, height: measurements.viewport.height } });
+      sourcePaths.push(sourcePath);
+    }
+    for (const [slideIndex, slide] of (manifest.slides ?? []).entries()) {
+      const effects = slide.replicaUnsupportedEffects ?? [];
+      for (const [effectIndex, effect] of effects.entries()) {
+        if (effect.elementId === "__slide-background") throw new Error("full-slide unsupported HTML effects cannot use a raster fallback");
+        const measurement = measurements.elements.find((item) => item.slideIndex === slideIndex && item.id === effect.elementId);
+        if (!measurement?.px || measurement.px.w >= measurements.viewport.width * 0.98 || measurement.px.h >= measurements.viewport.height * 0.98) {
+          throw new Error(`unsupported effect ${effect.elementId} does not have a safe localized crop`);
+        }
+        const fileName = `fallback-${String(slideIndex + 1).padStart(3, "0")}-${String(effectIndex + 1).padStart(3, "0")}.png`;
+        const cropPath = join(evidenceDir, fileName);
+        const slideBox = count ? await slides.nth(slideIndex).boundingBox() : { x: 0, y: 0 };
+        await page.screenshot({ path: cropPath, omitBackground: true, clip: {
+          x: Math.max(0, slideBox.x + measurement.px.x), y: Math.max(0, slideBox.y + measurement.px.y),
+          width: measurement.px.w, height: measurement.px.h
+        } });
+        const reason = [effect.filter && `filter:${effect.filter}`, effect.clipPath && `clip:${effect.clipPath}`, effect.backdropFilter && `backdrop-filter:${effect.backdropFilter}`, effect.backgroundImage && `background:${effect.backgroundImage}`].filter(Boolean).join("; ") || "unsupported-css-effect";
+        fallbackPlans.push({ slideIndex, elementId: effect.elementId, src: `evidence/${fileName}`, box: { x: measurement.x, y: measurement.y, w: measurement.w, h: measurement.h }, reason, zOrder: Number(measurement.style?.zIndex ?? 0) });
+      }
+    }
+  });
+  return { sourcePaths, fallbackPlans };
+}
+
+function applyLocalizedFallbacks(manifest, measurements, fallbackPlans) {
+  for (const plan of fallbackPlans) {
+    const slide = manifest.slides[plan.slideIndex];
+    const provenance = { kind: "raster", fullSlide: false, reason: plan.reason, bbox: { x: plan.box.x, y: plan.box.y, width: plan.box.w, height: plan.box.h }, zOrder: plan.zOrder, nativeAlternativesAttempted: ["native-shape", "native-gradient", "native-shadow"] };
+    slide.elements = (slide.elements ?? []).filter((item) => item.id !== plan.elementId);
+    slide.elements.push({ type: "cropped-asset", id: `${plan.elementId}-localized-fallback`, src: plan.src, ...plan.box, replicaFallback: provenance });
+    slide.replicaFallbacks = [...(slide.replicaFallbacks ?? []), provenance];
+    slide.replicaUnsupportedEffects = [];
+  }
+  const slideArea = measurements.viewport.width * measurements.viewport.height;
+  const rasterArea = fallbackPlans.reduce((sum, item) => sum + item.box.w / manifest.deck.size.width * measurements.viewport.width * item.box.h / manifest.deck.size.height * measurements.viewport.height, 0);
+  const nativeCoverage = Math.max(0, Math.min(1, 1 - rasterArea / (slideArea * Math.max(1, manifest.slides.length))));
+  const coverage = manifest.metadata.replicaSource.coverage;
+  coverage.nativeCoverage = Number(nativeCoverage.toFixed(4));
+  coverage.unsupportedEffects = [];
+  for (const [slideIndex, slide] of (coverage.slides ?? []).entries()) {
+    slide.unsupportedEffects = [];
+    const slideFallbackArea = fallbackPlans
+      .filter((item) => item.slideIndex === slideIndex)
+      .reduce((sum, item) => sum + item.box.w / manifest.deck.size.width * measurements.viewport.width * item.box.h / manifest.deck.size.height * measurements.viewport.height, 0);
+    slide.nativeCoverage = Number(Math.max(0, Math.min(1, 1 - slideFallbackArea / slideArea)).toFixed(4));
+  }
+  return coverage;
+}
 
 function parseArgs(argv) {
   const options = { maxAttempts: 3 };
@@ -92,7 +161,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
   const resolvedOutput = resolve(outputDir);
   await mkdir(resolvedOutput, { recursive: true });
   const manifestPath = join(resolvedOutput, "deck.manifest.json");
-  const mode = options.mode ?? "creative";
+  const mode = options.mode ?? "replica";
   const preparation = {};
   let summary = null;
   const deck = await runDeckPipeline(resolvedInput, resolvedOutput, {
@@ -105,7 +174,13 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
     prepareManifest: async () => {
       preparation.browserInput = await localizeHtmlRemoteAssets(resolvedInput, resolvedOutput, options);
       preparation.measurementsPath = join(resolvedOutput, "layout-measurements.json");
-      preparation.measurements = await writeMeasurements(preparation.browserInput, preparation.measurementsPath);
+      preparation.measurements = await writeMeasurements(preparation.browserInput, preparation.measurementsPath, {
+        replica: mode === "replica",
+        viewportWidth: options.viewportWidth,
+        viewportHeight: options.viewportHeight,
+        slideWidth: options.slideWidth,
+        slideHeight: options.slideHeight
+      });
       preparation.converted = await writeManifestFromHtml(preparation.browserInput, manifestPath, {
         measurements: preparation.measurements,
         designSystem: options.designSystem,
@@ -115,6 +190,14 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
       });
       if (preparation.converted.contentCoverage?.ratio !== 1) {
         throw new Error(`HTML pipeline requires 100% content coverage; received ${preparation.converted.contentCoverage?.ratio ?? "unknown"}.`);
+      }
+      if (mode === "replica" && preparation.measurements.elements.length === 0) {
+        throw new Error("strict HTML replica produced no visible DOM measurements");
+      }
+      if (mode === "replica") {
+        preparation.artifacts = await captureReplicaSourceAndFallbacks(preparation.browserInput, resolvedOutput, preparation.measurements, preparation.converted.manifest);
+        preparation.converted.replicaCoverage = applyLocalizedFallbacks(preparation.converted.manifest, preparation.measurements, preparation.artifacts.fallbackPlans);
+        await writeFile(manifestPath, `${JSON.stringify(preparation.converted.manifest, null, 2)}\n`, "utf8");
       }
       return { manifestPath };
     },
@@ -127,6 +210,11 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
         stderr: report.summary.criticalCount === 0 ? "" : `${report.summary.criticalCount} critical HTML layout issue(s)`
       };
     },
+    buildReplicaProof: mode === "replica" ? async ({ manifest, coverage, intermediate, buildBaseEvidence }) => renderAndMeasureHtmlReplica({
+      root: resolve(new URL("..", import.meta.url).pathname), outputDir: resolvedOutput,
+      sourcePaths: preparation.artifacts.sourcePaths, manifest, measurements: preparation.measurements,
+      coverage, intermediate, buildBaseEvidence
+    }) : undefined,
     beforePackage: async () => {
       summary = {
         input: resolvedInput,

@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -73,14 +74,17 @@ def render_pptx_preview(pptx_path: Path, output_dir: Path) -> dict[str, Any]:
 
     env = os.environ.copy()
     env.setdefault("SAL_USE_VCLPLUGIN", "svp")
-    result = subprocess.run(
-        [lo["binary"], "--headless", "--convert-to", "png", "--outdir", str(output_dir), str(pptx_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=120,
-        env=env,
-    )
+    with tempfile.TemporaryDirectory(prefix="pptx-lo-profile-") as profile:
+        env["HOME"] = profile
+        env["XDG_CONFIG_HOME"] = str(Path(profile) / ".config")
+        result = subprocess.run(
+            [lo["binary"], f"-env:UserInstallation={Path(profile).as_uri()}", "--headless", "--convert-to", "png", "--outdir", str(output_dir), str(pptx_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+            env=env,
+        )
     if result.returncode != 0:
         return {
             "version": PREVIEW_VERSION,
