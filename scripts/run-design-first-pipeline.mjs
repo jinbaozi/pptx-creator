@@ -1,15 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { loadDesignFirstArtifacts } from "./lib/design-first-loader.mjs";
-import { compileDesignFirstManifest } from "./lib/manifest-compiler.mjs";
-import { buildRunIndex, writeRunIndex } from "./lib/run-index.mjs";
-import { validateAssetRegistry, validateSourceRegistry } from "./lib/registry.mjs";
+import { compileDeckPlan, validateDeckPlan } from "./lib/deck-plan.mjs";
 import { runDeckPipeline } from "./run-deck-pipeline.mjs";
 
 function parseArgs(argv) {
   const [inputDir, outputDir, ...rest] = argv;
   if (!inputDir || !outputDir) {
-    throw new Error("Usage: node scripts/run-design-first-pipeline.mjs <input-dir> <output-dir> [--design-system path] [--design-system-name name] [--mode creative|replica] [--emit-run-index] [--validate-registry] [--run-id id] [--input-summary text]");
+    throw new Error("Usage: node scripts/run-design-first-pipeline.mjs <deck.plan.json|input-dir> <output-dir> [--design-system path] [--design-system-name name]");
   }
   const options = { mode: "creative" };
   for (let i = 0; i < rest.length; i += 1) {
@@ -24,32 +21,16 @@ function parseArgs(argv) {
   return { inputDir, outputDir, options };
 }
 
-function readJsonIfExists(filePath) {
-  if (!fs.existsSync(filePath)) return null;
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
-}
-
-function validateRegistries(outputDir) {
-  const sources = readJsonIfExists(path.join(outputDir, "sources.json"));
-  const assets = readJsonIfExists(path.join(outputDir, "assets", "asset-registry.json"));
-  const issues = [];
-  if (sources) issues.push(...validateSourceRegistry(sources).issues);
-  if (assets) issues.push(...validateAssetRegistry(assets).issues);
-  const blocking = issues.filter((issue) => issue.severity === "error");
-  if (blocking.length > 0) {
-    throw new Error(`registry validation failed: ${blocking.map((issue) => issue.message).join("; ")}`);
-  }
-}
-
 function makeDesignSourceManifestRelative(manifest, outputDir) {
   const source = manifest.designSystem?.source;
-  if (!source || path.isAbsolute(source)) return manifest;
+  if (!source) return manifest;
   const absoluteSource = path.resolve(source);
+  const canonicalOutput = fs.realpathSync(outputDir);
   return {
     ...manifest,
     designSystem: {
       ...manifest.designSystem,
-      source: path.relative(outputDir, absoluteSource).replace(/\\/g, "/")
+      source: path.relative(canonicalOutput, absoluteSource).replace(/\\/g, "/")
     }
   };
 }
@@ -62,41 +43,30 @@ async function main() {
     options.designSystemSource = path.resolve(options.designSystemSource);
   }
 
-  const artifacts = loadDesignFirstArtifacts(inputDir);
-  const manifest = makeDesignSourceManifestRelative(compileDesignFirstManifest(artifacts, options), outputDir);
+  const planPath = fs.statSync(inputDir).isDirectory() ? path.join(inputDir, "deck.plan.json") : inputDir;
+  const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
+  const validation = validateDeckPlan(plan);
+  if (!validation.valid) throw new Error(`deck.plan invalid: ${validation.errors.join("; ")}`);
+  const manifest = makeDesignSourceManifestRelative(compileDeckPlan(plan, options), outputDir);
   const manifestPath = path.join(outputDir, "deck.manifest.json");
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
   const designFirstOptions = {
-    inputType: "design-first",
-    inputSource: path.join(inputDir, "deck.storyboard.json"),
+    inputType: "text",
+    inputSource: planPath,
     copyManifest: false,
     mode: options.mode,
     strictLayoutSafety: true,
     protectedInputs: [
-      path.join(inputDir, "deck.storyboard.json"),
-      path.join(inputDir, "deck.design-direction.json"),
-      path.join(inputDir, "slide-design-specs.json")
+      planPath
     ],
     beforePackage: async () => {
-      if (options.validateRegistry) validateRegistries(outputDir);
-      if (options.emitRunIndex) {
-        const run = await buildRunIndex(outputDir, {
-          runId: options.runId ?? new Date().toISOString().slice(0, 10),
-          mode: options.mode,
-          input: {
-            type: "design-first",
-            summary: options.inputSummary ?? artifacts.storyboard?.title ?? "design-first deck"
-          }
-        });
-        await writeRunIndex(outputDir, run);
-      }
+      const target = path.join(outputDir, "deck.plan.json");
+      if (path.resolve(planPath) !== path.resolve(target)) fs.copyFileSync(planPath, target);
     }
   };
   await runDeckPipeline(manifestPath, outputDir, designFirstOptions);
-  console.log(`Consistency report written: ${path.join(outputDir, "consistency-report.json")}`);
-
-  console.log(`Design-first pipeline complete: ${path.join(outputDir, "final.pptx")}`);
+  console.log(`Creative text pipeline complete: ${path.join(outputDir, "final.pptx")}`);
 }
 
 main().catch((error) => {

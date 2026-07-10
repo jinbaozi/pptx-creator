@@ -95,27 +95,26 @@ output/
   output-manifest.json
 ```
 
-## Design-first 创作流程
+## Creative deck plan 创作流程
 
 适合从文本生成更精美、更有变化的商务或技术 PPT：
 
 ```bash
-npm run pptx -- text examples/design-first/compiler-roadshow output/design-first --creative
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --creative
 ```
 
-核心中间产物（design artifacts）：
+唯一创意中间产物是无坐标的 `deck.plan.json`：
 
 ```text
-deck.storyboard.json
-deck.design-direction.json
-slide-design-specs.json
+deck.plan.json
 deck.manifest.json
 final.pptx
-visual-review.json
-run.json
+quality-report.json
+quality-report.md
+preview/index.html
 ```
 
-设计产物由 storyboard、design direction 和 slide design specs 组成，按 schema 落盘后由编译器转成确定性的 `deck.manifest.json`，再进入统一管线。
+deck plan 记录设计判断、三项上下文旋钮、受众、叙事节拍、页面信息、布局族以及内容/素材引用，再由各布局族的真实编译器转成确定性的 `deck.manifest.json`。方向候选仅在存在实质歧义或高风险时可选；HTML 不是文本路线的必经中间层。
 
 ## HTML、图片和 PDF 输入
 
@@ -154,10 +153,8 @@ Host Agent
   Critic       -> review, repair patch, quality gates
         |
         v
-Design-first artifacts
-  deck.storyboard.json
-  deck.design-direction.json
-  slide-design-specs.json
+Creative intermediate
+  deck.plan.json
         |
         v
 deck.manifest.json
@@ -166,7 +163,7 @@ deck.manifest.json
         v
 Deterministic scripts
   validate-manifest.py
-  compile-design-first.mjs
+  deck-plan.mjs
   html-to-manifest.mjs
   measure-html.mjs
   image/pdf hint scripts

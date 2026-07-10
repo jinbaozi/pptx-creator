@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
+import { applyContextualTaste, editabilityLevelFromCounter, evaluateCreativeGate, qualityFromReview } from "./lib/contextual-taste.mjs";
 import { preflightFonts } from "./lib/font-preflight.mjs";
 import { writePipelineReports } from "./lib/pipeline-report-writer.mjs";
 import { runPython } from "./lib/python-utils.mjs";
@@ -54,6 +55,15 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "run.json",
   ".pptx-generated-assets.json.tmp"
 ]);
+
+export function escapePreviewHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 
 async function removeOwnedPath(candidate, protectedSet) {
   if (protectedSet.has(candidate)) return;
@@ -302,7 +312,17 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
 
   const coverage = manifest.metadata?.replicaSource?.coverage;
   const replicaProofAvailable = hasCompleteReplicaProof(coverage);
-  const creativeReview = mode === "creative" ? reviewManifest(manifest, { mode: "creative" }) : null;
+  const planIntent = manifest.metadata?.designIntent?.source === "deck.plan" ? {
+    designRead: manifest.metadata.designIntent.read,
+    dials: manifest.metadata.designIntent.dials,
+    intentOverride: manifest.metadata.designIntent.intentOverride
+  } : { designRead: "Creative manifest", dials: { compositionVariance: 50, visualDensity: 50, visualEnergy: 50 } };
+  const creativeReview = mode === "creative"
+    ? applyContextualTaste(reviewManifest(manifest, { mode: "creative" }), manifest, planIntent)
+    : null;
+  const creativePreflightGate = mode === "creative"
+    ? evaluateCreativeGate({ ...creativeReview, editabilityLevel: 5 }, { mode, fontPreflight })
+    : null;
   let routePreflight = { ok: true, stdout: "" };
   if (typeof options.routePreflight === "function") {
     try {
@@ -323,12 +343,14 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     label: preflightLabel,
     ok: routePreflight.ok !== false
       && layout.ok
-      && (mode !== "creative" || (creativeReview.deckScore >= 70 && creativeReview.slopRisk <= 60))
+      && (mode !== "creative" || creativePreflightGate.passed)
       && (mode !== "replica" || replicaProofAvailable),
-    stdout: mode === "creative" ? `deckScore=${creativeReview.deckScore}; slopRisk=${creativeReview.slopRisk}` : (routePreflight.stdout || fontPreflight.source),
+    stdout: mode === "creative" ? `deckScore=${creativeReview.deckScore}; slopRisk=${creativeReview.slopRisk}; gate=${creativePreflightGate.passed ? "pass" : "block"}` : (routePreflight.stdout || fontPreflight.source),
     stderr: routePreflight.ok === false
       ? routePreflight.stderr
-      : !layout.ok ? layout.stderr : (mode === "replica" && !replicaProofAvailable ? "strict replica fidelity proof capability unavailable" : "")
+      : !layout.ok ? layout.stderr
+        : mode === "creative" && !creativePreflightGate.passed ? creativePreflightGate.reasons.join("; ")
+          : (mode === "replica" && !replicaProofAvailable ? "strict replica fidelity proof capability unavailable" : "")
   };
   stageGuard.enter(preflightLabel);
   steps.push(preflight);
@@ -360,8 +382,11 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   if (replicaProof) {
     await writeFile(join(resolvedOutput, "replica-fidelity-proof.json"), `${JSON.stringify(replicaProof, null, 2)}\n`, "utf8");
   }
+  const creativeQuality = mode === "creative"
+    ? qualityFromReview(creativeReview, editabilityLevelFromCounter(intermediate.editabilityCounter), fontPreflight)
+    : null;
   const proofOk = mode === "creative"
-    ? creativeReview.deckScore >= 70 && creativeReview.slopRisk <= 60
+    ? creativeQuality.gate.passed
     : mode === "replica" ? replicaProof.status === "passed" : (intermediate.editabilityCounter?.text ?? 0) > 0;
   steps.push({ label: proofLabel, ok: proofOk });
   const repairLimit = normalizeRepairLimit(options.maxRepairAttempts ?? 3);
@@ -374,6 +399,13 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
 
   if (mode === "creative") {
     await writeFile(join(resolvedOutput, "visual-review.json"), `${JSON.stringify(creativeReview, null, 2)}\n`, "utf8");
+    await writeFile(join(resolvedOutput, "quality-report.json"), `${JSON.stringify(creativeQuality, null, 2)}\n`, "utf8");
+    const qualityMarkdown = `# Creative quality report\n\nStatus: **${creativeQuality.gate.passed ? "PASS" : "BLOCK"}**\n\n- Deck score: ${creativeQuality.deckScore} (minimum 80)\n- Slide floor: ${Math.min(...creativeQuality.slides.map((slide) => slide.score))} (minimum 70)\n- Slop risk: ${creativeQuality.slopRisk} (maximum 20)\n- Critical findings: ${creativeQuality.criticalFindings} (required 0)\n- Editability: L${creativeQuality.editabilityLevel} (minimum L4)\n- Font preflight: ${creativeQuality.compatibility.source}; ${creativeQuality.compatibility.fallback.length} fallback(s)\n`;
+    await writeFile(join(resolvedOutput, "quality-report.md"), qualityMarkdown, "utf8");
+    const previewDir = join(resolvedOutput, "preview");
+    await mkdir(previewDir, { recursive: true });
+    const previewTitle = escapePreviewHtml(manifest.deck.title);
+    await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>${previewTitle}</title><main><h1>${previewTitle}</h1><p>Creative quality: ${creativeQuality.gate.passed ? "PASS" : "BLOCK"}</p><ol>${manifest.slides.map((slide) => `<li>${escapePreviewHtml(slide.title)}</li>`).join("")}</ol></main>\n`, "utf8");
   }
   let layoutSafetyStatus;
   try {

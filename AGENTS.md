@@ -66,17 +66,11 @@ Host agent reasoning ──► DESIGN.md selection ──► design artifacts (o
 
 Built-in design systems: `business-neutral`, `warm-editorial`, `paper-minimal`, `dark-tech`, `ai-infra`, `product-roadshow`, `developer-docs`, `dashboard-data`, `premium-black`, `chinese-government`, `enterprise-blueprint`, `executive-crimson`, `finance-boardroom`.
 
-### 2. Design-first pipeline (creative decks)
+### 2. Creative text pipeline
 
-For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and write three artifacts before touching the manifest:
+For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and write one coordinate-free `deck.plan.json` version `0.1.0`. It carries the design read, contextual dials, audience, narrative beats, slide messages, selected layout families, and content/asset references.
 
-```
-deck.storyboard.json       (Planner role: audience, narrative arc, slide beats)
-deck.design-direction.json (Art Director role: visual direction, motion, tone)
-slide-design-specs.json    (Slide Designer role: per-slide layout, components, content)
-```
-
-These are compiled by `scripts/compile-design-first.mjs` (logic in `scripts/lib/manifest-compiler.mjs`) into the same `deck.manifest.json` shape the renderer expects. Diagram and chart kinds (`layeredArchitecture`, `compilerPipeline`, `capabilityStack`, `swimlane`, `matrixMap`, `stackedBar`, `kpiGroup`, `sparkline`, etc.) expand into native text/shape/line primitives at compile time, so the renderer stays PPTX-only.
+`scripts/lib/deck-plan.mjs` validates each advertised archetype and compiles materially distinct native geometry into `deck.manifest.json`. Direction candidates are optional only for material ambiguity or high risk. HTML is optional only when explicitly requested or necessary; it is not a required text intermediate.
 
 ### 3. Manifest → PPTX (manifest-first)
 

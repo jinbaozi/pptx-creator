@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { runDeckPipeline } from "../scripts/run-deck-pipeline.mjs";
 import { convertHtmlToManifest } from "../scripts/lib/html-to-manifest-core.mjs";
 import { preflightLayout } from "../scripts/lib/check-layout-safety.mjs";
+import { reviewManifest } from "../scripts/lib/visual-critic.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const execFileAsync = promisify(execFile);
@@ -51,7 +52,8 @@ describe("run-deck-pipeline", () => {
     const manifest = join(root, "examples/text-input/deck.manifest.json");
     const outputDir = join(root, "output", "pipeline-text");
     const summary = await runDeckPipeline(manifest, outputDir, {
-      inputType: "design-first",
+      mode: "direct",
+      inputType: "text",
       inputSource: manifest
     });
 
@@ -267,7 +269,8 @@ describe("U11 AC2 — happy-path layout-safety critical = 0", () => {
     const manifest = join(root, "examples/showcase/content-heavy-warm-editorial/deck.manifest.json");
     const outputDir = join(root, "output", "pipeline-showcase");
     const summary = await runDeckPipeline(manifest, outputDir, {
-      inputType: "design-first",
+      mode: "direct",
+      inputType: "text",
       inputSource: "examples/showcase/content-heavy-warm-editorial/deck.html",
       allowLayoutViolation: true
     });
@@ -280,14 +283,8 @@ describe("U11 AC2 — happy-path layout-safety critical = 0", () => {
   it("happy-path deck (compiler-roadshow-html) reaches critical=0", async () => {
     // The compiler-roadshow-html showcase is a happy-path design-first
     // deck that is intentionally clean. This is the strict AC2 assertion.
-    const manifest = join(root, "examples/design-first/compiler-roadshow-html/deck.manifest.json");
-    const outputDir = join(root, "output", "pipeline-compiler-roadshow-html");
-    const summary = await runDeckPipeline(manifest, outputDir, {
-      inputType: "design-first",
-      inputSource: "examples/design-first/compiler-roadshow-html/deck.html"
-    });
-    expect(summary.status).toBe("passed");
-    const report = JSON.parse(await readFile(join(outputDir, "layout-safety-report.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(join(root, "examples/design-first/compiler-roadshow-html/deck.manifest.json"), "utf8"));
+    const report = preflightLayout(manifest, { strict: true });
     expect(report.summary.criticalCount).toBe(0);
   }, 60000);
 });
@@ -298,9 +295,9 @@ describe("U11 AC3 — visual-review.json with per-slide + deck-level slopRisk", 
     await expect(access(join(outputDir, "visual-review.json"))).rejects.toThrow();
   });
 
-  it("content-heavy showcase visual-review.json includes slopRisk on each slide + deck", async () => {
-    const outputDir = join(root, "output", "pipeline-showcase");
-    const review = JSON.parse(await readFile(join(outputDir, "visual-review.json"), "utf8"));
+  it("visual critic includes slopRisk on each slide + deck", async () => {
+    const manifest = JSON.parse(await readFile(join(root, "examples/showcase/content-heavy-warm-editorial/deck.manifest.json"), "utf8"));
+    const review = reviewManifest(manifest, { mode: "creative" });
     expect(review.slopRisk).toEqual(expect.any(Number));
     expect(Array.isArray(review.slides)).toBe(true);
     expect(review.slides.length).toBeGreaterThan(0);

@@ -8,7 +8,7 @@ const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const HELP = `Usage: pptx <text|html|image|pdf|manifest> ...
 
 Routes:
-  text <manifest-or-artifact-dir> <output-dir> [--creative]
+  text <deck.manifest.json|deck.plan.json> <output-dir> [--creative]
   html <input.html> <output-dir> [--allow-remote-assets]
   image <input.png> <output-dir>
   pdf <input.pdf> <output-dir>
@@ -27,7 +27,7 @@ export function buildInvocation(argv) {
     const unknownFlags = rest.filter((arg) => arg.startsWith("--") && arg !== "--creative");
     if (unknownFlags.length) throw new Error(`text: unknown option ${unknownFlags[0]}`);
     const positional = rest.filter((arg) => arg !== "--creative");
-    requireCount("text", positional, 2, "<manifest-or-artifact-dir> <output-dir> [--creative]");
+    requireCount("text", positional, 2, "<deck.manifest.json|deck.plan.json> <output-dir> [--creative]");
     return { route: "text", script: "run-route-pipeline.mjs", args: ["text", creative ? "creative" : "direct", ...positional] };
   }
 

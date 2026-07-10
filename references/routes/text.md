@@ -2,7 +2,7 @@
 
 ## Trigger
 
-Select for text, outlines, an authored manifest, or design-first artifacts. Use `--creative` only for a directory containing the three design-first artifacts; otherwise run the authored manifest directly.
+Select for text, outlines, an authored manifest, or a creative `deck.plan.json`. Use `--creative` only for a deck plan; otherwise run the authored manifest directly.
 
 ## Exclusions
 
@@ -10,15 +10,17 @@ Do not select when HTML, an image, or a PDF defines the visual layout, or when a
 
 ## Public command
 
-npm run pptx -- text <manifest-or-artifact-dir> <output-dir> [--creative]
+npm run pptx -- text <deck.manifest.json|deck.plan.json> <output-dir> [--creative]
 
 ## Inputs and outputs
 
-Direct input is a `0.2.0` manifest; creative input is a storyboard/design-direction/slide-spec directory. Output is the existing pipeline output directory.
+Direct input is a `0.2.0` manifest; creative input is a coordinate-free `deck.plan.json` version `0.1.0`. HTML generation is optional only when explicitly requested or necessary and is never a mandatory text intermediate.
+
+Successful creative output contains `final.pptx`, `deck.manifest.json`, `deck.plan.json`, `quality-report.json`, `quality-report.md`, `output-manifest.json`, and `preview/index.html`.
 
 ## Blocking conditions
 
-Block on missing input/output, invalid manifest metadata, missing creative artifacts, failed quality gates, or more than three repair attempts.
+Block on missing input/output, invalid manifest metadata, an invalid deck plan, failed quality gates, or more than three repair attempts.
 
 ## Next references
 

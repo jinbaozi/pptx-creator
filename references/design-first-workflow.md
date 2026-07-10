@@ -1,47 +1,27 @@
-# Design-First Creative Deck Workflow
+# Creative text workflow
 
-Design-first mode is the default route for creative text-to-PPTX work. It gives the host agent room to plan story and visual direction before compiling a deterministic `deck.manifest.json`.
+Creative text work uses one coordinate-free intermediate: `deck.plan.json`. The host agent writes the plan; deterministic code validates each selected layout family, compiles native geometry into `deck.manifest.json`, renders the editable deck, and applies the creative quality gate.
 
-## Creative mode
-
-Use Creative mode when the user asks for a polished business, technical, roadshow, product, research, or training deck from text or mixed source material.
-
-Required artifacts (design artifacts):
+## Artifacts
 
 ```text
-output/deck.storyboard.json
-output/deck.design-direction.json
-output/slide-design-specs.json
-output/deck.manifest.json
-output/final.pptx                    # editable PPTX
-output/visual-review.json
-output/run.json
+deck.plan.json
+deck.manifest.json
+final.pptx
+quality-report.json
+quality-report.md
+output-manifest.json
+preview/index.html
 ```
 
-Flow:
+The plan contains a one-line design read, contextual composition/density/energy dials, audience, narrative beats, slide messages, a selected layout family, and content/asset references. It never contains coordinates.
 
-1. Planner writes `deck.storyboard.json`.
-2. Art Director writes `deck.design-direction.json`.
-3. Slide Designer writes `slide-design-specs.json`.
-4. Compiler resolves layout archetypes and writes `deck.manifest.json`.
-5. Existing pipeline renders `final.pptx` (editable PPTX).
-6. Visual critic writes `visual-review.json`.
-7. Repair loop applies bounded changes when scores are below threshold.
+Direction candidates are optional. Use them only when material ambiguity or high risk makes a single direction unsafe; candidate count, scoring, and recommendation are host-agent judgments, never fixed deterministic outputs.
 
-### Strict replica boundary
+Text remains manifest-first. HTML is optional only when explicitly requested or genuinely necessary for source-defined layout; it is not a creative intermediate.
 
-Strict HTML, image, or PDF replica work must not be loosened by creative design exploration. Replica mode may bypass design artifacts when source fidelity is the primary objective, but the replica path must keep the original background, layout, typography, color, content, tone, and effects intact.
+## Gate
 
-## Replica mode
+Creative output passes only when deck score is at least 80, every slide is at least 70, slop risk is at most 20, critical findings are zero, and editability is at least L4. Contextual checks come from the design read and dials. Explicit user brand and source intent override generic heuristics. Font compatibility is reported from real font preflight data.
 
-Use Replica mode for strict HTML, image, or PDF reconstruction. Outside references may help identify missing assets or fonts, but must not change the source background, layout, typography, color, content, tone, or effects.
-
-Replica mode may bypass design-first artifacts and write `deck.manifest.json` directly when source fidelity is the primary objective.
-
-## Agent responsibilities
-
-- Keep factual claims sourced when web research influences the deck.
-- Choose or read a `DESIGN.md` before writing design direction.
-- Prefer native PPTX text, shapes, tables, charts, and lines.
-- Do not lower editability to hide layout problems.
-- Report rasterized regions honestly.
+Replica routes do not run this taste gate and must preserve source fidelity.

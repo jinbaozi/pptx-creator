@@ -96,27 +96,26 @@ output/
   output-manifest.json
 ```
 
-## Design-First Workflow
+## Creative Deck Plan Workflow
 
 Use this for polished business, product, technical, roadshow, research, or training decks:
 
 ```bash
-npm run pptx -- text examples/design-first/compiler-roadshow output/design-first --creative
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --creative
 ```
 
-Core design artifacts:
+The single coordinate-free creative intermediate is `deck.plan.json`:
 
 ```text
-deck.storyboard.json
-deck.design-direction.json
-slide-design-specs.json
+deck.plan.json
 deck.manifest.json
 final.pptx
-visual-review.json
-run.json
+quality-report.json
+quality-report.md
+preview/index.html
 ```
 
-Design artifacts (storyboard, design direction, and slide design specs) are written under JSON schemas and compiled into a deterministic `deck.manifest.json` before entering the unified pipeline.
+The plan records the design read, three contextual dials, audience, narrative beats, slide messages, layout families, and content/asset references. Family-specific compilers turn it into a deterministic `deck.manifest.json`. Direction candidates are optional only for material ambiguity or high risk; HTML is not a mandatory text intermediate.
 
 ## HTML, Image, and PDF Inputs
 
@@ -153,10 +152,8 @@ Host Agent
   Critic       -> review, repair patch, quality gates
         |
         v
-Design-first artifacts
-  deck.storyboard.json
-  deck.design-direction.json
-  slide-design-specs.json
+Creative intermediate
+  deck.plan.json
         |
         v
 deck.manifest.json
@@ -165,7 +162,7 @@ deck.manifest.json
         v
 Deterministic scripts
   validate-manifest.py
-  compile-design-first.mjs
+  deck-plan.mjs
   html-to-manifest.mjs
   measure-html.mjs
   image/pdf hint scripts

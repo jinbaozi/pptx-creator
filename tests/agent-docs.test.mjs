@@ -69,10 +69,9 @@ describe("universal Agent Skill packaging", () => {
     const workflow = await read("references/design-first-workflow.md");
     expect(skill).toContain("references/routes/text.md");
     expect(textRoute).toContain("references/design-first-workflow.md");
-    expect(workflow).toMatch(/deck\.storyboard\.json/);
-    expect(workflow).toMatch(/deck\.design-direction\.json/);
-    expect(workflow).toMatch(/slide-design-specs\.json/);
-    expect(workflow).toMatch(/Replica mode/i);
+    expect(workflow).toMatch(/deck\.plan\.json/);
+    expect(workflow).not.toMatch(/deck\.storyboard\.json|deck\.design-direction\.json|slide-design-specs\.json/);
+    expect(workflow).toMatch(/Replica routes/i);
   });
 
   it("keeps bilingual project documentation aligned with the skill layout", async () => {

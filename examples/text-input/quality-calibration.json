@@ -1,0 +1,5 @@
+{
+  "clean": { "deckScore": 88, "slides": [{ "id": "s1", "score": 82 }, { "id": "s2", "score": 78 }], "slopRisk": 12, "criticalFindings": 0, "editabilityLevel": 5 },
+  "risky": { "deckScore": 62, "slides": [{ "id": "s1", "score": 55 }], "slopRisk": 48, "criticalFindings": 2, "editabilityLevel": 3 },
+  "borderline": { "deckScore": 79, "slides": [{ "id": "s1", "score": 69 }], "slopRisk": 21, "criticalFindings": 0, "editabilityLevel": 4 }
+}
