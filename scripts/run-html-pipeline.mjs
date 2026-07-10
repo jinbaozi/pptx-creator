@@ -54,14 +54,20 @@ export async function localizeHtmlRemoteAssets(inputPath, outputDir, options = {
   const assetsDir = join(resolve(outputDir), "assets");
   await mkdir(assetsDir, { recursive: true });
   let localized = html;
+  const generatedFiles = [];
   for (const [index, url] of urls.entries()) {
     const suffix = extname(new URL(url).pathname).toLowerCase();
     const extension = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(suffix) ? suffix : ".img";
     const fileName = `remote-source-${String(index + 1).padStart(3, "0")}${extension}`;
     const data = await (options.fetchRemoteAsset ?? fetchRemoteAssetSecure)(url, options.remoteAssetLimits);
     await writeFile(join(assetsDir, fileName), data);
+    generatedFiles.push(`assets/${fileName}`);
     localized = localized.split(url).join(`assets/${fileName}`);
   }
+  await writeFile(join(resolve(outputDir), ".pptx-generated-assets.json"), `${JSON.stringify({
+    version: "0.1.0",
+    files: generatedFiles
+  }, null, 2)}\n`, "utf8");
   const localizedPath = join(resolve(outputDir), "deck.localized-input.html");
   await writeFile(localizedPath, localized, "utf8");
   return localizedPath;

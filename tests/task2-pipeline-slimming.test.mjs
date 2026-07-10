@@ -81,14 +81,22 @@ describe("Task 2 single pipeline contract", () => {
     for (const name of ["html-layout-report.json", "layout-measurements.json", "deck.localized-input.html"]) {
       await writeFile(join(dir, name), "stale-html", "utf8");
     }
-    for (const name of ["inputHints.json", "image-hints.json", "image-replica-analysis.json", "replica-layer-plan.json", "visual-regression-report.json"]) {
+    for (const name of [
+      "inputHints.json", "image-hints.json", "image-replica-analysis.json", "replica-layer-plan.json",
+      "visual-regression-report.json", "preview-diff-slide-001.json", "deck.manifest.skeleton.json"
+    ]) {
       await writeFile(join(dir, name), "stale-route", "utf8");
     }
     await mkdir(join(dir, "html-preview"));
     await writeFile(join(dir, "html-preview", "slide-001.png"), "stale-preview", "utf8");
     await mkdir(join(dir, "assets"));
-    await writeFile(join(dir, "assets", "remote-source-001.png"), "stale-remote", "utf8");
+    await writeFile(join(dir, "assets", "remote-source-001.png"), "stale-generated", "utf8");
+    await writeFile(join(dir, "assets", "remote-source-user.png"), "keep-prefix", "utf8");
     await writeFile(join(dir, "assets", "user-owned.png"), "keep", "utf8");
+    await writeFile(join(dir, ".pptx-generated-assets.json"), JSON.stringify({
+      version: "0.1.0",
+      files: ["assets/remote-source-001.png"]
+    }), "utf8");
 
     const summary = await pipeline.runDeckPipeline(manifestPath, dir);
     expect(summary.status).toBe("passed");
@@ -98,13 +106,32 @@ describe("Task 2 single pipeline contract", () => {
     const outputManifest = JSON.parse(await readFile(join(dir, "output-manifest.json"), "utf8"));
     for (const stale of [
       "html-layout-report.json", "layout-measurements.json", "deck.localized-input.html", "html-preview",
-      "inputHints.json", "image-hints.json", "image-replica-analysis.json", "replica-layer-plan.json", "visual-regression-report.json"
+      "inputHints.json", "image-hints.json", "image-replica-analysis.json", "replica-layer-plan.json",
+      "visual-regression-report.json", "preview-diff-slide-001.json", "deck.manifest.skeleton.json"
     ]) {
       expect(outputManifest.files).not.toContain(stale);
       await expect(access(join(dir, stale))).rejects.toThrow();
     }
     await expect(access(join(dir, "assets", "remote-source-001.png"))).rejects.toThrow();
+    await expect(access(join(dir, "assets", "remote-source-user.png"))).resolves.toBeUndefined();
     await expect(access(join(dir, "assets", "user-owned.png"))).resolves.toBeUndefined();
+    expect(outputManifest.files).not.toContain(".pptx-generated-assets.json");
+  }, 60000);
+
+  it("preserves a protected manifest nested inside a recursively cleaned route directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-nested-protected-"));
+    const previewDir = join(dir, "preview");
+    await mkdir(previewDir);
+    const manifest = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    manifest.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    const manifestPath = join(previewDir, "deck.manifest.json");
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    await writeFile(join(previewDir, "stale.png"), "stale-preview", "utf8");
+
+    const summary = await pipeline.runDeckPipeline(manifestPath, dir);
+    expect(summary.status).toBe("passed");
+    await expect(access(manifestPath)).resolves.toBeUndefined();
+    await expect(access(join(previewDir, "stale.png"))).rejects.toThrow();
   }, 60000);
 
   it("rejects replica proof when the PPTX archive contains fewer native objects than source coverage", async () => {

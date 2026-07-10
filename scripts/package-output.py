@@ -28,7 +28,11 @@ def main() -> None:
         fail(f"missing output files: {', '.join(missing)}")
     manifest = {
         "outputDir": str(output_dir),
-        "files": sorted(path.name for path in output_dir.iterdir() if path.name != "output-manifest.json"),
+        "files": sorted(
+            path.name
+            for path in output_dir.iterdir()
+            if path.name not in {"output-manifest.json", ".pptx-generated-assets.json"}
+        ),
     }
     (output_dir / "output-manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"

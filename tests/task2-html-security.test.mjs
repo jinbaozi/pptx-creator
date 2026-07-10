@@ -60,6 +60,8 @@ describe("Task 2 HTML remote asset security", () => {
     expect(fetched).toHaveLength(4);
     expect(html).not.toContain("https://");
     expect(html.match(/assets\/remote-source-\d{3}/g)).toHaveLength(4);
+    const ownership = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(join(dir, ".pptx-generated-assets.json"), "utf8")));
+    expect(ownership.files).toHaveLength(4);
   });
 
   it("blocks loopback, private, and link-local destinations even with opt-in", async () => {

@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
@@ -30,6 +30,7 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "layout-measurements.json",
   "inputHints.json",
   "image-hints.json",
+  "deck.manifest.skeleton.json",
   "image-replica-analysis.json",
   "replica-layer-plan.json",
   "pdf-page-hints.json",
@@ -53,20 +54,46 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "run.json"
 ]);
 
+async function removeOwnedPath(candidate, protectedSet) {
+  if (protectedSet.has(candidate)) return;
+  const prefix = `${candidate}${sep}`;
+  const hasProtectedDescendant = [...protectedSet].some((path) => path.startsWith(prefix));
+  if (!hasProtectedDescendant) {
+    await rm(candidate, { force: true, recursive: true });
+    return;
+  }
+  let entries;
+  try { entries = await readdir(candidate, { withFileTypes: true }); } catch { return; }
+  await Promise.all(entries.map((entry) => removeOwnedPath(resolve(candidate, entry.name), protectedSet)));
+}
+
 export async function clearConsumableOutputs(outputDir, protectedPaths = []) {
+  const outputRoot = resolve(outputDir);
   const protectedSet = new Set(protectedPaths.map((path) => resolve(path)));
-  await Promise.all(CONSUMABLE_OUTPUTS.map(async (name) => {
-    const candidate = resolve(outputDir, name);
-    if (!protectedSet.has(candidate)) await rm(candidate, { force: true, recursive: true });
-  }));
-  const assetsDir = resolve(outputDir, "assets");
+  const ownershipPath = resolve(outputRoot, ".pptx-generated-assets.json");
+  let ownedAssets = [];
   try {
-    const names = await readdir(assetsDir);
-    await Promise.all(names
-      .filter((name) => /^remote-(?:source|asset|background|image)-/i.test(name))
-      .map((name) => rm(resolve(assetsDir, name), { force: true, recursive: true })));
-    if ((await readdir(assetsDir)).length === 0) await rm(assetsDir, { force: true, recursive: true });
+    const registry = JSON.parse(await readFile(ownershipPath, "utf8"));
+    ownedAssets = (registry.files ?? [])
+      .filter((path) => typeof path === "string")
+      .map((path) => resolve(outputRoot, path))
+      .filter((path) => path.startsWith(`${outputRoot}${sep}`));
   } catch {}
+  let dynamicOutputs = [];
+  try {
+    dynamicOutputs = (await readdir(outputRoot))
+      .filter((name) => /^preview-diff-.*\.json$/i.test(name))
+      .map((name) => resolve(outputRoot, name));
+  } catch {}
+  const candidates = [
+    ...CONSUMABLE_OUTPUTS.map((name) => resolve(outputRoot, name)),
+    ...ownedAssets,
+    ...dynamicOutputs,
+    ownershipPath
+  ];
+  await Promise.all([...new Set(candidates)].map((candidate) => removeOwnedPath(candidate, protectedSet)));
+  const assetsDir = resolve(outputRoot, "assets");
+  try { if ((await readdir(assetsDir)).length === 0) await rm(assetsDir, { force: true, recursive: true }); } catch {}
 }
 
 export function shouldCopyManifest(manifestPath, outputDir) {
