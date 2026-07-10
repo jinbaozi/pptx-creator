@@ -255,7 +255,11 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         ? new Date().toISOString()
         : (existingFeedback?.acceptedAt ?? null)
     };
-    const qualityTargets = { ...(options.qualityTargets ?? {}) };
+    const replicaCoverage = manifestJson.metadata?.replicaSource?.coverage;
+    const qualityTargets = {
+      ...(options.qualityTargets ?? {}),
+      ...(replicaCoverage ? { replicaCoverage } : {})
+    };
 
     const reportOptions = {
       inputType,

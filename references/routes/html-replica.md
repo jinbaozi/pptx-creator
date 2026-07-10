@@ -14,7 +14,7 @@ npm run pptx -- html <input.html> <output-dir>
 
 ## Inputs and outputs
 
-Input is local HTML and assets. Output is the existing HTML pipeline directory, including measurements, manifest, PPTX, and reports.
+Input is local HTML and assets. The public command forces replica mode; output metadata is `mode=replica`, `inputType=html`, and `qualityProfile=replica`. Aggregate native-layer coverage is stored at `metadata.replicaSource.coverage`; creative taste review is not run.
 
 ## Blocking conditions
 

@@ -54,10 +54,14 @@ describe("Task 1 public CLI", () => {
     const { buildInvocation } = await import("../scripts/pptx.mjs");
     expect(buildInvocation(["text", "deck.json", "out"])).toMatchObject({ route: "text", script: "run-deck-pipeline.mjs" });
     expect(buildInvocation(["text", "artifacts", "out", "--creative"])).toMatchObject({ route: "text", script: "run-design-first-pipeline.mjs" });
-    expect(buildInvocation(["html", "input.html", "out"])).toMatchObject({ route: "html-replica", script: "run-html-pipeline.mjs" });
+    expect(buildInvocation(["html", "input.html", "out"])).toMatchObject({
+      route: "html-replica",
+      script: "run-html-pipeline.mjs",
+      args: ["input.html", "out", "--mode", "replica"]
+    });
     expect(buildInvocation(["image", "input.png", "analysis.json"])).toMatchObject({ route: "image-replica", script: "run-python.mjs" });
     expect(buildInvocation(["pdf", "input.pdf", "pages", "hints.json"])).toMatchObject({ route: "pdf-replica", script: "run-python.mjs" });
-    expect(buildInvocation(["manifest", "deck.json", "patch.json", "repaired.json"])).toMatchObject({ route: "manifest-repair", script: "apply-repair-patch.mjs" });
+    expect(buildInvocation(["manifest", "deck.json", "patch.json", "repaired.json"])).toMatchObject({ route: "manifest-repair", script: "run-manifest-repair.mjs" });
   });
 
   it("prints help and rejects invalid route arguments", async () => {

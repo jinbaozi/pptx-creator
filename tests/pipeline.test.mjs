@@ -161,7 +161,18 @@ describe("run-deck-pipeline", () => {
       mode: "replica",
       inputType: "html",
       qualityProfile: "replica",
-      replicaSource: { type: "html", path: "replica.html" }
+      replicaSource: {
+        type: "html",
+        path: "replica.html",
+        coverage: {
+          measuredElements: 2,
+          coveredElements: 1,
+          coverage: 0.5,
+          droppedElements: [],
+          unsupportedEffects: [],
+          slides: []
+        }
+      }
     };
     const manifest = join(outputDir, "deck.manifest.json");
     await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
@@ -170,6 +181,11 @@ describe("run-deck-pipeline", () => {
     const report = JSON.parse(await readFile(join(outputDir, "consistency-report.json"), "utf8"));
 
     expect(report.inputType).toBe("html");
+    expect(report.qualityTargets.replicaCoverage).toMatchObject({
+      measuredElements: 2,
+      coveredElements: 1,
+      coverage: 0.5
+    });
   }, 60000);
 
   it("emits consistency-report.md with the 8 dimension sections", async () => {

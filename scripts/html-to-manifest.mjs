@@ -143,6 +143,7 @@ export async function writeManifestFromHtml(inputPath, outputPath, options = {})
   const result = convertHtmlToManifest(html, {
     ...options,
     measurements,
+    replicaSourcePath: options.replicaSourcePath ?? inputPath,
     packageRoot: options.packageRoot ?? packageRoot,
     manifestDir: canonicalManifestDir,
     returnMetadata: true
@@ -162,7 +163,15 @@ export async function writeManifestFromHtml(inputPath, outputPath, options = {})
   const inputHintsPath = resolve(manifestDir, "inputHints.json");
   const inputHints = result.inputHints ?? { viewportSize: { w: 1280, h: 720 }, imageDimensions: [], detectedPalette: [], ocrAvailability: "deferred" };
   await writeFile(inputHintsPath, `${JSON.stringify(inputHints, null, 2)}\n`, "utf8");
-  return { manifest, layoutPaths: result.layoutPaths ?? [], sourceCoordinates: result.sourceCoordinates ?? [], inputHints, contentCoverage: result.contentCoverage };
+  return {
+    manifest,
+    layoutPaths: result.layoutPaths ?? [],
+    sourceCoordinates: result.sourceCoordinates ?? [],
+    inputHints,
+    contentCoverage: result.contentCoverage,
+    replicaCoverage: result.replicaCoverage,
+    replicaCoverageBySlide: result.replicaCoverageBySlide ?? []
+  };
 }
 
 async function main() {

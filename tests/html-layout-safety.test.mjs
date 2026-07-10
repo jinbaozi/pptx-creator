@@ -1,7 +1,9 @@
 import { access, readFile, writeFile, mkdtemp } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
   connectorDirectionDot,
@@ -14,6 +16,7 @@ import { convertHtmlToManifest } from "../scripts/lib/html-to-manifest-core.mjs"
 import { validateJsonSchema } from "../scripts/lib/schema-utils.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const execFileAsync = promisify(execFile);
 
 describe("HTML layout geometry", () => {
   it("detects meaningful sibling overlap but not edge contact", () => {
@@ -172,9 +175,14 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
   });
 
   it("runs the guarded HTML-to-PPTX pipeline end to end", async () => {
-    const { runHtmlPipeline } = await import("../scripts/run-html-pipeline.mjs");
     const dir = await mkdtemp(join(tmpdir(), "pptx-html-pipeline-"));
-    const summary = await runHtmlPipeline(join(root, "examples/html-input/css-positioned-dashboard.html"), dir);
+    const { stdout } = await execFileAsync(process.execPath, [
+      join(root, "scripts/pptx.mjs"),
+      "html",
+      join(root, "examples/html-input/css-positioned-dashboard.html"),
+      dir
+    ], { cwd: root });
+    const summary = JSON.parse(stdout);
     expect(summary).toMatchObject({
       status: "passed",
       htmlLayout: { criticalCount: 0, blocked: false },
@@ -194,6 +202,9 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
     const repairSchema = JSON.parse(await readFile(join(root, "schemas/html-repair-report.schema.json"), "utf8"));
     const layoutReport = JSON.parse(await readFile(join(dir, "html-layout-report.json"), "utf8"));
     const repairReport = JSON.parse(await readFile(join(dir, "html-repair-report.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(join(dir, "deck.manifest.json"), "utf8"));
+    expect(manifest.metadata).toMatchObject({ mode: "replica", inputType: "html", qualityProfile: "replica" });
+    await expect(access(join(dir, "visual-review.json"))).rejects.toThrow();
     expect(validateJsonSchema(layoutReport, layoutSchema)).toMatchObject({ valid: true, errors: [] });
     expect(validateJsonSchema(repairReport, repairSchema)).toMatchObject({ valid: true, errors: [] });
   }, 60000);

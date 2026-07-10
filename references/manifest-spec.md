@@ -17,6 +17,10 @@ The breaking `0.2.0` contract requires:
 design intent, replica source, and generator provenance in `metadata`. Private
 top-level `_...` fields and the removed `designSystem.mode` are invalid.
 
+HTML replica manifests store the localized source path and aggregate editable
+layer coverage under `metadata.replicaSource`, for example
+`{"type":"html","path":"source.html","coverage":{"coverage":1}}`.
+
 Coordinates use inches and must fit inside `deck.size.width` and `deck.size.height`.
 
 Element style values may reference DESIGN.md tokens:

@@ -36,4 +36,17 @@ describe("manifest compiler", () => {
     const manifest = JSON.parse(fs.readFileSync(output, "utf8"));
     expect(manifest.slides.length).toBe(3);
   });
+
+  it.each(["--design-system-mode", "--unknown-option"])("rejects unsupported option %s", (option) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-design-first-invalid-"));
+    const output = path.join(dir, "deck.manifest.json");
+    expect(() => execFileSync("node", [
+      "scripts/compile-design-first.mjs",
+      "examples/design-first/compiler-roadshow",
+      output,
+      option,
+      "creative"
+    ], { stdio: "pipe" })).toThrow();
+    expect(fs.existsSync(output)).toBe(false);
+  });
 });

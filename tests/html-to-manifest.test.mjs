@@ -99,6 +99,17 @@ describe("html-to-manifest", () => {
     expect(stdout).toContain("manifest valid");
   });
 
+  it("stores aggregate replica coverage in legal metadata", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-html-replica-metadata-"));
+    const manifestPath = join(outputDir, "deck.manifest.json");
+    const result = await writeManifestFromHtml(sampleHtml, manifestPath, { designMode: "replica" });
+    const written = JSON.parse(await readFile(manifestPath, "utf8"));
+
+    expect(written.metadata).toMatchObject({ mode: "replica", inputType: "html", qualityProfile: "replica" });
+    expect(written.metadata.replicaSource).toMatchObject({ type: "html", coverage: result.replicaCoverage });
+    expect(written).not.toHaveProperty("_replicaCoverage");
+  });
+
   it("end-to-end renders dashboard PPTX from HTML", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-html-render-"));
     const manifestPath = join(outputDir, "deck.manifest.json");

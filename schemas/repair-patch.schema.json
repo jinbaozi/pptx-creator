@@ -5,7 +5,7 @@
   "type": "object",
   "required": ["attempt", "patches"],
   "properties": {
-    "attempt": { "type": "number", "minimum": 1 },
+    "attempt": { "type": "integer", "minimum": 1, "maximum": 3 },
     "patches": {
       "type": "array",
       "items": {
@@ -15,7 +15,7 @@
           "slideId": { "type": "string" },
           "operation": {
             "type": "string",
-            "enum": ["move", "resize", "updateStyle", "adjustStyle", "updateText", "removeElement", "splitText", "splitSlide", "increaseSpacing", "reduceDensity", "replaceLayoutType"]
+            "enum": ["move", "resize", "updateStyle", "updateText", "removeElement", "increaseSpacing", "reduceDensity", "adjustStyle"]
           },
           "targetElementId": { "type": "string" },
           "changes": { "type": "object" }

@@ -36,7 +36,7 @@ export function buildInvocation(argv) {
   if (rest.some((arg) => arg.startsWith("--"))) throw new Error(`${command}: options are not supported`);
   if (command === "html") {
     requireCount("html", rest, 2, "<input.html> <output-dir>");
-    return { route: "html-replica", script: "run-html-pipeline.mjs", args: rest };
+    return { route: "html-replica", script: "run-html-pipeline.mjs", args: [...rest, "--mode", "replica"] };
   }
   if (command === "image") {
     requireCount("image", rest, 2, "<input.png> <analysis.json>");
@@ -48,7 +48,7 @@ export function buildInvocation(argv) {
   }
   if (command === "manifest") {
     requireCount("manifest", rest, 3, "<deck.manifest.json> <repair-patch.json> <repaired.manifest.json>");
-    return { route: "manifest-repair", script: "apply-repair-patch.mjs", args: rest };
+    return { route: "manifest-repair", script: "run-manifest-repair.mjs", args: rest };
   }
   throw new Error(`unknown route: ${command}`);
 }

@@ -14,9 +14,14 @@ function parseArgs(argv) {
   }
   const options = {};
   for (let i = 0; i < rest.length; i += 1) {
-    if (rest[i] === "--design-system") options.designSystemSource = rest[++i];
-    else if (rest[i] === "--design-system-name") options.designSystemName = rest[++i];
-    else if (rest[i] === "--design-system-mode") options.designSystemMode = rest[++i];
+    const option = rest[i];
+    if (!["--design-system", "--design-system-name"].includes(option)) {
+      throw new Error(`Unknown option: ${option}`);
+    }
+    const value = rest[++i];
+    if (!value || value.startsWith("--")) throw new Error(`${option} requires a value`);
+    if (option === "--design-system") options.designSystemSource = value;
+    else options.designSystemName = value;
   }
   return { inputDir, outputPath, options };
 }

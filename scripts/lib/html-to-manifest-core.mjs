@@ -2670,7 +2670,13 @@ export function convertHtmlToManifest(html, options = {}) {
       mode: options.designMode === "replica" ? "replica" : "creative",
       inputType: "html",
       qualityProfile: options.designMode === "replica" ? "replica" : "creative",
-      ...(options.designMode === "replica" ? { replicaSource: { type: "html" } } : {}),
+      ...(options.designMode === "replica" ? {
+        replicaSource: {
+          type: "html",
+          ...(options.replicaSourcePath ? { path: options.replicaSourcePath } : {}),
+          coverage: aggregatedReplicaCoverage
+        }
+      } : {}),
       generator: { name: "html-to-manifest-core.mjs" }
     },
     designSystem: {

@@ -14,7 +14,7 @@ npm run pptx -- manifest <deck.manifest.json> <repair-patch.json> <repaired.mani
 
 ## Inputs and outputs
 
-Inputs are a valid manifest and bounded repair patch. Output is a repaired manifest that must be validated before rendering.
+Inputs are a valid `0.2.0` manifest and a schema-valid repair patch with integer `attempt` from 1 through 3. The wrapper validates the input, applies the patch, validates a temporary output, then atomically publishes the repaired manifest.
 
 ## Blocking conditions
 

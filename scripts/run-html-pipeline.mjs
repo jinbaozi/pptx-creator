@@ -16,7 +16,12 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--max-attempts") options.maxAttempts = Number(argv[++i]);
     else if (arg === "--design-system") options.designSystem = argv[++i];
+    else if (arg === "--mode") options.mode = argv[++i];
+    else if (arg.startsWith("--")) throw new Error(`unknown option: ${arg}`);
     else positional.push(arg);
+  }
+  if (options.mode !== undefined && !["creative", "replica"].includes(options.mode)) {
+    throw new Error("--mode must be creative or replica");
   }
   return { input: positional[0], outputDir: positional[1], options };
 }
@@ -47,10 +52,12 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
   const measurementsPath = join(resolvedOutput, "layout-measurements.json");
   const measurements = await writeMeasurements(repair.repairedPath, measurementsPath);
   const manifestPath = join(resolvedOutput, "deck.manifest.json");
+  const mode = options.mode ?? "creative";
   const converted = await writeManifestFromHtml(repair.repairedPath, manifestPath, {
     measurements,
     designSystem: options.designSystem,
-    designMode: "balanced"
+    designMode: mode === "replica" ? "replica" : "balanced",
+    replicaSourcePath: resolvedInput
   });
   if (converted.contentCoverage?.ratio !== 1) {
     throw new Error(`HTML pipeline requires 100% content coverage; received ${converted.contentCoverage?.ratio ?? "unknown"}.`);
@@ -59,7 +66,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
   const deck = await runDeckPipeline(manifestPath, resolvedOutput, {
     inputType: "html",
     inputSource: resolvedInput,
-    mode: "creative",
+    mode,
     strictLayoutSafety: true,
     copyManifest: false
   });
@@ -70,8 +77,10 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
     manifest: manifestPath,
     outputDir: resolvedOutput,
     status: deck.status,
+    mode,
     htmlLayout: repair.layoutReport.summary,
-    contentCoverage: converted.contentCoverage
+    contentCoverage: converted.contentCoverage,
+    replicaCoverage: converted.replicaCoverage
   };
   await writeFile(join(resolvedOutput, "html-pipeline-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
   await runPython([join(root, "scripts/package-output.py"), resolvedOutput], { cwd: root });
@@ -81,7 +90,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
 async function main() {
   const { input, outputDir, options } = parseArgs(process.argv.slice(2));
   if (!input || !outputDir) {
-    throw new Error("usage: run-html-pipeline.mjs <deck.html> <output-dir> [--max-attempts 3] [--design-system id]");
+    throw new Error("usage: run-html-pipeline.mjs <deck.html> <output-dir> [--mode creative|replica] [--max-attempts 3] [--design-system id]");
   }
   const summary = await runHtmlPipeline(input, outputDir, options);
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);

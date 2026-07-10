@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyRepairPatch, SUPPORTED } from "../scripts/lib/repair-patch.mjs";
+import fs from "node:fs";
+import path from "node:path";
 
 function sampleManifest() {
   return {
@@ -88,5 +90,11 @@ describe("applyRepairPatch", () => {
     expect(SUPPORTED.has("increaseSpacing")).toBe(true);
     expect(SUPPORTED.has("reduceDensity")).toBe(true);
     expect(SUPPORTED.has("adjustStyle")).toBe(true);
+  });
+
+  it("keeps the repair schema aligned with supported operations and bounded attempts", () => {
+    const schema = JSON.parse(fs.readFileSync(path.resolve("schemas/repair-patch.schema.json"), "utf8"));
+    expect(schema.properties.attempt).toMatchObject({ type: "integer", minimum: 1, maximum: 3 });
+    expect(schema.properties.patches.items.properties.operation.enum).toEqual([...SUPPORTED]);
   });
 });

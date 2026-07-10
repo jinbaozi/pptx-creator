@@ -9,11 +9,9 @@ Supported operations:
 - updateStyle
 - updateText
 - removeElement
-- splitText
-- splitSlide
 - increaseSpacing
 - reduceDensity
-- replaceLayoutType
+- adjustStyle
 
 Constraints:
 
@@ -21,4 +19,5 @@ Constraints:
 - Do not violate the selected `DESIGN.md`.
 - Do not use remote assets that are not localized.
 - Do not beautify strict replicas.
-- Stop after three repair attempts.
+- `attempt` is required and must be an integer from 1 through 3.
+- Validate the input manifest and patch before applying; validate the temporary output before publishing it.
