@@ -53,7 +53,7 @@ describe("consistency-report-writer", () => {
       const schema = await loadPerDeckSchema();
       expect(schema.$schema).toContain("draft/2020-12");
       expect(schema.required).toEqual(expect.arrayContaining(["inputType", "inputSource"]));
-      expect(schema.properties.inputType.enum).toEqual(["html", "image", "design-first"]);
+      expect(schema.properties.inputType.enum).toEqual(["html", "image", "text"]);
     });
 
     it("loads the batch schema with aggregate fields", async () => {
@@ -110,13 +110,13 @@ describe("consistency-report-writer", () => {
     });
 
     it("passes validation when optional coordinateDriftPx and arrays are empty", async () => {
-      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, {}, { inputType: "design-first", inputSource: "storyboard" });
+      const { json } = buildConsistencyReport(SAMPLE_MANIFEST, {}, { inputType: "text", inputSource: "deck.plan.json" });
       const result = await validatePerDeckReport(JSON.parse(json));
       expect(result.valid).toBe(true);
     });
 
     it("renders the not-measured phrase in markdown for missing coordinate drift", () => {
-      const { md } = buildConsistencyReport(SAMPLE_MANIFEST, {}, { inputType: "design-first", inputSource: "storyboard" });
+      const { md } = buildConsistencyReport(SAMPLE_MANIFEST, {}, { inputType: "text", inputSource: "deck.plan.json" });
       expect(md).toMatch(/## coordinateDriftPx\s*\n\s*\n_not measured_/);
     });
   });
@@ -205,7 +205,7 @@ describe("consistency-report-writer", () => {
       const cases = [
         { inputType: "html", inputSource: "demo.html" },
         { inputType: "image", inputSource: "ref.png" },
-        { inputType: "design-first", inputSource: "storyboard" }
+        { inputType: "text", inputSource: "deck.plan.json" }
       ];
       for (const opts of cases) {
         const { md } = buildConsistencyReport(SAMPLE_MANIFEST, {}, opts);
@@ -348,7 +348,7 @@ describe("consistency-report-writer", () => {
       const cases = [
         { inputType: "html", inputSource: "demo.html" },
         { inputType: "image", inputSource: "ref.png" },
-        { inputType: "design-first", inputSource: "storyboard" }
+        { inputType: "text", inputSource: "deck.plan.json" }
       ];
       for (const opts of cases) {
         const { md } = buildConsistencyReport(SAMPLE_MANIFEST, {}, opts);

@@ -2,7 +2,7 @@
  * consistency-report-writer.mjs
  *
  * Pure-function writer for the per-deck consistency report shared by the
- * three pipeline entry points (run-deck-pipeline, run-design-first,
+ * the text, HTML, and image pipeline entry points
  * run-batch). Produces a deterministic `{json, md}` pair.
  *
  * Decisions (locked in JSDoc per the U1 plan):
@@ -80,12 +80,12 @@ const NOT_MEASURED = "_not measured_";
 
 // Default editability floors per input type (R14 differentiation + U10 floor).
 // Image inputs default to L3 because OCR+raster often prevents L4 even when
-// adapters perform perfectly; HTML/design-first default to L4 because the
+// adapters perform perfectly; HTML/text default to L4 because the
 // source is already semantic.
 export const DEFAULT_EDITABILITY_FLOOR = Object.freeze({
   html: 4,
   image: 3,
-  "design-first": 4,
+  text: 4,
   unknown: 4
 });
 
@@ -98,7 +98,7 @@ export const OCR_CLEARANCE_TARGET = 0.9;
  * @param {object} manifest  Deck manifest (only `deck.editabilityFloor` is read).
  * @param {object} intermediate  Render intermediate (editabilityLevel, editabilityCounter, sourceCausal).
  * @param {object} options
- *   - inputType: 'html' | 'image' | 'design-first' | 'unknown'
+ *   - inputType: 'html' | 'image' | 'text' | 'unknown'
  *   - allowSourceFloorViolation: boolean (default true) — when false, source-causal
  *     gaps also return `satisfied: false`.
  *
@@ -241,7 +241,7 @@ export async function validateBatchReport(report) {
  *       preview: {libreofficeAvailable: boolean, perSlide: Array<object>}
  *     }
  * @param {object} options
- *   - inputType: 'html' | 'image' | 'design-first'  (required)
+ *   - inputType: 'html' | 'image' | 'text'  (required)
  *   - inputSource: string  (required; falls back to manifest.deck.title)
  *   - createdAt: optional ISO8601 string. If provided, copied verbatim.
  *     If absent, the field is omitted (so byte-equality across runs holds).

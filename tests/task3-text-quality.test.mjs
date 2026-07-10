@@ -201,8 +201,8 @@ describe("stable bilingual brief corpus and text output contract", () => {
     ]) expect(fs.existsSync(retired), retired).toBe(false);
     const retiredExample = "examples/design-first/compiler-roadshow";
     expect(!fs.existsSync(retiredExample) || fs.readdirSync(retiredExample).length === 0).toBe(true);
-    const publicEntries = ["README.md", "README.en.md", "AGENTS.md", "SKILL.md", ...["references", "scripts", "layout-archetypes", "slide-archetypes"].flatMap(walkFiles)]
-      .filter((relative) => /\.(?:md|mjs)$/.test(relative));
+    const publicEntries = ["README.md", "README.en.md", "AGENTS.md", "SKILL.md", ...["references", "scripts", "schemas", "examples", "layout-archetypes", "slide-archetypes"].flatMap(walkFiles)]
+      .filter((relative) => /\.(?:md|mjs|json|html)$/.test(relative));
     for (const relative of publicEntries) {
       expect(fs.readFileSync(relative, "utf8"), relative).not.toMatch(/storyboard|design[ -]direction|slide[ -]design[ -]specs|compile-design-first|design-first-loader/i);
     }

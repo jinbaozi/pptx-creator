@@ -20,9 +20,7 @@
     "artifacts": {
       "type": "object",
       "properties": {
-        "storyboard": { "type": ["string", "null"] },
-        "designDirection": { "type": ["string", "null"] },
-        "slideDesignSpecs": { "type": ["string", "null"] },
+        "deckPlan": { "type": ["string", "null"] },
         "manifest": { "type": ["string", "null"] },
         "pptx": { "type": ["string", "null"] },
         "previews": { "type": "array", "items": { "type": "string" } },

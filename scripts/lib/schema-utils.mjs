@@ -5,11 +5,19 @@ function jsonTypeOf(value) {
 }
 
 function resolveLocalRef(rootSchema, ref) {
+  if (ref === "#") return rootSchema;
   if (!ref.startsWith("#/")) return null;
-  return ref.slice(2).split("/").reduce((node, part) => node?.[part.replace(/~1/g, "/").replace(/~0/g, "~")], rootSchema);
+  return ref.slice(2).split("/").reduce((node, part) => {
+    const key = part.replace(/~1/g, "/").replace(/~0/g, "~");
+    return node && Object.prototype.hasOwnProperty.call(node, key) ? node[key] : undefined;
+  }, rootSchema);
 }
 
-function validateValue(value, schema, path, errors, rootSchema) {
+function validateValue(value, schema, path, errors, rootSchema, depth = 0) {
+  if (depth > 256) {
+    errors.push({ path, message: "schema validation depth exceeded; possible cyclic $ref" });
+    return;
+  }
   if (schema === true) return;
   if (schema === false) {
     errors.push({ path, message: "value not allowed" });
@@ -18,8 +26,7 @@ function validateValue(value, schema, path, errors, rootSchema) {
   if (schema.$ref) {
     const target = resolveLocalRef(rootSchema, schema.$ref);
     if (!target) errors.push({ path, message: `unresolved local $ref ${schema.$ref}` });
-    else validateValue(value, target, path, errors, rootSchema);
-    return;
+    else validateValue(value, target, path, errors, rootSchema, depth + 1);
   }
   if (Array.isArray(schema.type)) {
     const actual = jsonTypeOf(value);
@@ -76,7 +83,7 @@ function validateValue(value, schema, path, errors, rootSchema) {
     }
     if (schema.items) {
       value.forEach((item, index) => {
-        validateValue(item, schema.items, `${path}[${index}]`, errors, rootSchema);
+        validateValue(item, schema.items, `${path}[${index}]`, errors, rootSchema, depth + 1);
       });
     }
   }
@@ -91,7 +98,7 @@ function validateValue(value, schema, path, errors, rootSchema) {
     if (schema.properties) {
       for (const key of Object.keys(schema.properties)) {
         if (Object.prototype.hasOwnProperty.call(value, key)) {
-          validateValue(value[key], schema.properties[key], `${path}.${key}`, errors, rootSchema);
+          validateValue(value[key], schema.properties[key], `${path}.${key}`, errors, rootSchema, depth + 1);
         }
       }
     }
@@ -107,24 +114,24 @@ function validateValue(value, schema, path, errors, rootSchema) {
       const allowed = new Set(schema.properties ? Object.keys(schema.properties) : []);
       for (const key of Object.keys(value)) {
         if (!allowed.has(key)) {
-          validateValue(value[key], schema.additionalProperties, `${path}.${key}`, errors, rootSchema);
+          validateValue(value[key], schema.additionalProperties, `${path}.${key}`, errors, rootSchema, depth + 1);
         }
       }
     }
     if (schema.propertyNames) {
-      for (const key of Object.keys(value)) validateValue(key, schema.propertyNames, `${path}.{${key}}`, errors, rootSchema);
+      for (const key of Object.keys(value)) validateValue(key, schema.propertyNames, `${path}.{${key}}`, errors, rootSchema, depth + 1);
     }
   }
   if (Array.isArray(schema.allOf)) {
     for (const sub of schema.allOf) {
-      validateValue(value, sub, path, errors, rootSchema);
+      validateValue(value, sub, path, errors, rootSchema, depth + 1);
     }
   }
   if (Array.isArray(schema.anyOf)) {
     let anyMatched = false;
     for (const sub of schema.anyOf) {
       const subErrors = [];
-      validateValue(value, sub, `${path}[anyOf]`, subErrors, rootSchema);
+      validateValue(value, sub, `${path}[anyOf]`, subErrors, rootSchema, depth + 1);
       if (subErrors.length === 0) {
         anyMatched = true;
         break;
@@ -138,24 +145,24 @@ function validateValue(value, schema, path, errors, rootSchema) {
     let matches = 0;
     for (const sub of schema.oneOf) {
       const subErrors = [];
-      validateValue(value, sub, `${path}[oneOf]`, subErrors, rootSchema);
+      validateValue(value, sub, `${path}[oneOf]`, subErrors, rootSchema, depth + 1);
       if (subErrors.length === 0) matches += 1;
     }
     if (matches !== 1) errors.push({ path, message: `value matched ${matches} of ${schema.oneOf.length} oneOf branches` });
   }
   if (schema.if && typeof schema.if === "object") {
     const branchErrors = [];
-    validateValue(value, schema.if, `${path}[if]`, branchErrors, rootSchema);
+    validateValue(value, schema.if, `${path}[if]`, branchErrors, rootSchema, depth + 1);
     const matchesIf = branchErrors.length === 0;
     if (matchesIf && schema.then) {
-      validateValue(value, schema.then, `${path}[then]`, errors, rootSchema);
+      validateValue(value, schema.then, `${path}[then]`, errors, rootSchema, depth + 1);
     } else if (!matchesIf && schema.else) {
-      validateValue(value, schema.else, `${path}[else]`, errors, rootSchema);
+      validateValue(value, schema.else, `${path}[else]`, errors, rootSchema, depth + 1);
     }
   }
   if (schema.not) {
     const notErrors = [];
-    validateValue(value, schema.not, `${path}[not]`, notErrors, rootSchema);
+    validateValue(value, schema.not, `${path}[not]`, notErrors, rootSchema, depth + 1);
     if (notErrors.length === 0) {
       errors.push({ path, message: "value must not match the not schema" });
     }

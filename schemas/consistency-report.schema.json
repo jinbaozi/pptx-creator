@@ -10,7 +10,7 @@
     "createdAt": { "type": "string", "format": "date-time" },
     "inputType": {
       "type": "string",
-      "enum": ["html", "image", "design-first"]
+      "enum": ["html", "image", "text"]
     },
     "inputSource": { "type": "string", "minLength": 1 },
     "editabilityLevel": {

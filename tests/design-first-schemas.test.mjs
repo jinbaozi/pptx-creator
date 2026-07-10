@@ -45,6 +45,14 @@ describe("creative deck plan schema", () => {
       expect(validateJsonSchema(plan, schema).valid, family).toBe(false);
     }
   });
+
+  it("applies sibling constraints beside local refs and fails safely on cyclic refs", () => {
+    expect(validateJsonSchema("ok", { $defs: { value: { type: "string" } }, $ref: "#/$defs/value", minLength: 3 }).valid).toBe(false);
+    const cyclic = { $ref: "#" };
+    const result = validateJsonSchema({}, cyclic);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((error) => /depth|cyclic/i.test(error.message))).toBe(true);
+  });
 });
 
 describe("visual review and repair schemas", () => {

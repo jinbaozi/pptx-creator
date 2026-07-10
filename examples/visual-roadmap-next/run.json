@@ -7,9 +7,7 @@
     "summary": "Compiler Roadshow"
   },
   "artifacts": {
-    "storyboard": null,
-    "designDirection": null,
-    "slideDesignSpecs": null,
+    "deckPlan": null,
     "manifest": null,
     "pptx": null,
     "previews": [],
