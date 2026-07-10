@@ -1,0 +1,15 @@
+{
+  "version": "0.1.0",
+  "title": "Risky Repetition",
+  "language": "en-US",
+  "designRead": "A highly varied launch narrative that should never repeat one default composition.",
+  "dials": { "compositionVariance": 95, "visualDensity": 45, "visualEnergy": 50 },
+  "audience": "Executive decision makers",
+  "narrativeBeats": ["Open", "Explain", "Prove", "Close"],
+  "slides": [
+    { "id": "r1", "message": "One", "layoutFamily": "cover", "contentReferences": ["r:1"], "assetReferences": [], "content": { "headline": "One", "subtitle": "Repeated default" } },
+    { "id": "r2", "message": "Two", "layoutFamily": "cover", "contentReferences": ["r:2"], "assetReferences": [], "content": { "headline": "Two", "subtitle": "Repeated default" } },
+    { "id": "r3", "message": "Three", "layoutFamily": "cover", "contentReferences": ["r:3"], "assetReferences": [], "content": { "headline": "Three", "subtitle": "Repeated default" } },
+    { "id": "r4", "message": "Four", "layoutFamily": "cover", "contentReferences": ["r:4"], "assetReferences": [], "content": { "headline": "Four", "subtitle": "Repeated default" } }
+  ]
+}

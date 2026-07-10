@@ -1,8 +1,7 @@
 ﻿import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { loadDesignFirstArtifacts } from "../scripts/lib/design-first-loader.mjs";
-import { loadArchetype, loadFromBothRoots, resolveArchetypeForSlide } from "../scripts/lib/archetype-resolver.mjs";
+import { loadArchetype, loadFromBothRoots } from "../scripts/lib/archetype-resolver.mjs";
 
 const archetypes = [
   "cover",
@@ -83,39 +82,6 @@ describe("slide archetype packages (U8)", () => {
   });
 });
 
-describe("archetype resolver", () => {
-  it("loads design-first artifacts from a directory", () => {
-    const artifacts = loadDesignFirstArtifacts("examples/design-first/compiler-roadshow");
-    expect(artifacts.storyboard.title).toBe("Compiler Roadshow Deck");
-    expect(artifacts.designDirection.style).toBe("business-tech-roadshow");
-    expect(artifacts.slideDesignSpecs.slides.length).toBe(3);
-  });
-
-  it("resolves a slide layout package", () => {
-    const artifacts = loadDesignFirstArtifacts("examples/design-first/compiler-roadshow");
-    const resolved = resolveArchetypeForSlide(artifacts.slideDesignSpecs.slides[2], "layout-archetypes");
-    expect(resolved.name).toBe("architecture-layered");
-    expect(resolved.schema.requiredSlots).toContain("layers");
-  });
-
-  it("rejects a slide missing required archetype slots", () => {
-    const slide = {
-      id: "slide-bad",
-      layoutType: "architecture-layered",
-      intent: "bad example",
-      mainIdea: "missing layers",
-      visualPlan: {
-        focalPoint: "headline",
-        density: "medium",
-        visualWeight: { headline: 100 }
-      },
-      contentSlots: [{ slot: "headline", role: "claim", content: "Only headline" }],
-      editableTarget: 5
-    };
-    expect(() => resolveArchetypeForSlide(slide, "layout-archetypes")).toThrow(/layers/);
-  });
-});
-
 describe("loadFromBothRoots (U8)", () => {
   it("returns the new slide-archetypes/toc metadata when the name lives in slide-archetypes/", () => {
     const loaded = loadFromBothRoots("toc");
@@ -157,4 +123,3 @@ describe("loadFromBothRoots (U8)", () => {
     expect(loaded.schema.requiredSlots).toEqual(["headline", "subtitle"]);
   });
 });
-

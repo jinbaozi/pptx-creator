@@ -12,42 +12,29 @@ function parseArgs(argv) {
   for (let i = 0; i < rest.length; i += 1) {
     if (rest[i] === "--design-system") options.designSystemSource = rest[++i];
     else if (rest[i] === "--design-system-name") options.designSystemName = rest[++i];
-    else if (rest[i] === "--mode") options.mode = rest[++i];
-    else if (rest[i] === "--emit-run-index") options.emitRunIndex = true;
-    else if (rest[i] === "--validate-registry") options.validateRegistry = true;
-    else if (rest[i] === "--run-id") options.runId = rest[++i];
-    else if (rest[i] === "--input-summary") options.inputSummary = rest[++i];
+    else if (rest[i] === "--mode") {
+      options.mode = rest[++i];
+      if (options.mode !== "creative") throw new Error("deck.plan pipeline supports creative mode only");
+    } else throw new Error(`unknown option: ${rest[i]}`);
   }
   return { inputDir, outputDir, options };
-}
-
-function makeDesignSourceManifestRelative(manifest, outputDir) {
-  const source = manifest.designSystem?.source;
-  if (!source) return manifest;
-  const absoluteSource = path.resolve(source);
-  const canonicalOutput = fs.realpathSync(outputDir);
-  return {
-    ...manifest,
-    designSystem: {
-      ...manifest.designSystem,
-      source: path.relative(canonicalOutput, absoluteSource).replace(/\\/g, "/")
-    }
-  };
 }
 
 async function main() {
   const { inputDir, outputDir, options } = parseArgs(process.argv.slice(2));
   fs.mkdirSync(outputDir, { recursive: true });
 
-  if (options.designSystemSource && !path.isAbsolute(options.designSystemSource)) {
-    options.designSystemSource = path.resolve(options.designSystemSource);
-  }
+  const selectedDesignSource = path.resolve(options.designSystemSource || "design-systems/business-neutral/DESIGN.md");
 
   const planPath = fs.statSync(inputDir).isDirectory() ? path.join(inputDir, "deck.plan.json") : inputDir;
   const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
   const validation = validateDeckPlan(plan);
   if (!validation.valid) throw new Error(`deck.plan invalid: ${validation.errors.join("; ")}`);
-  const manifest = makeDesignSourceManifestRelative(compileDeckPlan(plan, options), outputDir);
+  const designOutputDir = path.join(outputDir, "design-system");
+  const designOutputPath = path.join(designOutputDir, "DESIGN.md");
+  fs.mkdirSync(designOutputDir, { recursive: true });
+  fs.copyFileSync(selectedDesignSource, designOutputPath);
+  const manifest = compileDeckPlan(plan, { ...options, designSystemSource: "design-system/DESIGN.md" });
   const manifestPath = path.join(outputDir, "deck.manifest.json");
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
@@ -58,7 +45,8 @@ async function main() {
     mode: options.mode,
     strictLayoutSafety: true,
     protectedInputs: [
-      planPath
+      planPath,
+      designOutputPath
     ],
     beforePackage: async () => {
       const target = path.join(outputDir, "deck.plan.json");

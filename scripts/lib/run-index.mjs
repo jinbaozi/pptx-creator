@@ -4,9 +4,7 @@ import { join, resolve, sep } from "node:path";
 export async function buildRunIndex(outputDir, options) {
   const root = resolve(outputDir);
   const artifacts = {
-    storyboard: await exists(root, "deck.storyboard.json"),
-    designDirection: await exists(root, "deck.design-direction.json"),
-    slideDesignSpecs: await exists(root, "slide-design-specs.json"),
+    deckPlan: await exists(root, "deck.plan.json"),
     manifest: await exists(root, "deck.manifest.json"),
     pptx: await exists(root, "final.pptx"),
     previews: await listFiles(root, "previews", ".png"),

@@ -6,7 +6,7 @@ export function buildContextualTasteProfile(plan) {
   if ((plan?.dials?.compositionVariance ?? 0) >= 35) checks.push("composition-variance");
   checks.push("density-fit", "energy-fit");
   if (/editorial|编辑|叙事/.test(read)) checks.push("editorial-hierarchy");
-  if (/restrain|克制|calm|安静/.test(read)) checks.push("restraint");
+  if (/visual restraint|restrained (?:visual|tone|palette)|克制|calm|安静/.test(read)) checks.push("restraint");
   if (/asymmetr|不对称/.test(read) && !checks.includes("composition-variance")) checks.push("composition-variance");
   const locked = plan?.intentOverride?.sourceLocked === true || plan?.intentOverride?.brandLocked === true;
   return { designRead: plan?.designRead ?? "", checks, genericHeuristicsSuppressed: locked };
@@ -29,7 +29,7 @@ export function applyContextualTaste(review, manifest, plan) {
     return { ...slide, score: Math.min(100, slide.score + removedPenalty), issues };
   });
   const findings = [];
-  if (!profile.genericHeuristicsSuppressed && profile.checks.includes("composition-variance") && (manifest.slides?.length ?? 0) >= 4) {
+  if (profile.checks.includes("composition-variance") && (manifest.slides?.length ?? 0) >= 4) {
     const distinct = new Set((manifest.slides ?? []).map((slide) => slide.type)).size;
     if (distinct / manifest.slides.length < 0.5) findings.push({ severity: "high", type: "context-composition-variance", message: "The requested composition variance is not reflected across slide families." });
   }
@@ -37,8 +37,30 @@ export function applyContextualTaste(review, manifest, plan) {
     ? manifest.slides.reduce((sum, slide) => sum + (slide.elements?.length ?? 0), 0) / manifest.slides.length
     : 0;
   const density = plan?.dials?.visualDensity ?? 50;
-  if (!profile.genericHeuristicsSuppressed && ((density <= 30 && averageElements > 9) || (density >= 75 && averageElements < 5))) {
+  if ((density <= 30 && averageElements > 9) || (density >= 75 && averageElements < 5)) {
     findings.push({ severity: "high", type: "context-density-fit", message: "Rendered element density conflicts with the deck plan density dial." });
+  }
+  const elements = (manifest.slides ?? []).flatMap((slide) => slide.elements ?? []);
+  const visualElements = elements.filter((element) => ["shape", "line", "chart", "image"].includes(element.type));
+  const chromatic = visualElements.filter((element) => {
+    const color = String(element.style?.fill ?? element.style?.color ?? element.style?.line ?? "");
+    const match = color.match(/^#?([0-9a-f]{6})$/i);
+    if (!match) return false;
+    const values = [0, 2, 4].map((offset) => Number.parseInt(match[1].slice(offset, offset + 2), 16));
+    return Math.max(...values) - Math.min(...values) >= 48;
+  });
+  const energyRatio = visualElements.length ? chromatic.length / visualElements.length : 0;
+  const energy = plan?.dials?.visualEnergy ?? 50;
+  if ((energy >= 70 && energyRatio < 0.2) || (energy <= 25 && energyRatio > 0.35)) {
+    findings.push({ severity: "high", type: "context-energy-fit", message: "Rendered visual energy conflicts with the deck plan energy dial." });
+  }
+  if (profile.checks.includes("editorial-hierarchy")) {
+    const sizes = elements.filter((element) => element.type === "text").map((element) => Number(element.style?.fontSize)).filter(Number.isFinite);
+    const hierarchyRatio = sizes.length > 1 ? Math.max(...sizes) / Math.max(1, Math.min(...sizes)) : 1;
+    if (hierarchyRatio < 1.5) findings.push({ severity: "high", type: "context-editorial-hierarchy", message: "Editorial direction lacks a legible typographic hierarchy." });
+  }
+  if (profile.checks.includes("restraint") && (energyRatio > 0.35 || visualElements.length > Math.max(4, elements.length * 0.7))) {
+    findings.push({ severity: "high", type: "context-restraint", message: "Restrained direction is overwhelmed by decorative visual elements." });
   }
   if (findings.length && slides[0]) {
     slides[0].issues.push(...findings);
@@ -52,14 +74,14 @@ export function evaluateCreativeGate(quality = {}, options = {}) {
   const mode = options.mode ?? "creative";
   if (mode !== "creative") return { applicable: false, passed: true, reasons: [] };
   const reasons = [];
-  if (Number(quality.deckScore) < CREATIVE_GATE.deckScore) reasons.push(`deck score ${quality.deckScore ?? "missing"} < 80`);
+  const finiteMetric = (value) => typeof value === "number" && Number.isFinite(value);
+  if (!finiteMetric(quality.deckScore) || quality.deckScore < CREATIVE_GATE.deckScore) reasons.push(`deck score ${quality.deckScore ?? "missing"} must be finite and >= 80`);
   const slides = Array.isArray(quality.slides) ? quality.slides : [];
-  slides.forEach((slide, index) => { if (Number(slide.score) < CREATIVE_GATE.slideScore) reasons.push(`slide ${slide.id ?? index + 1} score ${slide.score ?? "missing"} < 70`); });
+  slides.forEach((slide, index) => { if (!finiteMetric(slide.score) || slide.score < CREATIVE_GATE.slideScore) reasons.push(`slide ${slide.id ?? index + 1} score ${slide.score ?? "missing"} must be finite and >= 70`); });
   if (slides.length === 0) reasons.push("slide scores missing");
-  if (Number(quality.slopRisk) > CREATIVE_GATE.slopRisk || !Number.isFinite(Number(quality.slopRisk))) reasons.push(`slop risk ${quality.slopRisk ?? "missing"} > 20`);
-  const critical = Number(quality.criticalFindings ?? quality.slides?.flatMap((slide) => slide.issues ?? []).filter((issue) => ["critical", "high"].includes(issue.severity)).length ?? 0);
-  if (critical !== 0) reasons.push(`critical findings ${critical} != 0`);
-  if (Number(quality.editabilityLevel) < CREATIVE_GATE.editabilityLevel) reasons.push(`editability L${quality.editabilityLevel ?? "missing"} < L4`);
+  if (!finiteMetric(quality.slopRisk) || quality.slopRisk > CREATIVE_GATE.slopRisk) reasons.push(`slop risk ${quality.slopRisk ?? "missing"} must be finite and <= 20`);
+  if (!finiteMetric(quality.criticalFindings) || quality.criticalFindings !== 0) reasons.push(`critical findings ${quality.criticalFindings ?? "missing"} must be finite and = 0`);
+  if (!finiteMetric(quality.editabilityLevel) || quality.editabilityLevel < CREATIVE_GATE.editabilityLevel) reasons.push(`editability L${quality.editabilityLevel ?? "missing"} must be finite and >= L4`);
   const preflight = options.fontPreflight;
   const compatibility = preflight ? {
     source: preflight.source ?? "unavailable",

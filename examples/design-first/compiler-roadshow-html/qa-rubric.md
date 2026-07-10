@@ -16,14 +16,14 @@ This rubric is **qualitative only**. It documents design rationale, tradeoffs, a
 
 - **Why CSS Grid over coordinate hand-authoring.** Slides 2–4 each have multi-column layouts (2-pane, 3-layer, 6-card) where CSS Grid expresses the geometry faster and more consistently than computing inch coordinates per element.
 - **Why `data-archetype` on every section.** The HTML adapter's archetype short-circuit (`scripts/lib/html-to-manifest-core.mjs`) resolves the catalog entry to the correct slot schema and bypasses heuristic detection, making the manifest layout-path deterministic.
-- **Why `dark-tech` design system.** The compiler-roadshow tone is "premium / technical / precise" (`deck.design-direction.json`). `dark-tech` carries the matching palette (`#07111F` background, `#35D0FF` primary) so colors stay on-tone.
+- **Why `dark-tech` design system.** The compiler-roadshow tone is premium, technical, and precise. `dark-tech` carries the matching palette (`#07111F` background, `#35D0FF` primary) so colors stay on-tone.
 - **Why nine slides.** The three-slide storyboard is the minimum viable deck; this showcase demonstrates that the HTML-first path scales beyond the minimum without losing alignment with the design-first artifacts.
 
 ## Tradeoffs
 
 - **Browser normalization.** The source uses content-driven slide heights. The guarded creative pipeline writes a repaired copy with 1280×720 canvases before measurement; the source showcase remains unchanged.
 - **No web assets.** The showcase avoids remote images to keep the run reproducible offline. Adding a hero image would require localizing under `output/assets/` per the SKILL.md "Preserve editability and fidelity" rule.
-- **Storyboard fidelity vs showcase coverage.** The first three slides are strict storyboard mirrors (verbatim titles, same content points); slides 4–9 are extensions that follow the same narrative arc but are not 1:1 with any `slide-design-specs.json` entry. This is intentional — the showcase demonstrates archetype variety on the same deck topic.
+- **Deck-plan fidelity vs showcase coverage.** The first three slides mirror the core plan messages; slides 4–9 extend the same narrative arc. This is intentional—the showcase demonstrates archetype variety on the same deck topic.
 
 ## Known limitations
 

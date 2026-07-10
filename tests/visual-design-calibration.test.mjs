@@ -113,7 +113,7 @@ describe("examples/slopRisk-corpus/annotations.csv", () => {
       "internal-002-html-input-one-page",
       "internal-003-html-input-css-positioned",
       "internal-004-html-input",
-      "internal-005-design-first",
+      "internal-005-deck-plan",
       "internal-006-image-input",
     ];
     for (const id of expectedInternal) {

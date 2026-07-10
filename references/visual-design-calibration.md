@@ -25,7 +25,7 @@ Each fixture has a sidecar `*.expected.json` recording one reviewer's
 | internal-002-html-input-one-page          | examples/html-input/one-page-dashboard.html             | 55                | (pending U3)          |
 | internal-003-html-input-css-positioned    | examples/html-input/css-positioned-dashboard.html      | 60                | (pending U3)          |
 | internal-004-html-input                   | examples/html-input/deck.manifest.json                  | 50                | (pending U3)          |
-| internal-005-design-first                 | examples/design-first/compiler-roadshow/deck.storyboard.json | 65           | (pending U3)          |
+| internal-005-deck-plan                    | examples/text-input/calibration/clean.deck.plan.json | 0            | maintenance only      |
 | internal-006-image-input                  | examples/image-input/deck.manifest.skeleton.json        | 38                | (pending U3)          |
 | external-001-html-ppt-skill-modern-minimalist | lewislulu/html-ppt-skill                              | 88                | (pending U3 + PNG)    |
 | external-002-html-ppt-skill-dark-tech     | lewislulu/html-ppt-skill                                | 85                | (pending U3 + PNG)    |

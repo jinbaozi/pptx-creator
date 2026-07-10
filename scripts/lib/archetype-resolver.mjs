@@ -41,13 +41,3 @@ export function loadFromBothRoots(layoutType) {
   if (layoutLoaded) return { ...layoutLoaded, root: "layout-archetypes" };
   throw new Error(`Unknown layout archetype: ${layoutType}`);
 }
-
-export function resolveArchetypeForSlide(slideSpec, archetypeRoot = "layout-archetypes") {
-  const archetype = loadArchetype(slideSpec.layoutType, archetypeRoot);
-  const providedSlots = new Set(slideSpec.contentSlots.map((slot) => slot.slot));
-  const missing = archetype.schema.requiredSlots.filter((slot) => !providedSlots.has(slot));
-  if (missing.length > 0) {
-    throw new Error(`Slide ${slideSpec.id} is missing required slots for ${slideSpec.layoutType}: ${missing.join(", ")}`);
-  }
-  return archetype;
-}

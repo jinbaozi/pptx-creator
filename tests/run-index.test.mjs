@@ -8,6 +8,7 @@ describe("run index generation", () => {
   it("discovers common artifacts without retired direction-explorer contracts", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-run-index-"));
     await writeFile(join(dir, "deck.manifest.json"), "{}");
+    await writeFile(join(dir, "deck.plan.json"), "{}");
     await writeFile(join(dir, "final.pptx"), "");
     await mkdir(join(dir, "previews"), { recursive: true });
     await writeFile(join(dir, "previews", "slide-001.png"), "");
@@ -19,6 +20,7 @@ describe("run index generation", () => {
     });
 
     expect(run.artifacts.manifest).toBe("deck.manifest.json");
+    expect(run.artifacts.deckPlan).toBe("deck.plan.json");
     expect(run.artifacts.previews).toEqual(["previews/slide-001.png"]);
     expect(run).not.toHaveProperty("directions");
   });

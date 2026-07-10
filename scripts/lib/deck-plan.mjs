@@ -1,3 +1,5 @@
+import { validateJsonSchema } from "./schema-utils.mjs";
+
 const W = 13.333;
 const H = 7.5;
 
@@ -33,10 +35,10 @@ function compileArchitecture(content) {
 
 function compileComparison(content) {
   return [title(content.headline), shape("left-panel", 0.76, 1.35, 5.55, 4.9, "#EFF6FF"), shape("right-panel", 7.02, 1.35, 5.55, 4.9, "#FFF7ED", "#EA580C"),
-    text("left-title", content.left.title, 1.05, 1.72, 4.9, 0.5, { fontSize: 21, bold: true }),
-    text("left-items", content.left.items, 1.05, 2.42, 4.9, 2.9, { fontSize: 16 }),
-    text("right-title", content.right.title, 7.32, 1.72, 4.9, 0.5, { fontSize: 21, bold: true }),
-    text("right-items", content.right.items, 7.32, 2.42, 4.9, 2.9, { fontSize: 16 })];
+    text("left-title", content.primary.title, 1.05, 1.72, 4.9, 0.5, { fontSize: 21, bold: true }),
+    text("left-items", content.primary.items, 1.05, 2.42, 4.9, 2.9, { fontSize: 16 }),
+    text("right-title", content.secondary.title, 7.32, 1.72, 4.9, 0.5, { fontSize: 21, bold: true }),
+    text("right-items", content.secondary.items, 7.32, 2.42, 4.9, 2.9, { fontSize: 16 })];
 }
 
 function compileProcess(content) {
@@ -71,26 +73,56 @@ function compileClosing(content) {
   return [text("headline", content.headline, 1.25, 1.75, 10.85, 1.25, { fontSize: 39, bold: true, color: "#FFFFFF", align: "center" }), text("call-to-action", content.callToAction, 2.3, 3.4, 8.75, 0.72, { fontSize: 20, color: "#BFDBFE", align: "center" }), shape("closing-accent", 5.2, 5.28, 2.9, 0.1, "#60A5FA", "#60A5FA")];
 }
 
-function familyValidator(family, required, check = () => null) {
+const nonEmptyString = Object.freeze({ type: "string", minLength: 1, maxLength: 500 });
+const stringList = (minItems, maxItems) => ({ type: "array", minItems, maxItems, items: nonEmptyString });
+const objectSchema = ($id, required, properties) => ({ $id, type: "object", additionalProperties: false, required, properties });
+const namedItems = objectSchema("archetype:shared:named-items", ["title", "items"], { title: nonEmptyString, items: stringList(1, 6) });
+const metric = objectSchema("archetype:shared:metric", ["label", "value"], { label: nonEmptyString, value: { anyOf: [nonEmptyString, { type: "number" }] } });
+
+function schemaValidator(family, schema) {
   return (content = {}) => {
-    for (const key of required) if (content[key] === undefined || content[key] === "") return `${family} requires content.${key}`;
-    return check(content);
+    const result = validateJsonSchema(content, schema);
+    return result.valid ? null : `${family} schema: ${result.errors.map((error) => `${error.path} ${error.message}`).join("; ")}`;
   };
 }
 
+const SCHEMAS = Object.freeze({
+  cover: objectSchema("archetype:cover", ["headline", "subtitle"], { headline: nonEmptyString, subtitle: nonEmptyString }),
+  architecture: objectSchema("archetype:architecture", ["headline", "layers"], { headline: nonEmptyString, layers: stringList(2, 4) }),
+  comparison: objectSchema("archetype:comparison", ["headline", "primary", "secondary"], { headline: nonEmptyString, primary: namedItems, secondary: namedItems }),
+  process: objectSchema("archetype:process", ["headline", "steps"], { headline: nonEmptyString, steps: stringList(2, 5) }),
+  dashboard: objectSchema("archetype:dashboard", ["headline", "metrics"], { headline: nonEmptyString, metrics: { type: "array", minItems: 1, maxItems: 4, items: metric } }),
+  quote: objectSchema("archetype:quote", ["quote", "attribution"], { quote: nonEmptyString, attribution: nonEmptyString }),
+  matrix: objectSchema("archetype:matrix", ["headline", "xAxis", "yAxis", "quadrants"], { headline: nonEmptyString, xAxis: nonEmptyString, yAxis: nonEmptyString, quadrants: stringList(4, 4) }),
+  closing: objectSchema("archetype:closing", ["headline", "callToAction"], { headline: nonEmptyString, callToAction: nonEmptyString })
+});
+
 const REGISTRY = Object.freeze({
-  cover: { schema: { $id: "archetype:cover", required: ["headline", "subtitle"] }, validate: familyValidator("cover", ["headline", "subtitle"], (c) => typeof c.headline === "string" && typeof c.subtitle === "string" ? null : "cover headline/subtitle must be strings"), compile: compileCover },
-  architecture: { schema: { $id: "archetype:architecture", required: ["headline", "layers"], minLayers: 2 }, validate: familyValidator("architecture", ["headline", "layers"], (c) => Array.isArray(c.layers) && c.layers.length >= 2 ? null : "architecture requires at least two layers"), compile: compileArchitecture },
-  comparison: { schema: { $id: "archetype:comparison", required: ["headline", "left", "right"] }, validate: familyValidator("comparison", ["headline", "left", "right"], (c) => Array.isArray(c.left?.items) && Array.isArray(c.right?.items) ? null : "comparison requires left/right items"), compile: compileComparison },
-  process: { schema: { $id: "archetype:process", required: ["headline", "steps"], minSteps: 2 }, validate: familyValidator("process", ["headline", "steps"], (c) => Array.isArray(c.steps) && c.steps.length >= 2 ? null : "process requires at least two steps"), compile: compileProcess },
-  dashboard: { schema: { $id: "archetype:dashboard", required: ["headline", "metrics"] }, validate: familyValidator("dashboard", ["headline", "metrics"], (c) => Array.isArray(c.metrics) && c.metrics.length > 0 && c.metrics.every((metric) => metric.label && metric.value !== undefined) ? null : "dashboard requires metric label/value"), compile: compileDashboard },
-  quote: { schema: { $id: "archetype:quote", required: ["quote", "attribution"] }, validate: familyValidator("quote", ["quote", "attribution"], (c) => typeof c.quote === "string" && typeof c.attribution === "string" ? null : "quote and attribution must be strings"), compile: compileQuote },
-  matrix: { schema: { $id: "archetype:matrix", required: ["headline", "xAxis", "yAxis", "quadrants"], quadrantCount: 4 }, validate: familyValidator("matrix", ["headline", "xAxis", "yAxis", "quadrants"], (c) => Array.isArray(c.quadrants) && c.quadrants.length === 4 ? null : "matrix requires exactly four quadrants"), compile: compileMatrix },
-  closing: { schema: { $id: "archetype:closing", required: ["headline", "callToAction"] }, validate: familyValidator("closing", ["headline", "callToAction"], (c) => typeof c.callToAction === "string" ? null : "closing callToAction must be a string"), compile: compileClosing }
+  cover: { schema: SCHEMAS.cover, validate: schemaValidator("cover", SCHEMAS.cover), compile: compileCover },
+  architecture: { schema: SCHEMAS.architecture, validate: schemaValidator("architecture", SCHEMAS.architecture), compile: compileArchitecture },
+  comparison: { schema: SCHEMAS.comparison, validate: schemaValidator("comparison", SCHEMAS.comparison), compile: compileComparison },
+  process: { schema: SCHEMAS.process, validate: schemaValidator("process", SCHEMAS.process), compile: compileProcess },
+  dashboard: { schema: SCHEMAS.dashboard, validate: schemaValidator("dashboard", SCHEMAS.dashboard), compile: compileDashboard },
+  quote: { schema: SCHEMAS.quote, validate: schemaValidator("quote", SCHEMAS.quote), compile: compileQuote },
+  matrix: { schema: SCHEMAS.matrix, validate: schemaValidator("matrix", SCHEMAS.matrix), compile: compileMatrix },
+  closing: { schema: SCHEMAS.closing, validate: schemaValidator("closing", SCHEMAS.closing), compile: compileClosing }
 });
 
 export const ADVERTISED_ARCHETYPES = Object.freeze(Object.keys(REGISTRY));
 export const getArchetypeRegistry = () => ({ ...REGISTRY });
+
+const PROHIBITED_PLAN_KEYS = new Set(["x", "y", "w", "h", "left", "top", "right", "bottom", "width", "height"]);
+function findProhibitedKeys(value, path = "$") {
+  const findings = [];
+  if (Array.isArray(value)) value.forEach((item, index) => findings.push(...findProhibitedKeys(item, `${path}[${index}]`)));
+  else if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      if (PROHIBITED_PLAN_KEYS.has(key)) findings.push(`${path}.${key}`);
+      findings.push(...findProhibitedKeys(child, `${path}.${key}`));
+    }
+  }
+  return findings;
+}
 
 function validateSlide(slide, index, errors) {
   const family = slide?.layoutFamily;
@@ -105,6 +137,7 @@ function validateSlide(slide, index, errors) {
 export function validateDeckPlan(plan) {
   const errors = [];
   if (!plan || typeof plan !== "object" || Array.isArray(plan)) return { valid: false, errors: ["deck.plan must be an object"] };
+  for (const path of findProhibitedKeys(plan)) errors.push(`prohibited coordinate/layout key at ${path}`);
   if (plan.version !== "0.1.0") errors.push("version must be 0.1.0");
   if (typeof plan.designRead !== "string" || !plan.designRead.trim() || plan.designRead.includes("\n")) errors.push("designRead must be one non-empty line");
   for (const dial of ["compositionVariance", "visualDensity", "visualEnergy"]) if (!Number.isFinite(plan.dials?.[dial]) || plan.dials[dial] < 0 || plan.dials[dial] > 100) errors.push(`dials.${dial} must be 0..100`);
@@ -125,6 +158,49 @@ export function compileDeckPlan(plan, options = {}) {
     deck: { title: plan.title, language: plan.language, editabilityFloor: 4, size: { preset: "wide", width: W, height: H, unit: "in" } },
     assets: [],
     slides: plan.slides.map((slide) => ({ id: slide.id, type: slide.layoutFamily, title: slide.message, notes: slide.message, background: { type: "solid", color: slide.layoutFamily === "closing" ? "#111827" : "#FFFFFF" }, elements: REGISTRY[slide.layoutFamily].compile(slide.content) }))
+  };
+}
+
+const BRIEF_DOMAIN_INTENT = Object.freeze({
+  business: { designRead: "Confident business decision story with disciplined hierarchy.", dials: { compositionVariance: 50, visualDensity: 55, visualEnergy: 55 } },
+  editorial: { designRead: "Editorial narrative with expressive hierarchy and measured pacing.", dials: { compositionVariance: 60, visualDensity: 45, visualEnergy: 50 } },
+  technical: { designRead: "Structured technical explanation with visible system logic.", dials: { compositionVariance: 50, visualDensity: 60, visualEnergy: 45 } },
+  "public-sector": { designRead: "Accessible civic communication with clear evidence and sequence.", dials: { compositionVariance: 40, visualDensity: 50, visualEnergy: 35 } },
+  data: { designRead: "Dense data-led analysis with explicit comparison and hierarchy.", dials: { compositionVariance: 50, visualDensity: 80, visualEnergy: 50 } },
+  narrative: { designRead: "High-energy narrative with a decisive opening or close.", dials: { compositionVariance: 70, visualDensity: 40, visualEnergy: 80 } }
+});
+
+function fixtureContent(family, brief) {
+  const headline = brief;
+  const content = {
+    cover: { headline, subtitle: "A concise evidence-led briefing" },
+    architecture: { headline, layers: ["Intent", "System", "Execution"] },
+    comparison: { headline, primary: { title: "Option A", items: ["Benefit", "Constraint"] }, secondary: { title: "Option B", items: ["Benefit", "Constraint"] } },
+    process: { headline, steps: ["Frame", "Decide", "Deliver"] },
+    dashboard: { headline, metrics: [{ label: "Current", value: "72" }, { label: "Target", value: "85" }, { label: "Delta", value: "+13" }] },
+    quote: { quote: brief, attribution: "Briefing evidence" },
+    matrix: { headline, xAxis: "Effort", yAxis: "Impact", quadrants: ["Maintain", "Prioritize", "Explore", "Accelerate"] },
+    closing: { headline, callToAction: "Align on the next decision." }
+  };
+  return content[family];
+}
+
+export function buildPlanFromBriefFixture(fixture) {
+  const intent = BRIEF_DOMAIN_INTENT[fixture?.domain];
+  const family = fixture?.expected?.layoutFamily;
+  if (!intent || !REGISTRY[family]) throw new Error(`unsupported brief fixture ${fixture?.id ?? "(unknown)"}`);
+  return {
+    version: "0.1.0",
+    title: fixture.brief,
+    language: fixture.language,
+    designRead: intent.designRead,
+    dials: { ...intent.dials },
+    audience: `${fixture.domain} decision makers`,
+    narrativeBeats: ["Frame", "Explain", "Decide"],
+    slides: [{
+      id: `${fixture.id}-slide-1`, message: fixture.brief, layoutFamily: family,
+      contentReferences: [`brief:${fixture.id}`], assetReferences: [], content: fixtureContent(family, fixture.brief)
+    }]
   };
 }
 

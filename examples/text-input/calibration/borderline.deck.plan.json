@@ -1,0 +1,12 @@
+{
+  "version": "0.1.0",
+  "title": "Borderline Density",
+  "language": "en-US",
+  "designRead": "A sparse board update with one restrained message.",
+  "dials": { "compositionVariance": 20, "visualDensity": 30, "visualEnergy": 50 },
+  "audience": "Board members",
+  "narrativeBeats": ["Signal", "Decision"],
+  "slides": [
+    { "id": "b1", "message": "One sparse decision", "layoutFamily": "dashboard", "contentReferences": ["b:1"], "assetReferences": [], "content": { "headline": "Too much for the requested density", "metrics": [{ "label": "A", "value": "1" }, { "label": "B", "value": "2" }, { "label": "C", "value": "3" }] } }
+  ]
+}

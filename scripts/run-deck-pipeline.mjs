@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
-import { applyContextualTaste, editabilityLevelFromCounter, evaluateCreativeGate, qualityFromReview } from "./lib/contextual-taste.mjs";
+import { applyContextualTaste, editabilityLevelFromCounter, qualityFromReview } from "./lib/contextual-taste.mjs";
 import { preflightFonts } from "./lib/font-preflight.mjs";
 import { writePipelineReports } from "./lib/pipeline-report-writer.mjs";
 import { runPython } from "./lib/python-utils.mjs";
@@ -41,10 +41,8 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "html-preview",
   "preview",
   "previews",
+  "design-system",
   "deck.plan.json",
-  "deck.storyboard.json",
-  "deck.design-direction.json",
-  "slide-design-specs.json",
   "quality-report.json",
   "quality-report.md",
   "replica-evidence.json",
@@ -321,7 +319,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     ? applyContextualTaste(reviewManifest(manifest, { mode: "creative" }), manifest, planIntent)
     : null;
   const creativePreflightGate = mode === "creative"
-    ? evaluateCreativeGate({ ...creativeReview, editabilityLevel: 5 }, { mode, fontPreflight })
+    ? qualityFromReview(creativeReview, 5, fontPreflight).gate
     : null;
   let routePreflight = { ok: true, stdout: "" };
   if (typeof options.routePreflight === "function") {

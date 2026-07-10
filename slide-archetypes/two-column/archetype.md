@@ -1,5 +1,5 @@
 # two-column
 
-This archetype defines two equal-width columns of body text or list. It should be selected by `slide-design-specs.json` through the `layoutType` field when the slide role is "comparison" or "parallel points" and the content is genuinely two-sided.
+This archetype defines two equal-width columns of body text or list. This package is HTML/replica adapter metadata selected through `data-archetype`; creative text uses the compiled `deck.plan.json` registry.
 
 Use this layout when the slide needs two coherent columns of comparable weight. Avoid using it for layout decoration; if the columns are unrelated, split the slide.

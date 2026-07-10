@@ -102,7 +102,7 @@ The visual critic (`scripts/lib/visual-critic.mjs` + `scripts/run-visual-critic.
 | `agents/openai.yaml` | Optional Codex/OpenAI interface metadata |
 | `schemas/` | JSON Schemas (deck, storyboard, design-direction, slide-spec, registry, repair, review) |
 | `scripts/` | Entry scripts; heavy logic in `scripts/lib/` |
-| `scripts/lib/` | Reusable JS/Python cores (`manifest-compiler.mjs`, `chart-renderer.mjs`, `diagram-compiler.mjs`, `visual-critic.mjs`, `run-index.mjs`, `registry.mjs`, `python-utils.mjs`, `*_core.py`) |
+| `scripts/lib/` | Reusable JS/Python cores (`deck-plan.mjs`, `chart-renderer.mjs`, `diagram-compiler.mjs`, `visual-critic.mjs`, `run-index.mjs`, `registry.mjs`, `python-utils.mjs`, `*_core.py`) |
 | `design-systems/<name>/DESIGN.md` | Built-in visual systems |
 | `layout-archetypes/` | Page layout primitives consumed by `lib/archetype-resolver.mjs` |
 | `references/` | Workflows, manifest spec, and QA rubric |
