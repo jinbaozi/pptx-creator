@@ -293,16 +293,9 @@ describe("U11 AC2 — happy-path layout-safety critical = 0", () => {
 });
 
 describe("U11 AC3 — visual-review.json with per-slide + deck-level slopRisk", () => {
-  it("html-input deck visual-review.json includes slopRisk on each slide + deck", async () => {
+  it("does not leave a creative visual review on the HTML replica-only route", async () => {
     const outputDir = join(root, "output", "pipeline-html");
-    const review = JSON.parse(await readFile(join(outputDir, "visual-review.json"), "utf8"));
-    expect(review.slopRisk).toEqual(expect.any(Number));
-    expect(Array.isArray(review.slides)).toBe(true);
-    expect(review.slides.length).toBeGreaterThan(0);
-    for (const slide of review.slides) {
-      expect(slide.scores).toHaveProperty("slopRisk");
-      expect(typeof slide.scores.slopRisk).toBe("number");
-    }
+    await expect(access(join(outputDir, "visual-review.json"))).rejects.toThrow();
   });
 
   it("content-heavy showcase visual-review.json includes slopRisk on each slide + deck", async () => {

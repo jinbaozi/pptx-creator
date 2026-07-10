@@ -88,17 +88,15 @@ For CSS-positioned layouts, add kind/id markers and run Playwright measurement:
 
 See `references/html-measurement.md` for the full measure → merge workflow.
 
-## Guarded creative workflow
+## Guarded replica workflow
 
 ```bash
 npm run pptx -- html examples/html-input/one-page-dashboard.html output/html
 ```
 
-The command writes `deck.repaired.html`, `html-layout-report.json`, `html-repair-report.json`, per-slide screenshots, measurements, the Manifest, and the final PPTX. It never overwrites the source HTML. Chromium checks the HTML before conversion; any remaining critical blocks Manifest/PPTX generation.
+The command localizes explicitly allowed remote assets, measures the unchanged source, compiles the Manifest, and then follows the single six-stage pipeline. Chromium audits the HTML without running author scripts or network requests. Critical source or proof failures block packaging; the source HTML is never rewritten before proof.
 
-Automatic repair order is fixed: normalize slide bounds, reflow cards, fit text, separate remaining overlaps, then re-anchor connectors. Repairs may reduce spacing or font size down to the readability floor and may move complete cards to continuation slides. They never delete, rewrite, truncate, or split source text.
-
-Use the lower-level commands only for diagnosis:
+Use the same public command for local files:
 
 ```bash
 npm run pptx -- html input.html output/html
@@ -125,15 +123,7 @@ The auditor verifies both endpoints against declared node boundaries and verifie
 Use replica mode when the user asks for HTML to be visually preserved instead of redesigned. Replica mode is native-first: browser measurements provide real DOM boxes and computed styles, then the manifest emits editable PPT text, shapes, tables, lines, and images wherever PowerPoint can represent them.
 
 ```bash
-node scripts/measure-html.mjs input.html output/layout-measurements.json --replica
-node scripts/html-to-manifest.mjs input.html output/deck.manifest.json \
-  --measurements output/layout-measurements.json \
-  --design-mode replica \
-  --force-measured
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output \
-  --input-type html \
-  --input-source input.html
-node scripts/run-visual-critic.mjs output/deck.manifest.json output/visual-review.json --mode replica
+npm run pptx -- html input.html output/html
 ```
 
 Replica extraction currently maps:

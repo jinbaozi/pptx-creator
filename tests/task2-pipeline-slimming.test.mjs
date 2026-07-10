@@ -57,6 +57,21 @@ describe("Task 2 public surface and deletion contract", () => {
 });
 
 describe("Task 2 single pipeline contract", () => {
+  it("removes stale consumable outputs before a failing run", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-stale-output-"));
+    const manifest = join(dir, "invalid.manifest.json");
+    await writeFile(manifest, JSON.stringify({ invalid: true }), "utf8");
+    for (const name of ["final.pptx", "output-manifest.json", "consistency-report.json", "qa-report.md"]) {
+      await writeFile(join(dir, name), "stale-success", "utf8");
+    }
+
+    await expect(pipeline.runDeckPipeline(manifest, dir)).rejects.toThrow(/validate/);
+    for (const name of ["final.pptx", "output-manifest.json", "consistency-report.json", "qa-report.md"]) {
+      await expect(access(join(dir, name))).rejects.toThrow();
+    }
+    await expect(access(join(dir, "pipeline-blocked.json"))).resolves.toBeUndefined();
+  });
+
   it("rejects replica proof when the PPTX archive contains fewer native objects than source coverage", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-truncated-proof-"));
     const pptxPath = join(dir, "truncated.pptx");
@@ -222,6 +237,21 @@ describe("Task 2 packaging ownership", () => {
     const htmlWrapper = await readFile(join(root, "scripts/run-html-pipeline.mjs"), "utf8");
     const designWrapper = await readFile(join(root, "scripts/run-design-first-pipeline.mjs"), "utf8");
     expect(htmlWrapper).not.toContain("package-output.py");
+    expect(htmlWrapper).not.toContain("repairHtmlLayout(");
+    expect(htmlWrapper).toContain("prepareManifest:");
     expect(designWrapper).not.toContain("writeFileSync(path.join(outputDir, \"visual-review.json\")");
   }, 60000);
+
+  it("documents only the unified CLI in public workflow guides", async () => {
+    for (const relativePath of [
+      "references/html-to-pptx.md",
+      "references/workflow.md",
+      "examples/text-input/README.md"
+    ]) {
+      const content = await readFile(join(root, relativePath), "utf8");
+      expect(content, relativePath).not.toMatch(/\bnode\s+scripts\//);
+      expect(content, relativePath).not.toMatch(/\bpython(?:3)?\s+scripts\//);
+      expect(content, relativePath).not.toMatch(/npm run (?!pptx|setup|test)/);
+    }
+  });
 });

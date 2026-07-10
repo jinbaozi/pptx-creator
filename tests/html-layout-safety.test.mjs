@@ -184,10 +184,11 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
       htmlLayout: { criticalCount: 0, blocked: false },
       contentCoverage: { ratio: 1 }
     });
+    expect(summary.steps.map((step) => step.label)).toEqual([
+      "validate", "replica-preflight", "render", "fidelity-proof", "bounded-repair", "package"
+    ]);
     for (const file of [
-      "deck.repaired.html",
       "html-layout-report.json",
-      "html-repair-report.json",
       "layout-measurements.json",
       "deck.manifest.json",
       "final.pptx"
@@ -195,9 +196,7 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
       await expect(access(join(dir, file))).resolves.toBeUndefined();
     }
     const layoutSchema = JSON.parse(await readFile(join(root, "schemas/html-layout-report.schema.json"), "utf8"));
-    const repairSchema = JSON.parse(await readFile(join(root, "schemas/html-repair-report.schema.json"), "utf8"));
     const layoutReport = JSON.parse(await readFile(join(dir, "html-layout-report.json"), "utf8"));
-    const repairReport = JSON.parse(await readFile(join(dir, "html-repair-report.json"), "utf8"));
     const manifest = JSON.parse(await readFile(join(dir, "deck.manifest.json"), "utf8"));
     const outputManifest = JSON.parse(await readFile(join(dir, "output-manifest.json"), "utf8"));
     expect(outputManifest.files).toContain("html-pipeline-summary.json");
@@ -207,6 +206,7 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
     expect(manifest.metadata).toMatchObject({ mode: "replica", inputType: "html", qualityProfile: "replica" });
     await expect(access(join(dir, "visual-review.json"))).rejects.toThrow();
     expect(validateJsonSchema(layoutReport, layoutSchema)).toMatchObject({ valid: true, errors: [] });
-    expect(validateJsonSchema(repairReport, repairSchema)).toMatchObject({ valid: true, errors: [] });
+    await expect(access(join(dir, "html-repair-report.json"))).rejects.toThrow();
+    await expect(access(join(dir, "deck.repaired.html"))).rejects.toThrow();
   }, 60000);
 });

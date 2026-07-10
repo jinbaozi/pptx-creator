@@ -72,46 +72,31 @@ When research is used:
 
 ## Pipeline commands
 
-Run the standard pipeline after authoring the manifest:
+Use the single public CLI. It selects the route contract, prevents creative checks from leaking into replica work, and owns validation through packaging:
 
 ```bash
-node scripts/run-deck-pipeline.mjs output/deck.manifest.json output
+npm run pptx -- text output/deck.manifest.json output
+npm run pptx -- text creative-artifacts output --creative
+npm run pptx -- html input.html output
 ```
 
-Run individual stages only for diagnosis:
+Image and PDF replica routes block explicitly until their selected fidelity capability is installed and implemented. Internal scripts are implementation details and are not public alternate workflows.
+
+Repair an existing manifest only through the manifest route:
 
 ```bash
-node scripts/run-python.mjs scripts/validate-manifest.py output/deck.manifest.json
-node scripts/render-pptx.mjs output/deck.manifest.json output/final.pptx
-node scripts/run-python.mjs scripts/package-output.py output
-```
-
-Run batch jobs with a manifest of jobs:
-
-```bash
-node scripts/run-batch-pipeline.mjs batch.json output/batch
-```
-
-```json
-{
-  "jobs": [
-    { "id": "deck-1", "manifest": "deck-1/deck.manifest.json", "outputDir": "output/deck-1" }
-  ]
-}
+npm run pptx -- manifest output/deck.manifest.json repair-patch.json output/deck.repaired.json
 ```
 
 ## Optional checks
 
-Run only checks relevant to the requested deliverable:
+Run the documented test profile relevant to the requested deliverable:
 
 ```bash
-node scripts/run-visual-critic.mjs output/deck.manifest.json output/visual-review.json --mode creative
-node scripts/analyze-accessibility.mjs output/deck.manifest.json output/accessibility-report.md
-node scripts/openxml-repair.mjs output/final.pptx output/openxml-repair-report.json
-node scripts/run-visual-regression.mjs output/deck.manifest.json output
+npm run test:unit
+npm run test:browser
+npm run test:visual
 ```
-
-Use `--mode replica` for strict reconstruction.
 
 ## Failure handling
 

@@ -37,7 +37,7 @@ describe("batch, accessibility, template import, and OpenXML repair", () => {
   it("emits a batch-level consistency-report aggregating per-deck reports", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-batch-consistency-"));
     const textManifest = join(root, "examples/text-input/deck.manifest.json");
-    const htmlManifest = textManifest;
+    const secondaryTextManifest = textManifest;
     const batchFile = join(outputDir, "batch.json");
     await writeFile(
       batchFile,
@@ -45,7 +45,7 @@ describe("batch, accessibility, template import, and OpenXML repair", () => {
         {
           jobs: [
             { id: "text", manifest: textManifest, outputDir: join(outputDir, "text"), mode: "creative" },
-            { id: "html", manifest: htmlManifest, outputDir: join(outputDir, "html"), mode: "creative" }
+            { id: "text-secondary", manifest: secondaryTextManifest, outputDir: join(outputDir, "text-secondary"), mode: "creative" }
           ]
         },
         null,
@@ -60,7 +60,7 @@ describe("batch, accessibility, template import, and OpenXML repair", () => {
     expect(report.jobs).toHaveLength(2);
     // Each job's per-deck report must exist.
     await access(join(outputDir, "text", "consistency-report.json"));
-    await access(join(outputDir, "html", "consistency-report.json"));
+    await access(join(outputDir, "text-secondary", "consistency-report.json"));
     // The batch aggregate must exist and validate against the schema.
     const aggregatePath = join(outputDir, "consistency-report.batch.json");
     await access(aggregatePath);

@@ -16,6 +16,5 @@
     "reviews": [],
     "sources": "sources.json",
     "assetRegistry": "assets/asset-registry.json"
-  },
-  "directions": []
+  }
 }

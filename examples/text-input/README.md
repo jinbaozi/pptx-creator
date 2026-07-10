@@ -8,7 +8,7 @@
 
 ```powershell
 cd pptx-creator
-node scripts/run-deck-pipeline.mjs examples/text-input/deck.manifest.json output/text-example
+npm run pptx -- text examples/text-input/deck.manifest.json output/text-example
 ```
 
 ## Expected outputs

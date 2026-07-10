@@ -74,6 +74,8 @@ describe("Task 2 HTML remote asset security", () => {
       "http://[::1]/a.png",
       "http://[::ffff:127.0.0.1]/a.png",
       "http://[::ffff:10.0.0.1]/a.png",
+      "http://[0:0:0:0:0:0:0:1]/a.png",
+      "http://[0:0:0:0:0:ffff:7f00:1]/a.png",
       "http://[fe80::1]/a.png"
     ]) expect(() => htmlManifest.assertSafeRemoteAssetUrl(url)).toThrow(/blocked destination/i);
   });
@@ -84,6 +86,10 @@ describe("Task 2 HTML remote asset security", () => {
       new URL("https://assets.example.com/a.png"),
       async () => [{ address: "10.1.2.3", family: 4 }]
     )).rejects.toThrow(/resolved to 10\.1\.2\.3/);
+    await expect(htmlManifest.assertPublicRemoteResolution(
+      new URL("https://assets.example.com/a.png"),
+      async () => [{ address: "0:0:0:0:0:ffff:7f00:1", family: 6 }]
+    )).rejects.toThrow(/resolved to 0:0:0:0:0:ffff:7f00:1/);
   });
 
   it("revalidates redirect destinations before following them", async () => {
@@ -96,6 +102,25 @@ describe("Task 2 HTML remote asset security", () => {
       }
     })).rejects.toThrow(/blocked destination/);
     expect(calls).toBe(1);
+  });
+
+  it("applies one total timeout to DNS resolution and the complete redirect chain", async () => {
+    await expect(htmlManifest.fetchRemoteAssetSecure("https://assets.example.com/a.png", {
+      timeoutMs: 20,
+      resolver: async () => new Promise(() => {})
+    })).rejects.toThrow(/total timeout/i);
+
+    let requests = 0;
+    await expect(htmlManifest.fetchRemoteAssetSecure("https://assets.example.com/a.png", {
+      timeoutMs: 30,
+      resolver: async () => [{ address: "93.184.216.34", family: 4 }],
+      transport: async () => {
+        requests += 1;
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+        return { status: 302, headers: { location: `/redirect-${requests}.png` }, body: Buffer.alloc(0) };
+      }
+    })).rejects.toThrow(/total timeout/i);
+    expect(requests).toBeLessThanOrEqual(2);
   });
 
   it("pins the vetted DNS result into the transport to prevent rebinding", async () => {

@@ -15,6 +15,29 @@ import { parseDesignFile } from "./parse-design-md.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const CONSUMABLE_OUTPUTS = Object.freeze([
+  "final.pptx",
+  "output-manifest.json",
+  "deck.manifest.json",
+  "editable-report.md",
+  "qa-report.md",
+  "compatibility-report.md",
+  "consistency-report.json",
+  "consistency-report.md",
+  "layout-safety-report.json",
+  "replica-fidelity-proof.json",
+  "visual-review.json",
+  "html-pipeline-summary.json",
+  "run.json"
+]);
+
+export async function clearConsumableOutputs(outputDir, protectedPaths = []) {
+  const protectedSet = new Set(protectedPaths.map((path) => resolve(path)));
+  await Promise.all(CONSUMABLE_OUTPUTS.map(async (name) => {
+    const candidate = resolve(outputDir, name);
+    if (!protectedSet.has(candidate)) await rm(candidate, { force: true });
+  }));
+}
 
 export function normalizeRepairLimit(value = 3) {
   const numeric = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 3;
@@ -159,22 +182,39 @@ async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy,
 }
 
 export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
-  const resolvedManifest = resolve(manifestPath);
+  const resolvedInput = resolve(manifestPath);
+  let resolvedManifest = resolvedInput;
   const resolvedOutput = resolve(outputDir);
   await mkdir(resolvedOutput, { recursive: true });
+  await clearConsumableOutputs(resolvedOutput, [resolvedInput]);
   await rm(join(resolvedOutput, "pipeline-blocked.json"), { force: true });
 
-  const manifest = JSON.parse(await readFile(resolvedManifest, "utf8"));
-  const inputType = normalizeInputType(options.inputType, manifest);
+  let manifest = null;
+  let routeHint = null;
+  if (typeof options.prepareManifest !== "function") {
+    try { routeHint = JSON.parse(await readFile(resolvedInput, "utf8")); } catch {}
+  }
+  const inputType = normalizeInputType(options.inputType, routeHint);
   const route = ["html", "image", "pdf"].includes(inputType) ? inputType : "text";
-  const mode = options.mode ?? manifest.metadata?.mode ?? (route === "text" ? "direct" : "replica");
-  const inputSource = options.inputSource ?? manifest.metadata?.replicaSource?.path ?? resolvedManifest;
+  const mode = options.mode ?? routeHint?.metadata?.mode ?? (route === "text" ? "direct" : "replica");
+  let inputSource = options.inputSource ?? resolvedInput;
   const steps = [];
   const contract = buildPipelinePlan({ route, mode, proofAvailable: true });
   const stageGuard = createStageGuard(contract);
-  if (mode === "replica") await rm(join(resolvedOutput, "visual-review.json"), { force: true });
 
   stageGuard.enter("validate");
+  try {
+    if (typeof options.prepareManifest === "function") {
+      const prepared = await options.prepareManifest({ inputPath: resolvedInput, outputDir: resolvedOutput });
+      resolvedManifest = resolve(prepared?.manifestPath ?? prepared);
+    }
+    manifest = JSON.parse(await readFile(resolvedManifest, "utf8"));
+    inputSource = options.inputSource ?? manifest.metadata?.replicaSource?.path ?? resolvedInput;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    steps.push({ label: "validate", ok: false, stderr: detail });
+    await blockPipeline(resolvedInput, resolvedOutput, steps, "validate", detail);
+  }
   const validation = await runPythonStep("validate", [join(root, "scripts/validate-manifest.py"), resolvedManifest]);
   steps.push(validation);
   if (!validation.ok) await blockPipeline(resolvedManifest, resolvedOutput, steps, "validate", validation.stderr || validation.stdout);
@@ -201,16 +241,32 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const coverage = manifest.metadata?.replicaSource?.coverage;
   const replicaProofAvailable = hasCompleteReplicaProof(coverage);
   const creativeReview = mode === "creative" ? reviewManifest(manifest, { mode: "creative" }) : null;
+  let routePreflight = { ok: true, stdout: "" };
+  if (typeof options.routePreflight === "function") {
+    try {
+      routePreflight = await options.routePreflight({
+        inputPath: resolvedInput,
+        manifestPath: resolvedManifest,
+        manifest,
+        outputDir: resolvedOutput
+      });
+    } catch (error) {
+      routePreflight = { ok: false, stderr: error instanceof Error ? error.message : String(error) };
+    }
+  }
   const preflightLabel = mode === "creative"
     ? "creative-layout-taste-preflight"
     : mode === "replica" ? "replica-preflight" : "light-preflight";
   const preflight = {
     label: preflightLabel,
-    ok: layout.ok
+    ok: routePreflight.ok !== false
+      && layout.ok
       && (mode !== "creative" || (creativeReview.deckScore >= 70 && creativeReview.slopRisk <= 60))
       && (mode !== "replica" || replicaProofAvailable),
-    stdout: mode === "creative" ? `deckScore=${creativeReview.deckScore}; slopRisk=${creativeReview.slopRisk}` : fontPreflight.source,
-    stderr: !layout.ok ? layout.stderr : (mode === "replica" && !replicaProofAvailable ? "strict replica fidelity proof capability unavailable" : "")
+    stdout: mode === "creative" ? `deckScore=${creativeReview.deckScore}; slopRisk=${creativeReview.slopRisk}` : (routePreflight.stdout || fontPreflight.source),
+    stderr: routePreflight.ok === false
+      ? routePreflight.stderr
+      : !layout.ok ? layout.stderr : (mode === "replica" && !replicaProofAvailable ? "strict replica fidelity proof capability unavailable" : "")
   };
   stageGuard.enter(preflightLabel);
   steps.push(preflight);

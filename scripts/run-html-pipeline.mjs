@@ -3,9 +3,9 @@ import { extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeManifestFromHtml } from "./html-to-manifest.mjs";
 import { fetchRemoteAssetSecure } from "./html-to-manifest.mjs";
-import { repairHtmlLayout } from "./lib/html-layout-repair.mjs";
 import { writeMeasurements } from "./measure-html.mjs";
 import { runDeckPipeline } from "./run-deck-pipeline.mjs";
+import { writeHtmlLayoutReport } from "./run-html-layout-check.mjs";
 
 function parseArgs(argv) {
   const options = { maxAttempts: 3 };
@@ -71,65 +71,60 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
   const resolvedInput = resolve(inputPath);
   const resolvedOutput = resolve(outputDir);
   await mkdir(resolvedOutput, { recursive: true });
-  const browserInput = await localizeHtmlRemoteAssets(resolvedInput, resolvedOutput, options);
-
-  const repair = await repairHtmlLayout(browserInput, resolvedOutput, {
-    maxAttempts: options.maxAttempts ?? 3,
-    screenshots: true
-  });
-  if (repair.report.summary.status !== "passed") {
-    const blocked = {
-      input: resolvedInput,
-      outputDir: resolvedOutput,
-      status: "blocked",
-      blockedBy: "html-layout",
-      htmlLayout: repair.layoutReport.summary
-    };
-    await writeFile(join(resolvedOutput, "pipeline-blocked.json"), `${JSON.stringify(blocked, null, 2)}\n`, "utf8");
-    const error = new Error(`HTML pipeline blocked: ${repair.report.summary.criticalRemaining} critical HTML layout issue(s) remain.`);
-    error.summary = blocked;
-    throw error;
-  }
-
-  const measurementsPath = join(resolvedOutput, "layout-measurements.json");
-  const measurements = await writeMeasurements(repair.repairedPath, measurementsPath);
   const manifestPath = join(resolvedOutput, "deck.manifest.json");
   const mode = options.mode ?? "creative";
-  const converted = await writeManifestFromHtml(repair.repairedPath, manifestPath, {
-    measurements,
-    designSystem: options.designSystem,
-    designMode: mode === "replica" ? "replica" : "balanced",
-    replicaSourcePath: resolvedInput,
-    allowRemoteAssets: options.allowRemoteAssets === true
-  });
-  if (converted.contentCoverage?.ratio !== 1) {
-    throw new Error(`HTML pipeline requires 100% content coverage; received ${converted.contentCoverage?.ratio ?? "unknown"}.`);
-  }
-
-  let summary;
-  const deck = await runDeckPipeline(manifestPath, resolvedOutput, {
+  const preparation = {};
+  let summary = null;
+  const deck = await runDeckPipeline(resolvedInput, resolvedOutput, {
     inputType: "html",
     inputSource: resolvedInput,
     mode,
     strictLayoutSafety: true,
     copyManifest: false,
+    maxRepairAttempts: options.maxAttempts ?? 3,
+    prepareManifest: async () => {
+      preparation.browserInput = await localizeHtmlRemoteAssets(resolvedInput, resolvedOutput, options);
+      preparation.measurementsPath = join(resolvedOutput, "layout-measurements.json");
+      preparation.measurements = await writeMeasurements(preparation.browserInput, preparation.measurementsPath);
+      preparation.converted = await writeManifestFromHtml(preparation.browserInput, manifestPath, {
+        measurements: preparation.measurements,
+        designSystem: options.designSystem,
+        designMode: mode === "replica" ? "replica" : "balanced",
+        replicaSourcePath: resolvedInput,
+        allowRemoteAssets: false
+      });
+      if (preparation.converted.contentCoverage?.ratio !== 1) {
+        throw new Error(`HTML pipeline requires 100% content coverage; received ${preparation.converted.contentCoverage?.ratio ?? "unknown"}.`);
+      }
+      return { manifestPath };
+    },
+    routePreflight: async () => {
+      const { report } = await writeHtmlLayoutReport(preparation.browserInput, resolvedOutput, { screenshots: true });
+      preparation.htmlLayout = report.summary;
+      return {
+        ok: report.summary.criticalCount === 0,
+        stdout: `criticalCount=${report.summary.criticalCount}`,
+        stderr: report.summary.criticalCount === 0 ? "" : `${report.summary.criticalCount} critical HTML layout issue(s)`
+      };
+    },
     beforePackage: async () => {
       summary = {
         input: resolvedInput,
-        repairedHtml: repair.repairedPath,
-        measurements: measurementsPath,
+        preparedHtml: preparation.browserInput,
+        measurements: preparation.measurementsPath,
         manifest: manifestPath,
         outputDir: resolvedOutput,
-        status: "passed",
+        status: "packaging",
         mode,
-        htmlLayout: repair.layoutReport.summary,
-        contentCoverage: converted.contentCoverage,
-        replicaCoverage: converted.replicaCoverage
+        htmlLayout: preparation.htmlLayout,
+        contentCoverage: preparation.converted.contentCoverage,
+        replicaCoverage: preparation.converted.replicaCoverage
       };
       await writeFile(join(resolvedOutput, "html-pipeline-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
     }
   });
-  summary.status = deck.status;
+  summary = { ...summary, status: deck.status, contract: deck.contract, steps: deck.steps };
+  await writeFile(join(resolvedOutput, "html-pipeline-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
   return summary;
 }
 

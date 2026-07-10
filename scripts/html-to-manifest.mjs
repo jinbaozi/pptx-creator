@@ -44,18 +44,39 @@ function isBlockedIpv4(host) {
     || octets[0] >= 224;
 }
 
-function isBlockedIpv6(host) {
-  const normalized = host.replace(/^\[|\]$/g, "").toLowerCase();
-  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isBlockedIpv4(mapped[1]);
-  const mappedHex = normalized.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (mappedHex) {
-    const high = Number.parseInt(mappedHex[1], 16);
-    const low = Number.parseInt(mappedHex[2], 16);
-    return isBlockedIpv4(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+function ipv6Words(host) {
+  let normalized = host.replace(/^\[|\]$/g, "").split("%", 1)[0].toLowerCase();
+  const dottedTail = normalized.match(/(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  if (dottedTail) {
+    const octets = dottedTail.split(".").map(Number);
+    if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+    normalized = `${normalized.slice(0, -dottedTail.length)}${((octets[0] << 8) | octets[1]).toString(16)}:${((octets[2] << 8) | octets[3]).toString(16)}`;
   }
-  return normalized === "::1" || normalized === "::" || normalized.startsWith("fc")
-    || normalized.startsWith("fd") || /^fe[89ab]/.test(normalized);
+  const halves = normalized.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if ((halves.length === 1 && missing !== 0) || missing < 0) return null;
+  const groups = halves.length === 2 ? [...left, ...Array(missing).fill("0"), ...right] : left;
+  if (groups.length !== 8 || groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) return null;
+  return groups.map((group) => Number.parseInt(group, 16));
+}
+
+function isBlockedIpv6(host) {
+  const words = ipv6Words(host);
+  if (!words) return false;
+  const allZero = words.every((word) => word === 0);
+  const loopback = words.slice(0, 7).every((word) => word === 0) && words[7] === 1;
+  const embeddedIpv4 = `${words[6] >> 8}.${words[6] & 255}.${words[7] >> 8}.${words[7] & 255}`;
+  const mappedIpv4 = words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff;
+  const compatibleIpv4 = words.slice(0, 6).every((word) => word === 0);
+  return allZero
+    || loopback
+    || ((mappedIpv4 || compatibleIpv4) && isBlockedIpv4(embeddedIpv4))
+    || (words[0] & 0xfe00) === 0xfc00
+    || (words[0] & 0xffc0) === 0xfe80
+    || (words[0] & 0xff00) === 0xff00;
 }
 
 export function assertSafeRemoteAssetUrl(src) {
@@ -136,11 +157,31 @@ function requestPinnedAsset(parsed, options) {
 export async function fetchRemoteAssetSecure(src, options = {}) {
   const limits = { ...DEFAULT_REMOTE_LIMITS, ...options };
   const transport = options.transport ?? requestPinnedAsset;
+  const deadline = Date.now() + limits.timeoutMs;
+  const beforeDeadline = async (promise) => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error(`remote asset total timeout exceeded (${limits.timeoutMs}ms)`);
+    let timeoutId;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(`remote asset total timeout exceeded (${limits.timeoutMs}ms)`)), remaining);
+        })
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
   let current = src;
   for (let redirect = 0; redirect <= limits.maxRedirects; redirect += 1) {
     const parsed = assertSafeRemoteAssetUrl(current);
-    const addresses = await assertPublicRemoteResolution(parsed, options.resolver ?? lookup);
-    const response = await transport(parsed, { ...limits, address: addresses[0] });
+    const addresses = await beforeDeadline(assertPublicRemoteResolution(parsed, options.resolver ?? lookup));
+    const response = await beforeDeadline(transport(parsed, {
+      ...limits,
+      timeoutMs: Math.max(1, deadline - Date.now()),
+      address: addresses[0]
+    }));
     const location = headerValue(response.headers, "location");
     if (response.status >= 300 && response.status < 400 && location) {
       if (redirect === limits.maxRedirects) throw new Error(`remote asset exceeded redirect limit (${limits.maxRedirects})`);

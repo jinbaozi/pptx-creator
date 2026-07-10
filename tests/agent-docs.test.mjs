@@ -56,7 +56,8 @@ describe("universal Agent Skill packaging", () => {
 
   it("keeps the common workflow portable and free of corrupted text", async () => {
     const workflow = await read("references/workflow.md");
-    expect(workflow).toContain("node scripts/run-deck-pipeline.mjs");
+    expect(workflow).toContain("npm run pptx -- text");
+    expect(workflow).not.toContain("node scripts/run-deck-pipeline.mjs");
     expect(workflow).toContain("output/assets");
     expect(workflow).toContain("web research");
     expect(workflow).not.toMatch(/[鑱绱潗]/);

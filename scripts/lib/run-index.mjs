@@ -1,4 +1,4 @@
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
 export async function buildRunIndex(outputDir, options) {
@@ -21,8 +21,7 @@ export async function buildRunIndex(outputDir, options) {
     mode: options.mode,
     status: artifacts.pptx ? "ready-for-review" : "in-progress",
     input: options.input,
-    artifacts,
-    directions: await listDirections(root)
+    artifacts
   };
 }
 
@@ -60,33 +59,6 @@ async function listReviewFiles(root) {
     if (await exists(root, name)) present.push(name);
   }
   return present;
-}
-
-async function listDirections(root) {
-  try {
-    const dirs = await readdir(join(root, "directions"), { withFileTypes: true });
-    const results = [];
-    for (const dir of dirs.filter((entry) => entry.isDirectory())) {
-      const scorePath = join(root, "directions", dir.name, "scorecard.json");
-      let score = null;
-      let status = "candidate";
-      try {
-        const scorecard = JSON.parse(await readFile(scorePath, "utf8"));
-        score = scorecard.total;
-        status = scorecard.recommendation === "approve" ? "approved" : "candidate";
-      } catch {}
-      results.push({
-        id: dir.name,
-        label: dir.name,
-        status,
-        score,
-        path: normalize(join("directions", dir.name, "direction.json"))
-      });
-    }
-    return results.sort((a, b) => a.id.localeCompare(b.id));
-  } catch {
-    return [];
-  }
 }
 
 function normalize(path) {

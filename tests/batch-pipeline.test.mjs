@@ -11,7 +11,7 @@ describe("run-batch-pipeline U11 — layoutSafety aggregation", () => {
   it("aggregates layoutSafety distribution + average slopRisk across 2+ decks", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-batch-u11-"));
     const textManifest = join(root, "examples/text-input/deck.manifest.json");
-    const htmlManifest = textManifest;
+    const secondaryTextManifest = textManifest;
     const batchFile = join(outputDir, "batch.json");
     await writeFile(
       batchFile,
@@ -19,7 +19,7 @@ describe("run-batch-pipeline U11 — layoutSafety aggregation", () => {
         {
           jobs: [
             { id: "text", manifest: textManifest, outputDir: join(outputDir, "text"), mode: "creative" },
-            { id: "html", manifest: htmlManifest, outputDir: join(outputDir, "html"), mode: "creative" }
+            { id: "text-secondary", manifest: secondaryTextManifest, outputDir: join(outputDir, "text-secondary"), mode: "creative" }
           ]
         },
         null,
@@ -34,7 +34,7 @@ describe("run-batch-pipeline U11 — layoutSafety aggregation", () => {
     expect(report.jobs).toHaveLength(2);
     // Each per-deck report must exist.
     await access(join(outputDir, "text", "consistency-report.json"));
-    await access(join(outputDir, "html", "consistency-report.json"));
+    await access(join(outputDir, "text-secondary", "consistency-report.json"));
 
     // The batch aggregate must include the U11 layoutSafety fields.
     const aggregatePath = join(outputDir, "consistency-report.batch.json");
@@ -65,11 +65,11 @@ describe("run-batch-pipeline U11 — layoutSafety aggregation", () => {
 
     // Per-deck consistency reports each include a slopRisk number.
     const textReport = JSON.parse(await readFile(join(outputDir, "text", "consistency-report.json"), "utf8"));
-    const htmlReport = JSON.parse(await readFile(join(outputDir, "html", "consistency-report.json"), "utf8"));
+    const secondaryTextReport = JSON.parse(await readFile(join(outputDir, "text-secondary", "consistency-report.json"), "utf8"));
     expect(typeof textReport.slopRisk).toBe("number");
-    expect(typeof htmlReport.slopRisk).toBe("number");
+    expect(typeof secondaryTextReport.slopRisk).toBe("number");
     // The average across the batch is the simple mean of the two decks.
-    const expectedAvg = Number(((textReport.slopRisk + htmlReport.slopRisk) / 2).toFixed(2));
+    const expectedAvg = Number(((textReport.slopRisk + secondaryTextReport.slopRisk) / 2).toFixed(2));
     expect(aggregate.averageSlopRisk).toBe(expectedAvg);
   }, 90000);
 });
