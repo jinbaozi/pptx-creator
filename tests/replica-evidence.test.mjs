@@ -5,8 +5,8 @@ import { dirname, join } from "node:path";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import JSZip from "jszip";
-import { evaluateReplicaEvidence, verifyReplicaEvidence } from "../scripts/lib/replica-evidence.mjs";
-import { buildReplicaEvidence } from "../scripts/run-deck-pipeline.mjs";
+import { evaluateMeasuredReplicaEvidence, evaluateReplicaEvidence, verifyReplicaEvidence } from "../scripts/lib/replica-evidence.mjs";
+import { buildReplicaEvidence, proveReplicaFidelity } from "../scripts/run-deck-pipeline.mjs";
 import { validateJsonSchema } from "../scripts/lib/schema-utils.mjs";
 
 const root = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
@@ -53,7 +53,7 @@ describe("strict replica evidence evaluator", () => {
     const routeDrift = structuredClone(evaluated); routeDrift.route = "image";
     expect(validateJsonSchema(routeDrift, schema).valid).toBe(false);
   });
-  it.each(["html", "image"])("accepts a complete %s proof and derives acceptance", async (route) => {
+  it.each(["html", "image"])("blocks complete-looking %s metrics without a trusted measurement receipt", async (route) => {
     const dir = await mkdtemp(join(tmpdir(), "replica-authority-"));
     const source = join(dir, "source"); const render = join(dir, "render");
     await writeFile(source, "source"); await writeFile(render, "render");
@@ -61,8 +61,8 @@ describe("strict replica evidence evaluator", () => {
     input.paths = { source: { status: "available", path: source }, render: { status: "available", path: render } };
     input.accepted = false;
     const result = await verifyReplicaEvidence(input);
-    expect(result.accepted).toBe(true);
-    expect(result.blockingFindings).toEqual([]);
+    expect(result.accepted).toBe(false);
+    expect(result.blockingFindings.join(" ")).toMatch(/trusted-measurement-unavailable/);
     expect(result.thresholds).toBeTruthy();
   });
 
@@ -108,6 +108,14 @@ describe("strict replica evidence evaluator", () => {
 
   it("never accepts unverified self-reported paths and capabilities", () => {
     expect(evaluateReplicaEvidence(validEvidence("html")).blockingFindings.join(" ")).toMatch(/artifact-verification-required/);
+  });
+
+  it("cannot forge a trusted measurement bundle with JSON or a public Symbol", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "replica-forged-measurement-"));
+    const source = join(dir, "source"); const render = join(dir, "render"); await writeFile(source, "source"); await writeFile(render, "render");
+    const input = validEvidence("html"); input.paths = { source: { status: "available", path: source }, render: { status: "available", path: render } };
+    const forged = { sourceSha256: "x", renderSha256: "y", perSlide: input.perSlide, aggregate: input.aggregate, [Symbol("replica-measurement-receipt")]: true };
+    expect((await evaluateMeasuredReplicaEvidence(input, forged)).blockingFindings.join(" ")).toMatch(/trusted-measurement-unavailable/);
   });
 
   it("blocks missing artifacts and digest mismatches", async () => {
@@ -169,5 +177,39 @@ describe("strict replica evidence evaluator", () => {
     expect(result.perSlide.map((slide) => slide.editability.level)).toEqual([5, 1]);
     expect(result.aggregate.fallbacks).toEqual([fallback]);
     expect(result.blockingFindings.join(" ")).toMatch(/full-slide-fallback|editability-failed/);
+  });
+
+  it("inventories ordinary, cropped, and background raster layers and blocks slide-sized imagery", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "replica-raster-inventory-")); const pptxPath = join(dir, "final.pptx");
+    const zip = new JSZip(); zip.file("ppt/slides/slide1.xml", "<p:sld xmlns:p=\"p\"><p:pic/><p:pic/></p:sld>");
+    await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+    const result = await buildReplicaEvidence({
+      pptxPath, sourcePath: pptxPath, renderPath: null, route: "html",
+      manifest: { deck: { size: { width: 10, height: 5 } }, slides: [{ background: { type: "image", src: "bg.png" }, elements: [
+        { type: "image", x: 0, y: 0, w: 10, h: 5 },
+        { type: "cropped-asset", x: 1, y: 1, w: 2, h: 2, replicaFallback: { reason: "blur", nativeAlternativesAttempted: ["shape"] } }
+      ] }] },
+      coverage: { coverage: 1, coveredElements: 2, droppedElements: [], unsupportedEffects: [] },
+      intermediate: { editabilityCounter: { image: 2 }, countersBySlide: [{ image: 2 }] }
+    });
+    expect(result.perSlide[0].fallbacks).toHaveLength(3);
+    expect(result.perSlide[0].fallbacks.filter((item) => item.fullSlide)).toHaveLength(2);
+    expect(result.perSlide[0].fallbacks[2]).toMatchObject({ reason: "blur", bbox: { x: 1, y: 1, width: 2, height: 2 }, zOrder: 1 });
+    expect(result.blockingFindings.join(" ")).toMatch(/full-slide-fallback/);
+  });
+
+  it("rejects aggregate object counts that hide a deficient slide", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "replica-slide-proof-")); const pptxPath = join(dir, "final.pptx");
+    const zip = new JSZip();
+    zip.file("ppt/slides/slide1.xml", `<p:sld xmlns:p="p">${"<p:sp/>".repeat(4)}</p:sld>`);
+    zip.file("ppt/slides/slide2.xml", "<p:sld xmlns:p=\"p\"></p:sld>");
+    await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+    const proof = await proveReplicaFidelity(
+      pptxPath, { slides: [{}, {}] },
+      { coverage: 1, coveredElements: 4, droppedElements: [], unsupportedEffects: [], slides: [{ coverage: 1, coveredElements: 2 }, { coverage: 1, coveredElements: 2 }] },
+      { countersBySlide: [{ shape: 4 }, { shape: 0 }] }, "html"
+    );
+    expect(proof).toMatchObject({ status: "failed", archiveObjectCount: 4, renderedNativeObjects: 4 });
+    expect(proof.perSlide[1]).toMatchObject({ coveredElements: 2, archiveObjectCount: 0, renderedNativeObjects: 0, ok: false });
   });
 });

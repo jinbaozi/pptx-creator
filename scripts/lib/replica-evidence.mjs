@@ -6,6 +6,7 @@ const POLICIES = Object.freeze({
   html: { fidelity: { ssim: { min: 0.97 }, normalizedMae: { max: 6 / 255 }, bboxP95Drift: { max: 2 }, fontMapping: { min: 1 }, colorMapping: { min: 1 } }, nativeCoverage: { min: 0.95 }, editability: { min: 4 } },
   image: { fidelity: { ssim: { min: 0.94 }, ocrCer: { max: 0.02 }, bboxIou: { min: 0.90 }, paletteDeltaE2000P95: { max: 3 }, nativeHighConfidenceTextRecall: { min: 0.90 } }, nativeCoverage: { min: 0 }, editability: { min: 3 } }
 });
+const MEASUREMENT_RECEIPT = Symbol("replica-measurement-receipt");
 const finding = (code, detail) => `${code}: ${detail}`;
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -74,21 +75,27 @@ function checkThreshold(value, rule, path, findings) {
   if (rule.max !== undefined && value > rule.max) findings.push(finding("threshold-failed", `${path} ${value} > ${rule.max}`));
 }
 function fallbackKey(item) { return stable(item); }
-function checkFallbacks(fallbacks, path, findings) {
+function fallbackCoversSlide(item, size) {
+  return Number(item?.bbox?.x ?? 0) <= 0.01 && Number(item?.bbox?.y ?? 0) <= 0.01
+    && Number(item?.bbox?.width ?? 0) >= Number(size?.width ?? Infinity) * 0.98
+    && Number(item?.bbox?.height ?? 0) >= Number(size?.height ?? Infinity) * 0.98;
+}
+function checkFallbacks(fallbacks, path, findings, size) {
   if (!Array.isArray(fallbacks)) { findings.push(finding("fallback-inventory-missing", path)); return; }
   for (const [index, item] of fallbacks.entries()) {
-    if (item?.fullSlide === true) findings.push(finding("full-slide-fallback", `${path}[${index}]`));
+    if (item?.fullSlide === true || fallbackCoversSlide(item, size)) findings.push(finding("full-slide-fallback", `${path}[${index}]`));
     if (!item?.reason || !item?.bbox || !Number.isInteger(item?.zOrder) || !Array.isArray(item?.nativeAlternativesAttempted)) findings.push(finding("invalid-fallback", `${path}[${index}]`));
   }
 }
 
 export function replicaThresholds(route) { return POLICIES[route] ? structuredClone(POLICIES[route]) : null; }
 
-function evaluate(raw, authoritative) {
+function evaluate(raw, { artifactsVerified = false, measurementsTrusted = false } = {}) {
   if (raw.mode !== "replica") return { applicable: false, accepted: raw.accepted === true, blockingFindings: [] };
   const evidence = structuredClone(raw); const findings = [...(raw.__artifactFindings ?? [])]; delete evidence.__artifactFindings;
   const policy = POLICIES[evidence.route];
-  if (!authoritative) findings.push(finding("artifact-verification-required", "use verifyReplicaEvidence"));
+  if (!artifactsVerified) findings.push(finding("artifact-verification-required", "use verifyReplicaEvidence"));
+  if (!measurementsTrusted) findings.push(finding("trusted-measurement-unavailable", "metrics must come from a receipt-bound measurement adapter"));
   if (!policy) findings.push(finding("unsupported-route", String(evidence.route)));
   evidence.thresholds = policy ? structuredClone(policy) : {};
   for (const capability of ["sourceRenderComparison", "nativeObjectInspection", "fallbackInventory"]) if (evidence.capabilities?.[capability] !== true) findings.push(finding("capability-unavailable", capability));
@@ -105,14 +112,14 @@ function evaluate(raw, authoritative) {
     for (const [name, rule] of Object.entries(policy.fidelity)) checkThreshold(validateMetric(evidence.aggregate.fidelity?.[name], `aggregate.fidelity.${name}`, findings), rule, `aggregate.fidelity.${name}`, findings);
     checkThreshold(validateMetric(evidence.aggregate.nativeCoverage, "aggregate.nativeCoverage", findings), policy.nativeCoverage, "aggregate.nativeCoverage", findings);
     if (!Number.isInteger(evidence.aggregate.editability?.level) || evidence.aggregate.editability.level < policy.editability.min) findings.push(finding("editability-failed", `aggregate below L${policy.editability.min}`));
-    checkFallbacks(evidence.aggregate.fallbacks, "aggregate.fallbacks", findings);
+    checkFallbacks(evidence.aggregate.fallbacks, "aggregate.fallbacks", findings, evidence.source?.size);
   } else findings.push(finding("aggregate-missing", "aggregate evidence is required"));
   for (const [index, slide] of (evidence.perSlide ?? []).entries()) {
     if (!policy) break;
     for (const [name, rule] of Object.entries(policy.fidelity)) checkThreshold(validateMetric(slide.fidelity?.[name], `perSlide[${index}].fidelity.${name}`, findings), rule, `perSlide[${index}].fidelity.${name}`, findings);
     checkThreshold(validateMetric(slide.nativeCoverage, `perSlide[${index}].nativeCoverage`, findings), policy.nativeCoverage, `perSlide[${index}].nativeCoverage`, findings);
     if (!Number.isInteger(slide.editability?.level) || slide.editability.level < policy.editability.min) findings.push(finding("editability-failed", `perSlide[${index}] below L${policy.editability.min}`));
-    checkFallbacks(slide.fallbacks, `perSlide[${index}].fallbacks`, findings);
+    checkFallbacks(slide.fallbacks, `perSlide[${index}].fallbacks`, findings, evidence.source?.size);
   }
   if (evidence.perSlide?.length && evidence.aggregate && policy) {
     for (const [name, rule] of Object.entries(policy.fidelity)) {
@@ -132,11 +139,27 @@ function evaluate(raw, authoritative) {
   evidence.applicable = true; evidence.blockingFindings = [...new Set(findings)]; evidence.accepted = evidence.blockingFindings.length === 0; return evidence;
 }
 
-export function evaluateReplicaEvidence(raw = {}) { return evaluate(raw, false); }
+export function evaluateReplicaEvidence(raw = {}) { return evaluate(raw); }
 export async function verifyReplicaEvidence(raw = {}) {
-  if (raw.mode !== "replica") return evaluate(raw, true);
+  if (raw.mode !== "replica") return evaluate(raw, { artifactsVerified: true });
   const findings = [];
   const source = await verifyPath(raw.paths?.source, "source", findings);
   const render = await verifyPath(raw.paths?.render, "render", findings);
-  return evaluate({ ...raw, paths: { source, render }, __artifactFindings: findings }, true);
+  return evaluate({ ...raw, paths: { source, render }, __artifactFindings: findings }, { artifactsVerified: true });
+}
+
+export async function evaluateMeasuredReplicaEvidence(raw = {}, measuredBundle = {}) {
+  const verified = await verifyReplicaEvidence(raw);
+  const trusted = measuredBundle?.[MEASUREMENT_RECEIPT] === true
+    && measuredBundle.sourceSha256 === verified.paths?.source?.sha256
+    && measuredBundle.renderSha256 === verified.paths?.render?.sha256;
+  if (!trusted) return verified;
+  const merged = {
+    ...verified,
+    perSlide: measuredBundle.perSlide,
+    aggregate: measuredBundle.aggregate,
+    capabilities: { ...verified.capabilities, sourceRenderComparison: true },
+    blockingFindings: (verified.blockingFindings ?? []).filter((item) => !item.startsWith("trusted-measurement-unavailable") && !item.startsWith("capability-unavailable: sourceRenderComparison"))
+  };
+  return evaluate(merged, { artifactsVerified: true, measurementsTrusted: true });
 }

@@ -180,15 +180,20 @@ export async function proveReplicaFidelity(pptxPath, manifest, coverage, interme
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const slideXml = await Promise.all(slideNames.map((name) => zip.files[name].async("string")));
-  const archiveObjectCount = slideXml.reduce((sum, xml) => sum + (xml.match(/<p:(?:sp|pic|graphicFrame)\b/g) ?? []).length, 0);
   const counters = intermediate.countersBySlide ?? [intermediate.editabilityCounter ?? {}];
-  const renderedNativeObjects = counters.reduce((sum, item) => sum
-    + (item.text ?? 0) + (item.shape ?? 0) + (item.image ?? 0) + (item.table ?? 0), 0);
   const expectedSlides = manifest.slides?.length ?? 0;
-  const coveredElements = Number(coverage.coveredElements ?? 0);
-  const ok = slideNames.length === expectedSlides
-    && archiveObjectCount >= coveredElements
-    && renderedNativeObjects >= coveredElements;
+  const perSlide = Array.from({ length: expectedSlides }, (_, slideIndex) => {
+    const archiveObjectCount = (slideXml[slideIndex]?.match(/<p:(?:sp|pic|graphicFrame)\b/g) ?? []).length;
+    const counter = counters[slideIndex] ?? {};
+    const renderedNativeObjects = (counter.text ?? 0) + (counter.shape ?? 0) + (counter.image ?? 0) + (counter.table ?? 0);
+    const rawCovered = coverage.slides?.[slideIndex]?.coveredElements ?? (expectedSlides === 1 ? coverage.coveredElements : undefined);
+    const coveredElements = Number.isFinite(Number(rawCovered)) ? Number(rawCovered) : null;
+    return { slideIndex, coveredElements, renderedNativeObjects, archiveObjectCount, ok: coveredElements !== null && archiveObjectCount >= coveredElements && renderedNativeObjects >= coveredElements };
+  });
+  const archiveObjectCount = perSlide.reduce((sum, slide) => sum + slide.archiveObjectCount, 0);
+  const renderedNativeObjects = perSlide.reduce((sum, slide) => sum + slide.renderedNativeObjects, 0);
+  const coveredElements = perSlide.reduce((sum, slide) => sum + (slide.coveredElements ?? 0), 0);
+  const ok = slideNames.length === expectedSlides && perSlide.every((slide) => slide.ok);
   return {
     status: ok ? "passed" : "failed",
     route,
@@ -197,7 +202,8 @@ export async function proveReplicaFidelity(pptxPath, manifest, coverage, interme
     renderedSlides: slideNames.length,
     coveredElements,
     renderedNativeObjects,
-    archiveObjectCount
+    archiveObjectCount,
+    perSlide
   };
 }
 
@@ -210,6 +216,45 @@ function unavailableFidelity(route) {
     ? ["ssim", "normalizedMae", "bboxP95Drift", "fontMapping", "colorMapping"]
     : ["ssim", "ocrCer", "bboxIou", "paletteDeltaE2000P95", "nativeHighConfidenceTextRecall"];
   return Object.fromEntries(names.map((name) => [name, unavailableMetric("source-render-comparison-not-implemented")]));
+}
+
+function coversSlide(bbox, size) {
+  return Number(bbox?.x ?? 0) <= 0.01 && Number(bbox?.y ?? 0) <= 0.01
+    && Number(bbox?.width ?? 0) >= Number(size.width) * 0.98
+    && Number(bbox?.height ?? 0) >= Number(size.height) * 0.98;
+}
+
+function rasterFallback(item, { size, zOrder, reason, fullSlide } = {}) {
+  const provenance = item?.replicaFallback ?? item?.fallbackProvenance ?? {};
+  const bbox = provenance.bbox ?? {
+    x: Number(item?.x ?? 0), y: Number(item?.y ?? 0),
+    width: Number(item?.w ?? item?.width ?? size.width), height: Number(item?.h ?? item?.height ?? size.height)
+  };
+  return {
+    kind: "raster",
+    fullSlide: provenance.fullSlide === true || fullSlide === true || coversSlide(bbox, size),
+    reason: provenance.reason ?? reason,
+    bbox,
+    zOrder: Number.isInteger(provenance.zOrder) ? provenance.zOrder : zOrder,
+    nativeAlternativesAttempted: Array.isArray(provenance.nativeAlternativesAttempted) ? provenance.nativeAlternativesAttempted : []
+  };
+}
+
+function inventorySlideFallbacks(slide, size, coverageSlide) {
+  const explicit = slide.replicaFallbacks ?? coverageSlide?.fallbacks ?? [];
+  const generated = [];
+  if (slide.background?.type === "image" || slide.backgroundImage) {
+    generated.push(rasterFallback({}, { size, zOrder: -1, reason: "raster-background-layer", fullSlide: true }));
+  }
+  for (const [zOrder, element] of (slide.elements ?? []).entries()) {
+    if (element.type === "image" || element.type === "cropped-asset") {
+      generated.push(rasterFallback(element, { size, zOrder, reason: element.type === "cropped-asset" ? "localized-raster-fallback" : "raster-image-layer" }));
+    }
+  }
+  const seen = new Set();
+  return [...explicit, ...generated].filter((item) => {
+    const key = JSON.stringify(item); if (seen.has(key)) return false; seen.add(key); return true;
+  });
 }
 
 export async function buildReplicaEvidence({ pptxPath, manifest, coverage, intermediate, route, sourcePath, renderPath, retryCount = 0 }) {
@@ -225,15 +270,14 @@ export async function buildReplicaEvidence({ pptxPath, manifest, coverage, inter
   const perSlide = Array.from({ length: pageCount }, (_, slideIndex) => {
     const slide = manifest.slides?.[slideIndex] ?? {};
     const explicit = slide.replicaFallbacks ?? coverage?.slides?.[slideIndex]?.fallbacks;
-    const cropped = (slide.elements ?? []).filter((element) => element.type === "cropped-asset");
     const unsupported = slide.replicaUnsupportedEffects ?? coverage?.slides?.[slideIndex]?.unsupportedEffects ?? [];
-    if (explicit === undefined && (cropped.length > 0 || unsupported.length > 0)) fallbackInventory = false;
+    if (explicit === undefined && unsupported.length > 0) fallbackInventory = false;
     return {
       slideIndex,
       fidelity: structuredClone(fidelity),
       nativeCoverage: coverage?.slides?.[slideIndex]?.coverage === undefined ? structuredClone(nativeCoverage) : { status: "available", value: Number(coverage.slides[slideIndex].coverage) },
       editability: { level: editabilityLevelFromCounter(counters[slideIndex] ?? {}) },
-      fallbacks: structuredClone(explicit ?? [])
+      fallbacks: inventorySlideFallbacks(slide, nominalSize, coverage?.slides?.[slideIndex])
     };
   });
   const aggregateFallbacks = perSlide.flatMap((slide) => slide.fallbacks);
