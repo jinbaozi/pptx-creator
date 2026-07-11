@@ -10,15 +10,15 @@ Do not select for creative text decks, HTML, PDFs, or manifest patching; never p
 
 ## Public command
 
-npm run pptx -- image <input.png> <analysis.json>
+npm run pptx -- image <input.png> <output-dir>
 
 ## Inputs and outputs
 
-Input is a local PNG or JPEG. Output is the existing structured replica analysis used to author a `0.2.0` manifest.
+Input is a local PNG or JPEG. Output includes `final.pptx`, the measured analysis and layer plan, `deck.manifest.json`, `replica-evidence.json`, preview pages, and quality reports.
 
 ## Blocking conditions
 
-Block on unreadable input, missing dimensions, unlocalized assets, insufficient editable reconstruction, or more than three repair attempts.
+Block on unreadable or oversized input, source/analysis/plan digest drift, incomplete editable reconstruction, failed fidelity thresholds, missing OOXML native objects, full-slide or undeclared raster references anywhere in the PPTX archive, or more than three repair attempts.
 
 ## Next references
 

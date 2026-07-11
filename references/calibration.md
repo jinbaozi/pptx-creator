@@ -1,8 +1,8 @@
 # OCR Confidence Calibration
 
 This artifact records the per-block OCR confidence distribution used to lock the
-default `--ocr-confidence` threshold (0.7) consumed by `scripts/image-replica-plan.py`
-and the `--ocr-confidence` flag of `scripts/image-to-manifest.mjs`. Regenerate
+default `--ocr-confidence` threshold (0.7) consumed internally by
+`scripts/image-replica-plan.py`. Regenerate
 fixtures with:
 
 ```bash

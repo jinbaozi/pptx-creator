@@ -5,12 +5,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { runHtmlPipeline } from "../scripts/run-html-pipeline.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const execFileAsync = promisify(execFile);
 const enabled = process.env.PLAYWRIGHT_RUN === "1";
 
 describe.skipIf(!enabled)("real HTML replica proof", () => {
+  it("repairs measured OOXML drift and publishes the accepted HTML candidate",async()=>{const dir=await mkdtemp(join(tmpdir(),"pptx-html-repair-"));const summary=await runHtmlPipeline(join(root,"examples/html-input/replica-golden.html"),dir,{prepareInitialReplica:async({manifest})=>{for(const slide of manifest.slides)for(const element of slide.elements.filter((item)=>item.type==="text"))element.x+=.08;}});const repair=summary.steps.find((step)=>step.label==="bounded-repair");expect(repair.ok).toBe(true);expect(repair.attempts).toBeGreaterThan(0);const evidence=JSON.parse(await readFile(join(dir,"replica-evidence.json"),"utf8"));expect(evidence.accepted).toBe(true);expect(evidence.retry.status).toBe("available");expect(evidence.retry.attempts.length).toBe(repair.attempts);},240000);
   it("measures unannotated visible DOM in replica mode and accepts only real source-to-render metrics", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-html-golden-"));
     await execFileAsync(process.execPath, [join(root, "scripts/pptx.mjs"), "html", join(root, "examples/html-input/replica-golden.html"), dir], { cwd: root, timeout: 120000 });

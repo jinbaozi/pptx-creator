@@ -160,10 +160,12 @@ export async function verifyReplicaEvidence(raw = {}) {
 
 export async function evaluateMeasuredReplicaEvidence(raw = {}, measuredBundle = {}) {
   const verified = await verifyReplicaEvidence(raw);
+  const routeArtifactsTrusted = raw.route !== "image"
+    || [measuredBundle.planSha256, measuredBundle.pptxSha256, measuredBundle.manifestSha256].every((value) => /^[a-f0-9]{64}$/.test(value ?? ""));
   const trusted = measuredBundle?.[MEASUREMENT_RECEIPT] === true
     && measuredBundle.sourceSha256 === verified.paths?.source?.sha256
     && measuredBundle.renderSha256 === verified.paths?.render?.sha256
-    && [measuredBundle.planSha256,measuredBundle.pptxSha256,measuredBundle.manifestSha256].every((value)=>/^[a-f0-9]{64}$/.test(value??""));
+    && routeArtifactsTrusted;
   if (!trusted) return verified;
   const merged = {
     ...verified,
@@ -203,7 +205,7 @@ async function inspectPptxObjects(pptxPath, manifest, measurements) {
       if(name&&off&&ext) objects.set(xmlDecode(name[1]),{block,type:match[1],x:Number(off[1]),y:Number(off[2]),w:Number(ext[1]),h:Number(ext[2])});
     }
     const source = (measurements.elements ?? []).filter((item) => item.slideIndex === slideIndex);
-    const drifts = []; let fontTotal = 0; let fontMapped = 0; let colorTotal = 0; let colorMapped = 0; let nativeTotal=0; let nativeMapped=0; let textTotal=0; let textMapped=0;
+    const drifts = []; const geometryAdjustments=[]; let fontTotal = 0; let fontMapped = 0; let colorTotal = 0; let colorMapped = 0; let nativeTotal=0; let nativeMapped=0; let textTotal=0; let textMapped=0;
     for (const item of source) {
       const target = objects.get(item.id) ?? objects.get(`${item.id}-box`) ?? objects.get(`${item.id}-localized-fallback`);
       nativeTotal += 1;
@@ -213,6 +215,7 @@ async function inspectPptxObjects(pptxPath, manifest, measurements) {
       } else {
         const actual = { x: target.x / 914400 / size.width * viewport.width, y: target.y / 914400 / size.height * viewport.height, w: target.w / 914400 / size.width * viewport.width, h: target.h / 914400 / size.height * viewport.height };
         drift=Math.max(...["x", "y", "w", "h"].map((key) => Math.abs(Number(item.px[key]) - actual[key]))); drifts.push(drift);
+        geometryAdjustments.push({id:item.id,slideIndex,dx:Number(item.px.x)-actual.x,dy:Number(item.px.y)-actual.y,dw:Number(item.px.w)-actual.w,dh:Number(item.px.h)-actual.h});
         if(drift<=2) nativeMapped+=1;
       }
       if(item.kind==="text") { textTotal+=1; const xmlText=[...(target?.block??"").matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match)=>xmlDecode(match[1])).join(""); const invisible=/<a:(?:rPr|defRPr)\b[^>]*>[\s\S]*?(?:<a:alpha\b[^>]*val="0"|<a:noFill\s*\/>)[\s\S]*?<\/a:(?:rPr|defRPr)>/i.test(target?.block??""); if(target&&drift<=2&&!invisible&&xmlText===item.text) textMapped+=1; }
@@ -242,10 +245,13 @@ async function inspectPptxObjects(pptxPath, manifest, measurements) {
       nativeTextRecall: textTotal ? metric(textMapped/textTotal) : unavailable("no-native-text")
       ,rasterInventory:[...objects.entries()].filter(([,item])=>item.type==="pic").map(([name,item])=>({name,x:item.x,y:item.y,w:item.w,h:item.h}))
       ,blipCount:(xml.match(/<a:blip\b/g)??[]).length,backgroundRaster:/<a:blip\b/i.test(xml.match(/<p:bg\b[\s\S]*?<\/p:bg>/i)?.[0]??""),archiveBlipCount
+      ,geometryAdjustments
     });
   }
   return perSlide;
 }
+
+export async function measurePptxObjectAdjustments(pptxPath,manifest,measurements){return (await inspectPptxObjects(pptxPath,manifest,measurements)).flatMap((page)=>page.geometryAdjustments??[]);}
 
 /** Authoritative HTML adapter. Callers provide artifacts, never metric values;
  * this module runs the fixed pixel comparator and inspects rendered OOXML before
@@ -368,7 +374,7 @@ export async function measureImageReplicaEvidence(raw, { sourceArtifactPath, ren
   for(const [name,rule] of Object.entries(POLICIES.image.fidelity)){const vals=pages.map(p=>p.fidelity[name]);aggregateFidelity[name]=vals.every(v=>v.status==="available")?metric(rule.min!==undefined?Math.min(...vals.map(v=>v.value)):Math.max(...vals.map(v=>v.value))):unavailable(vals.find(v=>v.status==="unavailable")?.reason??"metric-unavailable");}
   const aggregate={fidelity:aggregateFidelity,nativeCoverage:metric(Math.min(...pages.map(p=>p.nativeCoverage.value))),editability:{level:Math.min(...pages.map(p=>p.editability.level))},fallbacks:pages.flatMap(p=>p.fallbacks??[])};
   const sourceDigest=await digestArtifact(sourceArtifactPath), renderDigest=await digestArtifact(renderArtifactPath);
-  const verified={...raw,paths:{source:{status:"available",path:sourceArtifactPath},render:{status:"available",path:renderArtifactPath}},source:{pageCount:pages.length,size:sizes[0].source},render:{pageCount:pages.length,size:sizes[0].render},perSlide:pages,aggregate,retry:{status:"unavailable",attempts:[],reason:"no-repair-needed-for-passing-initial-proof"},capabilities:{...raw.capabilities,sourceRenderComparison:true,nativeObjectInspection:true},blockingFindings:findings};
+  const verified={...raw,paths:{source:{status:"available",path:sourceArtifactPath},render:{status:"available",path:renderArtifactPath}},source:{pageCount:pages.length,size:sizes[0].source},render:{pageCount:pages.length,size:sizes[0].render},perSlide:pages,aggregate,retry:raw.retry?.status==="available"?raw.retry:{status:"unavailable",attempts:[],reason:"no-repair-needed-for-passing-initial-proof"},capabilities:{...raw.capabilities,sourceRenderComparison:true,nativeObjectInspection:true},blockingFindings:findings};
   const planDigest=await digestArtifact(planPath),pptxDigest=await digestArtifact(pptxPath),manifestDigest=createHash("sha256").update(stable(manifest)).digest("hex");
   return evaluateMeasuredReplicaEvidence(verified,{perSlide:pages,aggregate,sourceSha256:sourceDigest.sha256,renderSha256:renderDigest.sha256,planSha256:planDigest.sha256,pptxSha256:pptxDigest.sha256,manifestSha256:manifestDigest,[MEASUREMENT_RECEIPT]:true});
 }

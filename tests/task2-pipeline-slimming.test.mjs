@@ -48,7 +48,9 @@ describe("Task 2 public surface and deletion contract", () => {
       "workbench/app.js",
       "workbench/index.html",
       "workbench/styles.css",
-      "tests/workbench.test.mjs"
+      "tests/workbench.test.mjs",
+      "scripts/image-to-manifest.mjs",
+      "tests/image-to-manifest.test.mjs"
     ];
     for (const path of retired) {
       await expect(access(join(root, path))).rejects.toThrow();

@@ -90,16 +90,17 @@ def main():
     ocr_ok=src.get('status')=='ok' and rnd.get('status')=='ok'
     st=' '.join(x['text'] for x in src.get('textBlocks',[])); rt=' '.join(x['text'] for x in rnd.get('textBlocks',[]))
     rendered_lines=text_lines(rnd.get('textBlocks',[])); expected_objects=[x for x in plan['objects'] if x['kind']=='editable-text' and x.get('confidence',0)>=plan['threshold']]
-    unused=set(range(len(rendered_lines))); ious=[]
+    unused=set(range(len(rendered_lines))); ious=[]; adjustments=[]
     for item in expected_objects:
         candidates=[index for index in unused if text_key(rendered_lines[index]['text'])==text_key(item['text'])]
         if not candidates: ious.append(0); continue
         selected=max(candidates,key=lambda index:iou(item['pixelBox'],rendered_lines[index]['pixelBox']))
-        ious.append(iou(item['pixelBox'],rendered_lines[selected]['pixelBox']));unused.remove(selected)
+        rendered=rendered_lines[selected]['pixelBox']; source=item['pixelBox']; ious.append(iou(source,rendered));unused.remove(selected)
+        adjustments.append({'id':item['id'],'dx':source['x']-rendered['x'],'dy':source['y']-rendered['y'],'dw':source['w']-rendered['w'],'dh':source['h']-rendered['h']})
     excluded=[x['pixelBox'] for x in plan['objects'] if x['kind']=='cropped-asset']; sp=palette(args.source,exclude=excluded);rp=palette(args.render,exclude=excluded); ds=sorted(min(delta(c,r) for r in rp) for c in sp)
     expected=[text_key(token) for x in expected_objects for token in x['text'].split()]; found=[text_key(x['text']) for x in rnd.get('textBlocks',[])]; remaining=list(found); recalled=0
     for token in expected:
         if token in remaining: recalled+=1;remaining.remove(token)
-    out={**pixel,'ocrStatus':'ok' if ocr_ok else 'unavailable','ocrCer':round(cer(st,rt),6) if ocr_ok else None,'bboxIou':round(sum(ious)/len(ious),6) if ocr_ok and ious else None,'paletteDeltaE2000P95':round(ds[max(0,math.ceil(len(ds)*.95)-1)],6) if ds else None,'nativeHighConfidenceTextRecall':round(recalled/max(1,len(expected)),6) if ocr_ok else None,'sourceText':st,'renderText':rt}
+    out={**pixel,'ocrStatus':'ok' if ocr_ok else 'unavailable','ocrCer':round(cer(st,rt),6) if ocr_ok else None,'bboxIou':round(sum(ious)/len(ious),6) if ocr_ok and ious else None,'paletteDeltaE2000P95':round(ds[max(0,math.ceil(len(ds)*.95)-1)],6) if ds else None,'nativeHighConfidenceTextRecall':round(recalled/max(1,len(expected)),6) if ocr_ok else None,'textAdjustments':adjustments,'sourceText':st,'renderText':rt}
     print(json.dumps(out))
 if __name__=='__main__':main()

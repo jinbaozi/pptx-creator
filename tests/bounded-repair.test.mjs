@@ -1,9 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 import { runBoundedRepair } from "../scripts/lib/bounded-repair.mjs";
+import { applyImageTextAdjustments } from "../scripts/run-image-pipeline.mjs";
+import { repairHtmlManifestGeometry } from "../scripts/run-html-pipeline.mjs";
+import { publishRepairArtifact } from "../scripts/run-deck-pipeline.mjs";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 const proof = (ssim, accepted = false) => ({ accepted, aggregate: { fidelity: { ssim: { status: "available", value: ssim } } } });
 
 describe("bounded repair convergence", () => {
+  it("applies measured image text deltas to both plan and manifest", () => {
+    const plan={slideMapping:{pxPerInX:100,pxPerInY:100},objects:[{id:"t",kind:"editable-text",inchBox:{x:1,y:1,w:2,h:.5}}]};
+    const manifest={slides:[{elements:[{id:"t",type:"text",x:1,y:1,w:2,h:.5}]}]};
+    const repaired=applyImageTextAdjustments(plan,manifest,[{id:"t",dx:2,dy:-1,dw:4,dh:0}]);
+    expect(repaired.changed).toBe(true);
+    expect(repaired.plan.objects[0].inchBox).toEqual({x:1.02,y:.99,w:2.04,h:.5});
+    expect(repaired.manifest.slides[0].elements[0]).toMatchObject({x:1.02,y:.99,w:2.04,h:.5});
+    expect(plan.objects[0].inchBox.x).toBe(1);
+  });
+  it("applies bounded OOXML geometry drift to an HTML manifest",()=>{const manifest={deck:{size:{width:10,height:5}},slides:[{elements:[{id:"x",x:1,y:1,w:2,h:1}]}]};const result=repairHtmlManifestGeometry(manifest,{viewport:{width:1000,height:500}},[{id:"x",slideIndex:0,dx:10,dy:-5,dw:20,dh:0}]);expect(result.changed).toBe(true);expect(result.manifest.slides[0].elements[0]).toEqual({id:"x",x:1.1,y:.95,w:2.2,h:1});});
+  it("stages the complete repair set before replacing any final file",async()=>{const dir=await mkdtemp(join(tmpdir(),"repair-publish-"));const a=join(dir,"a"),b=join(dir,"b"),na=join(dir,"na"),nb=join(dir,"nb");await writeFile(a,"old-a");await writeFile(b,"old-b");await writeFile(na,"new-a");await writeFile(nb,"new-b");await publishRepairArtifact([{source:na,target:a},{source:nb,target:b}]);expect(await readFile(a,"utf8")).toBe("new-a");expect(await readFile(b,"utf8")).toBe("new-b");await writeFile(na,"next-a");await expect(publishRepairArtifact([{source:na,target:a},{source:join(dir,"missing-source"),target:b}])).rejects.toThrow();expect(await readFile(a,"utf8")).toBe("new-a");expect(await readFile(b,"utf8")).toBe("new-b");});
   it("hard caps attempts at three and returns the best improving proof", async () => {
     const attempt = vi.fn(async ({ iteration }) => ({ proof: proof([0.8, 0.85, 0.9][iteration - 1]), artifact: `v${iteration}` }));
     const result = await runBoundedRepair({ initialProof: proof(0.7), maxAttempts: 99, attempt });

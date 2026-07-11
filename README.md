@@ -126,7 +126,7 @@ npm run pptx -- html input.html output/html
 
 Replica 模式会从浏览器真实渲染结果提取 DOM 坐标与计算样式，优先转成可编辑 PPT 原生文本、形状、表格、线条、图片和单层外阴影；非 `drop-shadow(...)` 滤镜、backdrop-filter、clip-path、复杂渐变、多重阴影等 PPT 原生难以表达的效果会进入视觉评审报告，避免把整页悄悄退化成截图。
 
-图片或截图的严格复刻入口为 `npm run pptx -- image reference.png output/image`；在 fidelity-proof compiler 尚未实现时会明确阻断。
+图片或截图使用 `npm run pptx -- image reference.png output/image`。管线会执行真实 OCR、颜色/几何检测，生成原生文本、形状和线条，仅把照片或高复杂度局部区域裁剪为图片；随后从 PPTX 重新渲染并校验 SSIM、OCR CER、文本框 IoU、CIEDE2000 色差、OOXML 原生对象与全部 raster 引用。整页或未声明 raster 会直接阻断。
 
 PDF 页面：
 
@@ -136,7 +136,7 @@ PDF 支持是页面级 hints：最终仍应由 Agent 重建可编辑文本、形
 
 ## 质量检查与修复
 
-统一管线负责 layout、taste/fidelity proof、可编辑性、兼容性和一致性报告，并在硬失败时停止后续阶段。
+统一管线负责 layout、taste/fidelity proof、可编辑性、兼容性和一致性报告。自动修复最多三次；候选没有改善时立即停止并保留最佳版本，硬失败不会进入打包。
 
 ## 整体架构
 

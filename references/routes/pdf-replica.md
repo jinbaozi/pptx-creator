@@ -10,15 +10,15 @@ Do not select for text authoring, HTML, standalone images, or patch-only repair;
 
 ## Public command
 
-npm run pptx -- pdf <input.pdf> <pages-dir> <hints.json>
+npm run pptx -- pdf <input.pdf> <output-dir>
 
 ## Inputs and outputs
 
-Input is a local PDF. Outputs are localized page images and page-level authoring hints for a `0.2.0` manifest.
+Input is a local PDF. This public route currently fails closed because an editable PDF replica compiler and fidelity proof are not implemented; it does not silently package page screenshots.
 
 ## Blocking conditions
 
-Block on unreadable/encrypted PDF, failed page rendering, incomplete page mapping, insufficient editability, or more than three repair attempts.
+Always block with the explicit capability-unavailable error until the editable compiler and source-to-render proof are implemented.
 
 ## Next references
 

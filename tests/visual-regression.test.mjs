@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,9 +31,10 @@ describe("runVisualRegression", () => {
   it("compares previews against a reference directory", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-visual-compare-"));
     const manifest = join(root, "examples/text-input/deck.manifest.json");
-    const referenceDir = join(root, "examples/image-input");
+    const referenceDir = await mkdtemp(join(tmpdir(), "pptx-visual-reference-"));
     const referenceName = "business-slide.png";
     const referencePath = join(referenceDir, referenceName);
+    await copyFile(join(root, "examples/image-input", referenceName), referencePath);
 
     const report = await runVisualRegression(manifest, outputDir, {
       referenceDir,

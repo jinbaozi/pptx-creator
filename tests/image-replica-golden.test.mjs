@@ -6,12 +6,14 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import JSZip from "jszip";
 import { measureImageReplicaEvidence } from "../scripts/lib/replica-evidence.mjs";
+import { runImagePipeline } from "../scripts/run-image-pipeline.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = process.cwd();
 const enabled = process.env.PLAYWRIGHT_RUN === "1";
 
 describe.runIf(enabled)("real image replica golden", () => {
+  it("repairs a measured initial text offset and publishes the accepted candidate",async()=>{const dir=await mkdtemp(join(tmpdir(),"pptx-image-repair-"));const summary=await runImagePipeline(join(root,"examples/image-input/replica-golden.png"),dir,{prepareInitialReplica:async({planPath,manifestPath})=>{const plan=JSON.parse(await readFile(planPath,"utf8")),manifest=JSON.parse(await readFile(manifestPath,"utf8"));const byId=new Map(manifest.slides[0].elements.map((item)=>[item.id,item]));for(const item of plan.objects.filter((entry)=>entry.kind==="editable-text")){item.inchBox.x+=.08;byId.get(item.id).x=item.inchBox.x;}await writeFile(planPath,JSON.stringify(plan));await writeFile(manifestPath,JSON.stringify(manifest));}});const repair=summary.steps.find((step)=>step.label==="bounded-repair");expect(repair.ok).toBe(true);expect(repair.attempts).toBeGreaterThan(0);const evidence=JSON.parse(await readFile(join(dir,"replica-evidence.json"),"utf8"));expect(evidence.accepted).toBe(true);expect(evidence.retry.status).toBe("available");expect(evidence.retry.attempts.length).toBe(repair.attempts);expect(await readFile(join(dir,"final.pptx"))).toEqual(await readFile(join(dir,`.repair-${repair.attempts}.pptx`)));},180000);
   it("reconstructs native objects, proves fidelity, and never compares the source to itself", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-image-golden-"));
     await execFileAsync(process.execPath, [

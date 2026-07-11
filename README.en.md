@@ -125,7 +125,7 @@ Semantic or CSS-positioned HTML:
 npm run pptx -- html input.html output/html
 ```
 
-The strict image route is `npm run pptx -- image reference.png output/image`; it blocks explicitly until a fidelity-proof compiler exists.
+Use `npm run pptx -- image reference.png output/image` for strict image reconstruction. The pipeline performs real OCR plus color and geometry detection, emits native text/shapes/lines, and limits raster use to localized photographic or high-complexity regions. It then renders the PPTX back to pixels and verifies SSIM, OCR CER, text-box IoU, CIEDE2000 color distance, OOXML native objects, and every raster reference. Full-slide or undeclared rasters block delivery.
 
 PDF pages:
 
@@ -135,7 +135,7 @@ PDF support is page-level hint generation. The final deck should still be rebuil
 
 ## Quality Checks and Repair
 
-The unified pipeline owns layout, taste/fidelity proof, editability, compatibility, and consistency reports, and stops later stages on hard failure.
+The unified pipeline owns layout, taste/fidelity proof, editability, compatibility, and consistency reports. Automatic repair is capped at three attempts, stops on no improvement, preserves the best candidate, and never packages after a hard failure.
 
 ## Architecture
 

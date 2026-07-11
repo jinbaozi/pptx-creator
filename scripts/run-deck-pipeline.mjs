@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -295,7 +296,9 @@ export async function buildReplicaEvidence({ pptxPath, manifest, coverage, inter
       fallbackInventory
     },
     thresholds: {},
-    retry: { status: "unavailable", attempts: [], reason: "bounded-repair-loop-not-implemented" },
+    retry: retryCount > 0
+      ? { status: "available", attempts: Array.from({ length: retryCount }, (_, index) => ({ iteration: index + 1, outcome: "measured" })) }
+      : { status: "unavailable", attempts: [], reason: "no-repair-needed-for-initial-proof" },
     accepted: true,
     source: { pageCount, size: nominalSize },
     render: { pageCount: structuralProof.renderedSlides ?? pageCount, size: nominalSize },
@@ -345,7 +348,7 @@ async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy,
   const summary = {
     manifest: resolvedManifest,
     outputDir: resolvedOutput,
-    steps: steps.map(({ label, ok }) => ({ label, ok })),
+    steps: steps.map(({ label, ok, attempts, maxAttempts, stopReason }) => ({ label, ok, ...(attempts!==undefined?{attempts,maxAttempts,stopReason}: {}) })),
     status: "blocked",
     blockedBy,
     ...(detail ? { detail } : {})
@@ -355,6 +358,8 @@ async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy,
   error.summary = summary;
   throw error;
 }
+
+export async function publishRepairArtifact(items){const token=randomUUID();const entries=items.filter((item)=>item?.source&&item?.target&&resolve(item.source)!==resolve(item.target)).map((item)=>({...item,stage:`${item.target}.repair-stage-${token}`,backup:`${item.target}.repair-backup-${token}`,backed:false,published:false}));if(!entries.length)return;try{for(const entry of entries)await copyFile(entry.source,entry.stage);}catch(error){for(const entry of entries)await rm(entry.stage,{force:true});throw error;}try{for(const entry of entries){await rename(entry.target,entry.backup);entry.backed=true;}for(const entry of entries){await rename(entry.stage,entry.target);entry.published=true;}}catch(error){for(const entry of [...entries].reverse()){if(entry.published)await rm(entry.target,{force:true});if(entry.backed)await rename(entry.backup,entry.target).catch(()=>{});await rm(entry.stage,{force:true});}throw error;}for(const entry of entries)await rm(entry.backup,{force:true});}
 
 export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const resolvedInput = resolve(manifestPath);
@@ -511,14 +516,18 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const repairLimit = normalizeRepairLimit(options.maxRepairAttempts ?? 3);
   stageGuard.enter("bounded-repair");
   if (!proofOk) {
-    const repair=await runBoundedRepair({initialProof:replicaProof,initialArtifact:{manifestPath:resolvedManifest,pptxPath:join(resolvedOutput,"final.pptx")},maxAttempts:repairLimit,
+    const repair=await runBoundedRepair({initialProof:replicaProof,initialArtifact:{manifestPath:resolvedManifest,pptxPath:join(resolvedOutput,"final.pptx"),...(options.initialRepairArtifact??{})},maxAttempts:repairLimit,
       attempt:typeof options.runRepairAttempt==="function"?({iteration,proof,artifact})=>options.runRepairAttempt({iteration,proof,artifact,manifest,outputDir:resolvedOutput,route,mode}):undefined});
     replicaProof=repair.proof;proofOk=repair.accepted;
-    if(replicaProof) await writeFile(join(resolvedOutput,"replica-evidence.json"),`${JSON.stringify(replicaProof,null,2)}\n`,"utf8");
+    if(replicaProof&&repair.attempts>0)replicaProof={...replicaProof,retry:{status:"available",attempts:repair.history.map(({iteration,outcome})=>({iteration,outcome}))}};
+    if(replicaProof){const schema=JSON.parse(await readFile(join(root,"schemas/replica-evidence.schema.json"),"utf8"));const validation=validateJsonSchema(replicaProof,schema);if(!validation.valid)throw new Error(`repaired replica evidence contract invalid: ${validation.errors.map((item)=>`${item.path} ${item.message}`).join("; ")}`);await writeFile(join(resolvedOutput,"replica-evidence.json"),`${JSON.stringify(replicaProof,null,2)}\n`,"utf8");}
     if (!proofOk) {
       steps.push({ label: "bounded-repair", ok: false, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
       await blockPipeline(resolvedManifest, resolvedOutput, steps, "bounded-repair", `${proofLabel} failed; ${repair.stopReason}`);
     }
+    await publishRepairArtifact([{source:repair.artifact?.manifestPath,target:resolvedManifest},{source:repair.artifact?.pptxPath,target:join(resolvedOutput,"final.pptx")},{source:repair.artifact?.planPath,target:options.initialRepairArtifact?.planPath}]);
+    manifest=repair.artifact?.manifest??JSON.parse(await readFile(resolvedManifest,"utf8"));
+    intermediate=repair.artifact?.intermediate??intermediate;
     steps.push({ label: "bounded-repair", ok: true, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
   } else {
     steps.push({ label: "bounded-repair", ok: true, attempts: 0, maxAttempts: repairLimit, stopReason: "initial-proof-passed" });

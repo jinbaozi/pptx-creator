@@ -274,7 +274,8 @@ class ImageInspectCliTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             data = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(data["kind"], "image-replica-analysis")
-            self.assertGreaterEqual(len(data["objectCandidates"]), 2)
+            self.assertNotIn("objectCandidates", data)
+            self.assertTrue(data["rectangles"] or data["lines"] or data["ocrBlocks"])
         finally:
             if out.exists():
                 out.unlink()

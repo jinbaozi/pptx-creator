@@ -1,14 +1,25 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeManifestFromHtml } from "./html-to-manifest.mjs";
 import { fetchRemoteAssetSecure } from "./html-to-manifest.mjs";
 import { writeMeasurements } from "./measure-html.mjs";
-import { runDeckPipeline } from "./run-deck-pipeline.mjs";
+import { buildReplicaEvidence, runDeckPipeline } from "./run-deck-pipeline.mjs";
 import { writeHtmlLayoutReport } from "./run-html-layout-check.mjs";
 import { withSettledHtmlPage } from "./lib/html-layout-audit.mjs";
 import { renderAndMeasureHtmlReplica } from "./lib/html-replica-proof.mjs";
+import { measurePptxObjectAdjustments } from "./lib/replica-evidence.mjs";
+
+const execFileAsync=promisify(execFile);
+
+export function repairHtmlManifestGeometry(manifest,measurements,adjustments){
+  const next=structuredClone(manifest);let changed=false;
+  for(const adjustment of adjustments){const slide=next.slides?.[adjustment.slideIndex];const element=slide?.elements?.find((item)=>item.id===adjustment.id);if(!element)continue;const scaleX=next.deck.size.width/measurements.viewport.width,scaleY=next.deck.size.height/measurements.viewport.height;for(const [key,delta,scale] of [["x",adjustment.dx,scaleX],["y",adjustment.dy,scaleY],["w",adjustment.dw,scaleX],["h",adjustment.dh,scaleY]]){if(Math.abs(delta)>.05&&Math.abs(delta)<=24){element[key]=Number((element[key]+delta*scale).toFixed(4));changed=true;}}}
+  return {manifest:next,changed};
+}
 
 async function captureReplicaSourceAndFallbacks(inputPath, outputDir, measurements, manifest) {
   const evidenceDir = join(outputDir, "evidence");
@@ -207,6 +218,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
       if (mode === "replica") {
         preparation.artifacts = await captureReplicaSourceAndFallbacks(preparation.browserInput, resolvedOutput, preparation.measurements, preparation.converted.manifest);
         preparation.converted.replicaCoverage = applyLocalizedFallbacks(preparation.converted.manifest, preparation.measurements, preparation.artifacts.fallbackPlans);
+        if(typeof options.prepareInitialReplica==="function")await options.prepareInitialReplica({manifest:preparation.converted.manifest,manifestPath});
         await writeFile(manifestPath, `${JSON.stringify(preparation.converted.manifest, null, 2)}\n`, "utf8");
       }
       return { manifestPath };
@@ -225,6 +237,16 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
       sourcePaths: preparation.artifacts.sourcePaths, sourceArtifactPath: preparation.artifacts.sourceDir, manifest, measurements: preparation.measurements,
       coverage, intermediate, buildBaseEvidence
     }) : undefined,
+    initialRepairArtifact:{planPath:preparation.measurementsPath},
+    runRepairAttempt:mode==="replica"?async({iteration,artifact})=>{
+      const currentManifest=artifact?.manifest??JSON.parse(await readFile(artifact.manifestPath,"utf8"));
+      const adjustments=await measurePptxObjectAdjustments(artifact.pptxPath,currentManifest,preparation.measurements);
+      const repaired=repairHtmlManifestGeometry(currentManifest,preparation.measurements,adjustments);if(!repaired.changed)return null;
+      const attemptDir=join(resolvedOutput,"evidence",`repair-${iteration}`);await mkdir(attemptDir,{recursive:true});const candidateManifestPath=join(attemptDir,"deck.manifest.json"),candidatePptxPath=join(attemptDir,"final.pptx"),renderDir=join(attemptDir,"render");await writeFile(candidateManifestPath,`${JSON.stringify(repaired.manifest,null,2)}\n`);
+      const rendered=await execFileAsync(process.execPath,[join(resolve(new URL("..",import.meta.url).pathname),"scripts/render-pptx.mjs"),candidateManifestPath,candidatePptxPath],{cwd:resolve(new URL("..",import.meta.url).pathname)});const candidateIntermediate=JSON.parse(rendered.stdout).intermediate;const candidateCoverage=repaired.manifest.metadata.replicaSource.coverage;
+      const proof=await renderAndMeasureHtmlReplica({root:resolve(new URL("..",import.meta.url).pathname),outputDir:attemptDir,sourcePaths:preparation.artifacts.sourcePaths,sourceArtifactPath:preparation.artifacts.sourceDir,manifest:repaired.manifest,measurements:preparation.measurements,coverage:candidateCoverage,pptxPath:candidatePptxPath,renderDir,retryCount:iteration,buildBaseEvidence:({renderPath,retryCount})=>buildReplicaEvidence({pptxPath:candidatePptxPath,manifest:repaired.manifest,coverage:candidateCoverage,intermediate:candidateIntermediate,route:"html",sourcePath:resolvedInput,renderPath,retryCount})});
+      return {proof,artifact:{manifestPath:candidateManifestPath,pptxPath:candidatePptxPath,manifest:repaired.manifest,intermediate:candidateIntermediate}};
+    }:undefined,
     beforePackage: async () => {
       summary = {
         input: resolvedInput,
