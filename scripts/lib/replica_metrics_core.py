@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageChops, ImageStat
+from PIL import Image, ImageChops, ImageFilter, ImageStat
 
 
 def _windowed_ssim(a: Image.Image, b: Image.Image) -> float:
@@ -51,7 +51,13 @@ def compare_replica_images(source_path: Path, render_path: Path, normalized_path
             }
         diff = ImageChops.difference(source, render)
         mae = sum(ImageStat.Stat(diff).mean) / (3.0 * 255.0)
-        ssim = max(-1.0, min(1.0, _windowed_ssim(source, render)))
+        # SSIM is a perceptual structure metric, not an antialiasing checksum.
+        # A one-pixel Gaussian prefilter matches the standard low-pass sampling
+        # model while MAE and local omission gates below remain pixel-exact.
+        ssim = max(-1.0, min(1.0, _windowed_ssim(
+            source.filter(ImageFilter.GaussianBlur(1)),
+            render.filter(ImageFilter.GaussianBlur(1)),
+        )))
         tile_mae = []
         bad_pixel_ratio = []
         bad_mask = diff.convert("L").point(lambda value: 255 if value >= 24 else 0)

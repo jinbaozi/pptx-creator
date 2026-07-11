@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import shutil
 import struct
@@ -16,6 +17,75 @@ try:
     from PIL import Image
 except ImportError:  # pragma: no cover - exercised when Pillow missing
     Image = None  # type: ignore[misc, assignment]
+
+def _box_payload(box: "Box", mapping: dict[str, Any]) -> dict[str, Any]:
+    return {"pixelBox": box.as_dict(), "inchBox": px_to_inch(box, mapping).as_dict()}
+
+def detect_replica_objects(img: Any, mapping: dict[str, Any], image_path: Path) -> dict[str, Any]:
+    """Detect reproducible native primitives and complex residuals from pixels."""
+    rgb = img.convert("RGB")
+    width, height = rgb.size
+    pixels = rgb.load()
+    seen = bytearray(width * height)
+    components: list[dict[str, Any]] = []
+    # Exact-color components recover flat fills/borders without pretending that
+    # text glyphs or photographs are editable geometry.
+    for y in range(height):
+        for x in range(width):
+            start=y*width+x
+            if seen[start]: continue
+            color = pixels[x, y]
+            stack = [start]; seen[start]=1; count=0; min_x=max_x=x; min_y=max_y=y
+            while stack:
+                index=stack.pop(); px=index%width; py=index//width; count+=1
+                min_x=min(min_x,px);max_x=max(max_x,px);min_y=min(min_y,py);max_y=max(max_y,py)
+                for nx, ny in ((px-1,py),(px+1,py),(px,py-1),(px,py+1)):
+                    neighbor=ny*width+nx
+                    if 0 <= nx < width and 0 <= ny < height and not seen[neighbor] and pixels[nx,ny] == color:
+                        seen[neighbor]=1; stack.append(neighbor)
+            if count < 120: continue
+            box = Box(min_x, min_y, max_x-min_x+1, max_y-min_y+1)
+            fill = count/(box.w*box.h)
+            if box.w >= 8 and box.h >= 2:
+                components.append({"id": f"cc-{len(components)+1}", **_box_payload(box,mapping), "color": "#%02X%02X%02X"%color, "pixelCount": count, "fillRatio": round(fill,4)})
+    rectangles, lines = [], []
+    for comp in components:
+        b = comp["pixelBox"]
+        if (b["w"] >= width*.25 and b["h"] <= 5) or (b["h"] >= height*.25 and b["w"] <= 5):
+            lines.append({**comp, "id": f"line-{len(lines)+1}"})
+        elif (b["w"] >= width*.12 and b["h"] >= height*.04 and comp["fillRatio"] >= .92) or (b["w"] <= 12 and b["h"] >= height*.15 and comp["fillRatio"] >= .9):
+            rectangles.append({**comp, "id": f"rect-{len(rectangles)+1}", "shape": "rect", "fill": True})
+        elif b["w"] >= width*.12 and b["h"] >= height*.04 and .005 <= comp["fillRatio"] <= .2:
+            perimeter=max(1,2*(b["w"]+b["h"])); thickness=max(1,round(comp["pixelCount"]/perimeter))
+            rectangles.append({**comp, "id": f"rect-{len(rectangles)+1}", "shape": "rect", "fill": False, "borderWidthPx": thickness})
+    # High-color-density tiles become bounded local raster fallbacks.
+    hot = []
+    for top in range(0, height, 32):
+        for left in range(0, width, 32):
+            crop = rgb.crop((left, top, min(left+32,width), min(top+32,height)))
+            if len(crop.getcolors(maxcolors=1025) or []) > 180: hot.append((left,top,min(left+32,width),min(top+32,height)))
+    residuals = []
+    if hot:
+        box = Box(min(x[0] for x in hot), min(x[1] for x in hot), max(x[2] for x in hot)-min(x[0] for x in hot), max(x[3] for x in hot)-min(x[1] for x in hot))
+        residuals.append({"id":"residual-1", **_box_payload(box,mapping), "reason":"high-local-color-complexity", "kind":"local-crop"})
+    try:
+        from ocr_core import ocr_image
+        payload = ocr_image(image_path, langs="eng", min_confidence=0)
+    except (ValueError, OSError):
+        payload = {"status":"deferred", "textBlocks":[]}
+    ocr_blocks = []
+    for i, raw in enumerate(payload.get("textBlocks", [])):
+        b = raw["pixelBox"]; box = Box(float(b["x"]),float(b["y"]),float(b["w"]),float(b["h"]))
+        confidence = max(0.0,min(1.0,float(raw.get("confidence",0))/100))
+        crop=rgb.crop((int(box.x),int(box.y),int(box.x+box.w),int(box.y+box.h)))
+        colors=sorted(crop.getcolors(maxcolors=max(1,int(box.w*box.h))) or [],reverse=True)
+        background=colors[0][1] if colors else (255,255,255)
+        candidates=[(count,color) for count,color in colors[1:] if sum(abs(color[channel]-background[channel]) for channel in range(3))>=90]
+        foreground=max(candidates,key=lambda item:item[0])[1] if candidates else (16,42,67)
+        render_box=Box(max(0,box.x-1),max(0,box.y-box.h*.25),min(width-max(0,box.x-1),box.w+4),min(height-max(0,box.y-box.h*.25),box.h*1.5))
+        payload_box=_box_payload(box,mapping); payload_box["inchBox"]=px_to_inch(render_box,mapping).as_dict()
+        ocr_blocks.append({"id":f"text-{i+1}","text":raw["text"],"confidence":round(confidence,4),**payload_box,"styleHints":{"fontFamily":"Arial","fontSize":round(max(8,box.h*1.05),2),"color":"#%02X%02X%02X"%foreground,"bold":raw["text"].isupper() and box.h>=18}})
+    return {"ocrBlocks":ocr_blocks,"rectangles":rectangles,"lines":lines,"bands":detect_layout_bands(img,mapping),"connectedComponents":components,"residualRegions":residuals,"ocrStatus":payload.get("status","deferred")}
 
 
 def load_design_tokens(design_md_path: Path) -> dict[str, Any]:
@@ -138,7 +208,12 @@ def load_image(path: Path) -> Any:
     _require_pillow()
     if not path.exists():
         _fail(f"image not found: {path}")
+    if path.stat().st_size > 50 * 1024 * 1024:
+        _fail("image exceeds replica safety limit (50MB encoded)")
     with Image.open(path) as img:
+        width,height=img.size
+        if width > 8192 or height > 8192 or width*height > 4_000_000:
+            _fail("image exceeds replica safety limit (8192px per side, 4MP decoded)")
         return img.copy()
 
 
@@ -688,6 +763,9 @@ def build_manifest_hints(
     image_path = image_path.resolve()
     img = load_image(image_path)
     meta = image_metadata(image_path, img, relative_to=image_path.parent)
+    if meta["widthPx"] > 8192 or meta["heightPx"] > 8192 or meta["widthPx"] * meta["heightPx"] > 4_000_000:
+        _fail("image exceeds replica safety limit (8192px per side, 4MP decoded)")
+    source_bytes = image_path.read_bytes()
     mapping = slide_mapping(preset, meta)
     palette = extract_palette(img, palette_count)
     regions = detect_layout_bands(img, mapping)
@@ -806,9 +884,13 @@ def build_replica_analysis(
     image_path = image_path.resolve()
     img = load_image(image_path)
     meta = image_metadata(image_path, img, relative_to=image_path.parent)
+    if meta["widthPx"] > 8192 or meta["heightPx"] > 8192 or meta["widthPx"] * meta["heightPx"] > 4_000_000:
+        _fail("image exceeds replica safety limit (8192px per side, 4MP decoded)")
+    source_bytes = image_path.read_bytes()
     mapping = slide_mapping(preset, meta)
     palette = extract_palette(img, palette_count)
     regions = detect_layout_bands(img, mapping)
+    detected = detect_replica_objects(img, mapping, image_path)
     palette_resolution = resolve_palette_to_tokens(
         palette,
         design_tokens,
@@ -828,6 +910,9 @@ def build_replica_analysis(
         "version": REPLICA_VERSION,
         "kind": "image-replica-analysis",
         "sourceImage": image_path.name,
+        "sourcePath": str(image_path),
+        "sourceSha256": hashlib.sha256(source_bytes).hexdigest(),
+        "sourceBytes": len(source_bytes),
         "deckTitle": deck_title or image_path.stem.replace("-", " ").title(),
         "image": meta,
         "slideMapping": mapping,
@@ -837,16 +922,16 @@ def build_replica_analysis(
         "paletteMatches": palette_matches,
         "paletteUnmapped": palette_resolution["unmapped"],
         "regions": regions,
-        "objectCandidates": build_object_candidates(regions),
+        **{key: detected[key] for key in ("ocrBlocks", "rectangles", "lines", "bands", "connectedComponents", "residualRegions")},
         "detectors": {
             "imageMetadata": {"status": "ok", "engine": "pillow"},
             "colorPalette": {"status": "ok", "engine": "pillow-mediancut", "count": len(palette)},
             "layoutBands": {"status": "ok", "engine": "dominant-row-color", "count": len(regions)},
-            "ocr": ocr_status(),
+            "ocr": {"status": detected["ocrStatus"], "engine": "tesseract", "count": len(detected["ocrBlocks"])},
             "geometryPrimitives": {
-                "status": "planned",
-                "engine": "opencv-or-vision-provider",
-                "targets": ["rect", "roundRect", "line", "arrow", "ellipse", "table-grid"],
+                "status": "ok",
+                "engine": "pillow-connected-components",
+                "counts": {"rectangles": len(detected["rectangles"]), "lines": len(detected["lines"]), "components": len(detected["connectedComponents"]), "residuals": len(detected["residualRegions"])},
             },
         },
         "qualityTargets": {
@@ -856,11 +941,6 @@ def build_replica_analysis(
             "minStructuralCoverage": 0.9,
             "minVisualSimilarity": 0.96,
         },
-        "nextPasses": [
-            "Run OCR or a vision model to replace text candidates with exact text blocks.",
-            "Detect primitive geometry for cards, dividers, arrows, and diagram connectors.",
-            "Render PPTX preview and compare against source image before final delivery.",
-        ],
     }
 
 
@@ -869,84 +949,80 @@ def build_replica_analysis(
 DEFAULT_OCR_CONFIDENCE_THRESHOLD = 0.7
 
 
-def _match_ocr_to_candidate(
-    ocr_block: dict[str, Any],
-    candidates: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    """Return the candidate whose inchBox contains the OCR pixel box center.
-
-    Falls back to the candidate whose inchBox center is closest to the OCR
-    center when no candidate fully contains it (handles OCR drift)."""
-    ocr_pixel = ocr_block.get("pixelBox") or {}
-    try:
-        cx = float(ocr_pixel.get("x", 0)) + float(ocr_pixel.get("w", 0)) / 2.0
-        cy = float(ocr_pixel.get("y", 0)) + float(ocr_pixel.get("h", 0)) / 2.0
-    except (TypeError, ValueError):
-        return None
-    px_per_in_x = (ocr_block.get("_pxPerInX") or 1.0) or 1.0
-    px_per_in_y = (ocr_block.get("_pxPerInY") or 1.0) or 1.0
-    cx_in = cx / px_per_in_x
-    cy_in = cy / px_per_in_y
-    containing: dict[str, Any] | None = None
-    best_distance = float("inf")
-    best_candidate: dict[str, Any] | None = None
-    for cand in candidates:
-        box = cand.get("inchBox") or {}
-        try:
-            x = float(box.get("x", 0))
-            y = float(box.get("y", 0))
-            w = float(box.get("w", 0))
-            h = float(box.get("h", 0))
-        except (TypeError, ValueError):
-            continue
-        if x <= cx_in <= x + w and y <= cy_in <= y + h:
-            containing = cand
-            break
-        cand_cx = x + w / 2.0
-        cand_cy = y + h / 2.0
-        distance = (cand_cx - cx_in) ** 2 + (cand_cy - cy_in) ** 2
-        if distance < best_distance:
-            best_distance = distance
-            best_candidate = cand
-    return containing or best_candidate
-
-
-def _decide_kind(
-    confidence_01: float | None,
-    threshold: float,
-) -> str:
-    """Assign per-element kind based on normalized OCR confidence vs threshold.
-
-    confidence_01 == None means OCR did not provide a usable value for this
-    block. In that case we are conservative and fall back to cropped-asset so
-    downstream renderers do not silently treat unknown text as editable.
-    """
-    if confidence_01 is None:
-        return "cropped-asset"
-    if confidence_01 >= threshold:
-        return "editable-text"
-    return "cropped-asset"
-
-
 def build_replica_layer_plan(
     analysis: dict[str, Any],
     ocr_blocks: list[dict[str, Any]] | None = None,
     *,
     threshold: float = DEFAULT_OCR_CONFIDENCE_THRESHOLD,
 ) -> dict[str, Any]:
-    """Build the per-layer plan from a replica analysis, optionally gated by OCR.
+    """Build a measured native/crop layer plan from detector output.
 
-    When ``ocr_blocks`` is None or empty (the conservative default — e.g.
-    Tesseract missing and ``ocr_image`` returned ``status: "deferred"``) all
-    text-region objects are emitted with ``kind: "cropped-asset"`` so they are
-    not silently treated as editable. The behavior is documented here so
-    downstream tooling can rely on it.
-
-    ``ocr_blocks`` entries must already be normalized to a 0-1 confidence
-    scale (see ``image-replica-plan.py``); this function does not rescale.
+    The analysis already owns OCR facts. ``ocr_blocks`` remains accepted only
+    for CLI compatibility and is intentionally not a second source of truth.
     """
     if analysis.get("kind") != "image-replica-analysis":
         _fail("expected image-replica-analysis input")
+    if any(key in analysis for key in ("ocrBlocks", "rectangles", "residualRegions")):
+        objects: list[dict[str, Any]] = []
+        z = 0
+        for item in analysis.get("rectangles", []):
+            objects.append({"id": item["id"], "kind": "native-shape", "shape": item.get("shape", "rect"), "pixelBox": item["pixelBox"], "inchBox": item["inchBox"], "color": item["color"], "fill": item.get("fill", True), "borderWidthPx": item.get("borderWidthPx", 0), "confidence": item.get("fillRatio", 1), "zOrder": z}); z += 1
+        for item in analysis.get("lines", []):
+            objects.append({"id": item["id"], "kind": "native-line", "pixelBox": item["pixelBox"], "inchBox": item["inchBox"], "color": item["color"], "confidence": item.get("fillRatio", 1), "zOrder": z}); z += 1
+        words=sorted(analysis.get("ocrBlocks", []),key=lambda item:(item["pixelBox"]["y"]+item["pixelBox"]["h"]/2,item["pixelBox"]["x"]))
+        lines: list[list[dict[str,Any]]] = []
+        for word in words:
+            center=word["pixelBox"]["y"]+word["pixelBox"]["h"]/2
+            def belongs(line: list[dict[str,Any]]) -> bool:
+                average=sum(item["pixelBox"]["y"]+item["pixelBox"]["h"]/2 for item in line)/len(line)
+                return abs(center-average) <= max(word["pixelBox"]["h"],max(item["pixelBox"]["h"] for item in line))*.65
+            match=next((line for line in lines if belongs(line)),None)
+            if match is None: lines.append([word])
+            else: match.append(word)
+        split_lines: list[list[dict[str,Any]]] = []
+        for line in lines:
+            current: list[dict[str,Any]] = []
+            for word in sorted(line,key=lambda item:item["pixelBox"]["x"]):
+                if current:
+                    previous=current[-1]["pixelBox"]
+                    gap=word["pixelBox"]["x"]-(previous["x"]+previous["w"])
+                    if gap > max(80,word["pixelBox"]["h"]*5):
+                        split_lines.append(current); current=[]
+                current.append(word)
+            if current: split_lines.append(current)
+        lines=split_lines
+        merged=[]
+        for index,line in enumerate(lines):
+            line=sorted(line,key=lambda item:item["pixelBox"]["x"]); boxes=[item["pixelBox"] for item in line]
+            x=min(box["x"] for box in boxes); y=min(box["y"] for box in boxes); right=max(box["x"]+box["w"] for box in boxes); bottom=max(box["y"]+box["h"] for box in boxes)
+            pixel=Box(x,y,right-x,bottom-y); render=Box(max(0,x-2),max(0,y-pixel.h*.31),min(analysis["image"]["widthPx"]-max(0,x-2),(right-x)*1.08+4),min(analysis["image"]["heightPx"]-max(0,y-pixel.h*.31),pixel.h*1.5))
+            styles=[item["styleHints"] for item in line]; ordered_sizes=sorted(float(item.get("fontSize",8)) for item in styles); style=styles[0].copy(); style["fontSize"]=ordered_sizes[len(ordered_sizes)//2]
+            style["fontSize"]=round(style["fontSize"]*.985,2)
+            colors=[item.get("color") for item in styles if item.get("color")]; style["color"]=max(set(colors),key=colors.count) if colors else "#102A43"; style["bold"]=sum(bool(item.get("bold")) for item in styles)>=len(styles)/2
+            merged.append({"id":f"text-line-{index+1}","text":" ".join(item["text"] for item in line),"confidence":min(float(item.get("confidence",0)) for item in line),"pixelBox":pixel.as_dict(),"inchBox":px_to_inch(render,analysis["slideMapping"]).as_dict(),"styleHints":style})
+        for item in merged:
+            confidence = float(item.get("confidence", 0))
+            objects.append({**item, "kind": "editable-text" if confidence >= threshold else "cropped-asset", "zOrder": z}); z += 1
+        for item in analysis.get("residualRegions", []):
+            objects.append({**item, "kind": "cropped-asset", "zOrder": z}); z += 1
+        component_keys={(json.dumps(item["pixelBox"],sort_keys=True),item.get("color")) for item in [*analysis.get("rectangles",[]),*analysis.get("lines",[])]}
+        source_inventory=[{"id":item["id"],"disposition":item["kind"],"reason":"compiled replica object"} for item in objects]
+        source_inventory.extend({"id":item["id"],"disposition":"ignored","reason":"component is subordinate text antialiasing or below native geometry confidence"} for item in analysis.get("connectedComponents",[]) if (json.dumps(item["pixelBox"],sort_keys=True),item.get("color")) not in component_keys)
+        return {
+            "version": REPLICA_VERSION, "kind": "replica-layer-plan", "sourceImage": analysis["sourceImage"],
+            "sourcePath": analysis.get("sourcePath"), "sourceSha256": analysis.get("sourceSha256"), "sourceBytes": analysis.get("sourceBytes"), "deckTitle": analysis.get("deckTitle", "Image Replica"),
+            "slideMapping": analysis["slideMapping"], "threshold": round(float(threshold), 4),
+            "objects": objects, "sourceInventory": source_inventory,
+            "paletteResolution": analysis.get("paletteResolution"), "paletteMatch": analysis.get("paletteMatch",0),
+            "layers": [
+                {"id":"editable-shapes","objects":[o["id"] for o in objects if o["kind"] in {"native-shape","native-line"}]},
+                {"id":"editable-text","objects":[o["id"] for o in objects if o["kind"] == "editable-text"]},
+                {"id":"cropped-assets","objects":[o["id"] for o in objects if o["kind"] == "cropped-asset"]},
+            ],
+            "editabilityTarget": {"level": 3, "summary":"High-confidence OCR and simple geometry are native; only bounded complex regions are rasterized."},
+            "repairLoop": {"maxIterations": 3, "stopOnNoImprovement": True, "metrics": ["ssim", "ocrCer", "bboxIou", "paletteDeltaE2000P95"]},
+            "detectorReceipt": {"analysisKind": analysis["kind"], "geometryStatus": analysis.get("detectors",{}).get("geometryPrimitives",{}).get("status"), "sourcePath": analysis.get("sourcePath")},
+        }
     candidates = analysis.get("objectCandidates", [])
     native_text = [item["id"] for item in candidates if item.get("editableAs") == "native-text"]
     native_shapes = [item["id"] for item in candidates if item.get("editableAs") == "native-shape"]

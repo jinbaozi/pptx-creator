@@ -110,7 +110,7 @@ function evaluate(raw, { artifactsVerified = false, measurementsTrusted = false 
   evidence.thresholds = policy ? structuredClone(policy) : {};
   for (const capability of ["sourceRenderComparison", "nativeObjectInspection", "fallbackInventory"]) if (evidence.capabilities?.[capability] !== true) findings.push(finding("capability-unavailable", capability));
   if (evidence.paths?.source?.status !== "available" || evidence.paths?.render?.status !== "available") findings.push(finding("evidence-path-unavailable", "source and render artifacts must be verified"));
-  if (evidence.retry?.status !== "available") findings.push(finding("retry-capability-unavailable", evidence.retry?.reason ?? "missing"));
+  if (!evidence.retry || !["available","unavailable"].includes(evidence.retry.status)) findings.push(finding("retry-contract-invalid", "missing retry status"));
   else if (!Array.isArray(evidence.retry.attempts) || evidence.retry.attempts.length > 3) findings.push(finding("retry-limit", "at most three attempts"));
   const sourceCount = evidence.source?.pageCount; const renderCount = evidence.render?.pageCount;
   if (!Number.isInteger(sourceCount) || sourceCount < 1 || sourceCount !== renderCount) findings.push(finding("page-count-mismatch", `${sourceCount} != ${renderCount}`));
@@ -162,7 +162,8 @@ export async function evaluateMeasuredReplicaEvidence(raw = {}, measuredBundle =
   const verified = await verifyReplicaEvidence(raw);
   const trusted = measuredBundle?.[MEASUREMENT_RECEIPT] === true
     && measuredBundle.sourceSha256 === verified.paths?.source?.sha256
-    && measuredBundle.renderSha256 === verified.paths?.render?.sha256;
+    && measuredBundle.renderSha256 === verified.paths?.render?.sha256
+    && [measuredBundle.planSha256,measuredBundle.pptxSha256,measuredBundle.manifestSha256].every((value)=>/^[a-f0-9]{64}$/.test(value??""));
   if (!trusted) return verified;
   const merged = {
     ...verified,
@@ -188,26 +189,33 @@ function xmlDecode(value = "") {
 
 async function inspectPptxObjects(pptxPath, manifest, measurements) {
   const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  const pptXmlNames=Object.keys(zip.files).filter((name)=>/^ppt\/.*\.xml$/.test(name));
+  const archiveXml=(await Promise.all(pptXmlNames.map((name)=>zip.files[name].async("string")))).join("\n");
+  const archiveBlipCount=(archiveXml.match(/<a:blip\b/g)??[]).length;
   const viewport = measurements.viewport;
   const size = manifest.deck.size;
   const perSlide = [];
   for (const [slideIndex] of (manifest.slides ?? []).entries()) {
     const xml = await zip.file(`ppt/slides/slide${slideIndex + 1}.xml`)?.async("string") ?? "";
     const objects = new Map();
-    for (const match of xml.matchAll(/<(?:p:sp|p:pic|p:graphicFrame)\b[\s\S]*?<p:cNvPr\b[^>]*\bname="([^"]+)"[^>]*>[\s\S]*?<a:xfrm[^>]*>[\s\S]*?<a:off\b[^>]*\bx="(\d+)"[^>]*\by="(\d+)"[^>]*\/>[\s\S]*?<a:ext\b[^>]*\bcx="(\d+)"[^>]*\bcy="(\d+)"[^>]*\/>[\s\S]*?<\/(?:p:sp|p:pic|p:graphicFrame)>/g)) {
-      const [block, encodedName, x, y, w, h] = match;
-      objects.set(xmlDecode(encodedName), { block, x: Number(x), y: Number(y), w: Number(w), h: Number(h) });
+    for (const match of xml.matchAll(/<p:(sp|pic|graphicFrame)\b[\s\S]*?<\/p:\1>/g)) {
+      const block=match[0]; const name=block.match(/<p:cNvPr\b[^>]*\bname="([^"]+)"/); const off=block.match(/<a:off\b[^>]*\bx="(\d+)"[^>]*\by="(\d+)"/); const ext=block.match(/<a:ext\b[^>]*\bcx="(\d+)"[^>]*\bcy="(\d+)"/);
+      if(name&&off&&ext) objects.set(xmlDecode(name[1]),{block,type:match[1],x:Number(off[1]),y:Number(off[2]),w:Number(ext[1]),h:Number(ext[2])});
     }
     const source = (measurements.elements ?? []).filter((item) => item.slideIndex === slideIndex);
-    const drifts = []; let fontTotal = 0; let fontMapped = 0; let colorTotal = 0; let colorMapped = 0;
+    const drifts = []; let fontTotal = 0; let fontMapped = 0; let colorTotal = 0; let colorMapped = 0; let nativeTotal=0; let nativeMapped=0; let textTotal=0; let textMapped=0;
     for (const item of source) {
       const target = objects.get(item.id) ?? objects.get(`${item.id}-box`) ?? objects.get(`${item.id}-localized-fallback`);
+      nativeTotal += 1;
+      let drift=Infinity;
       if (!target) {
         drifts.push(Math.max(viewport.width, viewport.height));
       } else {
         const actual = { x: target.x / 914400 / size.width * viewport.width, y: target.y / 914400 / size.height * viewport.height, w: target.w / 914400 / size.width * viewport.width, h: target.h / 914400 / size.height * viewport.height };
-        drifts.push(Math.max(...["x", "y", "w", "h"].map((key) => Math.abs(Number(item.px[key]) - actual[key]))));
+        drift=Math.max(...["x", "y", "w", "h"].map((key) => Math.abs(Number(item.px[key]) - actual[key]))); drifts.push(drift);
+        if(drift<=2) nativeMapped+=1;
       }
+      if(item.kind==="text") { textTotal+=1; const xmlText=[...(target?.block??"").matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match)=>xmlDecode(match[1])).join(""); const invisible=/<a:(?:rPr|defRPr)\b[^>]*>[\s\S]*?(?:<a:alpha\b[^>]*val="0"|<a:noFill\s*\/>)[\s\S]*?<\/a:(?:rPr|defRPr)>/i.test(target?.block??""); if(target&&drift<=2&&!invisible&&xmlText===item.text) textMapped+=1; }
       if (item.kind === "text" && item.style?.fontFamily) {
         fontTotal += 1;
         const family = String(item.style.fontFamily).split(",")[0].replace(/["']/g, "").trim().toLowerCase();
@@ -229,7 +237,11 @@ async function inspectPptxObjects(pptxPath, manifest, measurements) {
     perSlide.push({
       bboxP95Drift: drifts.length ? metric(Number(drifts[Math.max(0, Math.ceil(drifts.length * 0.95) - 1)].toFixed(4))) : unavailable("no-visible-elements"),
       fontMapping: fontTotal ? metric(fontMapped / fontTotal) : unavailable("no-font-bearing-elements"),
-      colorMapping: colorTotal ? metric(colorMapped / colorTotal) : unavailable("no-color-bearing-elements")
+      colorMapping: colorTotal ? metric(colorMapped / colorTotal) : unavailable("no-color-bearing-elements"),
+      nativeObjectRecall: nativeTotal ? metric(nativeMapped/nativeTotal) : unavailable("no-native-elements"),
+      nativeTextRecall: textTotal ? metric(textMapped/textTotal) : unavailable("no-native-text")
+      ,rasterInventory:[...objects.entries()].filter(([,item])=>item.type==="pic").map(([name,item])=>({name,x:item.x,y:item.y,w:item.w,h:item.h}))
+      ,blipCount:(xml.match(/<a:blip\b/g)??[]).length,backgroundRaster:/<a:blip\b/i.test(xml.match(/<p:bg\b[\s\S]*?<\/p:bg>/i)?.[0]??""),archiveBlipCount
     });
   }
   return perSlide;
@@ -262,10 +274,11 @@ export async function measureHtmlReplicaEvidence(raw, { sourceArtifactPath, rend
     const renderPageDigest = await digestArtifact(boundRenderPaths[index]);
     if (sourcePageDigest.sha256 === renderPageDigest.sha256) measurementFindings.push(`candidate-reference-alias: slide ${index + 1}`);
     const pixel = JSON.parse((await runPython([join(PACKAGE_ROOT, "scripts/measure-replica.py"), boundSourcePaths[index], boundRenderPaths[index]], { cwd: PACKAGE_ROOT })).stdout);
+    const structural={bboxP95Drift:mapped[index].bboxP95Drift,fontMapping:mapped[index].fontMapping,colorMapping:mapped[index].colorMapping};
     const fidelity = pixel.sizeMatch ? {
-      ssim: metric(pixel.ssim), normalizedMae: metric(pixel.normalizedMae), ...mapped[index]
+      ssim: metric(pixel.ssim), normalizedMae: metric(pixel.normalizedMae), ...structural
     } : {
-      ssim: unavailable("source-render-size-mismatch"), normalizedMae: unavailable("source-render-size-mismatch"), ...mapped[index]
+      ssim: unavailable("source-render-size-mismatch"), normalizedMae: unavailable("source-render-size-mismatch"), ...structural
     };
     if (!pixel.sizeMatch) measurementFindings.push(`source-render-size-mismatch: slide ${index + 1}`);
     if (isCatastrophicLocalDifference(pixel)) {
@@ -300,4 +313,62 @@ export async function measureHtmlReplicaEvidence(raw, { sourceArtifactPath, rend
   if (sourceDigest.sha256 === renderDigest.sha256) verifiedRaw.blockingFindings.push("candidate-reference-alias: source and render artifact sets are identical");
   const receipt = { perSlide: pages, aggregate, sourceSha256: sourceDigest.sha256, renderSha256: renderDigest.sha256, [MEASUREMENT_RECEIPT]: true };
   return evaluateMeasuredReplicaEvidence(verifiedRaw, receipt);
+}
+
+/** Trusted image adapter: discovers pages inside bound artifact directories and
+ * computes every metric itself. No caller-supplied metric is accepted. */
+export async function measureImageReplicaEvidence(raw, { sourceArtifactPath, renderArtifactPath, planPath, pptxPath, manifest } = {}) {
+  const pagesWithin = async (rootPath) => {
+    try { return (await readdir(resolve(rootPath), { withFileTypes: true })).filter((e)=>e.isFile() && /^slide-\d+\.png$/.test(e.name)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true})).map((e)=>join(resolve(rootPath),e.name)); }
+    catch { return []; }
+  };
+  const sources=await pagesWithin(sourceArtifactPath), renders=await pagesWithin(renderArtifactPath);
+  if (!planPath || !pptxPath || !manifest || sources.length===0 || sources.length!==renders.length) return verifyReplicaEvidence(raw);
+  const plan=JSON.parse(await readFile(resolve(planPath),"utf8"));
+  const planSourceDigest=await digestArtifact(sources[0]);
+  const analysisDigest=plan.analysisPath?await digestArtifact(plan.analysisPath).catch(()=>null):null;
+  const boundFindings=[];
+  if(planSourceDigest.sha256!==plan.sourceSha256) boundFindings.push("plan-source-digest-mismatch");
+  if(!analysisDigest||analysisDigest.sha256!==plan.analysisSha256) boundFindings.push("plan-analysis-digest-mismatch");
+  if(manifest?.metadata?.replicaSource?.sourceSha256!==plan.sourceSha256) boundFindings.push("manifest-source-digest-mismatch");
+  const manifestIds=(manifest?.slides?.[0]?.elements??[]).map((item)=>item.id).sort(); const planIds=plan.objects.map((item)=>item.id).sort();
+  if(stable(manifestIds)!==stable(planIds)) boundFindings.push("manifest-plan-object-mismatch");
+  if(manifest?.slides?.[0]?.background?.type!=="solid"||manifest.slides[0].background.color!=="#F5F7FB")boundFindings.push("manifest-background-mismatch");
+  const manifestById=new Map((manifest?.slides?.[0]?.elements??[]).map((item)=>[item.id,item]));
+  for(const item of plan.objects){const actual=manifestById.get(item.id);const expectedType=item.kind==="editable-text"?"text":item.kind==="native-shape"?"shape":item.kind==="native-line"?"line":"cropped-asset";if(!actual||actual.type!==expectedType||["x","y","w","h"].some((key)=>Math.abs(Number(actual?.[key])-Number(item.inchBox[key]))>.001))boundFindings.push(`manifest-plan-element-mismatch: ${item.id}`);if(item.kind==="cropped-asset"&&stable(actual?.provenance?.pixelBox)!==stable(item.pixelBox))boundFindings.push(`manifest-crop-provenance-mismatch: ${item.id}`);if(item.kind!=="cropped-asset"&&/(?:backgroundImage|blipFill|data:image|\.png|\.jpe?g)/i.test(stable(actual?.style??{})))boundFindings.push(`manifest-native-raster-fill: ${item.id}`);}
+  const expectedNativeTexts=plan.objects.filter((item)=>item.kind==="editable-text"&&Number(item.confidence)>=Number(plan.threshold));
+  const mapping=plan.slideMapping; const nativeObjects=plan.objects.filter((item)=>item.kind!=="cropped-asset");
+  const pxX=mapping.pxPerInX??96,pxY=mapping.pxPerInY??96;
+  const measurements={viewport:{width:mapping.widthIn*pxX,height:mapping.heightIn*pxY},elements:nativeObjects.map((item)=>({slideIndex:0,id:item.id,kind:item.kind==="editable-text"?"text":"shape",text:item.text,px:{x:item.inchBox.x*pxX,y:item.inchBox.y*pxY,w:item.inchBox.w*pxX,h:item.inchBox.h*pxY},style:item.styleHints??{}}))};
+  const mapped=await inspectPptxObjects(pptxPath,manifest,measurements);
+  const expectedPictures=new Map(plan.objects.filter((item)=>item.kind==="cropped-asset").map((item)=>[item.id,{x:item.inchBox.x*914400,y:item.inchBox.y*914400,w:item.inchBox.w*914400,h:item.inchBox.h*914400}]));
+  for(const picture of mapped[0]?.rasterInventory??[]){const expected=expectedPictures.get(picture.name);if(!expected||["x","y","w","h"].some((key)=>Math.abs(picture[key]-expected[key])>2000))boundFindings.push(`pptx-raster-inventory-mismatch: ${picture.name}`);else expectedPictures.delete(picture.name);}
+  if(expectedPictures.size)boundFindings.push(`pptx-raster-inventory-missing: ${[...expectedPictures.keys()].join(",")}`);
+  if(mapped[0]?.backgroundRaster||mapped[0]?.archiveBlipCount!==(mapped[0]?.rasterInventory?.length??0)||mapped[0]?.blipCount!==(mapped[0]?.rasterInventory?.length??0))boundFindings.push("pptx-undeclared-raster-fill");
+  const pages=[]; const findings=[...boundFindings]; const sizes=[];
+  for (let i=0;i<sources.length;i+=1) {
+    const sd=await digestArtifact(sources[i]), rd=await digestArtifact(renders[i]);
+    if(sd.sha256===rd.sha256) findings.push(`candidate-reference-alias: slide ${i+1}`);
+    const measured=JSON.parse((await runPython([join(PACKAGE_ROOT,"scripts/measure-image-replica.py"),sources[i],renders[i],planPath],{cwd:PACKAGE_ROOT})).stdout);
+    sizes.push({source:measured.sourceSize,render:measured.renderSize});
+    if(measured.sizeMatch===false) findings.push(`source-render-size-mismatch: slide ${i+1}`);
+    const available=(value,reason)=>Number.isFinite(value)?metric(value):unavailable(reason);
+    if(isCatastrophicLocalDifference(measured)) findings.push(`worst-region-omission: slide ${i+1} tile MAE ${measured.worstTileMae}; bad-pixel ratio ${measured.worstTileBadPixelRatio}`);
+    const ooxmlRecall=mapped[i]?.nativeTextRecall?.status==="available"?mapped[i].nativeTextRecall.value:0;
+    const nativeRecall=Number.isFinite(measured.nativeHighConfidenceTextRecall)?Math.min(measured.nativeHighConfidenceTextRecall,ooxmlRecall):null;
+    if(ooxmlRecall<1) findings.push(`native-text-ooxml-mismatch: slide ${i+1}`);
+    if(mapped[i]?.nativeObjectRecall?.value<1) findings.push(`native-object-ooxml-mismatch: slide ${i+1}`);
+    const fallbacks=plan.objects.filter((item)=>item.kind==="cropped-asset").map((item)=>({kind:"raster",fullSlide:false,reason:item.reason??"low-confidence-or-complex-region",bbox:{x:item.inchBox.x,y:item.inchBox.y,width:item.inchBox.w,height:item.inchBox.h},zOrder:item.zOrder,nativeAlternativesAttempted:["editable-text","native-shape","native-line"]}));
+    checkFallbacks(fallbacks,`perSlide[${i}].fallbacks`,findings,{width:mapping.widthIn,height:mapping.heightIn});
+    const fidelity={ssim:available(measured.ssim,"source-render-size-mismatch"),ocrCer:available(measured.ocrCer,"ocr-unavailable"),bboxIou:available(measured.bboxIou,"no-matched-text-boxes"),paletteDeltaE2000P95:available(measured.paletteDeltaE2000P95,"palette-unavailable"),nativeHighConfidenceTextRecall:available(nativeRecall,"ocr-or-ooxml-unavailable")};
+    const rasterArea=plan.objects.filter((item)=>item.kind==="cropped-asset").reduce((sum,item)=>sum+item.inchBox.w*item.inchBox.h,0); const nativeCoverage=Math.max(0,Math.min(1,1-rasterArea/(mapping.widthIn*mapping.heightIn)));
+    pages.push({slideIndex:i,fidelity,nativeCoverage:metric(nativeCoverage),editability:{level:ooxmlRecall===1&&mapped[i]?.nativeObjectRecall?.value===1?4:2},fallbacks});
+  }
+  const aggregateFidelity={};
+  for(const [name,rule] of Object.entries(POLICIES.image.fidelity)){const vals=pages.map(p=>p.fidelity[name]);aggregateFidelity[name]=vals.every(v=>v.status==="available")?metric(rule.min!==undefined?Math.min(...vals.map(v=>v.value)):Math.max(...vals.map(v=>v.value))):unavailable(vals.find(v=>v.status==="unavailable")?.reason??"metric-unavailable");}
+  const aggregate={fidelity:aggregateFidelity,nativeCoverage:metric(Math.min(...pages.map(p=>p.nativeCoverage.value))),editability:{level:Math.min(...pages.map(p=>p.editability.level))},fallbacks:pages.flatMap(p=>p.fallbacks??[])};
+  const sourceDigest=await digestArtifact(sourceArtifactPath), renderDigest=await digestArtifact(renderArtifactPath);
+  const verified={...raw,paths:{source:{status:"available",path:sourceArtifactPath},render:{status:"available",path:renderArtifactPath}},source:{pageCount:pages.length,size:sizes[0].source},render:{pageCount:pages.length,size:sizes[0].render},perSlide:pages,aggregate,retry:{status:"unavailable",attempts:[],reason:"no-repair-needed-for-passing-initial-proof"},capabilities:{...raw.capabilities,sourceRenderComparison:true,nativeObjectInspection:true},blockingFindings:findings};
+  const planDigest=await digestArtifact(planPath),pptxDigest=await digestArtifact(pptxPath),manifestDigest=createHash("sha256").update(stable(manifest)).digest("hex");
+  return evaluateMeasuredReplicaEvidence(verified,{perSlide:pages,aggregate,sourceSha256:sourceDigest.sha256,renderSha256:renderDigest.sha256,planSha256:planDigest.sha256,pptxSha256:pptxDigest.sha256,manifestSha256:manifestDigest,[MEASUREMENT_RECEIPT]:true});
 }

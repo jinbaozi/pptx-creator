@@ -32,6 +32,18 @@ class ReplicaMetricsTest(unittest.TestCase):
             self.assertFalse(result["sizeMatch"])
             self.assertIsNone(result["ssim"])
 
+    def test_ssim_tolerates_subpixel_rasterizer_edges_but_mae_stays_exact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            a = Path(directory) / "a.png"; b = Path(directory) / "b.png"
+            source = Image.new("RGB", (128, 64), "white")
+            render = Image.new("RGB", (128, 64), "white")
+            ImageDraw.Draw(source).rectangle((16, 16, 96, 48), fill="#102a43")
+            ImageDraw.Draw(render).rectangle((17, 16, 97, 48), fill="#102a43")
+            source.save(a); render.save(b)
+            result = compare_replica_images(a, b)
+            self.assertGreater(result["ssim"], 0.94)
+            self.assertGreater(result["normalizedMae"], 0)
+
     def test_local_missing_region_is_visible_to_worst_tile(self):
         with tempfile.TemporaryDirectory() as directory:
             a = Path(directory) / "a.png"; b = Path(directory) / "b.png"

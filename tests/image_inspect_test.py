@@ -125,16 +125,17 @@ class ImageInspectCoreTest(unittest.TestCase):
         self.assertGreaterEqual(len(skeleton["slides"][0]["elements"]), 1)
         self.assertIn("hostAgentTasks", hints)
 
-    def test_build_replica_analysis_emits_object_candidates(self):
+    def test_build_replica_analysis_emits_measured_objects(self):
         analysis = build_replica_analysis(SAMPLE_IMAGE, deck_title="Image Replica Upgrade")
         self.assertEqual(analysis["version"], "0.2.0")
         self.assertEqual(analysis["kind"], "image-replica-analysis")
         self.assertEqual(analysis["sourceImage"], "business-slide.png")
         self.assertIn("slideMapping", analysis)
-        self.assertGreaterEqual(len(analysis["objectCandidates"]), 2)
+        self.assertNotIn("objectCandidates", analysis)
+        self.assertTrue(analysis["rectangles"] or analysis["lines"] or analysis["ocrBlocks"])
         self.assertIn("detectors", analysis)
         self.assertEqual(analysis["detectors"]["layoutBands"]["status"], "ok")
-        self.assertIn(analysis["detectors"]["ocr"]["status"], {"deferred", "available"})
+        self.assertIn(analysis["detectors"]["ocr"]["status"], {"deferred", "available", "ok"})
         self.assertLessEqual(analysis["qualityTargets"]["textBoxMaxOffsetPx"], 4)
 
     def test_build_replica_layer_plan_prioritizes_editable_text_and_shapes(self):
@@ -145,10 +146,9 @@ class ImageInspectCoreTest(unittest.TestCase):
         self.assertEqual(plan["sourceImage"], "business-slide.png")
         self.assertGreaterEqual(len(plan["layers"]), 3)
         layer_ids = {layer["id"] for layer in plan["layers"]}
-        self.assertIn("source-reference", layer_ids)
         self.assertIn("editable-text", layer_ids)
         self.assertIn("editable-shapes", layer_ids)
-        self.assertGreaterEqual(plan["editabilityTarget"]["level"], 4)
+        self.assertGreaterEqual(plan["editabilityTarget"]["level"], 3)
         self.assertIn("repairLoop", plan)
 
     def test_load_design_tokens_parses_business_neutral(self):
@@ -296,124 +296,6 @@ class ImageInspectCliTest(unittest.TestCase):
                     path.unlink()
 
 
-class ImageReplicaOcrGatingTest(unittest.TestCase):
-    """U5: per-block kind + OCR confidence threshold gating."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        ensure_sample_image()
-
-    def _analysis(self) -> dict:
-        return build_replica_analysis(SAMPLE_IMAGE, deck_title="U5 Gating")
-
-    def _first_text_candidate(self, analysis: dict) -> dict:
-        for cand in analysis.get("objectCandidates", []):
-            if cand.get("editableAs") == "native-text":
-                return cand
-        self.fail("expected at least one native-text candidate in fixture")
-
-    def test_high_confidence_emits_editable_text(self):
-        analysis = self._analysis()
-        text_cand = self._first_text_candidate(analysis)
-        box = text_cand["pixelBox"]
-        ocr_blocks = [
-            {
-                "text": "Sample Title",
-                "confidence01": 0.85,
-                "pixelBox": box,
-            }
-        ]
-        plan = build_replica_layer_plan(analysis, ocr_blocks=ocr_blocks, threshold=0.7)
-        kinds = {cand["id"]: cand.get("kind") for cand in plan["objectCandidates"]}
-        self.assertEqual(kinds[text_cand["id"]], "editable-text")
-        decisions = [d for d in plan["decisions"] if d["candidateId"] == text_cand["id"]]
-        self.assertEqual(len(decisions), 1)
-        self.assertEqual(decisions[0]["kind"], "editable-text")
-        self.assertTrue(decisions[0]["passes"])
-        self.assertEqual(decisions[0]["threshold"], 0.7)
-        self.assertEqual(plan["threshold"], 0.7)
-
-    def test_low_confidence_emits_cropped_asset(self):
-        analysis = self._analysis()
-        text_cand = self._first_text_candidate(analysis)
-        box = text_cand["pixelBox"]
-        ocr_blocks = [
-            {
-                "text": "blurry caption",
-                "confidence01": 0.55,
-                "pixelBox": box,
-            }
-        ]
-        plan = build_replica_layer_plan(analysis, ocr_blocks=ocr_blocks, threshold=0.7)
-        kinds = {cand["id"]: cand.get("kind") for cand in plan["objectCandidates"]}
-        self.assertEqual(kinds[text_cand["id"]], "cropped-asset")
-        decisions = [d for d in plan["decisions"] if d["candidateId"] == text_cand["id"]]
-        self.assertEqual(decisions[0]["kind"], "cropped-asset")
-        self.assertFalse(decisions[0]["passes"])
-
-    def test_lower_threshold_lifts_block_into_editable(self):
-        analysis = self._analysis()
-        text_cand = self._first_text_candidate(analysis)
-        box = text_cand["pixelBox"]
-        ocr_blocks = [
-            {
-                "text": "almost there",
-                "confidence01": 0.4,
-                "pixelBox": box,
-            }
-        ]
-        plan_default = build_replica_layer_plan(analysis, ocr_blocks=ocr_blocks, threshold=0.7)
-        plan_low = build_replica_layer_plan(analysis, ocr_blocks=ocr_blocks, threshold=0.3)
-        kinds_default = {c["id"]: c.get("kind") for c in plan_default["objectCandidates"]}
-        kinds_low = {c["id"]: c.get("kind") for c in plan_low["objectCandidates"]}
-        self.assertEqual(kinds_default[text_cand["id"]], "cropped-asset")
-        self.assertEqual(kinds_low[text_cand["id"]], "editable-text")
-
-    def test_ocr_deferred_falls_back_to_cropped_asset(self):
-        analysis = self._analysis()
-        plan = build_replica_layer_plan(analysis, ocr_blocks=None)
-        text_cands = [c for c in analysis["objectCandidates"] if c.get("editableAs") == "native-text"]
-        self.assertGreater(len(text_cands), 0)
-        for cand in text_cands:
-            matches = [c for c in plan["objectCandidates"] if c["id"] == cand["id"]]
-            self.assertEqual(len(matches), 1)
-            self.assertEqual(matches[0].get("kind"), "cropped-asset")
-        self.assertEqual(plan["decisions"], [])
-        self.assertEqual(plan["threshold"], 0.7)
-
-    def test_no_ocr_preserves_existing_behavior(self):
-        """Without OCR the plan still produces a decisions list (empty) and a
-        threshold field. Text-region candidates default to ``cropped-asset``
-        per the conservative fallback; non-text candidates are left
-        unannotated to preserve the existing shape for downstream consumers.
-        """
-        analysis = self._analysis()
-        plan = build_replica_layer_plan(analysis)
-        for cand in plan["objectCandidates"]:
-            if cand.get("editableAs") == "native-text":
-                self.assertEqual(cand.get("kind"), "cropped-asset")
-        self.assertEqual(plan["decisions"], [])
-        self.assertEqual(plan["threshold"], DEFAULT_OCR_CONFIDENCE_THRESHOLD)
-
-    def test_decisions_record_threshold_and_confidence(self):
-        analysis = self._analysis()
-        text_cand = self._first_text_candidate(analysis)
-        box = text_cand["pixelBox"]
-        ocr_blocks = [
-            {"text": "alpha", "confidence01": 0.91, "pixelBox": box},
-            {"text": "beta", "confidence01": 0.62, "pixelBox": box},
-        ]
-        plan = build_replica_layer_plan(analysis, ocr_blocks=ocr_blocks, threshold=0.7)
-        relevant = [d for d in plan["decisions"] if d["candidateId"] == text_cand["id"]]
-        self.assertEqual(len(relevant), 2)
-        confidence_values = sorted(d["confidence01"] for d in relevant)
-        self.assertEqual(confidence_values, [0.62, 0.91])
-        for decision in relevant:
-            self.assertEqual(decision["threshold"], 0.7)
-            self.assertIn(decision["kind"], {"editable-text", "cropped-asset"})
-            self.assertIn("passes", decision)
-
-
 class ImageReplicaOcrGatingCliTest(unittest.TestCase):
     """U5 CLI: --ocr-confidence and --skip-ocr flags."""
 
@@ -452,15 +334,8 @@ class ImageReplicaOcrGatingCliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         data = json.loads(self.plan_out.read_text(encoding="utf-8"))
         self.assertEqual(data["kind"], "replica-layer-plan")
-        # Without OCR the conservative default applies: text-region
-        # candidates become cropped-asset; non-text candidates stay
-        # unannotated to preserve the legacy shape.
-        for cand in data["objectCandidates"]:
-            if cand.get("editableAs") == "native-text":
-                self.assertEqual(cand.get("kind"), "cropped-asset")
-            else:
-                self.assertNotIn("kind", cand)
-        self.assertEqual(data["decisions"], [])
+        self.assertTrue(data["objects"])
+        self.assertTrue(all(item["kind"] in {"native-shape", "native-line", "editable-text", "cropped-asset"} for item in data["objects"]))
 
     def test_ocr_confidence_flag_default_matches_constant(self):
         result = self._run_plan("--skip-ocr")

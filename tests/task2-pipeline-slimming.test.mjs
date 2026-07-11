@@ -168,9 +168,8 @@ describe("Task 2 single pipeline contract", () => {
     ]) expect(buildInvocation(argv).script).toBe("run-route-pipeline.mjs");
   });
 
-  it.each(["image", "pdf"])("blocks strict %s runs when fidelity proof capability is unavailable", async (route) => {
-    const input = route === "image" ? "input.png" : "input.pdf";
-    await expect(execFileAsync(process.execPath, [join(root, "scripts/pptx.mjs"), route, input, "out"], { cwd: root }))
+  it("blocks strict pdf runs when fidelity proof capability is unavailable", async () => {
+    await expect(execFileAsync(process.execPath, [join(root, "scripts/pptx.mjs"), "pdf", "input.pdf", "out"], { cwd: root }))
       .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/fidelity proof capability is unavailable/) });
   });
 

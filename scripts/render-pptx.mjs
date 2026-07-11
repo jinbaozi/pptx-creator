@@ -431,6 +431,7 @@ async function patchTextStrokes(pptxPath, textStrokePatches) {
 function addLine(slide, element, design) {
   const style = resolveValue(element.style ?? {}, design.tokens);
   slide.addShape("line", {
+    ...(element.id ? { objectName: element.id } : {}),
     x: element.x,
     y: element.y,
     w: element.w,

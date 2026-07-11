@@ -6,6 +6,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
+import { runBoundedRepair } from "./lib/bounded-repair.mjs";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
 import { applyContextualTaste, editabilityLevelFromCounter, qualityFromReview } from "./lib/contextual-taste.mjs";
 import { preflightFonts } from "./lib/font-preflight.mjs";
@@ -263,7 +264,7 @@ export async function buildReplicaEvidence({ pptxPath, manifest, coverage, inter
   const nominalSize = { width: manifest.deck?.size?.width ?? 0, height: manifest.deck?.size?.height ?? 0 };
   const counters = intermediate.countersBySlide ?? [intermediate.editabilityCounter ?? {}];
   const nativeCoverage = Number.isFinite(Number(coverage?.coverage))
-    ? { status: "available", value: Number(coverage.coverage) }
+    ? { status: "available", value: Number(coverage.nativeCoverage ?? coverage.coverage) }
     : unavailableMetric("native-coverage-not-measured");
   const fidelity = unavailableFidelity(route);
   let fallbackInventory = true;
@@ -275,7 +276,7 @@ export async function buildReplicaEvidence({ pptxPath, manifest, coverage, inter
     return {
       slideIndex,
       fidelity: structuredClone(fidelity),
-      nativeCoverage: coverage?.slides?.[slideIndex]?.coverage === undefined ? structuredClone(nativeCoverage) : { status: "available", value: Number(coverage.slides[slideIndex].coverage) },
+      nativeCoverage: coverage?.slides?.[slideIndex]?.coverage === undefined ? structuredClone(nativeCoverage) : { status: "available", value: Number(coverage.slides[slideIndex].nativeCoverage ?? coverage.slides[slideIndex].coverage) },
       editability: { level: editabilityLevelFromCounter(counters[slideIndex] ?? {}) },
       fallbacks: inventorySlideFallbacks(slide, nominalSize, coverage?.slides?.[slideIndex])
     };
@@ -478,7 +479,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
 
   const proofLabel = mode === "creative" ? "creative-proof" : mode === "replica" ? "fidelity-proof" : "editability-proof";
   stageGuard.enter(proofLabel);
-  const replicaProof = mode === "replica"
+  let replicaProof = mode === "replica"
     ? (typeof options.buildReplicaProof === "function"
       ? await options.buildReplicaProof({
         pptxPath: join(resolvedOutput, "final.pptx"), manifest, coverage, intermediate, route,
@@ -503,17 +504,25 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const creativeQuality = mode === "creative"
     ? qualityFromReview(creativeReview, editabilityLevelFromCounter(intermediate.editabilityCounter), fontPreflight)
     : null;
-  const proofOk = mode === "creative"
+  let proofOk = mode === "creative"
     ? creativeQuality.gate.passed
     : mode === "replica" ? replicaProof.accepted === true : (intermediate.editabilityCounter?.text ?? 0) > 0;
   steps.push({ label: proofLabel, ok: proofOk });
   const repairLimit = normalizeRepairLimit(options.maxRepairAttempts ?? 3);
   stageGuard.enter("bounded-repair");
   if (!proofOk) {
-    steps.push({ label: "bounded-repair", ok: false, attempts: 0, maxAttempts: repairLimit });
-    await blockPipeline(resolvedManifest, resolvedOutput, steps, "bounded-repair", `${proofLabel} failed and no deterministic repair was available`);
+    const repair=await runBoundedRepair({initialProof:replicaProof,initialArtifact:{manifestPath:resolvedManifest,pptxPath:join(resolvedOutput,"final.pptx")},maxAttempts:repairLimit,
+      attempt:typeof options.runRepairAttempt==="function"?({iteration,proof,artifact})=>options.runRepairAttempt({iteration,proof,artifact,manifest,outputDir:resolvedOutput,route,mode}):undefined});
+    replicaProof=repair.proof;proofOk=repair.accepted;
+    if(replicaProof) await writeFile(join(resolvedOutput,"replica-evidence.json"),`${JSON.stringify(replicaProof,null,2)}\n`,"utf8");
+    if (!proofOk) {
+      steps.push({ label: "bounded-repair", ok: false, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
+      await blockPipeline(resolvedManifest, resolvedOutput, steps, "bounded-repair", `${proofLabel} failed; ${repair.stopReason}`);
+    }
+    steps.push({ label: "bounded-repair", ok: true, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
+  } else {
+    steps.push({ label: "bounded-repair", ok: true, attempts: 0, maxAttempts: repairLimit, stopReason: "initial-proof-passed" });
   }
-  steps.push({ label: "bounded-repair", ok: true, attempts: 0, maxAttempts: repairLimit });
 
   if (mode === "creative") {
     await writeFile(join(resolvedOutput, "visual-review.json"), `${JSON.stringify(creativeReview, null, 2)}\n`, "utf8");

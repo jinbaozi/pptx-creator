@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDeckPipeline } from "./run-deck-pipeline.mjs";
 import { runHtmlPipeline } from "./run-html-pipeline.mjs";
+import { runImagePipeline } from "./run-image-pipeline.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -30,7 +31,8 @@ export async function runRoutePipeline(route, mode, input, outputDir, options = 
     maxAttempts: 3,
     allowRemoteAssets: options.allowRemoteAssets === true
   });
-  if (["image", "pdf"].includes(route) && mode === "replica") {
+  if (route === "image" && mode === "replica") return runImagePipeline(input, outputDir, options);
+  if (route === "pdf" && mode === "replica") {
     throw new Error(`strict ${route} replica pipeline blocked: fidelity proof capability is unavailable until the replica compiler is implemented`);
   }
   throw new Error(`unsupported route/mode: ${route}/${mode}`);
