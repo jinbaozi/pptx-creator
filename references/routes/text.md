@@ -2,7 +2,7 @@
 
 ## Trigger
 
-Select for text, outlines, an authored manifest, or a creative `deck.plan.json`. Use `--creative` only for a deck plan; otherwise run the authored manifest directly.
+Select for prose, outlines, Markdown, text documents, or an internal `deck.plan.json`. The host agent may change page count, titles, compression, and narrative order, but must not invent facts, metrics, or sources. Users should only need to ask for the final editable PPTX.
 
 ## Exclusions
 
@@ -10,17 +10,17 @@ Do not select when HTML, an image, or a PDF defines the visual layout, or when a
 
 ## Public command
 
-npm run pptx -- text <deck.manifest.json|deck.plan.json> <output-dir> [--creative]
+npm run pptx -- text <deck.plan.json|plan-directory> <output-dir>
 
 ## Inputs and outputs
 
-Direct input is a `0.2.0` manifest; creative input is a coordinate-free `deck.plan.json` version `0.1.0`. HTML generation is optional only when explicitly requested or necessary and is never a mandatory text intermediate.
+The host agent converts raw text into an internal coordinate-free `deck.plan.json` version `0.1.0`; deterministic scripts compile it to a `0.2.0` manifest and editable PPTX. The plan records audience, narrative, five-part visual direction, contextual dials, page roles, composition strategies, content, and assets. HTML is optional only when genuinely necessary and is never a mandatory text intermediate. An authored manifest requires the explicit advanced flag `--direct`; `--creative` remains only as a deprecated compatibility alias.
 
-Successful creative output contains `final.pptx`, `deck.manifest.json`, `deck.plan.json`, `quality-report.json`, `quality-report.md`, `output-manifest.json`, and `preview/index.html`.
+Successful output contains `final.pptx`, `quality-report.json`, `quality-report.md`, `creative-proof.json`, rendered slide evidence with a contact sheet, and `preview/index.html`. Internal plan and manifest artifacts remain available for audit.
 
 ## Blocking conditions
 
-Block on missing input/output, invalid manifest metadata, an invalid deck plan, failed quality gates, or more than three repair attempts.
+Block on missing input/output, invalid internal artifacts, failed Creative gates, unavailable or incomplete LibreOffice slide evidence, any P0/P1 visual finding, or more than three repair attempts.
 
 ## Next references
 

@@ -23,6 +23,15 @@
     "audience": { "$ref": "#/$defs/nonEmptyString" },
     "narrativeBeats": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } },
     "intentOverride": { "type": "object" },
+    "visualDirection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["typography", "palette", "material", "imagery", "composition"],
+      "properties": {
+        "typography": { "$ref": "#/$defs/nonEmptyString" }, "palette": { "$ref": "#/$defs/nonEmptyString" },
+        "material": { "$ref": "#/$defs/nonEmptyString" }, "imagery": { "$ref": "#/$defs/nonEmptyString" },
+        "composition": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
     "slides": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/slide" } }
   },
   "$defs": {
@@ -57,6 +66,8 @@
       "properties": {
         "id": { "$ref": "#/$defs/nonEmptyString" }, "message": { "$ref": "#/$defs/nonEmptyString" },
         "layoutFamily": { "enum": ["cover", "architecture", "comparison", "process", "dashboard", "quote", "matrix", "closing"] },
+        "pageRole": { "enum": ["cover", "section", "point", "evidence", "comparison", "process", "architecture", "data", "case-study", "quote", "closing"] },
+        "compositionStrategy": { "enum": ["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"] },
         "contentReferences": { "type": "array", "items": { "type": "string" } },
         "assetReferences": { "type": "array", "items": { "type": "string" } },
         "content": { "type": "object" }

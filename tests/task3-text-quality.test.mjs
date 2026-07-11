@@ -95,6 +95,37 @@ describe("deck.plan 0.1 creative intermediate", () => {
       expect(validateDeckPlan(plan).errors.join(" "), family).toMatch(new RegExp(`${family}.*${field}.*max`, "i"));
     }
   });
+
+  it("supports page roles and composition strategies without exposing coordinates", () => {
+    const plan = loadPlan();
+    plan.visualDirection = {
+      typography: "Decisive grotesk hierarchy",
+      palette: "Ink, cobalt, and warm white",
+      material: "Flat editorial planes",
+      imagery: "Evidence-led diagrams",
+      composition: "Rhythmic asymmetry"
+    };
+    plan.slides[0].pageRole = "cover";
+    plan.slides[0].compositionStrategy = "asymmetric";
+    plan.slides[1].pageRole = "evidence";
+    plan.slides[1].compositionStrategy = "split";
+    expect(validateDeckPlan(plan)).toEqual({ valid: true, errors: [] });
+    const manifest = compileDeckPlan(plan);
+    expect(manifest.metadata.designIntent.visualDirection).toEqual(plan.visualDirection);
+    expect(manifest.slides[0]).toMatchObject({ pageRole: "cover", compositionStrategy: "asymmetric" });
+    expect(geometrySignature(manifest.slides[0])).not.toBe(geometrySignature(compileDeckPlan(loadPlan()).slides[0]));
+  });
+
+  it("rejects unknown roles, strategies, and three consecutive repeated compositions", () => {
+    const plan = loadPlan();
+    plan.slides[0].pageRole = "unknown";
+    plan.slides[1].compositionStrategy = "unknown";
+    plan.slides.slice(2, 5).forEach((slide) => { slide.compositionStrategy = "split"; });
+    const errors = validateDeckPlan(plan).errors.join(" ");
+    expect(errors).toMatch(/pageRole/);
+    expect(errors).toMatch(/compositionStrategy/);
+    expect(errors).toMatch(/consecutive/i);
+  });
 });
 
 describe("contextual creative taste gate", () => {
@@ -244,13 +275,13 @@ describe("stable bilingual brief corpus and text output contract", () => {
 
   it("creative CLI smoke emits the plan, manifest, deck, quality reports, package index, and preview index", async () => {
     const output = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-task3-text-"));
-    execFileSync("node", ["scripts/pptx.mjs", "text", fixturePath, output, "--creative"], {
+    execFileSync("node", ["scripts/pptx.mjs", "text", fixturePath, output], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     });
     for (const relative of [
       "final.pptx", "deck.manifest.json", "deck.plan.json", "quality-report.json", "quality-report.md",
-      "output-manifest.json", "preview/index.html"
+      "creative-proof.json", "creative-proof/slides/contact-sheet.png", "output-manifest.json", "preview/index.html"
     ]) expect(fs.existsSync(path.join(output, relative)), relative).toBe(true);
     const manifest = JSON.parse(fs.readFileSync(path.join(output, "deck.manifest.json"), "utf8"));
     expect(manifest.designSystem.source).toBe("design-system/DESIGN.md");
@@ -264,5 +295,7 @@ describe("stable bilingual brief corpus and text output contract", () => {
     expect((await parseDesignFile(standaloneDesign)).tokens).toBeTruthy();
     const outputManifest = JSON.parse(fs.readFileSync(path.join(output, "output-manifest.json"), "utf8"));
     expect(outputManifest.files).toEqual(expect.arrayContaining(["final.pptx", "deck.manifest.json", "deck.plan.json", "design-system", "quality-report.json", "quality-report.md", "preview"]));
+    const previewIndex = fs.readFileSync(path.join(output, "preview/index.html"), "utf8");
+    expect(previewIndex).toContain("../creative-proof/slides/contact-sheet.png");
   }, 60000);
 });

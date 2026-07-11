@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/creative-proof.schema.json",
+  "title": "Creative Rendered Visual Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "mode", "accepted", "expectedSlides", "renderedSlides", "previews", "contactSheet", "p0", "p1", "p2"],
+  "properties": {
+    "version": { "const": "0.1.0" },
+    "mode": { "const": "creative" },
+    "accepted": { "type": "boolean" },
+    "expectedSlides": { "type": "integer", "minimum": 0 },
+    "renderedSlides": { "type": "integer", "minimum": 0 },
+    "previews": { "type": "array", "items": { "type": "string" } },
+    "contactSheet": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["path", "slideCount", "width", "height"],
+          "properties": {
+            "path": { "type": "string" }, "slideCount": { "type": "integer", "minimum": 1 },
+            "width": { "type": "integer", "minimum": 1 }, "height": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "p0": { "$ref": "#/$defs/findings" },
+    "p1": { "$ref": "#/$defs/findings" },
+    "p2": { "$ref": "#/$defs/findings" }
+  },
+  "$defs": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["type", "message"],
+        "properties": { "type": { "type": "string" }, "message": { "type": "string" }, "slideId": { "type": "string" } }
+      }
+    }
+  }
+}

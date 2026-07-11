@@ -52,8 +52,9 @@ describe("Task 1 progressive-disclosure router", () => {
 describe("Task 1 public CLI", () => {
   it("selects real existing-script invocations for every route", async () => {
     const { buildInvocation } = await import("../scripts/pptx.mjs");
-    expect(buildInvocation(["text", "deck.json", "out"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "direct", "deck.json", "out"] });
-    expect(buildInvocation(["text", "artifacts", "out", "--creative"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "creative", "artifacts", "out"] });
+    expect(buildInvocation(["text", "artifacts", "out"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "creative", "artifacts", "out"] });
+    expect(buildInvocation(["text", "artifacts", "out", "--creative"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "creative", "artifacts", "out"], warning: expect.stringMatching(/deprecated/) });
+    expect(buildInvocation(["text", "deck.json", "out", "--direct"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "direct", "deck.json", "out"] });
     expect(buildInvocation(["html", "input.html", "out"])).toMatchObject({
       route: "html-replica",
       script: "run-route-pipeline.mjs",
@@ -68,9 +69,12 @@ describe("Task 1 public CLI", () => {
     const cli = join(root, "scripts/pptx.mjs");
     const help = await execFileAsync(process.execPath, [cli, "--help"], { cwd: root });
     expect(help.stdout).toContain("pptx <text|html|image|pdf|manifest>");
+    expect(help.stdout).toContain("--direct");
 
     await expect(execFileAsync(process.execPath, [cli, "unknown"], { cwd: root })).rejects.toMatchObject({ code: 1 });
     await expect(execFileAsync(process.execPath, [cli, "html", "input.html"], { cwd: root })).rejects.toMatchObject({ code: 1 });
+    await expect(execFileAsync(process.execPath, [cli, "text", "deck.json", "out", "--direct", "--creative"], { cwd: root }))
+      .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/mutually exclusive/) });
   });
 });
 
@@ -87,6 +91,8 @@ describe("Task 1 deck schema 0.2.0", () => {
     expect(schema.properties.metadata.properties).toHaveProperty("replicaSource");
     expect(schema.properties.metadata.properties).toHaveProperty("generator");
     expect(schema.properties.designSystem.properties).not.toHaveProperty("mode");
+    expect(schema.properties.slides.items.properties.pageRole.enum).toContain("evidence");
+    expect(schema.properties.slides.items.properties.compositionStrategy.enum).toContain("asymmetric");
     expect(schema.propertyNames).toEqual({ not: { pattern: "^_" } });
   });
 });

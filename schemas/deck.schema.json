@@ -68,6 +68,8 @@
         "properties": {
           "id": { "type": "string", "pattern": "^slide-" },
           "type": { "type": "string" },
+          "pageRole": { "type": "string", "enum": ["cover", "section", "point", "evidence", "comparison", "process", "architecture", "data", "case-study", "quote", "closing"] },
+          "compositionStrategy": { "type": ["string", "null"], "enum": ["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace", null] },
           "title": { "type": "string" },
           "notes": { "type": "string" },
           "background": {

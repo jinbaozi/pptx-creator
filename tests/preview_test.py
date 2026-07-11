@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIB = ROOT / "scripts" / "lib"
 sys.path.insert(0, str(LIB))
 
-from preview_core import compare_images, libreoffice_status, render_pptx_preview  # noqa: E402
+from preview_core import build_contact_sheet, compare_images, libreoffice_status, render_pptx_preview  # noqa: E402
 
 SAMPLE_DIR = ROOT / "examples" / "image-input"
 SAMPLE_IMAGE = SAMPLE_DIR / "business-slide.png"
@@ -49,6 +49,21 @@ class PreviewCoreTest(unittest.TestCase):
             data = compare_images(SAMPLE_IMAGE, small)
             self.assertIn(data["verdict"], {"moderate", "divergent", "close"})
             self.assertFalse(data["sizeMatch"])
+
+    def test_build_contact_sheet_labels_every_slide(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            from PIL import Image
+
+            root = Path(tmp)
+            slides = []
+            for index, color in enumerate(((20, 40, 80), (160, 80, 20)), start=1):
+                slide = root / f"slide-{index}.png"
+                Image.new("RGB", (320, 180), color=color).save(slide)
+                slides.append(str(slide))
+            result = build_contact_sheet(slides, root / "contact-sheet.png")
+            self.assertEqual(result["slideCount"], 2)
+            self.assertTrue(Path(result["path"]).exists())
+            self.assertGreater(result["width"], 320)
 
     def test_render_preview_smoke_pptx_optional(self):
         if not SMOKE_PPTX.exists():

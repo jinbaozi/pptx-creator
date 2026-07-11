@@ -10,6 +10,7 @@ import JSZip from "jszip";
 import { runBoundedRepair } from "./lib/bounded-repair.mjs";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
 import { applyContextualTaste, editabilityLevelFromCounter, qualityFromReview } from "./lib/contextual-taste.mjs";
+import { buildCreativeVisualProof } from "./lib/creative-visual-proof.mjs";
 import { preflightFonts } from "./lib/font-preflight.mjs";
 import { writePipelineReports } from "./lib/pipeline-report-writer.mjs";
 import { runPython } from "./lib/python-utils.mjs";
@@ -49,6 +50,8 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "deck.plan.json",
   "quality-report.json",
   "quality-report.md",
+  "creative-proof.json",
+  "creative-proof",
   "replica-evidence.json",
   "visual-regression-report.json",
   "visual-review.json",
@@ -484,6 +487,32 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
 
   const proofLabel = mode === "creative" ? "creative-proof" : mode === "replica" ? "fidelity-proof" : "editability-proof";
   stageGuard.enter(proofLabel);
+  let creativeVisualProof = null;
+  if (mode === "creative") {
+    try {
+      creativeVisualProof = await buildCreativeVisualProof({
+        root,
+        pptxPath: join(resolvedOutput, "final.pptx"),
+        outputDir: resolvedOutput,
+        manifest,
+        review: creativeReview
+      });
+    } catch (error) {
+      creativeVisualProof = {
+        version: "0.1.0", mode: "creative", accepted: false,
+        expectedSlides: manifest.slides?.length ?? 0, renderedSlides: 0,
+        previews: [], contactSheet: null,
+        p0: [{ type: "render-unavailable", message: error instanceof Error ? error.message : String(error) }],
+        p1: [], p2: []
+      };
+    }
+    const creativeProofSchema = JSON.parse(await readFile(join(root, "schemas/creative-proof.schema.json"), "utf8"));
+    const creativeProofValidation = validateJsonSchema(creativeVisualProof, creativeProofSchema);
+    if (!creativeProofValidation.valid) {
+      throw new Error(`creative proof contract invalid: ${creativeProofValidation.errors.map((item) => `${item.path} ${item.message}`).join("; ")}`);
+    }
+    await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
+  }
   let replicaProof = mode === "replica"
     ? (typeof options.buildReplicaProof === "function"
       ? await options.buildReplicaProof({
@@ -510,7 +539,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     ? qualityFromReview(creativeReview, editabilityLevelFromCounter(intermediate.editabilityCounter), fontPreflight)
     : null;
   let proofOk = mode === "creative"
-    ? creativeQuality.gate.passed
+    ? creativeQuality.gate.passed && creativeVisualProof?.accepted === true
     : mode === "replica" ? replicaProof.accepted === true : (intermediate.editabilityCounter?.text ?? 0) > 0;
   steps.push({ label: proofLabel, ok: proofOk });
   const repairLimit = normalizeRepairLimit(options.maxRepairAttempts ?? 3);
@@ -523,7 +552,10 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     if(replicaProof){const schema=JSON.parse(await readFile(join(root,"schemas/replica-evidence.schema.json"),"utf8"));const validation=validateJsonSchema(replicaProof,schema);if(!validation.valid)throw new Error(`repaired replica evidence contract invalid: ${validation.errors.map((item)=>`${item.path} ${item.message}`).join("; ")}`);await writeFile(join(resolvedOutput,"replica-evidence.json"),`${JSON.stringify(replicaProof,null,2)}\n`,"utf8");}
     if (!proofOk) {
       steps.push({ label: "bounded-repair", ok: false, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
-      await blockPipeline(resolvedManifest, resolvedOutput, steps, "bounded-repair", `${proofLabel} failed; ${repair.stopReason}`);
+      const visualDetail = mode === "creative" && creativeVisualProof
+        ? [...creativeVisualProof.p0, ...creativeVisualProof.p1].map((finding) => `${finding.type}: ${finding.message}`).join("; ")
+        : "";
+      await blockPipeline(resolvedManifest, resolvedOutput, steps, "bounded-repair", `${proofLabel} failed; ${visualDetail || repair.stopReason}`);
     }
     await publishRepairArtifact([{source:repair.artifact?.manifestPath,target:resolvedManifest},{source:repair.artifact?.pptxPath,target:join(resolvedOutput,"final.pptx")},{source:repair.artifact?.planPath,target:options.initialRepairArtifact?.planPath}]);
     manifest=repair.artifact?.manifest??JSON.parse(await readFile(resolvedManifest,"utf8"));
@@ -536,12 +568,12 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   if (mode === "creative") {
     await writeFile(join(resolvedOutput, "visual-review.json"), `${JSON.stringify(creativeReview, null, 2)}\n`, "utf8");
     await writeFile(join(resolvedOutput, "quality-report.json"), `${JSON.stringify(creativeQuality, null, 2)}\n`, "utf8");
-    const qualityMarkdown = `# Creative quality report\n\nStatus: **${creativeQuality.gate.passed ? "PASS" : "BLOCK"}**\n\n- Deck score: ${creativeQuality.deckScore} (minimum 80)\n- Slide floor: ${Math.min(...creativeQuality.slides.map((slide) => slide.score))} (minimum 70)\n- Slop risk: ${creativeQuality.slopRisk} (maximum 20)\n- Critical findings: ${creativeQuality.criticalFindings} (required 0)\n- Editability: L${creativeQuality.editabilityLevel} (minimum L4)\n- Font preflight: ${creativeQuality.compatibility.source}; ${creativeQuality.compatibility.fallback.length} fallback(s)\n`;
+    const qualityMarkdown = `# Creative quality report\n\nStatus: **${creativeQuality.gate.passed && creativeVisualProof?.accepted ? "PASS" : "BLOCK"}**\n\n- Deck score: ${creativeQuality.deckScore} (minimum 80)\n- Slide floor: ${Math.min(...creativeQuality.slides.map((slide) => slide.score))} (minimum 70)\n- Slop risk: ${creativeQuality.slopRisk} (maximum 20)\n- Critical findings: ${creativeQuality.criticalFindings} (required 0)\n- Rendered slides: ${creativeVisualProof?.renderedSlides ?? 0}/${creativeVisualProof?.expectedSlides ?? manifest.slides.length}\n- Visual proof P0/P1: ${creativeVisualProof?.p0?.length ?? 0}/${creativeVisualProof?.p1?.length ?? 0} (required 0/0)\n- Editability: L${creativeQuality.editabilityLevel} (minimum L4)\n- Font preflight: ${creativeQuality.compatibility.source}; ${creativeQuality.compatibility.fallback.length} fallback(s)\n`;
     await writeFile(join(resolvedOutput, "quality-report.md"), qualityMarkdown, "utf8");
     const previewDir = join(resolvedOutput, "preview");
     await mkdir(previewDir, { recursive: true });
     const previewTitle = escapePreviewHtml(manifest.deck.title);
-    await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>${previewTitle}</title><main><h1>${previewTitle}</h1><p>Creative quality: ${creativeQuality.gate.passed ? "PASS" : "BLOCK"}</p><ol>${manifest.slides.map((slide) => `<li>${escapePreviewHtml(slide.title)}</li>`).join("")}</ol></main>\n`, "utf8");
+    await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>${previewTitle}</title><main><h1>${previewTitle}</h1><p>Creative quality: ${creativeQuality.gate.passed && creativeVisualProof?.accepted ? "PASS" : "BLOCK"}</p><figure><img src="../creative-proof/slides/contact-sheet.png" alt="Rendered slide contact sheet" style="max-width:100%;height:auto"><figcaption>LibreOffice render evidence for all ${creativeVisualProof?.renderedSlides ?? 0} slides</figcaption></figure><ol>${manifest.slides.map((slide) => `<li>${escapePreviewHtml(slide.title)}</li>`).join("")}</ol></main>\n`, "utf8");
   }
   if (mode === "replica" && replicaProof) {
     const quality = {

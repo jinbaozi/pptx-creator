@@ -162,7 +162,8 @@ describe("Task 2 single pipeline contract", () => {
   it("routes every deck-producing command through one operational script", async () => {
     const { buildInvocation } = await import("../scripts/pptx.mjs");
     for (const argv of [
-      ["text", "deck.json", "out"],
+      ["text", "artifacts", "out"],
+      ["text", "deck.json", "out", "--direct"],
       ["text", "artifacts", "out", "--creative"],
       ["html", "input.html", "out"],
       ["image", "input.png", "out"],

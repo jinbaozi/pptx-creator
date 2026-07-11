@@ -46,4 +46,9 @@ describe("bounded repair convergence", () => {
     const result = await runBoundedRepair({ initialProof: proof(0.8) });
     expect(result).toMatchObject({ attempts: 0, stopReason: "repair-unavailable" });
   });
+
+  it("fails closed when a non-replica route has no replica proof", async () => {
+    const result = await runBoundedRepair({ initialProof: null });
+    expect(result).toMatchObject({ accepted: false, proof: null, attempts: 0, stopReason: "repair-unavailable" });
+  });
 });

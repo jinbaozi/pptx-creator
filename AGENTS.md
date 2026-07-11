@@ -30,7 +30,7 @@ npm run test:py                        # python unittest in tests/
 npm run pptx -- text examples/text-input/deck.manifest.json output
 
 # Creative text end-to-end
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --creative
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative
 
 # Replica routes (image/PDF block until a fidelity-proof compiler exists)
 npm run pptx -- html input.html output/html

@@ -23,6 +23,36 @@ WINDOWS_SOFFICE_PATHS = [
 ]
 
 
+def build_contact_sheet(previews: list[str], output_path: Path) -> dict[str, Any]:
+    if Image is None:
+        _fail("Pillow is required. Install with: pip install -r requirements-core.txt")
+    if not previews:
+        _fail("contact sheet requires at least one preview")
+    images = []
+    try:
+        for preview in previews:
+            images.append(Image.open(preview).convert("RGB"))
+        thumb_width = 480
+        thumb_height = round(thumb_width * images[0].height / images[0].width)
+        columns = min(3, len(images))
+        rows = (len(images) + columns - 1) // columns
+        gutter, label_height = 24, 34
+        width = gutter + columns * (thumb_width + gutter)
+        height = gutter + rows * (thumb_height + label_height + gutter)
+        sheet = Image.new("RGB", (width, height), color=(245, 246, 248))
+        for index, image in enumerate(images):
+            thumb = image.resize((thumb_width, thumb_height))
+            x = gutter + (index % columns) * (thumb_width + gutter)
+            y = gutter + (index // columns) * (thumb_height + label_height + gutter)
+            sheet.paste(thumb, (x, y + label_height))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sheet.save(output_path)
+        return {"path": str(output_path.resolve()), "slideCount": len(images), "width": width, "height": height}
+    finally:
+        for image in images:
+            image.close()
+
+
 def _fail(message: str) -> None:
     raise ValueError(message)
 
@@ -105,12 +135,14 @@ def render_pptx_preview(pptx_path: Path, output_dir: Path) -> dict[str, Any]:
         if raster.returncode != 0:
             result = raster
     previews = sorted(str(path) for path in output_dir.glob("slide-*.png"))
+    contact_sheet = build_contact_sheet(previews, output_dir / "contact-sheet.png") if previews else None
     return {
         "version": PREVIEW_VERSION,
         "source": pptx_path.name,
         "renderer": lo,
         "previews": previews,
         "previewCount": len(previews),
+        "contactSheet": contact_sheet,
         "status": "ok" if previews else "failed",
         "note": "Preview PNGs written to output directory.",
     }

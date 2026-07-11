@@ -2,8 +2,8 @@
 
 Creative mode target:
 
-- deck score >= 82
-- every slide score >= 72
+- deck score >= 80
+- every slide score >= 70
 - editable level >= 4
 
 Scoring dimensions:

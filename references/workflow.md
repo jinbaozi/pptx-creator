@@ -76,7 +76,7 @@ Use the single public CLI. It selects the route contract, prevents creative chec
 
 ```bash
 npm run pptx -- text output/deck.manifest.json output
-npm run pptx -- text creative-artifacts output --creative
+npm run pptx -- text creative-artifacts output
 npm run pptx -- html input.html output
 ```
 

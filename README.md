@@ -95,12 +95,12 @@ output/
   output-manifest.json
 ```
 
-## Creative deck plan 创作流程
+## 默认文字生成高品味 PPTX
 
 适合从文本生成更精美、更有变化的商务或技术 PPT：
 
 ```bash
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --creative
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative
 ```
 
 唯一创意中间产物是无坐标的 `deck.plan.json`：

@@ -14,6 +14,35 @@ const line = (id, x, y, w, h, color = "#2563EB") => ({
 });
 const title = (value) => text("headline", value, 0.72, 0.42, 11.9, 0.62, { fontSize: 28, bold: true, color: "#111827" });
 const itemText = (item) => typeof item === "string" ? item : item?.label ?? item?.title ?? item?.name ?? JSON.stringify(item);
+const PAGE_ROLES = new Set(["cover", "section", "point", "evidence", "comparison", "process", "architecture", "data", "case-study", "quote", "closing"]);
+const COMPOSITION_STRATEGIES = new Set(["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"]);
+
+function applyCompositionStrategy(elements, strategy) {
+  if (!strategy) return elements;
+  return elements.map((element, index) => {
+    const next = structuredClone(element);
+    if (strategy === "asymmetric") {
+      next.x = Math.max(0, Math.min(W - next.w, next.x + (index % 2 ? 0.22 : -0.08)));
+      next.y = Math.max(0, Math.min(H - next.h, next.y + index * 0.015));
+    } else if (strategy === "split") {
+      next.x = Math.max(0, Math.min(W - next.w, next.x + (index % 2 ? 0.14 : -0.14)));
+    } else if (strategy === "focus" && index === 0) {
+      next.w = Math.min(W - next.x, next.w + 0.35);
+      if (next.type === "text") next.style.fontSize = Number(next.style?.fontSize ?? 24) + 4;
+    } else if (strategy === "editorial" && next.type === "text") {
+      next.y = Math.max(0, Math.min(H - next.h, next.y + (index % 3) * 0.08));
+    } else if (strategy === "immersive" && next.type === "shape") {
+      next.x = Math.max(0, next.x - 0.08); next.w = Math.min(W - next.x, next.w + 0.16);
+    } else if (strategy === "data-led") {
+      next.y = Math.max(0, Math.min(H - next.h, next.y + (index % 2) * 0.05));
+    } else if (strategy === "structural") {
+      next.x = Math.max(0, Math.min(W - next.w, next.x + (index % 3 - 1) * 0.06));
+    } else if (strategy === "minimal-whitespace") {
+      const delta = next.w * 0.06; next.x += delta; next.w -= delta * 2;
+    }
+    return next;
+  });
+}
 
 function compileCover(content) {
   return [
@@ -130,6 +159,8 @@ function validateSlide(slide, index, errors) {
   if (!entry) { errors.push(`slides[${index}] unknown layoutFamily ${family}`); return; }
   if (!slide.id || !slide.message) errors.push(`slides[${index}] requires id and message`);
   if (!Array.isArray(slide.contentReferences) || !Array.isArray(slide.assetReferences)) errors.push(`slides[${index}] requires contentReferences and assetReferences`);
+  if (slide.pageRole !== undefined && !PAGE_ROLES.has(slide.pageRole)) errors.push(`slides[${index}].pageRole is unsupported`);
+  if (slide.compositionStrategy !== undefined && !COMPOSITION_STRATEGIES.has(slide.compositionStrategy)) errors.push(`slides[${index}].compositionStrategy is unsupported`);
   const familyError = entry.validate(slide.content);
   if (familyError) errors.push(`${family} slide ${slide.id ?? index}: ${familyError}`);
 }
@@ -144,7 +175,15 @@ export function validateDeckPlan(plan) {
   if (typeof plan.audience !== "string" || !plan.audience.trim()) errors.push("audience is required");
   if (!Array.isArray(plan.narrativeBeats) || plan.narrativeBeats.length < 1) errors.push("narrativeBeats must be non-empty");
   if (!Array.isArray(plan.slides) || plan.slides.length < 1) errors.push("slides must be non-empty");
-  else plan.slides.forEach((slide, index) => validateSlide(slide, index, errors));
+  else {
+    plan.slides.forEach((slide, index) => validateSlide(slide, index, errors));
+    for (let index = 2; index < plan.slides.length; index += 1) {
+      const strategy = plan.slides[index].compositionStrategy;
+      if (strategy && strategy === plan.slides[index - 1].compositionStrategy && strategy === plan.slides[index - 2].compositionStrategy) {
+        errors.push(`slides[${index - 2}..${index}] repeat the same compositionStrategy for three consecutive slides`);
+      }
+    }
+  }
   return { valid: errors.length === 0, errors };
 }
 
@@ -153,11 +192,11 @@ export function compileDeckPlan(plan, options = {}) {
   if (!validation.valid) throw new Error(`deck.plan invalid: ${validation.errors.join("; ")}`);
   return {
     version: "0.2.0",
-    metadata: { mode: "creative", inputType: "text", qualityProfile: "creative", designIntent: { source: "deck.plan", read: plan.designRead, dials: plan.dials, intentOverride: plan.intentOverride ?? null }, generator: { name: "deck-plan.mjs" } },
+    metadata: { mode: "creative", inputType: "text", qualityProfile: "creative", designIntent: { source: "deck.plan", read: plan.designRead, dials: plan.dials, visualDirection: plan.visualDirection ?? null, intentOverride: plan.intentOverride ?? null }, generator: { name: "deck-plan.mjs" } },
     designSystem: { source: options.designSystemSource ?? "design-systems/business-neutral/DESIGN.md", name: options.designSystemName ?? "Business Neutral" },
     deck: { title: plan.title, language: plan.language, editabilityFloor: 4, size: { preset: "wide", width: W, height: H, unit: "in" } },
     assets: [],
-    slides: plan.slides.map((slide) => ({ id: slide.id, type: slide.layoutFamily, title: slide.message, notes: slide.message, background: { type: "solid", color: slide.layoutFamily === "closing" ? "#111827" : "#FFFFFF" }, elements: REGISTRY[slide.layoutFamily].compile(slide.content) }))
+    slides: plan.slides.map((slide) => ({ id: slide.id, type: slide.layoutFamily, pageRole: slide.pageRole ?? slide.layoutFamily, compositionStrategy: slide.compositionStrategy ?? null, title: slide.message, notes: slide.message, background: { type: "solid", color: slide.layoutFamily === "closing" ? "#111827" : "#FFFFFF" }, elements: applyCompositionStrategy(REGISTRY[slide.layoutFamily].compile(slide.content), slide.compositionStrategy) }))
   };
 }
 

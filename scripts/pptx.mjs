@@ -8,7 +8,8 @@ const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const HELP = `Usage: pptx <text|html|image|pdf|manifest> ...
 
 Routes:
-  text <deck.manifest.json|deck.plan.json> <output-dir> [--creative]
+  text <deck.plan.json|plan-directory> <output-dir> [--creative]
+  text <deck.manifest.json> <output-dir> --direct
   html <input.html> <output-dir> [--allow-remote-assets]
   image <input.png> <output-dir>
   pdf <input.pdf> <output-dir>
@@ -24,11 +25,18 @@ export function buildInvocation(argv) {
 
   if (command === "text") {
     const creative = rest.includes("--creative");
-    const unknownFlags = rest.filter((arg) => arg.startsWith("--") && arg !== "--creative");
+    const direct = rest.includes("--direct");
+    if (creative && direct) throw new Error("text: --creative and --direct are mutually exclusive");
+    const unknownFlags = rest.filter((arg) => arg.startsWith("--") && !["--creative", "--direct"].includes(arg));
     if (unknownFlags.length) throw new Error(`text: unknown option ${unknownFlags[0]}`);
-    const positional = rest.filter((arg) => arg !== "--creative");
-    requireCount("text", positional, 2, "<deck.manifest.json|deck.plan.json> <output-dir> [--creative]");
-    return { route: "text", script: "run-route-pipeline.mjs", args: ["text", creative ? "creative" : "direct", ...positional] };
+    const positional = rest.filter((arg) => !["--creative", "--direct"].includes(arg));
+    requireCount("text", positional, 2, "<deck.plan.json|plan-directory> <output-dir> [--creative] or <deck.manifest.json> <output-dir> --direct");
+    return {
+      route: "text",
+      script: "run-route-pipeline.mjs",
+      args: ["text", direct ? "direct" : "creative", ...positional],
+      ...(creative ? { warning: "--creative is deprecated because text generation is creative by default" } : {})
+    };
   }
 
   if (command === "html") {
@@ -72,6 +80,7 @@ export async function run(argv = process.argv.slice(2)) {
     console.log(HELP);
     return 0;
   }
+  if (invocation.warning) console.error(`warning: ${invocation.warning}`);
   return new Promise((resolveExit) => {
     const child = spawn(process.execPath, [join(scriptsDir, invocation.script), ...invocation.args], {
       cwd: resolve(scriptsDir, ".."),

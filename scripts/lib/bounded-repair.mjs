@@ -5,6 +5,7 @@ function value(metric) {
 }
 
 export function repairScore(proof = {}) {
+  if (!proof || typeof proof !== "object") return 0;
   const fidelity = proof.aggregate?.fidelity ?? {};
   const positive = ["ssim", "bboxIou", "fontMapping", "colorMapping", "nativeHighConfidenceTextRecall"];
   const negative = ["normalizedMae", "ocrCer", "paletteDeltaE2000P95", "bboxP95Drift"];

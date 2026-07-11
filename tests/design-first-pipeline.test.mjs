@@ -9,7 +9,10 @@ describe("creative deck-plan pipeline", () => {
     const dir = fs.mkdtempSync(path.join("/private/tmp", "pptx-design-first-in-place-"));
     fs.copyFileSync(path.join("examples/text-input/creative/deck.plan.json"), path.join(dir, "deck.plan.json"));
 
-    execFileSync("node", ["scripts/pptx.mjs", "text", dir, dir, "--creative"], { stdio: "pipe" });
+    execFileSync("node", ["scripts/pptx.mjs", "text", dir, dir], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    });
 
     expect(fs.existsSync(path.join(dir, "deck.plan.json"))).toBe(true);
     expect(fs.existsSync(path.join(dir, "final.pptx"))).toBe(true);
