@@ -371,6 +371,10 @@ export async function measureHtmlFile(inputPath, options = {}) {
           const generatedId = `html-${String(slideIndex + 1).padStart(3, "0")}-${String(nodeIndex + 1).padStart(3, "0")}`;
           const id = node.getAttribute("data-pptx-id") || node.getAttribute("data-id") || node.id || generatedId;
           const tagName = node.tagName.toLowerCase();
+          const before = window.getComputedStyle(node, "::before");
+          const after = window.getComputedStyle(node, "::after");
+          const pseudoVisible = [before, after].some((pseudo) => pseudo.content && !["none", "normal", '""', "''"].includes(pseudo.content) && pseudo.display !== "none" && pseudo.visibility !== "hidden");
+          const unsupportedVisual = tagName === "canvas" ? "canvas-paint" : tagName === "svg" ? "svg-paint" : pseudoVisible ? "pseudo-element-paint" : null;
           const pushDirectTextFragments = () => {
             if (!replicaMode || !hasVisibleChildElements(node)) return;
             directTextNodes(node).forEach((entry, textIndex) => {
@@ -409,7 +413,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
               });
             });
           };
-          const kind = inferKind(node, style);
+          const kind = inferKind(node, style) ?? (unsupportedVisual ? "shape" : null);
           if (!kind) {
             pushDirectTextFragments();
             return;
@@ -434,7 +438,9 @@ export async function measureHtmlFile(inputPath, options = {}) {
                 style.filter !== "none" ||
                 style.backdropFilter !== "none" ||
                 style.clipPath !== "none" ||
-                style.backgroundImage !== "none",
+                style.backgroundImage !== "none" ||
+                unsupportedVisual !== null,
+              unsupportedVisual,
               filter: style.filter === "none" ? null : style.filter,
               backdropFilter: style.backdropFilter === "none" ? null : style.backdropFilter,
               clipPath: style.clipPath === "none" ? null : style.clipPath,

@@ -34,14 +34,31 @@ describe.skipIf(!enabled)("real HTML replica proof", () => {
     await execFileAsync(process.execPath, [join(root, "scripts/pptx.mjs"), "html", join(root, "examples/html-input/replica-local-fallback.html"), dir], { cwd: root, timeout: 120000 });
     const manifest = JSON.parse(await readFile(join(dir, "deck.manifest.json"), "utf8"));
     const evidence = JSON.parse(await readFile(join(dir, "replica-evidence.json"), "utf8"));
-    const fallback = evidence.aggregate.fallbacks[0];
+    const fallback = evidence.aggregate.fallbacks.find((item) => /clip|filter/.test(item.reason));
     expect(fallback).toMatchObject({ fullSlide: false, reason: expect.stringMatching(/clip|filter/), nativeAlternativesAttempted: expect.any(Array) });
     expect(fallback.bbox.width).toBeLessThan(manifest.deck.size.width / 2);
     expect(fallback.bbox.height).toBeLessThan(manifest.deck.size.height / 2);
     expect(manifest.slides[0].elements.some((item) => item.type === "cropped-asset")).toBe(true);
     expect(manifest.slides[0].elements.some((item) => item.type === "text" && /Editable title/.test(item.text))).toBe(true);
+    expect(manifest.slides[0].elements.findIndex((item) => item.type === "cropped-asset")).toBeLessThan(manifest.slides[0].elements.findIndex((item) => item.id === "later-native"));
+    expect(evidence.aggregate.fallbacks.map((item) => item.reason).join(" ")).toMatch(/svg-paint/);
+    expect(evidence.aggregate.fallbacks.map((item) => item.reason).join(" ")).toMatch(/pseudo-element-paint/);
+    expect(manifest.slides[0].replicaUnsupportedEffects).toEqual([]);
+    expect(manifest.metadata.replicaSource.coverage.unsupportedEffects).toEqual([]);
     expect(manifest.metadata.replicaSource.coverage.coverage).toBe(1);
     expect(manifest.metadata.replicaSource.coverage.nativeCoverage).toBeLessThan(1);
     expect(evidence.blockingFindings).toEqual([]);
   }, 180000);
+
+  it("binds every page to a distinct real source/render pair", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-html-two-page-"));
+    await execFileAsync(process.execPath, [join(root, "scripts/pptx.mjs"), "html", join(root, "examples/html-input/replica-golden-two-page.html"), dir], { cwd: root, timeout: 180000 });
+    const evidence = JSON.parse(await readFile(join(dir, "replica-evidence.json"), "utf8"));
+    const index = await readFile(join(dir, "preview/index.html"), "utf8");
+    expect(evidence.source.pageCount).toBe(2);
+    expect(evidence.render.pageCount).toBe(2);
+    expect(evidence.perSlide.map((page) => page.slideIndex)).toEqual([0, 1]);
+    expect(index).toContain("slide-1.png");
+    expect(index).toContain("slide-2.png");
+  }, 240000);
 });

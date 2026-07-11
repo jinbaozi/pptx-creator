@@ -78,7 +78,7 @@ def render_pptx_preview(pptx_path: Path, output_dir: Path) -> dict[str, Any]:
         env["HOME"] = profile
         env["XDG_CONFIG_HOME"] = str(Path(profile) / ".config")
         result = subprocess.run(
-            [lo["binary"], f"-env:UserInstallation={Path(profile).as_uri()}", "--headless", "--convert-to", "png", "--outdir", str(output_dir), str(pptx_path)],
+            [lo["binary"], f"-env:UserInstallation={Path(profile).as_uri()}", "--headless", "--convert-to", "pdf", "--outdir", str(output_dir), str(pptx_path)],
             capture_output=True,
             text=True,
             check=False,
@@ -95,7 +95,16 @@ def render_pptx_preview(pptx_path: Path, output_dir: Path) -> dict[str, Any]:
             "note": (result.stderr or result.stdout or "LibreOffice conversion failed").strip(),
         }
 
-    previews = sorted(str(path) for path in output_dir.glob("*.png"))
+    pdf_path = output_dir / f"{pptx_path.stem}.pdf"
+    converter = shutil.which("pdftoppm")
+    if result.returncode == 0 and pdf_path.exists() and converter:
+        raster = subprocess.run(
+            [converter, "-png", "-r", "96", str(pdf_path), str(output_dir / "slide")],
+            capture_output=True, text=True, check=False, timeout=120, env=env,
+        )
+        if raster.returncode != 0:
+            result = raster
+    previews = sorted(str(path) for path in output_dir.glob("slide-*.png"))
     return {
         "version": PREVIEW_VERSION,
         "source": pptx_path.name,

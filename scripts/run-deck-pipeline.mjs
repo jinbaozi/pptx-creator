@@ -540,7 +540,8 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     await writeFile(join(resolvedOutput, "quality-report.md"), `# Replica quality report\n\nStatus: **${replicaProof.accepted ? "PASS" : "BLOCK"}**\n\n- Route: ${route}\n- SSIM: ${replicaProof.aggregate.fidelity.ssim?.value ?? "N/A"}\n- Normalized MAE: ${replicaProof.aggregate.fidelity.normalizedMae?.value ?? "N/A"}\n- Native coverage: ${replicaProof.aggregate.nativeCoverage?.value ?? "N/A"}\n- Editability: L${replicaProof.aggregate.editability?.level ?? "N/A"}\n- Local raster fallbacks: ${replicaProof.aggregate.fallbacks?.length ?? 0}\n- Retry attempts: ${replicaProof.retry?.attempts?.length ?? 0}\n`, "utf8");
     const previewDir = join(resolvedOutput, "preview");
     await mkdir(previewDir, { recursive: true });
-    await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>Replica proof</title><main><h1>Replica proof: ${replicaProof.accepted ? "PASS" : "BLOCK"}</h1><p>SSIM ${replicaProof.aggregate.fidelity.ssim?.value ?? "N/A"}; native coverage ${replicaProof.aggregate.nativeCoverage?.value ?? "N/A"}</p><img src="slide-001.png" alt="Rendered slide"></main>\n`, "utf8");
+    const pages = replicaProof.perSlide.map((slide) => `<figure><img src="../evidence/render/slide-${slide.slideIndex + 1}.png" alt="Rendered slide ${slide.slideIndex + 1}"><figcaption>Slide ${slide.slideIndex + 1}: SSIM ${slide.fidelity.ssim?.value ?? "N/A"}</figcaption></figure>`).join("");
+    await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>Replica proof</title><main><h1>Replica proof: ${replicaProof.accepted ? "PASS" : "BLOCK"}</h1><p>SSIM ${replicaProof.aggregate.fidelity.ssim?.value ?? "N/A"}; native coverage ${replicaProof.aggregate.nativeCoverage?.value ?? "N/A"}</p>${pages}</main>\n`, "utf8");
   }
   let layoutSafetyStatus;
   try {

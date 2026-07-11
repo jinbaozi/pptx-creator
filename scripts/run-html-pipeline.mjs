@@ -12,7 +12,10 @@ import { renderAndMeasureHtmlReplica } from "./lib/html-replica-proof.mjs";
 
 async function captureReplicaSourceAndFallbacks(inputPath, outputDir, measurements, manifest) {
   const evidenceDir = join(outputDir, "evidence");
-  await mkdir(evidenceDir, { recursive: true });
+  const sourceDir = join(evidenceDir, "source");
+  const fallbackDir = join(evidenceDir, "fallback");
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(fallbackDir, { recursive: true });
   const sourcePaths = [];
   const fallbackPlans = [];
   await withSettledHtmlPage(inputPath, {
@@ -24,7 +27,7 @@ async function captureReplicaSourceAndFallbacks(inputPath, outputDir, measuremen
     const slides = page.locator(".pptx-slide, [data-slide]");
     const count = await slides.count();
     for (let slideIndex = 0; slideIndex < Math.max(1, count); slideIndex += 1) {
-      const sourcePath = join(evidenceDir, `source-slide-${String(slideIndex + 1).padStart(3, "0")}.png`);
+      const sourcePath = join(sourceDir, `slide-${String(slideIndex + 1).padStart(3, "0")}.png`);
       if (count) await slides.nth(slideIndex).screenshot({ path: sourcePath });
       else await page.screenshot({ path: sourcePath, clip: { x: 0, y: 0, width: measurements.viewport.width, height: measurements.viewport.height } });
       sourcePaths.push(sourcePath);
@@ -38,37 +41,39 @@ async function captureReplicaSourceAndFallbacks(inputPath, outputDir, measuremen
           throw new Error(`unsupported effect ${effect.elementId} does not have a safe localized crop`);
         }
         const fileName = `fallback-${String(slideIndex + 1).padStart(3, "0")}-${String(effectIndex + 1).padStart(3, "0")}.png`;
-        const cropPath = join(evidenceDir, fileName);
+        const cropPath = join(fallbackDir, fileName);
         const slideBox = count ? await slides.nth(slideIndex).boundingBox() : { x: 0, y: 0 };
         await page.screenshot({ path: cropPath, omitBackground: true, clip: {
           x: Math.max(0, slideBox.x + measurement.px.x), y: Math.max(0, slideBox.y + measurement.px.y),
           width: measurement.px.w, height: measurement.px.h
         } });
-        const reason = [effect.filter && `filter:${effect.filter}`, effect.clipPath && `clip:${effect.clipPath}`, effect.backdropFilter && `backdrop-filter:${effect.backdropFilter}`, effect.backgroundImage && `background:${effect.backgroundImage}`].filter(Boolean).join("; ") || "unsupported-css-effect";
-        fallbackPlans.push({ slideIndex, elementId: effect.elementId, src: `evidence/${fileName}`, box: { x: measurement.x, y: measurement.y, w: measurement.w, h: measurement.h }, reason, zOrder: Number(measurement.style?.zIndex ?? 0) });
+        const reason = [effect.filter && `filter:${effect.filter}`, effect.clipPath && `clip:${effect.clipPath}`, effect.backdropFilter && `backdrop-filter:${effect.backdropFilter}`, effect.backgroundImage && `background:${effect.backgroundImage}`, effect.unsupportedVisual].filter(Boolean).join("; ") || "unsupported-css-effect";
+        fallbackPlans.push({ slideIndex, elementId: effect.elementId, src: `evidence/fallback/${fileName}`, box: { x: measurement.x, y: measurement.y, w: measurement.w, h: measurement.h }, reason, zOrder: Number(measurement.style?.zIndex ?? 0) });
       }
     }
   });
-  return { sourcePaths, fallbackPlans };
+  return { sourcePaths, sourceDir, fallbackPlans };
 }
 
 function applyLocalizedFallbacks(manifest, measurements, fallbackPlans) {
   for (const plan of fallbackPlans) {
     const slide = manifest.slides[plan.slideIndex];
     const provenance = { kind: "raster", fullSlide: false, reason: plan.reason, bbox: { x: plan.box.x, y: plan.box.y, width: plan.box.w, height: plan.box.h }, zOrder: plan.zOrder, nativeAlternativesAttempted: ["native-shape", "native-gradient", "native-shadow"] };
-    slide.elements = (slide.elements ?? []).filter((item) => item.id !== plan.elementId);
-    slide.elements.push({ type: "cropped-asset", id: `${plan.elementId}-localized-fallback`, src: plan.src, ...plan.box, replicaFallback: provenance });
+    const elementIndex = Math.max(0, (slide.elements ?? []).findIndex((item) => item.id === plan.elementId));
+    const retained = (slide.elements ?? []).filter((item) => item.id !== plan.elementId);
+    retained.splice(Math.min(elementIndex, retained.length), 0, { type: "cropped-asset", id: `${plan.elementId}-localized-fallback`, src: plan.src, ...plan.box, replicaFallback: provenance });
+    slide.elements = retained;
     slide.replicaFallbacks = [...(slide.replicaFallbacks ?? []), provenance];
-    slide.replicaUnsupportedEffects = [];
+    slide.replicaUnsupportedEffects = (slide.replicaUnsupportedEffects ?? []).filter((effect) => effect.elementId !== plan.elementId);
   }
   const slideArea = measurements.viewport.width * measurements.viewport.height;
   const rasterArea = fallbackPlans.reduce((sum, item) => sum + item.box.w / manifest.deck.size.width * measurements.viewport.width * item.box.h / manifest.deck.size.height * measurements.viewport.height, 0);
   const nativeCoverage = Math.max(0, Math.min(1, 1 - rasterArea / (slideArea * Math.max(1, manifest.slides.length))));
   const coverage = manifest.metadata.replicaSource.coverage;
   coverage.nativeCoverage = Number(nativeCoverage.toFixed(4));
-  coverage.unsupportedEffects = [];
+  coverage.unsupportedEffects = (coverage.unsupportedEffects ?? []).filter((effect) => !fallbackPlans.some((plan) => plan.elementId === effect.elementId && plan.slideIndex === (coverage.slides ?? []).findIndex((slide) => slide.slideId === effect.slideId)));
   for (const [slideIndex, slide] of (coverage.slides ?? []).entries()) {
-    slide.unsupportedEffects = [];
+    slide.unsupportedEffects = (slide.unsupportedEffects ?? []).filter((effect) => !fallbackPlans.some((plan) => plan.slideIndex === slideIndex && plan.elementId === effect.elementId));
     const slideFallbackArea = fallbackPlans
       .filter((item) => item.slideIndex === slideIndex)
       .reduce((sum, item) => sum + item.box.w / manifest.deck.size.width * measurements.viewport.width * item.box.h / manifest.deck.size.height * measurements.viewport.height, 0);
@@ -212,7 +217,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
     },
     buildReplicaProof: mode === "replica" ? async ({ manifest, coverage, intermediate, buildBaseEvidence }) => renderAndMeasureHtmlReplica({
       root: resolve(new URL("..", import.meta.url).pathname), outputDir: resolvedOutput,
-      sourcePaths: preparation.artifacts.sourcePaths, manifest, measurements: preparation.measurements,
+      sourcePaths: preparation.artifacts.sourcePaths, sourceArtifactPath: preparation.artifacts.sourceDir, manifest, measurements: preparation.measurements,
       coverage, intermediate, buildBaseEvidence
     }) : undefined,
     beforePackage: async () => {

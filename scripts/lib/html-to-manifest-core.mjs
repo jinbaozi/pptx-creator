@@ -1125,13 +1125,14 @@ function replicaUnsupportedEffect(measurement, style) {
   const supportedBackgroundImage = backgroundImageSrc && replicaBackgroundImagePlanForSrc(backgroundImageSrc, style, measuredBox(measurement));
   const unsupportedBackgroundImage = backgroundImage && !supportedGradient && !supportedBackgroundImage ? backgroundImage : null;
   const unsupportedFilter = measurement.replica.filter && !parseCssDropShadowFilter(measurement.replica.filter) ? measurement.replica.filter : null;
-  if (!unsupportedFilter && !measurement.replica.backdropFilter && !measurement.replica.clipPath && !unsupportedBackgroundImage) return null;
+  if (!unsupportedFilter && !measurement.replica.backdropFilter && !measurement.replica.clipPath && !unsupportedBackgroundImage && !measurement.replica.unsupportedVisual) return null;
   return {
     elementId: measurement.id,
     filter: unsupportedFilter,
     backdropFilter: measurement.replica.backdropFilter ?? null,
     clipPath: measurement.replica.clipPath ?? null,
     backgroundImage: unsupportedBackgroundImage
+    ,unsupportedVisual: measurement.replica.unsupportedVisual ?? null
   };
 }
 

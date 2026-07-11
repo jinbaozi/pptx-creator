@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import JSZip from "jszip";
+import { runPython } from "./python-utils.mjs";
+
+const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const MAX_WORST_TILE_MAE = 0.25;
 
 const POLICIES = Object.freeze({
   html: { fidelity: { ssim: { min: 0.97 }, normalizedMae: { max: 6 / 255 }, bboxP95Drift: { max: 2 }, fontMapping: { min: 1 }, colorMapping: { min: 1 } }, nativeCoverage: { min: 0.95 }, editability: { min: 4 } },
@@ -159,20 +165,118 @@ export async function evaluateMeasuredReplicaEvidence(raw = {}, measuredBundle =
     perSlide: measuredBundle.perSlide,
     aggregate: measuredBundle.aggregate,
     capabilities: { ...verified.capabilities, sourceRenderComparison: true },
-    blockingFindings: (verified.blockingFindings ?? []).filter((item) => !item.startsWith("trusted-measurement-unavailable") && !item.startsWith("capability-unavailable: sourceRenderComparison"))
+    blockingFindings: [
+      ...(raw.blockingFindings ?? []),
+      ...(verified.blockingFindings ?? []).filter((item) => /^(?:artifact-|evidence-path-|candidate-reference-alias)/.test(item))
+    ]
   };
   return evaluate(merged, { artifactsVerified: true, measurementsTrusted: true });
 }
 
 /** Bind externally computed metrics to the exact artifacts after independently
  * digesting them. The unforgeable receipt stays private to this module. */
-export async function bindReplicaMeasurementReceipt(sourcePath, renderPath, metrics) {
-  const source = await digestArtifact(sourcePath);
-  const render = await digestArtifact(renderPath);
-  return {
-    ...structuredClone(metrics),
-    sourceSha256: source.sha256,
-    renderSha256: render.sha256,
-    [MEASUREMENT_RECEIPT]: true
+const metric = (value) => ({ status: "available", value });
+const unavailable = (reason) => ({ status: "unavailable", value: null, reason });
+
+function xmlDecode(value = "") {
+  return value.replaceAll("&quot;", '"').replaceAll("&apos;", "'").replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">");
+}
+
+async function inspectPptxObjects(pptxPath, manifest, measurements) {
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  const viewport = measurements.viewport;
+  const size = manifest.deck.size;
+  const perSlide = [];
+  for (const [slideIndex] of (manifest.slides ?? []).entries()) {
+    const xml = await zip.file(`ppt/slides/slide${slideIndex + 1}.xml`)?.async("string") ?? "";
+    const objects = new Map();
+    for (const match of xml.matchAll(/<(?:p:sp|p:pic|p:graphicFrame)\b[\s\S]*?<p:cNvPr\b[^>]*\bname="([^"]+)"[^>]*>[\s\S]*?<a:xfrm[^>]*>[\s\S]*?<a:off\b[^>]*\bx="(\d+)"[^>]*\by="(\d+)"[^>]*\/>[\s\S]*?<a:ext\b[^>]*\bcx="(\d+)"[^>]*\bcy="(\d+)"[^>]*\/>[\s\S]*?<\/(?:p:sp|p:pic|p:graphicFrame)>/g)) {
+      const [block, encodedName, x, y, w, h] = match;
+      objects.set(xmlDecode(encodedName), { block, x: Number(x), y: Number(y), w: Number(w), h: Number(h) });
+    }
+    const source = (measurements.elements ?? []).filter((item) => item.slideIndex === slideIndex);
+    const drifts = []; let fontTotal = 0; let fontMapped = 0; let colorTotal = 0; let colorMapped = 0;
+    for (const item of source) {
+      const target = objects.get(item.id) ?? objects.get(`${item.id}-box`) ?? objects.get(`${item.id}-localized-fallback`);
+      if (!target) {
+        drifts.push(Math.max(viewport.width, viewport.height));
+      } else {
+        const actual = { x: target.x / 914400 / size.width * viewport.width, y: target.y / 914400 / size.height * viewport.height, w: target.w / 914400 / size.width * viewport.width, h: target.h / 914400 / size.height * viewport.height };
+        drifts.push(Math.max(...["x", "y", "w", "h"].map((key) => Math.abs(Number(item.px[key]) - actual[key]))));
+      }
+      if (item.kind === "text" && item.style?.fontFamily) {
+        fontTotal += 1;
+        const family = String(item.style.fontFamily).split(",")[0].replace(/["']/g, "").trim().toLowerCase();
+        const actualTypeface = target?.block.match(/typeface="([^"]+)"/i)?.[1];
+        const actualFamily = String(actualTypeface ?? "").split(",")[0].replace(/["']/g, "").trim().toLowerCase();
+        if (family && family === actualFamily) fontMapped += 1;
+      }
+      const colors = [];
+      if (!item.replica?.hasUnsupportedEffects) {
+        if (item.kind === "text" && item.style?.color) colors.push(item.style.color);
+        if (item.style?.backgroundColor && item.style.backgroundTransparency !== 100) colors.push(item.style.backgroundColor);
+        if (Number(item.style?.borderWidth) > 0 && item.style?.borderColor) colors.push(item.style.borderColor);
+        colors.push(...String(item.style?.backgroundImage ?? "").match(/#[0-9a-f]{6}/gi) ?? []);
+      }
+      colorTotal += colors.length;
+      if (target) colorMapped += colors.filter((color) => target.block.toLowerCase().includes(String(color).replace("#", "").toLowerCase())).length;
+    }
+    drifts.sort((a, b) => a - b);
+    perSlide.push({
+      bboxP95Drift: drifts.length ? metric(Number(drifts[Math.max(0, Math.ceil(drifts.length * 0.95) - 1)].toFixed(4))) : unavailable("no-visible-elements"),
+      fontMapping: fontTotal ? metric(fontMapped / fontTotal) : unavailable("no-font-bearing-elements"),
+      colorMapping: colorTotal ? metric(colorMapped / colorTotal) : unavailable("no-color-bearing-elements")
+    });
+  }
+  return perSlide;
+}
+
+/** Authoritative HTML adapter. Callers provide artifacts, never metric values;
+ * this module runs the fixed pixel comparator and inspects rendered OOXML before
+ * minting its private receipt. */
+export async function measureHtmlReplicaEvidence(raw, { sourcePaths, renderPaths, sourceArtifactPath, renderArtifactPath, pptxPath, manifest, measurements } = {}) {
+  if (!Array.isArray(sourcePaths) || !Array.isArray(renderPaths) || sourcePaths.length === 0 || sourcePaths.length !== renderPaths.length) {
+    return verifyReplicaEvidence(raw);
+  }
+  const mapped = await inspectPptxObjects(pptxPath, manifest, measurements);
+  const pages = [];
+  const measurementFindings = [];
+  for (let index = 0; index < sourcePaths.length; index += 1) {
+    const pixel = JSON.parse((await runPython([join(PACKAGE_ROOT, "scripts/measure-replica.py"), sourcePaths[index], renderPaths[index]], { cwd: PACKAGE_ROOT })).stdout);
+    const fidelity = pixel.sizeMatch ? {
+      ssim: metric(pixel.ssim), normalizedMae: metric(pixel.normalizedMae), ...mapped[index]
+    } : {
+      ssim: unavailable("source-render-size-mismatch"), normalizedMae: unavailable("source-render-size-mismatch"), ...mapped[index]
+    };
+    if (!pixel.sizeMatch) measurementFindings.push(`source-render-size-mismatch: slide ${index + 1}`);
+    if (pixel.worstTileMae !== null && pixel.worstTileMae > MAX_WORST_TILE_MAE) measurementFindings.push(`worst-region-diff: slide ${index + 1} tile MAE ${pixel.worstTileMae}`);
+    pages.push({ ...raw.perSlide[index], slideIndex: index, fidelity });
+  }
+  const aggregateFidelity = {};
+  for (const [name, rule] of Object.entries(POLICIES.html.fidelity)) {
+    const values = pages.map((page) => page.fidelity[name]);
+    aggregateFidelity[name] = values.every((item) => item.status === "available")
+      ? metric(rule.min !== undefined ? Math.min(...values.map((item) => item.value)) : Math.max(...values.map((item) => item.value)))
+      : unavailable(values.find((item) => item.status === "unavailable")?.reason ?? "metric-unavailable");
+  }
+  const aggregate = {
+    fidelity: aggregateFidelity,
+    nativeCoverage: metric(Math.min(...pages.map((page) => page.nativeCoverage.value))),
+    editability: { level: Math.min(...pages.map((page) => page.editability.level)) },
+    fallbacks: pages.flatMap((page) => page.fallbacks ?? [])
   };
+  const sourceDigest = await digestArtifact(sourceArtifactPath);
+  const renderDigest = await digestArtifact(renderArtifactPath);
+  const verifiedRaw = {
+    ...raw,
+    paths: { source: { status: "available", path: sourceArtifactPath }, render: { status: "available", path: renderArtifactPath } },
+    source: { pageCount: pages.length, size: { width: measurements.viewport.width, height: measurements.viewport.height } },
+    render: { pageCount: pages.length, size: { width: measurements.viewport.width, height: measurements.viewport.height } },
+    perSlide: pages, aggregate,
+    capabilities: { ...raw.capabilities, sourceRenderComparison: true },
+    blockingFindings: [...(raw.blockingFindings ?? []), ...measurementFindings]
+  };
+  if (sourceDigest.sha256 === renderDigest.sha256) verifiedRaw.blockingFindings.push("candidate-reference-alias: source and render artifact sets are identical");
+  const receipt = { perSlide: pages, aggregate, sourceSha256: sourceDigest.sha256, renderSha256: renderDigest.sha256, [MEASUREMENT_RECEIPT]: true };
+  return evaluateMeasuredReplicaEvidence(verifiedRaw, receipt);
 }

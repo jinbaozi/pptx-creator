@@ -14,6 +14,11 @@ const root = dirname(fileURLToPath(new URL("../package.json", import.meta.url)))
 const metric = (value) => ({ status: "available", value });
 const unavailable = (reason = "capability-not-installed") => ({ status: "unavailable", value: null, reason });
 
+it("does not expose a caller-controlled measurement receipt mint", async () => {
+  const module = await import("../scripts/lib/replica-evidence.mjs");
+  expect(module.bindReplicaMeasurementReceipt).toBeUndefined();
+});
+
 function validEvidence(route = "html") {
   const fidelity = route === "html" ? {
     ssim: metric(0.98), normalizedMae: metric(5 / 255), bboxP95Drift: metric(1.5),

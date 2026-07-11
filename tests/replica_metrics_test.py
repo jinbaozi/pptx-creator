@@ -1,14 +1,13 @@
-import sys
 import tempfile
 import unittest
 from pathlib import Path
+import sys
 
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
-
-from replica_metrics_core import compare_replica_images  # noqa: E402
+from replica_metrics_core import compare_replica_images
 
 
 class ReplicaMetricsTest(unittest.TestCase):
@@ -21,31 +20,25 @@ class ReplicaMetricsTest(unittest.TestCase):
             metrics = compare_replica_images(source, render)
             self.assertEqual(metrics["ssim"], 1.0)
             self.assertEqual(metrics["normalizedMae"], 0.0)
+            self.assertEqual(metrics["worstTileMae"], 0.0)
 
-    def test_local_change_reduces_real_metrics(self):
+    def test_size_mismatch_is_not_resized(self):
         with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "source.png"
-            render = Path(directory) / "render.png"
-            Image.new("RGB", (64, 64), "white").save(source)
-            changed = Image.new("RGB", (64, 64), "white")
-            ImageDraw.Draw(changed).rectangle((8, 8, 31, 31), fill="black")
-            changed.save(render)
-            metrics = compare_replica_images(source, render)
-            self.assertLess(metrics["ssim"], 0.95)
-            self.assertGreater(metrics["normalizedMae"], 0.1)
+            a = Path(directory) / "a.png"; b = Path(directory) / "b.png"
+            Image.new("RGB", (1280, 720), "white").save(a)
+            Image.new("RGB", (640, 360), "white").save(b)
+            result = compare_replica_images(a, b)
+            self.assertFalse(result["sizeMatch"])
+            self.assertIsNone(result["ssim"])
 
-    def test_records_original_render_size_before_normalization(self):
+    def test_local_missing_region_is_visible_to_worst_tile(self):
         with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "source.png"
-            render = Path(directory) / "render.png"
-            normalized = Path(directory) / "normalized.png"
-            Image.new("RGB", (64, 64), "white").save(source)
-            Image.new("RGB", (32, 32), "white").save(render)
-            metrics = compare_replica_images(source, render, normalized)
-            self.assertEqual(metrics["sourceSize"], {"width": 64, "height": 64})
-            self.assertEqual(metrics["originalRenderSize"], {"width": 32, "height": 32})
-            with Image.open(normalized) as normalized_image:
-                self.assertEqual(normalized_image.size, (64, 64))
+            a = Path(directory) / "a.png"; b = Path(directory) / "b.png"
+            source = Image.new("RGB", (1280, 720), "white")
+            ImageDraw.Draw(source).rectangle((200, 200, 299, 289), fill="#2563eb")
+            source.save(a); Image.new("RGB", (1280, 720), "white").save(b)
+            result = compare_replica_images(a, b)
+            self.assertGreater(result["worstTileMae"], 0.25)
 
 
 if __name__ == "__main__":

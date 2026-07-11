@@ -5,6 +5,8 @@ html,body{margin:0;width:1280px;height:720px;overflow:hidden;background:#fff}
 h1{position:absolute;left:72px;top:64px;width:500px;height:60px;margin:0;color:#111827;font:700 40px/60px Arial,sans-serif}
 .native{position:absolute;left:72px;top:190px;width:360px;height:180px;background:#dbeafe;border:2px solid #2563eb}
 .effect{position:absolute;left:700px;top:210px;width:120px;height:120px;background:#f97316;clip-path:polygon(50% 0,100% 100%,0 100%);filter:drop-shadow(8px 8px 5px rgba(15,23,42,.35))}
+.vector{position:absolute;left:900px;top:210px;width:60px;height:60px}
+.pseudo{position:absolute;left:1010px;top:210px;width:60px;height:60px}.pseudo::before{content:"★";display:block;color:#7c3aed;font:48px/60px Arial;text-align:center}
 </style></head><body><section class="pptx-slide" data-title="Local Fallback">
-<h1>Editable title</h1><div class="native"></div><div class="effect" data-pptx-id="unsupported-effect"></div>
+<div class="effect" data-pptx-id="unsupported-effect"></div><h1>Editable title</h1><div class="native" data-pptx-id="later-native"></div><svg class="vector" data-pptx-id="svg-effect" viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="#16a34a"/></svg><div class="pseudo" data-pptx-id="pseudo-effect"></div>
 </section></body></html>
