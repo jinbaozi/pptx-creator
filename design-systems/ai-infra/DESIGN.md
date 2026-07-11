@@ -99,11 +99,11 @@ Use Segoe UI for headings and Microsoft YaHei for bilingual body copy. Consolas 
 
 ## Layout
 
-Favor blueprint grid alignment. Group model-flow components into labeled panels. Use consistent spacing for pipeline diagrams.
+Use an invisible blueprint alignment grid. Group model-flow components into labeled panels and keep pipeline spacing consistent. Do not draw a page-wide grid unless `metadata.designIntent.visibleGrid` is explicitly `true`.
 
 ## Elevation & Depth
 
-Use light borders and flat indigo fills. Subtle grid-line dividers suggest blueprint paper. No heavy shadows.
+Use light borders, flat indigo fills, and only sparse functional dividers. A visible blueprint-paper grid is opt-in, never the default. No heavy shadows.
 
 ## Shapes
 
@@ -117,7 +117,7 @@ Use hero cards for platform overview, content cards for subsystem details, badge
 
 ### Cover Slide
 
-Use a violet title, cyan subtitle accent, and one hero card describing the platform scope. Optional thin grid-line divider.
+Use a violet title, cyan subtitle accent, and one hero card describing the platform scope. One functional divider is optional; do not add a background lattice.
 
 ### Four-card Overview
 
@@ -153,7 +153,7 @@ For AI infrastructure roadshows, target Level 4 or above. Complex model diagrams
 
 ### Do
 
-- Use blueprint-style grids and pipeline layouts.
+- Use blueprint-style alignment and pipeline layouts without exposing the construction grid.
 - Label every box in architecture diagrams.
 - Use violet for structure and cyan for active flow.
 - Keep metrics technical and verifiable.
@@ -163,7 +163,7 @@ For AI infrastructure roadshows, target Level 4 or above. Complex model diagrams
 
 - Do not use lifestyle or consumer marketing visuals.
 - Do not add unlabeled decorative nodes.
-- Do not use dark backgrounds that hide grid structure.
+- Do not add repeated full-slide grid lines unless visible-grid intent is explicit.
 - Do not rasterize text unless unavoidable.
 - Do not mimic real AI vendor branding.
 - Do not create full-slide screenshots as PPT pages by default.

@@ -35,11 +35,42 @@ const actualQuality = (plan) => {
 };
 
 describe("deck.plan 0.1 creative intermediate", () => {
+  it("compiles process connectors from final node geometry with semantic endpoint metadata", () => {
+    for (const strategy of [null, "asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"]) {
+      const plan = loadPlan();
+      const process = plan.slides.find((slide) => slide.layoutFamily === "process");
+      if (strategy) process.compositionStrategy = strategy;
+      else delete process.compositionStrategy;
+      const slide = compileDeckPlan(plan).slides.find((item) => item.type === "process");
+      const connectors = slide.elements.filter((element) => element.role === "connector");
+      expect(connectors.length, strategy ?? "default").toBeGreaterThan(0);
+      for (const [index, connector] of connectors.entries()) {
+        const source = slide.elements.find((element) => element.id === `step-${index}`);
+        const target = slide.elements.find((element) => element.id === `step-${index + 1}`);
+        expect(connector.connector, strategy ?? "default").toMatchObject({ sourceId: source.id, targetId: target.id, route: "straight" });
+        expect(connector.style).not.toHaveProperty("sourceId");
+        expect(connector.x, strategy ?? "default").toBeCloseTo(source.x + source.w, 6);
+        expect(connector.y, strategy ?? "default").toBeCloseTo(source.y + source.h / 2, 6);
+        expect(connector.x + connector.w, strategy ?? "default").toBeCloseTo(target.x, 6);
+        expect(connector.y + connector.h, strategy ?? "default").toBeCloseTo(target.y + target.h / 2, 6);
+      }
+    }
+  });
+
   it("validates the single coordinate-free creative plan", () => {
     const plan = loadPlan();
     expect(validateDeckPlan(plan)).toEqual({ valid: true, errors: [] });
     expect(plan.version).toBe("0.1.0");
     expect(JSON.stringify(plan)).not.toMatch(/\"[xywh]\"\s*:/);
+  });
+
+  it("records visible-grid intent explicitly and defaults it off", () => {
+    const plan = loadPlan();
+    expect(compileDeckPlan(plan).metadata.designIntent.visibleGrid).toBe(false);
+    plan.visibleGrid = true;
+    expect(compileDeckPlan(plan).metadata.designIntent.visibleGrid).toBe(true);
+    plan.visibleGrid = "true";
+    expect(validateDeckPlan(plan).errors.join(" ")).toMatch(/visibleGrid/);
   });
 
   it("compiles all advertised families through distinct validators and compilers", () => {

@@ -49,10 +49,10 @@ function localImagePath(baseDir, src) {
 function textOptions(element, design) {
   const style = resolveValue(element.style ?? {}, design.tokens);
   const typography = style.typography ?? {};
-  const fontWeight = typography.fontWeight ?? style.fontWeight ?? 400;
+  const fontWeight = style.fontWeight ?? typography.fontWeight ?? 400;
   const options = {
-    fontFace: typography.fontFamily ?? style.fontFamily ?? design.tokens.typography.body.fontFamily,
-    fontSize: typography.fontSize ?? style.fontSize ?? design.tokens.typography.body.fontSize,
+    fontFace: style.fontFamily ?? typography.fontFamily ?? design.tokens.typography.body.fontFamily,
+    fontSize: style.fontSize ?? typography.fontSize ?? design.tokens.typography.body.fontSize,
     bold: Boolean(fontWeight >= 700 || style.bold),
     italic: Boolean(style.italic),
     underline: style.underline,
@@ -61,7 +61,7 @@ function textOptions(element, design) {
     align: style.align ?? "left",
     valign: style.valign ?? "top",
     charSpacing: style.charSpacing,
-    lineSpacing: style.lineHeight,
+    lineSpacingMultiple: style.lineHeight ?? typography.lineHeight,
     transparency: style.transparency,
     shadow: shadowOptions(style.shadow),
     margin: style.margin ?? 0.05
@@ -430,7 +430,8 @@ async function patchTextStrokes(pptxPath, textStrokePatches) {
 
 function addLine(slide, element, design) {
   const style = resolveValue(element.style ?? {}, design.tokens);
-  slide.addShape("line", {
+  const shapeType = element.connector?.route === "orthogonal" ? "bentConnector3" : "line";
+  slide.addShape(shapeType, {
     ...(element.id ? { objectName: element.id } : {}),
     x: element.x,
     y: element.y,

@@ -1,4 +1,5 @@
 import { validateJsonSchema } from "./schema-utils.mjs";
+import { resolveSemanticConnectors } from "./connector-resolver.mjs";
 
 const W = 13.333;
 const H = 7.5;
@@ -9,8 +10,17 @@ const text = (id, value, x, y, w, h, style = {}) => ({
 const shape = (id, x, y, w, h, fill = "#EEF2FF", line = "#2563EB") => ({
   type: "shape", id, shape: "roundRect", x, y, w, h, style: { fill, line }
 });
-const line = (id, x, y, w, h, color = "#2563EB") => ({
-  type: "line", id, x, y, w, h, style: { color, width: 2 }
+const line = (id, x, y, w, h, color = "#2563EB", connector = null) => ({
+  type: "line", id, x, y, w, h,
+  ...(connector ? { role: "connector" } : {}),
+  ...(connector ? { connector: {
+    sourceId: connector.sourceId,
+    targetId: connector.targetId,
+    sourceAnchor: connector.sourceAnchor ?? "auto",
+    targetAnchor: connector.targetAnchor ?? "auto",
+    route: connector.route ?? "straight"
+  } } : {}),
+  style: { color, width: 2, ...(connector?.endArrowType ? { endArrowType: connector.endArrowType } : {}) }
 });
 const title = (value) => text("headline", value, 0.72, 0.42, 11.9, 0.62, { fontSize: 28, bold: true, color: "#111827" });
 const itemText = (item) => typeof item === "string" ? item : item?.label ?? item?.title ?? item?.name ?? JSON.stringify(item);
@@ -74,7 +84,7 @@ function compileProcess(content) {
   const steps = content.steps.slice(0, 5);
   return [title(content.headline), ...steps.flatMap((entry, index) => {
     const x = 0.72 + index * 2.5;
-    return [shape(`step-${index}`, x + 0.5, 2.08, 0.86, 0.86, "#EEF2FF"), text(`step-label-${index}`, itemText(entry), x + 0.08, 3.35, 1.7, 0.72, { fontSize: 15, bold: true, align: "center" }), ...(index < steps.length - 1 ? [line(`connector-${index}`, x + 1.36, 2.5, 1.14, 0.01)] : [])];
+    return [shape(`step-${index}`, x + 0.5, 2.08, 0.86, 0.86, "#EEF2FF"), text(`step-label-${index}`, itemText(entry), x + 0.08, 3.35, 1.7, 0.72, { fontSize: 15, bold: true, align: "center" }), ...(index < steps.length - 1 ? [line(`connector-${index}`, x + 1.36, 2.5, 1.14, 0.01, "#2563EB", { sourceId: `step-${index}`, targetId: `step-${index + 1}`, sourceAnchor: "auto", targetAnchor: "auto", route: "straight", endArrowType: "triangle" })] : [])];
   })];
 }
 
@@ -173,6 +183,7 @@ export function validateDeckPlan(plan) {
   if (typeof plan.designRead !== "string" || !plan.designRead.trim() || plan.designRead.includes("\n")) errors.push("designRead must be one non-empty line");
   for (const dial of ["compositionVariance", "visualDensity", "visualEnergy"]) if (!Number.isFinite(plan.dials?.[dial]) || plan.dials[dial] < 0 || plan.dials[dial] > 100) errors.push(`dials.${dial} must be 0..100`);
   if (typeof plan.audience !== "string" || !plan.audience.trim()) errors.push("audience is required");
+  if (plan.visibleGrid !== undefined && typeof plan.visibleGrid !== "boolean") errors.push("visibleGrid must be boolean when provided");
   if (!Array.isArray(plan.narrativeBeats) || plan.narrativeBeats.length < 1) errors.push("narrativeBeats must be non-empty");
   if (!Array.isArray(plan.slides) || plan.slides.length < 1) errors.push("slides must be non-empty");
   else {
@@ -192,11 +203,11 @@ export function compileDeckPlan(plan, options = {}) {
   if (!validation.valid) throw new Error(`deck.plan invalid: ${validation.errors.join("; ")}`);
   return {
     version: "0.2.0",
-    metadata: { mode: "creative", inputType: "text", qualityProfile: "creative", designIntent: { source: "deck.plan", read: plan.designRead, dials: plan.dials, visualDirection: plan.visualDirection ?? null, intentOverride: plan.intentOverride ?? null }, generator: { name: "deck-plan.mjs" } },
+    metadata: { mode: "creative", inputType: "text", qualityProfile: "creative", designIntent: { source: "deck.plan", read: plan.designRead, dials: plan.dials, visibleGrid: plan.visibleGrid === true, visualDirection: plan.visualDirection ?? null, intentOverride: plan.intentOverride ?? null }, generator: { name: "deck-plan.mjs" } },
     designSystem: { source: options.designSystemSource ?? "design-systems/business-neutral/DESIGN.md", name: options.designSystemName ?? "Business Neutral" },
     deck: { title: plan.title, language: plan.language, editabilityFloor: 4, size: { preset: "wide", width: W, height: H, unit: "in" } },
     assets: [],
-    slides: plan.slides.map((slide) => ({ id: slide.id, type: slide.layoutFamily, pageRole: slide.pageRole ?? slide.layoutFamily, compositionStrategy: slide.compositionStrategy ?? null, title: slide.message, notes: slide.message, background: { type: "solid", color: slide.layoutFamily === "closing" ? "#111827" : "#FFFFFF" }, elements: applyCompositionStrategy(REGISTRY[slide.layoutFamily].compile(slide.content), slide.compositionStrategy) }))
+    slides: plan.slides.map((slide) => ({ id: slide.id, type: slide.layoutFamily, pageRole: slide.pageRole ?? slide.layoutFamily, compositionStrategy: slide.compositionStrategy ?? null, title: slide.message, notes: slide.message, background: { type: "solid", color: slide.layoutFamily === "closing" ? "#111827" : "#FFFFFF" }, elements: resolveSemanticConnectors(applyCompositionStrategy(REGISTRY[slide.layoutFamily].compile(slide.content), slide.compositionStrategy)) }))
   };
 }
 

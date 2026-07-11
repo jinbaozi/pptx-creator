@@ -11,7 +11,7 @@
  *   font-too-small          → updateStyle {style: {fontSize: 12}}
  *   card-spacing-tight      → increaseSpacing {padding: "spacing.md"}
  *   connector-detached      → move + resize to suggested endpoints
- *   text-overflow           → reduceDensity {}
+ *   text-overflow           → concrete resize/updateStyle only; otherwise no patch
  *   line-height-too-tight   → adjustStyle {style: {lineHeight: 1.4},
  *                                           suggestionKind: "..."}
  *   letter-spacing-too-tight → adjustStyle {style: {letterSpacing: 0}}
@@ -124,12 +124,18 @@ export function convertOne(check, slideId) {
     }
     case "text-overflow": {
       if (!elementId) return null;
-      return [{
-        operation: "reduceDensity",
-        targetElementId: elementId,
-        slideId: effectiveSlideId,
-        changes: { suggestionKind: kind }
-      }];
+      const patches = boundsPatches({ ...check, slideId: effectiveSlideId });
+      if (patches.length > 0) return patches;
+      const fontSize = check.suggestion?.fontSize ?? check.suggestion?.changes?.fontSize;
+      if (typeof fontSize === "number" && fontSize > 0) {
+        return [{
+          operation: "updateStyle",
+          targetElementId: elementId,
+          slideId: effectiveSlideId,
+          changes: { style: { fontSize }, suggestionKind: kind }
+        }];
+      }
+      return null;
     }
     case "line-height-too-tight": {
       if (!elementId) return null;

@@ -11,6 +11,7 @@
     "accepted": { "type": "boolean" },
     "expectedSlides": { "type": "integer", "minimum": 0 },
     "renderedSlides": { "type": "integer", "minimum": 0 },
+    "decorativeBackgroundLines": { "type": "integer", "minimum": 0 },
     "previews": { "type": "array", "items": { "type": "string" } },
     "contactSheet": {
       "anyOf": [
@@ -24,6 +25,24 @@
           }
         }
       ]
+    },
+    "textFit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "source", "summary"],
+      "properties": {
+        "status": { "type": "string", "enum": ["passed", "failed", "unavailable"] },
+        "source": { "type": "string", "enum": ["fontkit", "heuristic", "unavailable"] },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["checked", "overflowCount"],
+          "properties": {
+            "checked": { "type": "integer", "minimum": 0 },
+            "overflowCount": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
     },
     "p0": { "$ref": "#/$defs/findings" },
     "p1": { "$ref": "#/$defs/findings" },

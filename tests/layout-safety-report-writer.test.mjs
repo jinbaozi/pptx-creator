@@ -48,7 +48,7 @@ describe("layout-safety-report-writer (U5)", () => {
       const checkItems = schema.properties.checks.items;
       expect(checkItems.properties.kind).toBeDefined();
       expect(checkItems.properties.kind.enum).toEqual(
-        expect.arrayContaining(["bounds", "overlap", "font-too-small"])
+        expect.arrayContaining(["bounds", "overlap", "font-too-small", "decorative-grid"])
       );
     });
 

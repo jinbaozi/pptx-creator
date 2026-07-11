@@ -14,7 +14,12 @@
         "mode": { "type": "string", "enum": ["direct", "creative", "replica", "repair"] },
         "inputType": { "type": "string", "enum": ["text", "html", "image", "pdf", "manifest", "mixed"] },
         "qualityProfile": { "type": "string", "enum": ["light", "creative", "replica"] },
-        "designIntent": { "type": "object" },
+        "designIntent": {
+          "type": "object",
+          "properties": {
+            "visibleGrid": { "type": "boolean", "default": false }
+          }
+        },
         "replicaSource": { "type": "object" },
         "generator": { "type": "object" }
       },
@@ -92,8 +97,21 @@
                 "id": { "type": "string" },
                 "x": { "type": "number" },
                 "y": { "type": "number" },
-                "w": { "type": "number", "exclusiveMinimum": 0 },
-                "h": { "type": "number", "exclusiveMinimum": 0 },
+                "w": { "type": "number" },
+                "h": { "type": "number" },
+                "role": { "type": "string" },
+                "connector": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["sourceId", "targetId", "sourceAnchor", "targetAnchor", "route"],
+                  "properties": {
+                    "sourceId": { "type": "string", "minLength": 1 },
+                    "targetId": { "type": "string", "minLength": 1 },
+                    "sourceAnchor": { "type": "string", "enum": ["auto", "top", "right", "bottom", "left"] },
+                    "targetAnchor": { "type": "string", "enum": ["auto", "top", "right", "bottom", "left"] },
+                    "route": { "type": "string", "enum": ["straight", "orthogonal"] }
+                  }
+                },
                 "text": { "type": "string" },
                 "shape": { "type": "string", "enum": ["rect", "roundRect", "ellipse"] },
                 "imageShape": { "type": "string", "enum": ["rect", "roundRect", "ellipse"] },
@@ -165,7 +183,14 @@
                   }
                 },
                 "columns": { "type": "array", "items": { "type": "string" } }
-              }
+              },
+              "allOf": [
+                {
+                  "if": { "properties": { "type": { "const": "line" } }, "required": ["type"] },
+                  "then": { "not": { "properties": { "w": { "const": 0 }, "h": { "const": 0 } }, "required": ["w", "h"] } },
+                  "else": { "properties": { "w": { "exclusiveMinimum": 0 }, "h": { "exclusiveMinimum": 0 } } }
+                }
+              ]
             }
           }
         }

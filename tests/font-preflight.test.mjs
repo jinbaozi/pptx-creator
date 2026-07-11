@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import {
   preflightFonts,
+  createFontMetricsCatalog,
   collectReferencedFonts,
   __test__
 } from "../scripts/lib/font-preflight.mjs";
@@ -159,6 +160,31 @@ describe("font-preflight", () => {
 });
 
 describe("font-preflight helpers", () => {
+  it("builds font metrics from regular faces and TTC collections", async () => {
+    const face = (familyName, postscriptName, advance, supports = () => true) => ({
+      familyName,
+      postscriptName,
+      unitsPerEm: 1000,
+      glyphForCodePoint: (codePoint) => ({ id: supports(codePoint) ? 1 : 0 }),
+      layout: (text) => ({ positions: [...text].map(() => ({ xAdvance: advance })) })
+    });
+    const regular = face("Metric Sans", "MetricSans-Regular", 500, (codePoint) => codePoint < 128);
+    const cjk = face("Metric CJK", "MetricCJK-Regular", 1000);
+    const catalog = await createFontMetricsCatalog({
+      files: ["regular.ttf", "collection.ttc"],
+      loadFontkit: async () => ({
+        openSync: (file) => file.endsWith(".ttc") ? { fonts: [cjk] } : regular
+      })
+    });
+
+    expect(catalog.source).toBe("fontkit");
+    expect(catalog.hasFont("Metric Sans")).toBe(true);
+    expect(catalog.hasFont("Metric CJK")).toBe(true);
+    expect(catalog.measureText("AB", 20, { fontFamily: "Metric Sans" })).toBe(20);
+    expect(catalog.measureText("中文", 20, { fontFamily: "Metric CJK" })).toBe(40);
+    expect(catalog.resolveFontFamily("Missing Font", "中文")).toBe("Metric CJK");
+  });
+
   it("resolves {typography.title} token strings through the token map", () => {
     const tokens = { typography: { title: { fontFamily: "Arial" } } };
     expect(resolveTokenString("{typography.title}", tokens)).toEqual({ fontFamily: "Arial" });

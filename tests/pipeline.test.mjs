@@ -72,12 +72,14 @@ describe("run-deck-pipeline", () => {
     await access(join(outputDir, "deck.manifest.json"));
     // U4: layout-safety report written alongside consistency-report.
     await access(join(outputDir, "layout-safety-report.json"));
+    await access(join(outputDir, "text-fit-report.json"));
 
     const pptx = await stat(join(outputDir, "final.pptx"));
     expect(pptx.size).toBeGreaterThan(1000);
 
     const qa = await readFile(join(outputDir, "qa-report.md"), "utf8");
     expect(qa).toContain("PPTX render: passed");
+    expect(qa).toMatch(/Text fit: (?:passed|failed|unavailable)/);
   }, 60000);
 
   it("emits consistency-report.json with a structurally-valid shape", async () => {

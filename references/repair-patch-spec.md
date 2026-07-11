@@ -10,7 +10,6 @@ Supported operations:
 - updateText
 - removeElement
 - increaseSpacing
-- reduceDensity
 - adjustStyle
 
 Constraints:
@@ -21,3 +20,4 @@ Constraints:
 - Do not beautify strict replicas.
 - `attempt` is required and must be an integer from 1 through 3.
 - Validate the input manifest and patch before applying; validate the temporary output before publishing it.
+- Text overflow produces a repair patch only when measurement supplies a concrete resize or readable font-size change. Content reflow remains a host-agent decision and blocks deterministic packaging.

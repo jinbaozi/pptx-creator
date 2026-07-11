@@ -57,6 +57,7 @@
               "text-overflow",
               "card-spacing-tight",
               "connector-detached",
+              "decorative-grid",
               "contrast-fail",
               "letter-spacing-too-tight"
             ],

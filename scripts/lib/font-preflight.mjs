@@ -140,7 +140,7 @@ function collectFontFiles() {
   for (const dir of dirs) {
     walkFontFiles(dir, files);
   }
-  return files;
+  return files.sort();
 }
 
 async function loadFontkit() {
@@ -185,18 +185,96 @@ function enumerateWithFontkit(fontkit, fontFiles) {
   let opened = 0;
   for (const filePath of fontFiles) {
     try {
-      const font = fontkit.openSync(filePath);
-      opened += 1;
-      const postscript = font.postscriptName;
-      const family = font.familyName;
-      if (postscript) names.add(postscript);
-      if (family) names.add(family);
+      const container = fontkit.openSync(filePath);
+      for (const font of fontFaces(container)) {
+        opened += 1;
+        const postscript = font.postscriptName;
+        const family = font.familyName;
+        if (postscript) names.add(postscript);
+        if (family) names.add(family);
+      }
     } catch {
       // Skip unreadable / unsupported fonts; fall through to magic bytes
       // if the file happens to be invalid for fontkit.
     }
   }
   return { names, opened };
+}
+
+function fontFaces(container) {
+  if (Array.isArray(container?.fonts)) return container.fonts;
+  return container ? [container] : [];
+}
+
+function normalizedFontName(value) {
+  return String(value ?? "").trim().replace(/^['"]|['"]$/g, "").toLowerCase();
+}
+
+export async function createFontMetricsCatalog(options = {}) {
+  const files = Array.isArray(options.files) ? options.files.slice() : collectFontFiles();
+  const fontkit = await (options.loadFontkit ?? loadFontkit)();
+  if (!fontkit || typeof fontkit.openSync !== "function" || fontkit.error) {
+    return { source: "unavailable", hasFont: () => false, resolveFontFamily: () => null, measureText: () => null };
+  }
+  const faces = new Map();
+  let firstFace = null;
+  for (const filePath of files) {
+    try {
+      for (const face of fontFaces(fontkit.openSync(filePath))) {
+        if (!face || typeof face.layout !== "function" || !(Number(face.unitsPerEm) > 0)) continue;
+        firstFace ??= face;
+        for (const name of [face.familyName, face.postscriptName, face.fullName]) {
+          const normalized = normalizedFontName(name);
+          if (normalized && !faces.has(normalized)) faces.set(normalized, face);
+        }
+      }
+    } catch {
+      // Skip unreadable files; a partial catalog is still deterministic.
+    }
+  }
+  const findFace = (fontFamily) => {
+    for (const candidate of String(fontFamily ?? "").split(",")) {
+      const hit = faces.get(normalizedFontName(candidate));
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const supportsText = (face, text) => {
+    if (!face || typeof face.glyphForCodePoint !== "function") return Boolean(face);
+    for (const char of String(text ?? "")) {
+      if (/\s/.test(char)) continue;
+      if (!face.glyphForCodePoint(char.codePointAt(0))?.id) return false;
+    }
+    return true;
+  };
+  const uniqueFaces = [...new Set(faces.values())];
+  const preferredFallbacks = ["PingFang SC", "Noto Sans CJK SC", "Noto Sans SC", "Microsoft YaHei", "Hiragino Sans GB", "Heiti SC", "Songti SC", "Arial Unicode MS", "Arial"];
+  const resolveFace = (fontFamily, text, allowFallback = false) => {
+    const requested = findFace(fontFamily);
+    if (requested && supportsText(requested, text)) return requested;
+    if (!allowFallback) return null;
+    for (const family of preferredFallbacks) {
+      const fallback = findFace(family);
+      if (fallback && supportsText(fallback, text)) return fallback;
+    }
+    return uniqueFaces.find((face) => supportsText(face, text)) ?? null;
+  };
+  return {
+    source: firstFace ? "fontkit" : "unavailable",
+    hasFont: (fontFamily) => Boolean(findFace(fontFamily)),
+    resolveFontFamily(fontFamily, text = "") {
+      const face = resolveFace(fontFamily, text, true);
+      return face?.familyName ?? face?.postscriptName ?? null;
+    },
+    measureText(text, fontSize, font = {}) {
+      const face = resolveFace(font.fontFamily, text, font.allowFallback === true);
+      if (!face) return null;
+      const layout = face.layout(String(text ?? ""));
+      const advance = (layout.positions ?? []).reduce((sum, position) => sum + Number(position.xAdvance ?? 0), 0);
+      const weightFactor = Number(font.fontWeight ?? 400) >= 700 ? 1.04 : 1;
+      return advance / Number(face.unitsPerEm) * Number(fontSize) * weightFactor;
+    }
+  };
 }
 
 /**
@@ -309,5 +387,7 @@ export const __test__ = {
   isOtfMagic,
   isTtfMagic,
   resolveTokenString,
+  fontFaces,
+  normalizedFontName,
   walkFontFiles
 };

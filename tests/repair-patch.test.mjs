@@ -47,19 +47,6 @@ describe("applyRepairPatch", () => {
     expect(card.style.padding).toBe(0.5);
   });
 
-  it("reduceDensity is a best-effort no-op (no children list)", () => {
-    const next = applyRepairPatch(sampleManifest(), {
-      attempt: 1,
-      patches: [
-        { operation: "reduceDensity", slideId: "slide-001", targetElementId: "body", changes: {} }
-      ]
-    });
-    // Manifest unchanged for reduceDensity; just ensure no crash and element still present.
-    const body = next.slides[0].elements.find((el) => el.id === "body");
-    expect(body).toBeDefined();
-    expect(body.text).toBe("Body");
-  });
-
   it("adjustStyle applies lineHeight to the element style", () => {
     const next = applyRepairPatch(sampleManifest(), {
       attempt: 1,
@@ -80,15 +67,15 @@ describe("applyRepairPatch", () => {
     expect(title.style.color).toBe("#111");
   });
 
-  it("SUPPORTED exposes 8 operations", () => {
-    expect(SUPPORTED.size).toBe(8);
+  it("SUPPORTED exposes 7 concrete operations", () => {
+    expect(SUPPORTED.size).toBe(7);
     expect(SUPPORTED.has("move")).toBe(true);
     expect(SUPPORTED.has("resize")).toBe(true);
     expect(SUPPORTED.has("updateStyle")).toBe(true);
     expect(SUPPORTED.has("updateText")).toBe(true);
     expect(SUPPORTED.has("removeElement")).toBe(true);
     expect(SUPPORTED.has("increaseSpacing")).toBe(true);
-    expect(SUPPORTED.has("reduceDensity")).toBe(true);
+    expect(SUPPORTED.has("reduceDensity")).toBe(false);
     expect(SUPPORTED.has("adjustStyle")).toBe(true);
   });
 

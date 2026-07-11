@@ -51,13 +51,18 @@ describe("layout-safety-repair-adapter", () => {
     expect(patch.changes._inches).toBe(0.5);
   });
 
-  it("maps text-overflow to reduceDensity", () => {
+  it("maps text-overflow with a concrete height suggestion to resize", () => {
     const [patch] = convertSuggestions(
-      [{ kind: "text-overflow", elementId: "el-4", slideId: "s1" }],
+      [{ kind: "text-overflow", elementId: "el-4", slideId: "s1", suggestion: { h: 1.25 } }],
       "fallback"
     );
-    expect(patch.operation).toBe("reduceDensity");
+    expect(patch.operation).toBe("resize");
+    expect(patch.changes).toEqual({ h: 1.25 });
     expect(patch.targetElementId).toBe("el-4");
+  });
+
+  it("does not emit a no-op repair for text-overflow without a concrete suggestion", () => {
+    expect(convertOne({ kind: "text-overflow", elementId: "el-4", slideId: "s1" }, "fallback")).toBeNull();
   });
 
   it("maps connector-detached endpoint suggestions to move and resize", () => {
@@ -92,15 +97,15 @@ describe("layout-safety-repair-adapter", () => {
   it("output array length is sum of emit per check", () => {
     const checks = [
       { kind: "font-too-small", elementId: "a", slideId: "s1" },
-      { kind: "text-overflow", elementId: "b", slideId: "s1" },
+      { kind: "text-overflow", elementId: "b", slideId: "s1", suggestion: { h: 1.1 } },
       { kind: "bounds", elementId: "c", slideId: "s1", suggestion: { x: 0, y: 0, w: 2, h: 2 } },
       { kind: "mystery", elementId: "d", slideId: "s1" }
     ];
     const patches = convertSuggestions(checks, "fallback");
     expect(patches).toHaveLength(4);
     expect(patches.filter((p) => p.operation === "move").length).toBe(1);
-    expect(patches.filter((p) => p.operation === "resize").length).toBe(1);
+    expect(patches.filter((p) => p.operation === "resize").length).toBe(2);
     expect(patches.filter((p) => p.operation === "updateStyle").length).toBe(1);
-    expect(patches.filter((p) => p.operation === "reduceDensity").length).toBe(1);
+    expect(patches.filter((p) => p.operation === "reduceDensity").length).toBe(0);
   });
 });

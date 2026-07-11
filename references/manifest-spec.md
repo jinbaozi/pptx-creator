@@ -17,6 +17,13 @@ The breaking `0.2.0` contract requires:
 design intent, replica source, and generator provenance in `metadata`. Private
 top-level `_...` fields and the removed `designSystem.mode` are invalid.
 
+`metadata.designIntent.visibleGrid` is an optional boolean design-intent flag.
+The creative plan compiler writes it explicitly and defaults it to `false`.
+`false` prohibits a visible blueprint/graph-paper background; `true` permits
+one but does not ask the renderer to synthesize it. Slide backgrounds remain
+`solid`, `gradient`, or `image`; visible grids, when allowed, are explicit
+manifest elements and remain subject to layout-safety checks.
+
 HTML replica manifests store the localized source path and aggregate editable
 layer coverage under `metadata.replicaSource`, for example
 `{"type":"html","path":"source.html","coverage":{"coverage":1}}`.
@@ -36,6 +43,42 @@ M1.1 supports:
 - `image`
 - `table`
 - `line`
+
+Semantic connectors remain native `line` elements. Their coordinates describe
+the rendered endpoints (`x`,`y` is the start; `x+w`,`y+h` is the end), while
+the source/target contract lives in `connector`:
+
+```json
+{
+  "type": "line",
+  "role": "connector",
+  "id": "connector-ingest-serve",
+  "x": 3.0,
+  "y": 2.0,
+  "w": 2.0,
+  "h": 0.0,
+  "connector": {
+    "sourceId": "ingest",
+    "targetId": "serve",
+    "sourceAnchor": "auto",
+    "targetAnchor": "auto",
+    "route": "straight"
+  },
+  "style": {
+    "endArrowType": "triangle"
+  }
+}
+```
+
+`sourceId` and `targetId` must be supplied together and reference non-line
+elements on the same slide. Anchors are `auto | top | right | bottom | left`;
+routes are `straight | orthogonal`. Legacy manifests may keep these fields in
+`style`; compilers normalize them into `connector` before writing new output.
+Axis, divider, and decorative lines use
+`role: axis | divider | decorative` and do not require endpoint metadata.
+Horizontal or vertical lines may use a zero delta on one axis, but both deltas
+cannot be zero. The compiler resolves connector coordinates after all layout
+transforms so the manifest remains deterministic.
 
 v0.2 supports native-rendered `chart` elements with `kind: "bar"`. v0.3 also supports `line` and `pie`. The visual roadmap extension also accepts `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`; these newer kinds expand into editable primitive text, shape, and line elements before rendering:
 

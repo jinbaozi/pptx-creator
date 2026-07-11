@@ -19,6 +19,66 @@ async function slideXml(pptxPath) {
 }
 
 describe("render-pptx", () => {
+  it("renders lineHeight ratios as PowerPoint line-spacing multiples", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-line-height-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements = [{
+      type: "text",
+      id: "line-height-copy",
+      x: 0.8,
+      y: 1.0,
+      w: 4.0,
+      h: 1.4,
+      text: "First line\nSecond line",
+      style: { fontSize: 18, lineHeight: 1.5 }
+    }];
+    const manifest = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
+
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifest, pptxPath], { cwd: root });
+
+    const xml = await slideXml(pptxPath);
+    expect(xml).toContain('<a:spcPct val="150000"/>');
+    expect(xml).not.toMatch(/<a:spcPts val="(?:150|1\.5)"\/>/);
+  });
+
+  it("lets explicit fitted font settings override typography tokens", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-fitted-token-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements = [{
+      type: "text", id: "fitted-title", x: 1, y: 1, w: 5, h: 1,
+      text: "Fitted title", style: { typography: "{typography.title}", fontSize: 17, fontFamily: "Arial" }
+    }];
+    const manifest = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
+
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifest, pptxPath], { cwd: root });
+
+    const xml = await slideXml(pptxPath);
+    expect(xml).toContain('sz="1700"');
+    expect(xml).toContain('typeface="Arial"');
+  });
+
+  it("renders orthogonal semantic routes as editable bent connectors", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-orthogonal-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements = [{
+      type: "line", role: "connector", id: "orthogonal", x: 2, y: 2, w: 4, h: 2,
+      connector: { sourceId: "source", targetId: "target", sourceAnchor: "right", targetAnchor: "left", route: "orthogonal" },
+      style: { color: "#2563EB", width: 2, endArrowType: "triangle" }
+    }];
+    const manifest = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifest, pptxPath], { cwd: root });
+    expect(await slideXml(pptxPath)).toContain('prst="bentConnector3"');
+  });
+
   it("renders tokenized manifest to pptx without owning pipeline reports", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-creator-"));
     const manifest = join(root, "examples/text-input/deck.manifest.json");
