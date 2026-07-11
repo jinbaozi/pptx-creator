@@ -6,7 +6,7 @@ import JSZip from "jszip";
 import { runPython } from "./python-utils.mjs";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const MAX_WORST_TILE_MAE = 0.25;
+const MAX_WORST_TILE_MAE = 0.20;
 
 const POLICIES = Object.freeze({
   html: { fidelity: { ssim: { min: 0.97 }, normalizedMae: { max: 6 / 255 }, bboxP95Drift: { max: 2 }, fontMapping: { min: 1 }, colorMapping: { min: 1 } }, nativeCoverage: { min: 0.95 }, editability: { min: 4 } },
@@ -95,6 +95,10 @@ function checkFallbacks(fallbacks, path, findings, size) {
 }
 
 export function replicaThresholds(route) { return POLICIES[route] ? structuredClone(POLICIES[route]) : null; }
+export function isCatastrophicLocalDifference(pixel = {}) {
+  return Number.isFinite(pixel.worstTileMae) && Number.isFinite(pixel.worstTileBadPixelRatio)
+    && pixel.worstTileMae > MAX_WORST_TILE_MAE && pixel.worstTileBadPixelRatio > 0.80;
+}
 
 function evaluate(raw, { artifactsVerified = false, measurementsTrusted = false } = {}) {
   if (raw.mode !== "replica") return { applicable: false, accepted: raw.accepted === true, blockingFindings: [] };
@@ -234,22 +238,39 @@ async function inspectPptxObjects(pptxPath, manifest, measurements) {
 /** Authoritative HTML adapter. Callers provide artifacts, never metric values;
  * this module runs the fixed pixel comparator and inspects rendered OOXML before
  * minting its private receipt. */
-export async function measureHtmlReplicaEvidence(raw, { sourcePaths, renderPaths, sourceArtifactPath, renderArtifactPath, pptxPath, manifest, measurements } = {}) {
-  if (!Array.isArray(sourcePaths) || !Array.isArray(renderPaths) || sourcePaths.length === 0 || sourcePaths.length !== renderPaths.length) {
+export async function measureHtmlReplicaEvidence(raw, { sourceArtifactPath, renderArtifactPath, pptxPath, manifest, measurements } = {}) {
+  async function pagesWithin(rootPath) {
+    try {
+      const entries = (await readdir(resolve(rootPath), { withFileTypes: true }))
+        .filter((entry) => entry.isFile() && /^slide-\d+\.png$/.test(entry.name))
+        .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true }));
+      return entries.map((entry) => join(resolve(rootPath), entry.name));
+    } catch {
+      return [];
+    }
+  }
+  const boundSourcePaths = await pagesWithin(sourceArtifactPath);
+  const boundRenderPaths = await pagesWithin(renderArtifactPath);
+  if (boundSourcePaths.length === 0 || boundSourcePaths.length !== boundRenderPaths.length) {
     return verifyReplicaEvidence(raw);
   }
   const mapped = await inspectPptxObjects(pptxPath, manifest, measurements);
   const pages = [];
   const measurementFindings = [];
-  for (let index = 0; index < sourcePaths.length; index += 1) {
-    const pixel = JSON.parse((await runPython([join(PACKAGE_ROOT, "scripts/measure-replica.py"), sourcePaths[index], renderPaths[index]], { cwd: PACKAGE_ROOT })).stdout);
+  for (let index = 0; index < boundSourcePaths.length; index += 1) {
+    const sourcePageDigest = await digestArtifact(boundSourcePaths[index]);
+    const renderPageDigest = await digestArtifact(boundRenderPaths[index]);
+    if (sourcePageDigest.sha256 === renderPageDigest.sha256) measurementFindings.push(`candidate-reference-alias: slide ${index + 1}`);
+    const pixel = JSON.parse((await runPython([join(PACKAGE_ROOT, "scripts/measure-replica.py"), boundSourcePaths[index], boundRenderPaths[index]], { cwd: PACKAGE_ROOT })).stdout);
     const fidelity = pixel.sizeMatch ? {
       ssim: metric(pixel.ssim), normalizedMae: metric(pixel.normalizedMae), ...mapped[index]
     } : {
       ssim: unavailable("source-render-size-mismatch"), normalizedMae: unavailable("source-render-size-mismatch"), ...mapped[index]
     };
     if (!pixel.sizeMatch) measurementFindings.push(`source-render-size-mismatch: slide ${index + 1}`);
-    if (pixel.worstTileMae !== null && pixel.worstTileMae > MAX_WORST_TILE_MAE) measurementFindings.push(`worst-region-diff: slide ${index + 1} tile MAE ${pixel.worstTileMae}`);
+    if (isCatastrophicLocalDifference(pixel)) {
+      measurementFindings.push(`worst-region-omission: slide ${index + 1} tile MAE ${pixel.worstTileMae}; bad-pixel ratio ${pixel.worstTileBadPixelRatio}`);
+    }
     pages.push({ ...raw.perSlide[index], slideIndex: index, fidelity });
   }
   const aggregateFidelity = {};

@@ -43,6 +43,8 @@ describe.skipIf(!enabled)("real HTML replica proof", () => {
     expect(manifest.slides[0].elements.findIndex((item) => item.type === "cropped-asset")).toBeLessThan(manifest.slides[0].elements.findIndex((item) => item.id === "later-native"));
     expect(evidence.aggregate.fallbacks.map((item) => item.reason).join(" ")).toMatch(/svg-paint/);
     expect(evidence.aggregate.fallbacks.map((item) => item.reason).join(" ")).toMatch(/pseudo-element-paint/);
+    expect(new Set(manifest.slides[0].elements.filter((item) => item.type === "cropped-asset").map((item) => item.id)).size).toBe(3);
+    expect(evidence.aggregate.fallbacks).toHaveLength(3);
     expect(manifest.slides[0].replicaUnsupportedEffects).toEqual([]);
     expect(manifest.metadata.replicaSource.coverage.unsupportedEffects).toEqual([]);
     expect(manifest.metadata.replicaSource.coverage.coverage).toBe(1);

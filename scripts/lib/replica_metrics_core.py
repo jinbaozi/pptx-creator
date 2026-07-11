@@ -47,16 +47,22 @@ def compare_replica_images(source_path: Path, render_path: Path, normalized_path
                 "sourceSize": {"width": source.width, "height": source.height},
                 "renderSize": {"width": render.width, "height": render.height},
                 "originalRenderSize": {"width": original_render_size[0], "height": original_render_size[1]},
-                "sizeMatch": False, "ssim": None, "normalizedMae": None, "worstTileMae": None,
+                "sizeMatch": False, "ssim": None, "normalizedMae": None, "worstTileMae": None, "worstTileBadPixelRatio": None,
             }
         diff = ImageChops.difference(source, render)
         mae = sum(ImageStat.Stat(diff).mean) / (3.0 * 255.0)
         ssim = max(-1.0, min(1.0, _windowed_ssim(source, render)))
         tile_mae = []
+        bad_pixel_ratio = []
+        bad_mask = diff.convert("L").point(lambda value: 255 if value >= 24 else 0)
         for top in range(0, source.height, 64):
             for left in range(0, source.width, 64):
                 box = (left, top, min(source.width, left + 64), min(source.height, top + 64))
                 tile_mae.append(sum(ImageStat.Stat(diff.crop(box)).mean) / (3.0 * 255.0))
+        for top in range(0, source.height, 32):
+            for left in range(0, source.width, 32):
+                box = (left, top, min(source.width, left + 32), min(source.height, top + 32))
+                bad_pixel_ratio.append(ImageStat.Stat(bad_mask.crop(box)).mean[0] / 255.0)
         return {
             "sourceSize": {"width": source.width, "height": source.height},
             "renderSize": {"width": render.width, "height": render.height},
@@ -65,4 +71,5 @@ def compare_replica_images(source_path: Path, render_path: Path, normalized_path
             "ssim": round(ssim, 8),
             "normalizedMae": round(mae, 8),
             "worstTileMae": round(max(tile_mae, default=0.0), 8),
+            "worstTileBadPixelRatio": round(max(bad_pixel_ratio, default=0.0), 8),
         }

@@ -25,7 +25,7 @@ export async function renderAndMeasureHtmlReplica({ root, outputDir, sourcePaths
     blockingFindings: (base.blockingFindings ?? []).filter((item) => item.includes("structural-proof"))
   };
   return measureHtmlReplicaEvidence(raw, {
-    sourcePaths, renderPaths, sourceArtifactPath, renderArtifactPath: renderDir,
+    sourceArtifactPath, renderArtifactPath: renderDir,
     pptxPath: join(outputDir, "final.pptx"), manifest, measurements
   });
 }

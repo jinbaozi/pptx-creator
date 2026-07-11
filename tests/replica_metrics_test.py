@@ -21,6 +21,7 @@ class ReplicaMetricsTest(unittest.TestCase):
             self.assertEqual(metrics["ssim"], 1.0)
             self.assertEqual(metrics["normalizedMae"], 0.0)
             self.assertEqual(metrics["worstTileMae"], 0.0)
+            self.assertEqual(metrics["worstTileBadPixelRatio"], 0.0)
 
     def test_size_mismatch_is_not_resized(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -38,7 +39,8 @@ class ReplicaMetricsTest(unittest.TestCase):
             ImageDraw.Draw(source).rectangle((200, 200, 299, 289), fill="#2563eb")
             source.save(a); Image.new("RGB", (1280, 720), "white").save(b)
             result = compare_replica_images(a, b)
-            self.assertGreater(result["worstTileMae"], 0.25)
+            self.assertGreater(result["worstTileMae"], 0.20)
+            self.assertGreater(result["worstTileBadPixelRatio"], 0.5)
 
 
 if __name__ == "__main__":

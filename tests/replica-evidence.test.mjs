@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import JSZip from "jszip";
-import { evaluateMeasuredReplicaEvidence, evaluateReplicaEvidence, verifyReplicaEvidence } from "../scripts/lib/replica-evidence.mjs";
+import { evaluateMeasuredReplicaEvidence, evaluateReplicaEvidence, isCatastrophicLocalDifference, verifyReplicaEvidence } from "../scripts/lib/replica-evidence.mjs";
 import { buildReplicaEvidence, proveReplicaFidelity } from "../scripts/run-deck-pipeline.mjs";
 import { validateJsonSchema } from "../scripts/lib/schema-utils.mjs";
 
@@ -14,9 +14,26 @@ const root = dirname(fileURLToPath(new URL("../package.json", import.meta.url)))
 const metric = (value) => ({ status: "available", value });
 const unavailable = (reason = "capability-not-installed") => ({ status: "unavailable", value: null, reason });
 
+it("blocks compact missing regions without rejecting diffuse rendering differences", () => {
+  expect(isCatastrophicLocalDifference({ worstTileMae: 0.2346, worstTileBadPixelRatio: 0.94 })).toBe(true);
+  expect(isCatastrophicLocalDifference({ worstTileMae: 0.1778, worstTileBadPixelRatio: 1 })).toBe(false);
+  expect(isCatastrophicLocalDifference({ worstTileMae: 0.21, worstTileBadPixelRatio: 0.38 })).toBe(false);
+});
+
 it("does not expose a caller-controlled measurement receipt mint", async () => {
   const module = await import("../scripts/lib/replica-evidence.mjs");
   expect(module.bindReplicaMeasurementReceipt).toBeUndefined();
+  const forged = validEvidence("html");
+  forged.paths = {
+    source: { status: "available", path: join(root, "package.json") },
+    render: { status: "available", path: join(root, "README.md") }
+  };
+  const result = await module.measureHtmlReplicaEvidence(forged, {
+    sourcePaths: [join(root, "package.json")], renderPaths: [join(root, "package.json")],
+    sourceArtifactPath: join(root, "package.json"), renderArtifactPath: join(root, "README.md")
+  });
+  expect(result.accepted).toBe(false);
+  expect(result.blockingFindings.join(" ")).toMatch(/artifact-verification|required-metric|trusted-measurement|evidence-path/);
 });
 
 function validEvidence(route = "html") {

@@ -40,6 +40,12 @@ async function captureReplicaSourceAndFallbacks(inputPath, outputDir, measuremen
         if (!measurement?.px || measurement.px.w >= measurements.viewport.width * 0.98 || measurement.px.h >= measurements.viewport.height * 0.98) {
           throw new Error(`unsupported effect ${effect.elementId} does not have a safe localized crop`);
         }
+        const reason = [effect.filter && `filter:${effect.filter}`, effect.clipPath && `clip:${effect.clipPath}`, effect.backdropFilter && `backdrop-filter:${effect.backdropFilter}`, effect.backgroundImage && `background:${effect.backgroundImage}`, effect.unsupportedVisual].filter(Boolean).join("; ") || "unsupported-css-effect";
+        const existing = fallbackPlans.find((plan) => plan.slideIndex === slideIndex && plan.elementId === effect.elementId);
+        if (existing) {
+          existing.reason = [...new Set([...existing.reason.split("; "), ...reason.split("; ")])].join("; ");
+          continue;
+        }
         const fileName = `fallback-${String(slideIndex + 1).padStart(3, "0")}-${String(effectIndex + 1).padStart(3, "0")}.png`;
         const cropPath = join(fallbackDir, fileName);
         const slideBox = count ? await slides.nth(slideIndex).boundingBox() : { x: 0, y: 0 };
@@ -47,7 +53,6 @@ async function captureReplicaSourceAndFallbacks(inputPath, outputDir, measuremen
           x: Math.max(0, slideBox.x + measurement.px.x), y: Math.max(0, slideBox.y + measurement.px.y),
           width: measurement.px.w, height: measurement.px.h
         } });
-        const reason = [effect.filter && `filter:${effect.filter}`, effect.clipPath && `clip:${effect.clipPath}`, effect.backdropFilter && `backdrop-filter:${effect.backdropFilter}`, effect.backgroundImage && `background:${effect.backgroundImage}`, effect.unsupportedVisual].filter(Boolean).join("; ") || "unsupported-css-effect";
         fallbackPlans.push({ slideIndex, elementId: effect.elementId, src: `evidence/fallback/${fileName}`, box: { x: measurement.x, y: measurement.y, w: measurement.w, h: measurement.h }, reason, zOrder: Number(measurement.style?.zIndex ?? 0) });
       }
     }
