@@ -57,6 +57,7 @@
 
 import { expandChartElement } from "./chart-renderer.mjs";
 import { expandDiagramElement } from "./diagram-compiler.mjs";
+import { boundaryAnchor, connectorMetadata, pointTouchesBoundary } from "./connector-resolver.mjs";
 
 const TOLERANCE_IN = 0.005;
 const OVERLAP_AREA_THRESHOLD = 0.05; // 5% of smaller element area
@@ -501,40 +502,18 @@ function checkCardSpacing(slide, tokens) {
   return issues;
 }
 
-function pointTouchesBoundary(point, rect, tolerance = 0.08) {
-  const insideX = point.x >= rect.x - tolerance && point.x <= rect.x + rect.w + tolerance;
-  const insideY = point.y >= rect.y - tolerance && point.y <= rect.y + rect.h + tolerance;
-  if (!insideX || !insideY) return false;
-  return Math.min(
-    Math.abs(point.x - rect.x),
-    Math.abs(point.x - (rect.x + rect.w)),
-    Math.abs(point.y - rect.y),
-    Math.abs(point.y - (rect.y + rect.h))
-  ) <= tolerance;
-}
-
-function boundaryAnchor(rect, toward) {
-  const center = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
-  const targetCenter = { x: toward.x + toward.w / 2, y: toward.y + toward.h / 2 };
-  const dx = targetCenter.x - center.x;
-  const dy = targetCenter.y - center.y;
-  if (Math.abs(dx) > Math.abs(dy)) {
-    return { x: dx >= 0 ? rect.x + rect.w : rect.x, y: center.y };
-  }
-  return { x: center.x, y: dy >= 0 ? rect.y + rect.h : rect.y };
-}
-
 function checkConnectors(slide) {
   const elements = Array.isArray(slide.elements) ? slide.elements : [];
   const byId = new Map(elements.filter((el) => el?.id).map((el) => [el.id, el]));
   const issues = [];
   for (const line of elements.filter((el) => el?.type === "line")) {
-    const sourceId = line.style?.sourceId;
-    const targetId = line.style?.targetId;
+    const connector = connectorMetadata(line);
+    const sourceId = connector?.sourceId;
+    const targetId = connector?.targetId;
     if (!sourceId && !targetId) {
-      if (/connector|arrow/i.test(line.id ?? "")) {
+      if (line.role === "connector" || /connector/i.test(line.id ?? "")) {
         issues.push({
-          severity: "medium",
+          severity: "high",
           type: "connector-detached",
           message: `Connector ${line.id} has no sourceId/targetId metadata; endpoint accuracy cannot be verified.`,
           target: line.id
@@ -549,8 +528,8 @@ function checkConnectors(slide) {
     if (!source || !target || !pointTouchesBoundary(start, source) || !pointTouchesBoundary(end, target)) {
       let suggestion;
       if (source && target) {
-        const expectedStart = boundaryAnchor(source, target);
-        const expectedEnd = boundaryAnchor(target, source);
+        const expectedStart = boundaryAnchor(source, target, connector?.sourceAnchor ?? "auto");
+        const expectedEnd = boundaryAnchor(target, source, connector?.targetAnchor ?? "auto");
         suggestion = {
           x: expectedStart.x,
           y: expectedStart.y,
@@ -569,6 +548,40 @@ function checkConnectors(slide) {
     }
   }
   return issues;
+}
+
+function evenlySpaced(values, tolerance = 0.08) {
+  if (values.length < 4) return false;
+  const sorted = [...values].sort((a, b) => a - b);
+  const gaps = sorted.slice(1).map((value, index) => value - sorted[index]);
+  const average = gaps.reduce((sum, value) => sum + value, 0) / gaps.length;
+  return average > 0 && gaps.every((gap) => Math.abs(gap - average) <= tolerance);
+}
+
+function checkDecorativeGrid(slide, deckSize, options = {}) {
+  if (options.visibleGrid === true) return [];
+  const candidates = (slide.elements ?? []).filter((line) => {
+    if (line?.type !== "line") return false;
+    if (["connector", "axis", "divider"].includes(line.role)) return false;
+    if (connectorMetadata(line) || line.style?.beginArrowType || line.style?.endArrowType) return false;
+    return Number(line.style?.width ?? 1) <= 1.5;
+  });
+  const horizontal = candidates.filter((line) => Math.abs(Number(line.h)) <= 0.02 && Math.abs(Number(line.w)) >= deckSize.width * 0.7);
+  const vertical = candidates.filter((line) => Math.abs(Number(line.w)) <= 0.02 && Math.abs(Number(line.h)) >= deckSize.height * 0.7);
+  const horizontalGrid = evenlySpaced(horizontal.map((line) => Number(line.y)));
+  const verticalGrid = evenlySpaced(vertical.map((line) => Number(line.x)));
+  if (!horizontalGrid && !verticalGrid) return [];
+  const elementIds = [
+    ...(horizontalGrid ? horizontal : []),
+    ...(verticalGrid ? vertical : [])
+  ].map((line) => line.id);
+  return [{
+    severity: "high",
+    type: "decorative-grid",
+    message: `Slide contains an unapproved visible background grid made from ${elementIds.length} repeated lines.`,
+    target: elementIds[0],
+    suggestion: { elementIds }
+  }];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -737,6 +750,10 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
     checks.push({ ...issue, severity: issue.severity === "high" ? "critical" : "warning" });
   }
 
+  for (const issue of checkDecorativeGrid(slide, deckSize, options)) {
+    checks.push({ ...issue, severity: "critical" });
+  }
+
   return checks;
 }
 
@@ -782,7 +799,10 @@ export function preflightLayout(manifest, options = {}) {
       if (element?.type === "diagram") return expandDiagramElement(element);
       return [element];
     });
-    const slideChecks = preflightSlide({ ...slide, elements: expandedElements }, deckSize, tokens, options);
+    const slideChecks = preflightSlide({ ...slide, elements: expandedElements }, deckSize, tokens, {
+      ...options,
+      visibleGrid: safeManifest.metadata?.designIntent?.visibleGrid === true
+    });
     for (const check of slideChecks) {
       checks.push({ slideId: slide.id, ...check });
     }
@@ -822,6 +842,7 @@ const KIND_MAP = Object.freeze({
   "text-overflow": "text-overflow",
   "card-spacing-tight": "card-spacing-tight",
   "connector-detached": "connector-detached",
+  "decorative-grid": "decorative-grid",
   "contrast-fail": "contrast-fail",
   "letter-spacing-too-tight": "letter-spacing-too-tight"
 });
@@ -937,6 +958,7 @@ export const __test__ = {
   hexToRgb,
   resolveTokenString,
   inferRole,
+  checkDecorativeGrid,
   isCjk,
   formatReport,
   sortObjectKeys,

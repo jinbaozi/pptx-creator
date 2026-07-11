@@ -38,6 +38,16 @@ class ValidateManifestTest(TestCase):
             result = self.run_validator(path)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_rejects_non_boolean_visible_grid_intent(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["metadata"]["designIntent"] = {"visibleGrid": "false"}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "visible-grid.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("visibleGrid must be boolean", result.stderr)
+
     def test_accepts_gradient_slide_backgrounds(self):
         data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
         data["slides"][0]["background"] = {
@@ -194,6 +204,51 @@ class ValidateManifestTest(TestCase):
             result = self.run_validator(path)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("outside slide bounds", result.stderr)
+
+    def test_accepts_axis_aligned_and_reverse_direction_lines(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["slides"][0]["elements"].extend([
+            {
+                "type": "line", "role": "connector", "id": "connector-horizontal",
+                "x": 1.0, "y": 3.0, "w": 2.0, "h": 0.0,
+                "style": {"sourceId": "title", "targetId": "subtitle", "sourceAnchor": "right", "targetAnchor": "left"},
+            },
+            {
+                "type": "line", "role": "divider", "id": "reverse-divider",
+                "x": 5.0, "y": 4.0, "w": -2.0, "h": 0.0, "style": {},
+            },
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "lines.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_zero_length_line(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["slides"][0]["elements"].append({
+            "type": "line", "id": "zero-line", "x": 1.0, "y": 3.0, "w": 0.0, "h": 0.0, "style": {},
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "zero-line.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("non-zero span", result.stderr)
+
+    def test_rejects_connector_references_outside_the_slide(self):
+        data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        data["slides"][0]["elements"].append({
+            "type": "line", "role": "connector", "id": "missing-target",
+            "x": 1.0, "y": 3.0, "w": 2.0, "h": 0.0,
+            "style": {"sourceId": data["slides"][0]["elements"][0]["id"], "targetId": "not-on-slide"},
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "missing-target.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_validator(path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("targetId must reference a non-line element on the same slide", result.stderr)
 
     def test_accepts_chart_elements(self):
         data = self.with_resolved_design(json.loads(SAMPLE.read_text(encoding="utf-8")))

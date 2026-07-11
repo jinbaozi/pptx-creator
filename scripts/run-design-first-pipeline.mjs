@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { compileDeckPlan, validateDeckPlan } from "./lib/deck-plan.mjs";
+import { createFontMetricsCatalog } from "./lib/font-preflight.mjs";
+import { fitManifestText, materializeTextFonts } from "./lib/text-fit.mjs";
+import { parseDesignFile } from "./parse-design-md.mjs";
 import { runDeckPipeline } from "./run-deck-pipeline.mjs";
 
 function parseArgs(argv) {
@@ -34,7 +37,21 @@ async function main() {
   const designOutputPath = path.join(designOutputDir, "DESIGN.md");
   fs.mkdirSync(designOutputDir, { recursive: true });
   fs.copyFileSync(selectedDesignSource, designOutputPath);
-  const manifest = compileDeckPlan(plan, { ...options, designSystemSource: "design-system/DESIGN.md" });
+  const compiledManifest = compileDeckPlan(plan, { ...options, designSystemSource: "design-system/DESIGN.md" });
+  const design = await parseDesignFile(selectedDesignSource);
+  const fontCatalog = await createFontMetricsCatalog();
+  const materializedFonts = materializeTextFonts(compiledManifest, design.tokens, fontCatalog);
+  const fitted = await fitManifestText(materializedFonts.manifest, {
+    designTokens: design.tokens,
+    fontCatalog,
+    ...(fontCatalog.source === "unavailable"
+      ? { source: "unavailable", reason: "fontkit could not open any installed font faces" }
+      : {})
+  });
+  if (fitted.unresolved.length > 0 || fitted.report.status !== "passed") {
+    throw new Error(`creative text fit unresolved: ${fitted.unresolved.map((item) => `${item.slideId}/${item.elementId}:${item.status}`).join(", ")}`);
+  }
+  const manifest = fitted.manifest;
   const manifestPath = path.join(outputDir, "deck.manifest.json");
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 

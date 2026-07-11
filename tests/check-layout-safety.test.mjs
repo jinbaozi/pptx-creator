@@ -299,6 +299,32 @@ describe("check-layout-safety", () => {
   });
 
   describe("connector accuracy", () => {
+    it("blocks connector-like lines that omit semantic endpoint metadata", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [{ type: "line", role: "connector", id: "connector-1", x: 1, y: 1, w: 2, h: 0.01, style: {} }]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      const issue = result.checks.find((c) => c.type === "connector-detached");
+      expect(issue?.severity).toBe("critical");
+      expect(result.summary.blocked).toBe(true);
+    });
+
+    it("does not require semantic endpoints for axes, dividers, or decorative lines", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "line", role: "axis", id: "axis-x", x: 1, y: 1, w: 2, h: 0.01, style: {} },
+          { type: "line", role: "divider", id: "divider", x: 1, y: 2, w: 2, h: 0.01, style: {} },
+          { type: "line", role: "decorative", id: "accent-line", x: 1, y: 3, w: 2, h: 0.01, style: {} }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((c) => c.type === "connector-detached")).toBeUndefined();
+    });
+
     it("passes a connector attached to declared source and target boundaries", () => {
       const manifest = makeManifest([{
         id: "s1",
@@ -328,6 +354,50 @@ describe("check-layout-safety", () => {
       expect(issue?.severity).toBe("critical");
       expect(issue?.suggestion).toMatchObject({ x: 2, y: 2, w: 0, h: 1 });
       expect(result.summary.blocked).toBe(true);
+    });
+  });
+
+  describe("decorative grid policy", () => {
+    const lattice = () => [
+      ...[1, 2.5, 4, 5.5].map((y, index) => ({ type: "line", role: "decorative", id: `grid-h-${index}`, x: 0, y, w: DECK.width, h: 0, style: { width: 1, transparency: 70 } })),
+      ...[2, 5, 8, 11].map((x, index) => ({ type: "line", role: "decorative", id: `grid-v-${index}`, x, y: 0, w: 0, h: DECK.height, style: { width: 1, transparency: 70 } }))
+    ];
+
+    it("blocks an unapproved full-slide orthogonal line lattice", () => {
+      const manifest = makeManifest([{ id: "s1", background: { type: "solid", color: "#FFFFFF" }, elements: lattice() }]);
+      const result = preflightLayout(manifest, { strict: true });
+      const issue = result.checks.find((check) => check.type === "decorative-grid");
+      expect(issue?.severity).toBe("critical");
+      expect(result.summary.blocked).toBe(true);
+    });
+
+    it("blocks a repeated one-direction background ruling", () => {
+      const manifest = makeManifest([{
+        id: "s1", background: { type: "solid", color: "#FFFFFF" },
+        elements: lattice().filter((line) => line.id.startsWith("grid-h-"))
+      }]);
+      expect(preflightLayout(manifest, { strict: true }).checks.find((check) => check.type === "decorative-grid")?.severity).toBe("critical");
+    });
+
+    it("allows the lattice only with explicit visibleGrid intent", () => {
+      const manifest = makeManifest([{ id: "s1", background: { type: "solid", color: "#FFFFFF" }, elements: lattice() }]);
+      manifest.metadata = { designIntent: { visibleGrid: true } };
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((check) => check.type === "decorative-grid")).toBeUndefined();
+    });
+
+    it("does not mistake matrix axes or semantic connectors for a background grid", () => {
+      const manifest = makeManifest([{
+        id: "s1", background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "a", x: 1, y: 1, w: 1, h: 1 },
+          { type: "shape", id: "b", x: 4, y: 1, w: 1, h: 1 },
+          { type: "line", role: "axis", id: "axis-x", x: 1, y: 3.75, w: 10, h: 0, style: {} },
+          { type: "line", role: "axis", id: "axis-y", x: 6.65, y: 1, w: 0, h: 5, style: {} },
+          { type: "line", role: "connector", id: "connector-a-b", x: 2, y: 1.5, w: 2, h: 0, style: { sourceId: "a", targetId: "b" } }
+        ]
+      }]);
+      expect(preflightLayout(manifest, { strict: true }).checks.find((check) => check.type === "decorative-grid")).toBeUndefined();
     });
   });
 

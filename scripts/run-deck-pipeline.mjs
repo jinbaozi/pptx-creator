@@ -11,12 +11,13 @@ import { runBoundedRepair } from "./lib/bounded-repair.mjs";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
 import { applyContextualTaste, editabilityLevelFromCounter, qualityFromReview } from "./lib/contextual-taste.mjs";
 import { buildCreativeVisualProof } from "./lib/creative-visual-proof.mjs";
-import { preflightFonts } from "./lib/font-preflight.mjs";
+import { createFontMetricsCatalog, preflightFonts } from "./lib/font-preflight.mjs";
 import { writePipelineReports } from "./lib/pipeline-report-writer.mjs";
 import { runPython } from "./lib/python-utils.mjs";
 import { verifyReplicaEvidence } from "./lib/replica-evidence.mjs";
 import { validateJsonSchema } from "./lib/schema-utils.mjs";
 import { reviewManifest } from "./lib/visual-critic.mjs";
+import { buildTextFitReport } from "./lib/text-fit.mjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -31,6 +32,7 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "consistency-report.json",
   "consistency-report.md",
   "layout-safety-report.json",
+  "text-fit-report.json",
   "html-layout-report.json",
   "html-repair-report.json",
   "layout-measurements.json",
@@ -404,9 +406,24 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
 
   let design;
   let fontPreflight;
+  let textFitReport;
   try {
     design = await parseDesignFile(resolve(dirname(resolvedManifest), manifest.designSystem.source));
     fontPreflight = await preflightFonts(manifest, design);
+    const fontCatalog = await createFontMetricsCatalog();
+    textFitReport = await buildTextFitReport(manifest, {
+      designTokens: design.tokens,
+      fontCatalog,
+      ...(fontCatalog.source === "unavailable"
+        ? { source: "unavailable", reason: "fontkit could not open any installed font faces" }
+        : {})
+    });
+    const textFitSchema = JSON.parse(await readFile(join(root, "schemas/text-fit-report.schema.json"), "utf8"));
+    const textFitValidation = validateJsonSchema(textFitReport, textFitSchema);
+    if (!textFitValidation.valid) {
+      throw new Error(`text-fit report contract invalid: ${textFitValidation.errors.map((item) => `${item.path} ${item.message}`).join("; ")}`);
+    }
+    await writeFile(join(resolvedOutput, "text-fit-report.json"), `${JSON.stringify(textFitReport, null, 2)}\n`, "utf8");
   } catch (error) {
     steps.push({ label: `${mode}-preflight`, ok: false });
     await blockPipeline(resolvedManifest, resolvedOutput, steps, `${mode}-preflight`, error instanceof Error ? error.message : String(error));
@@ -454,13 +471,15 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     label: preflightLabel,
     ok: routePreflight.ok !== false
       && layout.ok
+      && (mode !== "creative" || textFitReport?.status === "passed")
       && (mode !== "creative" || creativePreflightGate.passed)
       && (mode !== "replica" || replicaProofAvailable || typeof options.buildReplicaProof === "function"),
     stdout: mode === "creative" ? `deckScore=${creativeReview.deckScore}; slopRisk=${creativeReview.slopRisk}; gate=${creativePreflightGate.passed ? "pass" : "block"}` : (routePreflight.stdout || fontPreflight.source),
     stderr: routePreflight.ok === false
       ? routePreflight.stderr
       : !layout.ok ? layout.stderr
-        : mode === "creative" && !creativePreflightGate.passed ? creativePreflightGate.reasons.join("; ")
+        : mode === "creative" && textFitReport?.status !== "passed" ? `text fit ${textFitReport?.status ?? "unavailable"}: ${textFitReport?.summary?.overflowCount ?? 0} overflow(s)`
+          : mode === "creative" && !creativePreflightGate.passed ? creativePreflightGate.reasons.join("; ")
           : (mode === "replica" && !replicaProofAvailable && typeof options.buildReplicaProof !== "function" ? "strict replica fidelity proof capability unavailable" : "")
   };
   stageGuard.enter(preflightLabel);
@@ -495,13 +514,18 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         pptxPath: join(resolvedOutput, "final.pptx"),
         outputDir: resolvedOutput,
         manifest,
-        review: creativeReview
+        review: creativeReview,
+        textFit: textFitReport
       });
     } catch (error) {
       creativeVisualProof = {
         version: "0.1.0", mode: "creative", accepted: false,
         expectedSlides: manifest.slides?.length ?? 0, renderedSlides: 0,
+        decorativeBackgroundLines: 0,
         previews: [], contactSheet: null,
+        textFit: textFitReport
+          ? { status: textFitReport.status, source: textFitReport.source, summary: textFitReport.summary }
+          : { status: "unavailable", source: "unavailable", summary: { checked: 0, overflowCount: 0 } },
         p0: [{ type: "render-unavailable", message: error instanceof Error ? error.message : String(error) }],
         p1: [], p2: []
       };
@@ -619,7 +643,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
       manifest,
       design,
       intermediate.countersBySlide ?? [intermediate.editabilityCounter],
-      { proofStatus: "passed" }
+      { proofStatus: "passed", textFitStatus: textFitReport?.status ?? "unavailable" }
     );
     if (typeof options.beforePackage === "function") {
       await options.beforePackage({ route, mode, status: "passed", outputDir: resolvedOutput });

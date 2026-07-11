@@ -88,6 +88,7 @@ describe("Task 1 deck schema 0.2.0", () => {
     expect(schema.properties.metadata.properties.inputType.enum).toEqual(["text", "html", "image", "pdf", "manifest", "mixed"]);
     expect(schema.properties.metadata.properties.qualityProfile.enum).toEqual(["light", "creative", "replica"]);
     expect(schema.properties.metadata.properties).toHaveProperty("designIntent");
+    expect(schema.properties.metadata.properties.designIntent.properties.visibleGrid).toEqual({ type: "boolean", default: false });
     expect(schema.properties.metadata.properties).toHaveProperty("replicaSource");
     expect(schema.properties.metadata.properties).toHaveProperty("generator");
     expect(schema.properties.designSystem.properties).not.toHaveProperty("mode");

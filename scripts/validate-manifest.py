@@ -66,6 +66,8 @@ def validate_metadata(data: dict) -> None:
     for key in ("designIntent", "replicaSource", "generator"):
         if key in metadata:
             require(isinstance(metadata[key], dict), f"metadata.{key} must be an object")
+    if "designIntent" in metadata and "visibleGrid" in metadata["designIntent"]:
+        require(isinstance(metadata["designIntent"]["visibleGrid"], bool), "metadata.designIntent.visibleGrid must be boolean")
 
 
 def validate_deck(data: dict) -> tuple[float, float]:
@@ -124,8 +126,27 @@ def validate_element(element: dict, slide_id: str, width: float, height: float, 
     for key in ["x", "y", "w", "h"]:
         require(isinstance(element.get(key), (int, float)), f"{slide_id}/{element['id']}: {key} must be numeric")
     x, y, w, h = float(element["x"]), float(element["y"]), float(element["w"]), float(element["h"])
-    require(w > 0 and h > 0, f"{slide_id}/{element['id']}: w and h must be positive")
-    require(x >= 0 and y >= 0 and x + w <= width and y + h <= height, f"{slide_id}/{element['id']}: outside slide bounds")
+    if element["type"] == "line":
+        require(w != 0 or h != 0, f"{slide_id}/{element['id']}: line requires a non-zero span")
+        left, right = min(x, x + w), max(x, x + w)
+        top, bottom = min(y, y + h), max(y, y + h)
+        require(left >= 0 and top >= 0 and right <= width and bottom <= height, f"{slide_id}/{element['id']}: outside slide bounds")
+        role = element.get("role")
+        require(role is None or role in {"connector", "axis", "divider", "decorative"}, f"{slide_id}/{element['id']}: unsupported line role")
+        style = element.get("style") or {}
+        connector = element.get("connector")
+        require(connector is None or isinstance(connector, dict), f"{slide_id}/{element['id']}: connector must be an object")
+        semantic = connector or style
+        source_id, target_id = semantic.get("sourceId"), semantic.get("targetId")
+        require(bool(source_id) == bool(target_id), f"{slide_id}/{element['id']}: sourceId and targetId must be provided together")
+        if connector is not None:
+            require(bool(source_id) and bool(target_id), f"{slide_id}/{element['id']}: connector requires sourceId and targetId")
+        for anchor_key in ["sourceAnchor", "targetAnchor"]:
+            require(semantic.get(anchor_key) is None or semantic.get(anchor_key) in {"auto", "top", "right", "bottom", "left"}, f"{slide_id}/{element['id']}: unsupported {anchor_key}")
+        require(semantic.get("route") is None or semantic.get("route") in {"straight", "orthogonal"}, f"{slide_id}/{element['id']}: unsupported connector route")
+    else:
+        require(w > 0 and h > 0, f"{slide_id}/{element['id']}: w and h must be positive")
+        require(x >= 0 and y >= 0 and x + w <= width and y + h <= height, f"{slide_id}/{element['id']}: outside slide bounds")
     if element["type"] == "text":
         require(isinstance(element.get("text"), str), f"{slide_id}/{element['id']}: text is required")
     if element["type"] == "shape":
@@ -213,6 +234,14 @@ def validate_slides(data: dict, width: float, height: float, manifest_path: Path
             require(element_id not in seen_elements, f"{slide_id}: duplicate element id: {element_id}")
             seen_elements.add(element_id)
             validate_element(element, slide_id, width, height, manifest_path, data.get("assets", []))
+        non_line_ids = {element.get("id") for element in slide.get("elements", []) if element.get("type") != "line"}
+        for element in slide.get("elements", []):
+            if element.get("type") != "line":
+                continue
+            semantic = element.get("connector") or element.get("style") or {}
+            if semantic.get("sourceId"):
+                require(semantic["sourceId"] in non_line_ids, f"{slide_id}/{element['id']}: sourceId must reference a non-line element on the same slide")
+                require(semantic["targetId"] in non_line_ids, f"{slide_id}/{element['id']}: targetId must reference a non-line element on the same slide")
 
 
 def main() -> None:
