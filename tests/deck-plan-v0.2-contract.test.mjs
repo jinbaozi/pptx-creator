@@ -177,6 +177,26 @@ describe("deck.plan 0.2 canonical contract", () => {
     }
   });
 
+  it("rejects whitespace-only values at representative non-empty string boundaries", () => {
+    const mutations = [
+      ["provenance sourceRef", (plan) => { plan.assets[0].provenance.sourceRef = "   "; }],
+      ["context title", (plan) => { plan.context.title = "\t  "; }],
+      ["slide message", (plan) => { plan.slides[0].message = "  \n"; }],
+      ["attention ref", (plan) => { plan.slides[0].attentionTarget.ref = "   "; }]
+    ];
+    for (const [label, mutate] of mutations) {
+      const plan = validPlanV02();
+      mutate(plan);
+      expect(validateDeckPlan(plan).valid, label).toBe(false);
+      expect(errorsFor(plan), label).toMatch(/string does not match pattern/i);
+    }
+
+    const meaningful = validPlanV02();
+    meaningful.context.title = "  Meaningful title  ";
+    meaningful.slides[0].message = "\tMeaningful message ";
+    expect(validateDeckPlan(meaningful)).toEqual({ valid: true, errors: [] });
+  });
+
   it("enforces unique IDs and every cross-reference", () => {
     const mutations = [
       ["duplicate slide", (plan) => { plan.slides[1].id = plan.slides[0].id; }, /slide.*unique|duplicate.*slide/i],

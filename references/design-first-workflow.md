@@ -30,6 +30,6 @@ Text remains manifest-first. HTML is optional only when explicitly requested or 
 
 ## Gate
 
-Creative output passes only when deck score is at least 80, every slide is at least 70, slop risk is at most 20, P0/P1 findings are zero, deterministic text-fit evidence passes, and editability is at least the plan's L4 or L5 floor. The proof must include a real LibreOffice render of every page and a complete contact sheet. Contextual checks come from the design read and dials. Explicit user brand and source locks override generic heuristics. Font compatibility is reported from real font preflight data, and visible background grids must match `metadata.designIntent.visibleGrid`.
+Creative output currently passes only when deck score is at least 80, every slide is at least 70, slop risk is at most 20, P0/P1 findings are zero, deterministic text-fit evidence passes, and editability is at least Level 4. The plan's requested L4 or L5 `context.editabilityFloor` is preserved in the compiled manifest and design-intent provenance for the later quality-profile task; it does not yet raise this gate above Level 4. The proof must include a real LibreOffice render of every page and a complete contact sheet. Contextual checks come from the design read and dials. Explicit user brand and source locks override generic heuristics. Font compatibility is reported from real font preflight data, and visible background grids must match `metadata.designIntent.visibleGrid`.
 
 Replica routes do not run this taste gate and must preserve source fidelity.
