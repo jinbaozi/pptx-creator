@@ -42,6 +42,36 @@ describe("bounded repair convergence", () => {
     expect(result).toMatchObject({ accepted: true, attempts: 2, artifact: "v2", stopReason: "accepted" });
   });
 
+  it("accepts an accepted equal candidate when the injected comparator reports no regression", async () => {
+    const initialProof = { accepted: false, quality: { editabilityLevel: 4 } };
+    const candidateProof = { accepted: true, quality: { editabilityLevel: 4 } };
+    const compare = vi.fn(() => 0);
+    const result = await runBoundedRepair({
+      initialProof,
+      initialArtifact: "original",
+      compare,
+      attempt: async () => ({ proof: candidateProof, artifact: "candidate" })
+    });
+
+    expect(compare).toHaveBeenCalledWith(candidateProof, initialProof);
+    expect(result).toMatchObject({ accepted: true, proof: candidateProof, artifact: "candidate", attempts: 1, stopReason: "accepted" });
+  });
+
+  it("rejects an accepted candidate when the injected comparator reports a regression", async () => {
+    const initialProof = proof(0.8);
+    const candidateProof = proof(0.9, true);
+    const compare = vi.fn(() => -1);
+    const result = await runBoundedRepair({
+      initialProof,
+      initialArtifact: "original",
+      compare,
+      attempt: async () => ({ proof: candidateProof, artifact: "candidate" })
+    });
+
+    expect(compare).toHaveBeenCalledWith(candidateProof, initialProof);
+    expect(result).toMatchObject({ accepted: false, proof: initialProof, artifact: "original", attempts: 1, stopReason: "no-improvement" });
+  });
+
   it("does not claim attempts when no deterministic repair is available", async () => {
     const result = await runBoundedRepair({ initialProof: proof(0.8) });
     expect(result).toMatchObject({ attempts: 0, stopReason: "repair-unavailable" });
