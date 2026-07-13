@@ -13,6 +13,14 @@ function resolveLocalRef(rootSchema, ref) {
   }, rootSchema);
 }
 
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function validateValue(value, schema, path, errors, rootSchema, depth = 0) {
   if (depth > 256) {
     errors.push({ path, message: "schema validation depth exceeded; possible cyclic $ref" });
@@ -81,6 +89,27 @@ function validateValue(value, schema, path, errors, rootSchema, depth = 0) {
     if (typeof schema.maxItems === "number" && value.length > schema.maxItems) {
       errors.push({ path, message: `array longer than maxItems ${schema.maxItems}` });
     }
+    if (schema.uniqueItems === true) {
+      const seen = new Set();
+      value.forEach((item, index) => {
+        const key = canonicalJson(item);
+        if (seen.has(key)) errors.push({ path: `${path}[${index}]`, message: "array items must be unique" });
+        seen.add(key);
+      });
+    }
+    if (schema.contains) {
+      let matches = 0;
+      value.forEach((item, index) => {
+        const subErrors = [];
+        validateValue(item, schema.contains, `${path}[${index}][contains]`, subErrors, rootSchema, depth + 1);
+        if (subErrors.length === 0) matches += 1;
+      });
+      const minimum = typeof schema.minContains === "number" ? schema.minContains : 1;
+      const maximum = typeof schema.maxContains === "number" ? schema.maxContains : Infinity;
+      if (matches < minimum || matches > maximum) {
+        errors.push({ path, message: `array contains match count ${matches} outside ${minimum}..${maximum}` });
+      }
+    }
     if (schema.items) {
       value.forEach((item, index) => {
         validateValue(item, schema.items, `${path}[${index}]`, errors, rootSchema, depth + 1);
@@ -88,6 +117,12 @@ function validateValue(value, schema, path, errors, rootSchema, depth = 0) {
     }
   }
   if (value && typeof value === "object" && !Array.isArray(value)) {
+    if (typeof schema.minProperties === "number" && Object.keys(value).length < schema.minProperties) {
+      errors.push({ path, message: `object has fewer than minProperties ${schema.minProperties}` });
+    }
+    if (typeof schema.maxProperties === "number" && Object.keys(value).length > schema.maxProperties) {
+      errors.push({ path, message: `object has more than maxProperties ${schema.maxProperties}` });
+    }
     if (Array.isArray(schema.required)) {
       for (const key of schema.required) {
         if (!Object.prototype.hasOwnProperty.call(value, key)) {

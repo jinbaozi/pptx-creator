@@ -1,0 +1,685 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/semantic-slide-ir.schema.json",
+  "title": "Semantic Slide IR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source", "context", "designIntent", "story", "designSystem", "assets", "slides"],
+  "properties": {
+    "version": { "const": "0.1.0" },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "version"],
+      "properties": { "kind": { "const": "deck-plan" }, "version": { "const": "0.2.0" } }
+    },
+    "context": { "$ref": "#/$defs/context" },
+    "designIntent": { "$ref": "#/$defs/designIntent" },
+    "story": { "$ref": "#/$defs/story" },
+    "designSystem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "source", "selection", "tokenSnapshotHash"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "selection": { "$ref": "#/$defs/designSelection" },
+        "tokenSnapshotHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "assets": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+    "slides": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/slide" } }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "\\S" },
+    "stringArray": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "boundedDial": { "type": "number", "minimum": 0, "maximum": 100 },
+    "audience": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary", "knowledgeLevel"],
+      "properties": {
+        "primary": { "$ref": "#/$defs/nonEmptyString" },
+        "knowledgeLevel": { "enum": ["novice", "informed", "expert", "mixed"] }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["viewingMode", "presentedOrReadAlone"],
+      "properties": {
+        "viewingMode": { "enum": ["room", "desktop", "mobile", "hybrid"] },
+        "presentedOrReadAlone": { "enum": ["presented", "read-alone", "both"] }
+      }
+    },
+    "brand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["references", "antiReferences"],
+      "properties": {
+        "references": { "$ref": "#/$defs/stringArray" },
+        "antiReferences": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "targetSuite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suite", "required"],
+      "properties": {
+        "suite": { "enum": ["libreoffice", "powerpoint", "wps"] },
+        "required": { "type": "boolean" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "language", "audience", "decisionGoal", "durationMinutes", "environment", "tone", "mustRemember", "brand", "qualityProfile", "targetSuites", "editabilityFloor", "assetIntensity", "visualAmbition"],
+      "properties": {
+        "title": { "$ref": "#/$defs/nonEmptyString" },
+        "language": { "type": "string", "minLength": 2, "maxLength": 50 },
+        "audience": { "$ref": "#/$defs/audience" },
+        "decisionGoal": { "$ref": "#/$defs/nonEmptyString" },
+        "durationMinutes": { "type": "number", "exclusiveMinimum": 0 },
+        "environment": { "$ref": "#/$defs/environment" },
+        "tone": { "$ref": "#/$defs/nonEmptyString" },
+        "mustRemember": { "$ref": "#/$defs/stringArray" },
+        "brand": { "$ref": "#/$defs/brand" },
+        "qualityProfile": { "enum": ["standard", "premium", "flagship"] },
+        "targetSuites": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/targetSuite" } },
+        "editabilityFloor": { "type": "integer", "enum": [4, 5] },
+        "assetIntensity": { "$ref": "#/$defs/boundedDial" },
+        "visualAmbition": { "$ref": "#/$defs/boundedDial" }
+      }
+    },
+    "compositionDirection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direction", "visibleGrid"],
+      "properties": {
+        "direction": { "$ref": "#/$defs/nonEmptyString" },
+        "visibleGrid": { "type": "boolean" }
+      }
+    },
+    "dials": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compositionVariance", "visualDensity", "visualEnergy"],
+      "properties": {
+        "compositionVariance": { "$ref": "#/$defs/boundedDial" },
+        "visualDensity": { "$ref": "#/$defs/boundedDial" },
+        "visualEnergy": { "$ref": "#/$defs/boundedDial" }
+      }
+    },
+    "locks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceLocked", "brandLocked", "protectedTokens", "protectedAssets"],
+      "properties": {
+        "sourceLocked": { "type": "boolean" },
+        "brandLocked": { "type": "boolean" },
+        "protectedTokens": { "$ref": "#/$defs/stringArray" },
+        "protectedAssets": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "designIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["designRead", "typography", "palette", "material", "imagery", "composition", "dials", "locks"],
+      "properties": {
+        "designRead": { "$ref": "#/$defs/nonEmptyString" },
+        "typography": { "$ref": "#/$defs/nonEmptyString" },
+        "palette": { "$ref": "#/$defs/nonEmptyString" },
+        "material": { "$ref": "#/$defs/nonEmptyString" },
+        "imagery": { "$ref": "#/$defs/nonEmptyString" },
+        "composition": { "$ref": "#/$defs/compositionDirection" },
+        "dials": { "$ref": "#/$defs/dials" },
+        "locks": { "$ref": "#/$defs/locks" }
+      }
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "slideIds"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "title": { "$ref": "#/$defs/nonEmptyString" },
+        "slideIds": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["narrativeBeats", "sections", "decisionPath"],
+      "properties": {
+        "narrativeBeats": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "sections": { "type": "array", "items": { "$ref": "#/$defs/section" } },
+        "decisionPath": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "designSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "resolvedSource", "provided"],
+      "properties": {
+        "request": { "type": ["string", "null"], "minLength": 1, "pattern": "\\S" },
+        "resolvedSource": { "$ref": "#/$defs/nonEmptyString" },
+        "provided": { "type": "boolean" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "sourceRef"],
+      "properties": {
+        "origin": { "enum": ["user", "project", "web", "generated"] },
+        "sourceRef": { "$ref": "#/$defs/nonEmptyString" },
+        "license": { "$ref": "#/$defs/nonEmptyString" },
+        "contentHash": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "description"],
+      "properties": {
+        "strategy": { "enum": ["omit", "placeholder", "native-diagram", "text"] },
+        "description": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "focalPoint": { "enum": ["center", "top", "right", "bottom", "left", "top-left", "top-right", "bottom-left", "bottom-right"] },
+    "cropPolicy": { "enum": ["contain", "cover", "smart-crop", "none"] },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "role", "description", "provenance", "focalPoint", "cropPolicy", "altText", "fallback", "src"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "kind": { "enum": ["photo", "illustration", "icon", "logo", "chart-data", "diagram-source", "texture"] },
+        "role": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "$ref": "#/$defs/nonEmptyString" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "focalPoint": { "$ref": "#/$defs/focalPoint" },
+        "cropPolicy": { "$ref": "#/$defs/cropPolicy" },
+        "altText": { "$ref": "#/$defs/nonEmptyString" },
+        "fallback": { "$ref": "#/$defs/fallback" },
+        "src": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "attentionTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": { "enum": ["message", "content", "asset", "data", "diagram"] },
+        "ref": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "compositionIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "whitespace", "emphasis"],
+      "properties": {
+        "strategy": { "enum": ["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"] },
+        "whitespace": { "enum": ["compact", "balanced", "spacious"] },
+        "emphasis": { "enum": ["message", "evidence", "asset", "data"] }
+      }
+    },
+    "routePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preferred", "allowed", "fullSlideRaster"],
+      "properties": {
+        "preferred": { "const": "native" },
+        "allowed": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "contains": { "const": "native" },
+          "items": { "enum": ["native", "html-assisted", "local-raster"] }
+        },
+        "fullSlideRaster": { "const": false }
+      }
+    },
+    "typographyRef": { "type": "string", "pattern": "^\\{typography\\.[A-Za-z0-9_-]+\\}$" },
+    "colorRef": { "type": "string", "pattern": "^\\{colors\\.[A-Za-z0-9_-]+\\}$" },
+    "tokenRefs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "typography": { "$ref": "#/$defs/typographyRef" },
+        "foreground": { "$ref": "#/$defs/colorRef" },
+        "background": { "$ref": "#/$defs/colorRef" },
+        "border": { "$ref": "#/$defs/colorRef" },
+        "spacing": { "$ref": "#/$defs/spacingRef" }
+      }
+    },
+    "textPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": { "text": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "mediaPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placement", "fit", "focalPoint", "alt"],
+      "properties": {
+        "placement": { "enum": ["hero", "supporting", "background", "inline"] },
+        "fit": { "enum": ["cover", "contain", "none"] },
+        "focalPoint": { "$ref": "#/$defs/focalPoint" },
+        "alt": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "metricPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "value"],
+      "properties": {
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "value": { "anyOf": [{ "$ref": "#/$defs/nonEmptyString" }, { "type": "number" }] }
+      }
+    },
+    "chartDataPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label"],
+      "properties": {
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "value": { "type": "number" },
+        "series": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "number" } },
+        "color": { "type": "string", "minLength": 1 }
+      },
+      "anyOf": [{ "required": ["value"] }, { "required": ["series"] }]
+    },
+    "chartPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chartKind", "data"],
+      "properties": {
+        "chartKind": { "enum": ["bar", "line", "pie", "stackedBar", "horizontalBar", "groupedBar", "kpiGroup", "sparkline"] },
+        "data": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/chartDataPoint" } },
+        "showValues": { "type": "boolean" },
+        "showLegend": { "type": "boolean" }
+      }
+    },
+    "tableCell": { "anyOf": [{ "$ref": "#/$defs/nonEmptyString" }, { "type": "number" }] },
+    "tableRow": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tableCell" } },
+    "tablePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["headers", "rows"],
+      "properties": {
+        "headers": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "rows": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tableRow" } }
+      }
+    },
+    "semanticContainerPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "label", "items"],
+      "properties": {
+        "type": { "const": "semantic-container" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } }
+      }
+    },
+    "architectureLayerPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "label"],
+      "properties": {
+        "type": { "const": "architecture-layer" },
+        "label": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "processStepPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "label"],
+      "properties": {
+        "type": { "const": "process-step" },
+        "label": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "quadrantMatrixPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "xAxis", "yAxis", "quadrants"],
+      "properties": {
+        "type": { "const": "quadrant-matrix" },
+        "xAxis": { "$ref": "#/$defs/nonEmptyString" },
+        "yAxis": { "$ref": "#/$defs/nonEmptyString" },
+        "quadrants": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/nonEmptyString" } }
+      }
+    },
+    "diagramLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "nodes"],
+      "properties": {
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "nodes": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "diagramNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "group": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "diagramEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "$ref": "#/$defs/nonEmptyString" },
+        "to": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "nativeDiagramPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "diagramKind"],
+      "properties": {
+        "type": { "const": "native-diagram" },
+        "diagramKind": { "enum": ["layeredArchitecture", "compilerPipeline", "dependencyGraph", "swimlane", "capabilityStack", "matrixMap", "feedbackLoop", "funnel", "timeline", "systemBoundary"] },
+        "layers": { "type": "array", "items": { "$ref": "#/$defs/diagramLayer" } },
+        "lanes": { "type": "array", "items": { "$ref": "#/$defs/diagramLayer" } },
+        "rows": { "$ref": "#/$defs/stringArray" },
+        "columns": { "$ref": "#/$defs/stringArray" },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/diagramNode" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/diagramEdge" } },
+        "description": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "diagramPayload": {
+      "oneOf": [
+        { "$ref": "#/$defs/semanticContainerPayload" },
+        { "$ref": "#/$defs/architectureLayerPayload" },
+        { "$ref": "#/$defs/processStepPayload" },
+        { "$ref": "#/$defs/quadrantMatrixPayload" },
+        { "$ref": "#/$defs/nativeDiagramPayload" }
+      ]
+    },
+    "quotePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "attribution"],
+      "properties": {
+        "text": { "$ref": "#/$defs/nonEmptyString" },
+        "attribution": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "rulePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": { "type": { "const": "rule" } }
+    },
+    "connectorPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sourceId", "targetId", "sourceAnchor", "targetAnchor", "route", "arrow"],
+      "properties": {
+        "type": { "const": "connector" },
+        "sourceId": { "$ref": "#/$defs/nonEmptyString" },
+        "targetId": { "$ref": "#/$defs/nonEmptyString" },
+        "sourceAnchor": { "enum": ["auto", "top", "right", "bottom", "left"] },
+        "targetAnchor": { "enum": ["auto", "top", "right", "bottom", "left"] },
+        "route": { "enum": ["straight", "orthogonal"] },
+        "arrow": { "const": "triangle" }
+      }
+    },
+    "pageRoleMarkerPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "marker", "value"],
+      "properties": {
+        "type": { "const": "marker" },
+        "marker": { "const": "page-role" },
+        "value": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "sectionMarkerPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "marker", "value"],
+      "properties": {
+        "type": { "const": "marker" },
+        "marker": { "const": "section" },
+        "value": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "decisionMarkerPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "marker", "value"],
+      "properties": {
+        "type": { "const": "marker" },
+        "marker": { "const": "decision" },
+        "value": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "dividerPayload": {
+      "oneOf": [
+        { "$ref": "#/$defs/rulePayload" },
+        { "$ref": "#/$defs/connectorPayload" },
+        { "$ref": "#/$defs/pageRoleMarkerPayload" },
+        { "$ref": "#/$defs/sectionMarkerPayload" },
+        { "$ref": "#/$defs/decisionMarkerPayload" }
+      ]
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "role", "tokenRefs", "assetRefs", "payload"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "kind": { "enum": ["text", "media", "metric", "chart", "table", "diagram", "quote", "divider"] },
+        "role": { "$ref": "#/$defs/nonEmptyString" },
+        "tokenRefs": { "$ref": "#/$defs/tokenRefs" },
+        "assetRefs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "payload": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "text" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/textPayload" } } } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "media" } } }, "then": { "properties": { "assetRefs": { "minItems": 1, "maxItems": 1 }, "payload": { "$ref": "#/$defs/mediaPayload" } } } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "metric" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/metricPayload" } } } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "chart" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/chartPayload" } } } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "table" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/tablePayload" } } } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "diagram" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/diagramPayload" } } } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "quote" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/quotePayload" } } } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "divider" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/dividerPayload" } } } }
+      ]
+    },
+    "spacingRef": { "type": "string", "pattern": "^\\{spacing\\.[A-Za-z0-9_-]+\\}$" },
+    "nodeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeRef"],
+      "properties": { "nodeRef": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "child": { "anyOf": [{ "$ref": "#/$defs/nodeRef" }, { "$ref": "#/$defs/layout" }] },
+    "layout": {
+      "oneOf": [
+        { "$ref": "#/$defs/stack" }, { "$ref": "#/$defs/grid" }, { "$ref": "#/$defs/split" },
+        { "$ref": "#/$defs/overlay" }, { "$ref": "#/$defs/anchor" }, { "$ref": "#/$defs/flow" },
+        { "$ref": "#/$defs/align" }, { "$ref": "#/$defs/distribute" }, { "$ref": "#/$defs/aspectRatio" },
+        { "$ref": "#/$defs/fitContent" }, { "$ref": "#/$defs/safeArea" }
+      ]
+    },
+    "flowLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectorRef"],
+      "properties": { "connectorRef": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "stack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "direction", "gap", "align", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "stack" },
+        "direction": { "enum": ["horizontal", "vertical"] },
+        "gap": { "$ref": "#/$defs/spacingRef" },
+        "align": { "enum": ["start", "center", "end", "stretch"] },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/child" } }
+      }
+    },
+    "grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "columns", "columnGap", "rowGap", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "grid" },
+        "columns": { "type": "integer", "minimum": 1 },
+        "rows": { "type": "integer", "minimum": 1 },
+        "columnGap": { "$ref": "#/$defs/spacingRef" },
+        "rowGap": { "$ref": "#/$defs/spacingRef" },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/child" } }
+      }
+    },
+    "split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "direction", "ratios", "gap", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "split" },
+        "direction": { "enum": ["horizontal", "vertical"] },
+        "ratios": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number", "exclusiveMinimum": 0 } },
+        "gap": { "$ref": "#/$defs/spacingRef" },
+        "children": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/child" } }
+      }
+    },
+    "overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "overlay" },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/child" } }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "anchor", "inset", "child"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "anchor" },
+        "anchor": { "enum": ["top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"] },
+        "inset": { "$ref": "#/$defs/spacingRef" },
+        "child": { "$ref": "#/$defs/child" }
+      }
+    },
+    "flow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "direction", "gap", "wrap", "children", "links"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "flow" },
+        "direction": { "enum": ["horizontal", "vertical"] },
+        "gap": { "$ref": "#/$defs/spacingRef" },
+        "wrap": { "type": "boolean" },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/child" } },
+        "links": { "type": "array", "items": { "$ref": "#/$defs/flowLink" } }
+      }
+    },
+    "align": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "axis", "value", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "align" },
+        "axis": { "enum": ["inline", "block"] },
+        "value": { "enum": ["start", "center", "end", "stretch"] },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/child" } }
+      }
+    },
+    "distribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "axis", "mode", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "distribute" },
+        "axis": { "enum": ["inline", "block"] },
+        "mode": { "enum": ["start", "center", "end", "space-between", "space-around", "space-evenly"] },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/child" } }
+      }
+    },
+    "aspectRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "ratio", "fit", "child"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "aspect-ratio" },
+        "ratio": { "type": "number", "exclusiveMinimum": 0 },
+        "fit": { "enum": ["cover", "contain", "none"] },
+        "child": { "$ref": "#/$defs/child" }
+      }
+    },
+    "fitContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "axis", "padding", "child"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "fit-content" },
+        "axis": { "enum": ["inline", "block"] },
+        "padding": { "$ref": "#/$defs/spacingRef" },
+        "child": { "$ref": "#/$defs/child" }
+      }
+    },
+    "safeArea": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "primitive", "insets", "child"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "primitive": { "const": "safe-area" },
+        "insets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["blockStart", "inlineEnd", "blockEnd", "inlineStart"],
+          "properties": {
+            "blockStart": { "$ref": "#/$defs/spacingRef" },
+            "inlineEnd": { "$ref": "#/$defs/spacingRef" },
+            "blockEnd": { "$ref": "#/$defs/spacingRef" },
+            "inlineStart": { "$ref": "#/$defs/spacingRef" }
+          }
+        },
+        "child": { "$ref": "#/$defs/child" }
+      }
+    },
+    "slide": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "family", "pageRole", "message", "attentionTarget", "compositionIntent", "assetRefs", "routePolicy", "nodes", "layout"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString", "pattern": "^slide-" },
+        "family": { "enum": ["cover", "architecture", "comparison", "process", "dashboard", "quote", "matrix", "closing"] },
+        "pageRole": { "enum": ["cover", "section", "single-point", "evidence", "data", "comparison", "process", "architecture", "case-study", "quote", "decision", "closing", "appendix"] },
+        "message": { "$ref": "#/$defs/nonEmptyString" },
+        "attentionTarget": { "$ref": "#/$defs/attentionTarget" },
+        "compositionIntent": { "$ref": "#/$defs/compositionIntent" },
+        "assetRefs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "routePolicy": { "$ref": "#/$defs/routePolicy" },
+        "nodes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } },
+        "layout": { "$ref": "#/$defs/layout" }
+      }
+    }
+  }
+}

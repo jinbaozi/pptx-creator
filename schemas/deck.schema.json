@@ -5,6 +5,69 @@
   "type": "object",
   "required": ["version", "metadata", "designSystem", "deck", "assets", "slides"],
   "propertyNames": { "not": { "pattern": "^_" } },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "\\S" },
+    "semanticPageRole": {
+      "enum": ["cover", "section", "single-point", "evidence", "data", "comparison", "process", "architecture", "case-study", "quote", "decision", "closing", "appendix"]
+    },
+    "attentionTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": { "enum": ["message", "content", "asset", "data", "diagram"] },
+        "ref": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "compositionIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "whitespace", "emphasis"],
+      "properties": {
+        "strategy": { "enum": ["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"] },
+        "whitespace": { "enum": ["compact", "balanced", "spacious"] },
+        "emphasis": { "enum": ["message", "evidence", "asset", "data"] }
+      }
+    },
+    "routePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preferred", "allowed", "fullSlideRaster"],
+      "properties": {
+        "preferred": { "const": "native" },
+        "allowed": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "contains": { "const": "native" },
+          "items": { "enum": ["native", "html-assisted", "local-raster"] }
+        },
+        "fullSlideRaster": { "const": false }
+      }
+    },
+    "focalPoint": { "enum": ["center", "top", "right", "bottom", "left", "top-left", "top-right", "bottom-left", "bottom-right"] },
+    "cropPolicy": { "enum": ["contain", "cover", "smart-crop", "none"] },
+    "sizing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["cover", "contain", "crop"] },
+        "x": { "type": "number", "minimum": 0 },
+        "y": { "type": "number", "minimum": 0 },
+        "w": { "type": "number", "exclusiveMinimum": 0 },
+        "h": { "type": "number", "exclusiveMinimum": 0 },
+        "sourceW": { "type": "number", "exclusiveMinimum": 0 },
+        "sourceH": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "crop" } } },
+          "then": { "required": ["x", "y", "w", "h"] }
+        }
+      ]
+    }
+  },
   "properties": {
     "version": { "type": "string", "const": "0.2.0" },
     "metadata": {
@@ -74,7 +137,11 @@
           "id": { "type": "string", "pattern": "^slide-" },
           "type": { "type": "string" },
           "pageRole": { "type": "string", "enum": ["cover", "section", "point", "evidence", "comparison", "process", "architecture", "data", "case-study", "quote", "closing"] },
+          "semanticPageRole": { "$ref": "#/$defs/semanticPageRole" },
           "compositionStrategy": { "type": ["string", "null"], "enum": ["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace", null] },
+          "attentionTarget": { "$ref": "#/$defs/attentionTarget" },
+          "compositionIntent": { "$ref": "#/$defs/compositionIntent" },
+          "routePolicy": { "$ref": "#/$defs/routePolicy" },
           "title": { "type": "string" },
           "notes": { "type": "string" },
           "background": {
@@ -95,6 +162,8 @@
               "properties": {
                 "type": { "type": "string", "enum": ["text", "shape", "image", "table", "line", "chart", "icon", "diagram", "cropped-asset"] },
                 "id": { "type": "string" },
+                "semanticParentId": { "$ref": "#/$defs/nonEmptyString" },
+                "assetId": { "$ref": "#/$defs/nonEmptyString" },
                 "x": { "type": "number" },
                 "y": { "type": "number" },
                 "w": { "type": "number" },
@@ -119,6 +188,9 @@
                 "src": { "type": "string" },
                 "alt": { "type": "string" },
                 "altText": { "type": "string" },
+                "focalPoint": { "$ref": "#/$defs/focalPoint" },
+                "cropPolicy": { "$ref": "#/$defs/cropPolicy" },
+                "sizing": { "$ref": "#/$defs/sizing" },
                 "headers": { "type": "array", "items": { "type": "string" } },
                 "rows": { "type": "array" },
                 "kind": {
