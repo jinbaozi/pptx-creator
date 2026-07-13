@@ -117,6 +117,8 @@
                 "imageShape": { "type": "string", "enum": ["rect", "roundRect", "ellipse"] },
                 "rounding": { "type": "boolean" },
                 "src": { "type": "string" },
+                "alt": { "type": "string" },
+                "altText": { "type": "string" },
                 "headers": { "type": "array", "items": { "type": "string" } },
                 "rows": { "type": "array" },
                 "kind": {

@@ -10,13 +10,17 @@ Do not select when HTML, an image, or a PDF defines the visual layout, or when a
 
 ## Public command
 
-npm run pptx -- text <deck.plan.json|plan-directory> <output-dir>
+npm run pptx -- text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>]
 
 ## Inputs and outputs
 
 The host agent converts raw text into an internal coordinate-free `deck.plan.json` version `0.2.0`; deterministic scripts validate it against `schemas/deck-plan.schema.json`, compile it to a `0.2.0` manifest, and render an editable PPTX. Its exact top-level keys are `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry a semantic page role, strict native `contentModel`, explicit attention target, composition intent, asset IDs, and native-first route policy. Plan assets require non-empty provenance `sourceRef` values. Coordinates, manifest geometry, `elements`, and full-slide raster output are prohibited.
 
 The current migration shell supports the eight native content families `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. HTML is optional only when genuinely necessary and is never a mandatory text intermediate. An authored manifest requires the explicit advanced flag `--direct`; `--creative` remains only as a deprecated compatibility alias. `deck.plan` `0.1.0` is retired and fails closed before final, manifest, or quality artifacts are written.
+
+`--design-system` is available only on the creative text route. It accepts an existing local `DESIGN.md`, a directory containing one, or a built-in design-system name. Explicit paths win over names. With no option, resolution checks repository-root `DESIGN.md`, then input-adjacent `DESIGN.md`, then `design-systems/business-neutral/DESIGN.md`. The selected file is parsed before compilation, its declared name and tokens drive native element styling, and a portable copy is packaged as `design-system/DESIGN.md`. URL-like and unknown values fail closed.
+
+Asset `sourceRef` values resolve absolutely or relative to the plan directory. Scripts never fetch remote sources. Existing local files are copied to deterministic content-hashed paths under `output/assets/`; visual asset kinds become native image objects with declared alt text and `contain`/`cover` sizing, while chart-data and diagram-source assets remain non-visual inputs. Missing or remote sources block before `final.pptx` is published.
 
 Successful output contains `final.pptx`, `quality-report.json`, `quality-report.md`, `creative-proof.json`, rendered slide evidence with a contact sheet, and `preview/index.html`. Internal plan and manifest artifacts remain available for audit.
 

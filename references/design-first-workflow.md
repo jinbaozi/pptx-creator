@@ -28,6 +28,12 @@ Direction candidates are optional. Use them only when material ambiguity or high
 
 Text remains manifest-first. HTML is optional only when explicitly requested or genuinely necessary for source-defined layout; it is not a creative intermediate.
 
+## Design and asset resolution
+
+The public creative route accepts `--design-system <path-or-name>`. Existing local files or directories resolve before built-in names. Without an option, the deterministic order is repository-root `DESIGN.md`, input-adjacent `DESIGN.md`, then built-in `business-neutral`. The selected file is parsed exactly once before compilation; its name is derived from frontmatter, resolved tokens are materialized into native element styling, and the packaged manifest keeps the portable source `design-system/DESIGN.md`. Selection provenance records the original request and resolved local file under `metadata.designIntent.designSystemSelection`.
+
+Plan assets resolve relative to the plan directory unless already absolute. Remote or missing sources block before rendering. Local files are copied to deterministic content-hashed paths under `output/assets/`, the full asset contract remains in `manifest.assets`, and referenced visual assets become native image objects. `alt` is the canonical accessibility field used by deterministic analysis and PPT rendering; the authored `altText` remains as provenance. Non-visual data assets never become fake images.
+
 ## Gate
 
 Creative output currently passes only when deck score is at least 80, every slide is at least 70, slop risk is at most 20, P0/P1 findings are zero, deterministic text-fit evidence passes, and editability is at least Level 4. The plan's requested L4 or L5 `context.editabilityFloor` is preserved in the compiled manifest and design-intent provenance for the later quality-profile task; it does not yet raise this gate above Level 4. The proof must include a real LibreOffice render of every page and a complete contact sheet. Contextual checks come from the design read and dials. Explicit user brand and source locks override generic heuristics. Font compatibility is reported from real font preflight data, and visible background grids must match `metadata.designIntent.visibleGrid`.

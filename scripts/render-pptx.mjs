@@ -715,7 +715,7 @@ function addImage(slide, element, baseDir) {
   }, element);
   if (element.id) {
     imageOpts.objectName = element.id;
-    imageOpts.altText = element.id;
+    imageOpts.altText = element.alt ?? element.altText ?? element.id;
   }
   if (element.rounding !== undefined) imageOpts.rounding = Boolean(element.rounding);
   else if (element.imageShape === "ellipse") imageOpts.rounding = true;
@@ -748,7 +748,7 @@ function addCroppedAsset(slide, element, baseDir, manifestAssets) {
     // Surface the manifest id in the slide XML so downstream tooling can correlate
     // generated objects back to their source blocks (cropped-asset provenance).
     imageOpts.objectName = element.id;
-    imageOpts.altText = element.id;
+    imageOpts.altText = element.alt ?? element.altText ?? element.id;
   }
   if (crop && typeof crop === "object") {
     // pptxgenjs uses sizing with `type: "crop"` and a `w`/`h` describing the source crop box.

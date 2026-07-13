@@ -255,11 +255,24 @@ describe("deck.plan 0.2 compilation provenance", () => {
     });
   });
 
-  it("materializes plan assets as manifest assets with flattened provenance", () => {
+  it("materializes full plan asset contracts with nested and flattened provenance", () => {
     const manifest = compileDeckPlan(validPlanV02());
     expect(manifest.assets).toEqual([
       {
         id: "asset-hero",
+        kind: "photo",
+        role: "hero evidence",
+        description: "A localized documentary image",
+        provenance: {
+          origin: "project",
+          sourceRef: "assets/hero.png",
+          license: "project-owned",
+          contentHash: "sha256:abc123"
+        },
+        focalPoint: "center",
+        cropPolicy: "cover",
+        altText: "Team reviewing a presentation system",
+        fallback: { strategy: "placeholder", description: "Use a native neutral placeholder" },
         src: "assets/hero.png",
         origin: "project",
         sourceRef: "assets/hero.png",

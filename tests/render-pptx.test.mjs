@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
+import { analyzeAccessibility } from "../scripts/analyze-accessibility.mjs";
 
 const execFileAsync = promisify(execFile);
 const node = process.execPath;
@@ -467,6 +468,48 @@ describe("render-pptx", () => {
     expect(xml).toContain("hero-image");
     expect(xml).toContain("<a:srcRect");
     expect(xml).not.toContain("<a:fillRect/>");
+  });
+
+  it("uses canonical image alt text in both accessibility analysis and the PPT object", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-image-alt-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements = [
+      {
+        type: "text",
+        id: "headline",
+        text: "Evidence overview",
+        x: 0.8,
+        y: 0.3,
+        w: 5,
+        h: 0.6,
+        style: { fontSize: 24 }
+      },
+      {
+        type: "image",
+        id: "hero-image",
+        src: join(root, "examples/image-input/business-slide.png"),
+        alt: "Business evidence overview",
+        altText: "Legacy evidence description",
+        x: 0.8,
+        y: 1.1,
+        w: 3,
+        h: 2
+      }
+    ];
+    const manifest = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
+
+    const accessibility = await analyzeAccessibility(manifest);
+    expect(accessibility.issues).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: "image-alt", elementId: "hero-image" })
+    ]));
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifest, pptxPath], { cwd: root });
+
+    const xml = await slideXml(pptxPath);
+    expect(xml).toContain('descr="Business evidence overview"');
+    expect(xml).not.toContain('descr="Legacy evidence description"');
   });
 
   it("renders rounded native images into slide XML", async () => {

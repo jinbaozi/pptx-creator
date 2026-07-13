@@ -8,7 +8,7 @@ const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const HELP = `Usage: pptx <text|html|image|pdf|manifest> ...
 
 Routes:
-  text <deck.plan.json|plan-directory> <output-dir> [--creative]
+  text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>]
   text <deck.manifest.json> <output-dir> --direct
   html <input.html> <output-dir> [--allow-remote-assets]
   image <input.png> <output-dir>
@@ -24,17 +24,30 @@ export function buildInvocation(argv) {
   if (!command || command === "--help" || command === "-h") return { help: true };
 
   if (command === "text") {
-    const creative = rest.includes("--creative");
-    const direct = rest.includes("--direct");
+    let creative = false;
+    let direct = false;
+    let designSystem = null;
+    const positional = [];
+    for (let index = 0; index < rest.length; index += 1) {
+      const argument = rest[index];
+      if (argument === "--creative") creative = true;
+      else if (argument === "--direct") direct = true;
+      else if (argument === "--design-system") {
+        if (designSystem !== null) throw new Error("text: --design-system may be provided only once");
+        const value = rest[index + 1];
+        if (!value || value.startsWith("--")) throw new Error("text: --design-system requires a value");
+        designSystem = value;
+        index += 1;
+      } else if (argument.startsWith("--")) throw new Error(`text: unknown option ${argument}`);
+      else positional.push(argument);
+    }
     if (creative && direct) throw new Error("text: --creative and --direct are mutually exclusive");
-    const unknownFlags = rest.filter((arg) => arg.startsWith("--") && !["--creative", "--direct"].includes(arg));
-    if (unknownFlags.length) throw new Error(`text: unknown option ${unknownFlags[0]}`);
-    const positional = rest.filter((arg) => !["--creative", "--direct"].includes(arg));
-    requireCount("text", positional, 2, "<deck.plan.json|plan-directory> <output-dir> [--creative] or <deck.manifest.json> <output-dir> --direct");
+    if (direct && designSystem) throw new Error("text: --design-system is available only for creative mode, not --direct");
+    requireCount("text", positional, 2, "<deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] or <deck.manifest.json> <output-dir> --direct");
     return {
       route: "text",
       script: "run-route-pipeline.mjs",
-      args: ["text", direct ? "direct" : "creative", ...positional],
+      args: ["text", direct ? "direct" : "creative", ...positional, ...(designSystem ? ["--design-system", designSystem] : [])],
       ...(creative ? { warning: "--creative is deprecated because text generation is creative by default" } : {})
     };
   }

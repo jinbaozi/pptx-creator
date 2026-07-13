@@ -5,6 +5,21 @@ import { resolveSemanticConnectors } from "./connector-resolver.mjs";
 const W = 13.333;
 const H = 7.5;
 const DECK_PLAN_SCHEMA = JSON.parse(readFileSync(new URL("../../schemas/deck-plan.schema.json", import.meta.url), "utf8"));
+const DEFAULT_DESIGN_TOKENS = Object.freeze({
+  colors: {
+    primary: "#2563EB", secondary: "#475569", accent: "#0EA5E9", background: "#FFFFFF",
+    surface: "#F8FAFC", surfaceAlt: "#EFF6FF", text: "#111827", textMuted: "#64748B", border: "#E2E8F0"
+  },
+  typography: {
+    title: { fontFamily: "Microsoft YaHei", fontSize: 32, fontWeight: 700, lineHeight: 1.18 },
+    subtitle: { fontFamily: "Microsoft YaHei", fontSize: 20, fontWeight: 500, lineHeight: 1.35 },
+    heading: { fontFamily: "Microsoft YaHei", fontSize: 22, fontWeight: 700, lineHeight: 1.25 },
+    body: { fontFamily: "Microsoft YaHei", fontSize: 15, fontWeight: 400, lineHeight: 1.55 },
+    caption: { fontFamily: "Microsoft YaHei", fontSize: 11, fontWeight: 400, lineHeight: 1.35 },
+    metric: { fontFamily: "Arial", fontSize: 42, fontWeight: 700, lineHeight: 1 }
+  }
+});
+const VISUAL_ASSET_KINDS = new Set(["photo", "illustration", "icon", "logo", "texture"]);
 
 const text = (id, value, x, y, w, h, style = {}) => ({
   type: "text", id, x, y, w, h, text: Array.isArray(value) ? value.join("\n") : String(value ?? ""), style
@@ -57,6 +72,306 @@ function applyCompositionStrategy(elements, strategy) {
     }
     return next;
   });
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, Number(value)));
+}
+
+function boundedElement(element) {
+  const next = structuredClone(element);
+  next.x = clamp(next.x, 0, W);
+  next.y = clamp(next.y, 0, H);
+  next.w = clamp(next.w, 0, W - next.x);
+  next.h = clamp(next.h, 0, H - next.y);
+  return next;
+}
+
+function normalizedDesignTokens(tokens = {}) {
+  return {
+    ...DEFAULT_DESIGN_TOKENS,
+    ...structuredClone(tokens),
+    colors: { ...DEFAULT_DESIGN_TOKENS.colors, ...(tokens.colors ?? {}) },
+    typography: Object.fromEntries(Object.entries(DEFAULT_DESIGN_TOKENS.typography).map(([role, fallback]) => [
+      role,
+      { ...fallback, ...(tokens.typography?.[role] ?? {}) }
+    ]))
+  };
+}
+
+function typographyRole(element) {
+  const id = String(element.id ?? "").toLowerCase();
+  if (id === "headline" || id === "quote") return "title";
+  if (id === "subtitle" || id === "call-to-action") return "subtitle";
+  if (/^(?:value|metric|kpi)/.test(id)) return "metric";
+  if (/attribution|x-label|y-label|caption|source/.test(id)) return "caption";
+  if (/title|quadrant/.test(id)) return "heading";
+  return "body";
+}
+
+function typographyScale(family, element, role) {
+  if (role !== "title") return 1;
+  if (element.id === "quote") return 1.05;
+  if (element.id !== "headline") return 1;
+  if (family === "cover") return 1.3;
+  if (family === "closing") return 1.2;
+  return 0.9;
+}
+
+function mixHexColor(base, tint, tintRatio) {
+  const parse = (value) => /^#[0-9A-F]{6}$/i.test(String(value ?? ""))
+    ? [1, 3, 5].map((index) => Number.parseInt(value.slice(index, index + 2), 16))
+    : null;
+  const baseChannels = parse(base);
+  const tintChannels = parse(tint);
+  if (!baseChannels || !tintChannels) return base;
+  return `#${baseChannels.map((channel, index) => Math.round(channel * (1 - tintRatio) + tintChannels[index] * tintRatio)
+    .toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+}
+
+function semanticTextColors(tokens) {
+  return {
+    body: mixHexColor(tokens.colors.text, tokens.colors.primary, 0.15),
+    muted: mixHexColor(tokens.colors.textMuted, tokens.colors.primary, 0.25)
+  };
+}
+
+function resolveMetricFont(tokens, locks = {}) {
+  const requested = tokens.typography.metric.fontFamily;
+  const genericMetricFaces = new Set(["arial", "helvetica", "inter", "system-ui", "-apple-system", "sans-serif"]);
+  const locked = locks.brandLocked === true
+    || locks.sourceLocked === true
+    || (locks.protectedTokens ?? []).some((token) => token === "typography.metric" || token.startsWith("typography.metric."));
+  if (!genericMetricFaces.has(String(requested).trim().toLowerCase())) {
+    return { requested, resolved: requested, fallbackApplied: false, reason: "design-token-accepted" };
+  }
+  if (locked) return { requested, resolved: requested, fallbackApplied: false, reason: "design-token-locked" };
+  return {
+    requested,
+    resolved: tokens.typography.title.fontFamily,
+    fallbackApplied: true,
+    reason: "quality-fallback-generic-metric-face"
+  };
+}
+
+function typographyForRole(tokens, role, metricFont) {
+  const typography = tokens.typography[role] ?? tokens.typography.body;
+  if (role !== "metric") return typography;
+  return { ...typography, fontFamily: metricFont.resolved };
+}
+
+function applyDesignTokens(elements, tokens, family, metricFont) {
+  const semanticColors = semanticTextColors(tokens);
+  return elements.map((element, index) => {
+    const next = structuredClone(element);
+    next.style = { ...(next.style ?? {}) };
+    if (next.type === "text") {
+      const role = typographyRole(next);
+      const typography = typographyForRole(tokens, role, metricFont);
+      next.style = {
+        ...next.style,
+        fontFamily: typography.fontFamily,
+        fontFace: typography.fontFamily,
+        fontSize: Number((Number(typography.fontSize) * typographyScale(family, next, role)).toFixed(2)),
+        fontWeight: Number(typography.fontWeight),
+        lineHeight: Number(typography.lineHeight),
+        bold: Number(typography.fontWeight) >= 600,
+        color: ["title", "heading", "metric"].includes(role)
+          ? tokens.colors.primary
+          : role === "caption" || next.id === "subtitle"
+            ? semanticColors.muted
+            : semanticColors.body
+      };
+      if (role === "metric") next.style.fontResolution = structuredClone(metricFont);
+    } else if (next.type === "shape") {
+      const numericIndex = Number(String(next.id).match(/(\d+)$/)?.[1] ?? index);
+      const decorative = /accent|quote-mark/.test(next.id);
+      const diagramNode = /^(?:layer|step)-/.test(next.id);
+      const alternate = numericIndex % 2 === 0;
+      next.style.fill = decorative
+        ? tokens.colors.primary
+        : alternate
+          ? tokens.colors.surfaceAlt
+          : tokens.colors.surface;
+      next.style.line = decorative ? tokens.colors.primary : diagramNode ? tokens.colors.primary : tokens.colors.border;
+      next.style.backgroundColor = next.style.fill;
+      next.style.borderColor = next.style.line;
+    } else if (next.type === "line") {
+      next.style.color = tokens.colors.primary;
+    }
+    return next;
+  });
+}
+
+function pageRoleColor(pageRole, colors) {
+  const roles = {
+    cover: colors.primary,
+    section: colors.secondary,
+    "single-point": colors.accent,
+    evidence: colors.secondary,
+    data: colors.primary,
+    comparison: colors.accent,
+    process: colors.primary,
+    architecture: colors.secondary,
+    "case-study": colors.accent,
+    quote: colors.secondary,
+    decision: colors.accent,
+    closing: colors.primary,
+    appendix: colors.border
+  };
+  return roles[pageRole] ?? colors.primary;
+}
+
+function applySemanticIntent(elements, slide, plan, slideIndex, tokens) {
+  const variance = Number(plan.designIntent.dials.compositionVariance);
+  const density = Number(plan.designIntent.dials.visualDensity);
+  const energy = Number(plan.designIntent.dials.visualEnergy);
+  const ambition = Number(plan.context.visualAmbition);
+  const varianceAmplitude = ((variance - 50) / 50) * 0.055;
+  const densityScale = 0.98 + density * 0.0004;
+  const whitespaceScale = { compact: 1.02, balanced: 1, spacious: 0.97 }[slide.compositionIntent.whitespace] ?? 1;
+  const next = elements.map((element, elementIndex) => {
+    const result = structuredClone(element);
+    if (result.role !== "connector") {
+      const centerX = result.x + result.w / 2;
+      const centerY = result.y + result.h / 2;
+      const factor = densityScale * whitespaceScale;
+      result.w *= factor;
+      result.h *= factor;
+      result.x = centerX - result.w / 2 + varianceAmplitude * (((slideIndex + elementIndex) % 3) - 1);
+      result.y = centerY - result.h / 2 + varianceAmplitude * (slideIndex % 2 ? 0.35 : -0.35);
+    }
+    return result;
+  });
+
+  const attentionKind = slide.attentionTarget.kind;
+  for (const element of next) {
+    element.style = { ...(element.style ?? {}) };
+    if (attentionKind === "message" && element.id === "headline") {
+      element.style.color = tokens.colors.primary;
+      element.style.fontSize = Number(element.style.fontSize ?? tokens.typography.title.fontSize) + 2;
+      element.style.fontWeight = Math.max(700, Number(element.style.fontWeight ?? 700));
+      element.style.bold = true;
+    } else if (attentionKind === "content" && element.type === "text" && !["headline", "section-eyebrow"].includes(element.id)) {
+      element.style.color = tokens.colors.primary;
+      element.style.fontWeight = Math.max(500, Number(element.style.fontWeight ?? 400));
+    } else if (attentionKind === "data" && (element.type === "chart" || /^(?:value|metric|kpi|quadrant)/.test(element.id))) {
+      element.style.color = tokens.colors.primary;
+      if (element.type === "text") element.style.fontSize = Number(element.style.fontSize ?? tokens.typography.metric.fontSize) + 2;
+    } else if (attentionKind === "diagram" && ["shape", "line", "diagram"].includes(element.type)) {
+      if (element.type === "line") element.style.width = Number(element.style.width ?? 1) + 0.8;
+      else {
+        element.style.borderColor = tokens.colors.primary;
+        element.style.line = tokens.colors.primary;
+        element.style.borderWidth = Number(element.style.borderWidth ?? 1) + 0.8;
+      }
+    }
+  }
+
+  const emphasis = slide.compositionIntent.emphasis;
+  if (emphasis === "message") {
+    const headline = next.find((element) => element.id === "headline");
+    if (headline) headline.w *= 1.02;
+  } else if (emphasis === "evidence") {
+    for (const element of next.filter((candidate) => candidate.type === "shape")) {
+      element.style.borderWidth = Number(element.style.borderWidth ?? 1) + 0.35;
+    }
+  } else if (emphasis === "data") {
+    for (const element of next.filter((candidate) => /^(?:value|metric|kpi|quadrant)/.test(candidate.id))) {
+      element.style.fontWeight = Math.max(700, Number(element.style.fontWeight ?? 400));
+      if (element.type === "text") element.style.fontSize = Number(element.style.fontSize ?? tokens.typography.metric.fontSize) + 1.5;
+    }
+  }
+
+  const roleColor = pageRoleColor(slide.pageRole, tokens.colors);
+  next.push(shape("role-marker", 6.45, 0.18, 0.45 + ambition * 0.012, 0.045 + energy * 0.00045, roleColor, roleColor));
+  const roleMarker = next.at(-1);
+  roleMarker.style = {
+    fill: roleColor,
+    line: energy >= 50 ? tokens.colors.accent : roleColor,
+    backgroundColor: roleColor,
+    borderColor: energy >= 50 ? tokens.colors.accent : roleColor,
+    borderWidth: 0.5 + energy * 0.012
+  };
+
+  const section = plan.story.sections.find((candidate) => candidate.slideIds[0] === slide.id);
+  if (section) {
+    const typography = tokens.typography.caption;
+    const semanticColors = semanticTextColors(tokens);
+    next.push(text("section-eyebrow", section.title, 0.76, 0.14, 5.4, 0.24, {
+      fontFamily: typography.fontFamily,
+      fontFace: typography.fontFamily,
+      fontSize: Number(typography.fontSize),
+      fontWeight: 600,
+      bold: true,
+      color: semanticColors.muted,
+      lineHeight: Number(typography.lineHeight)
+    }));
+  }
+
+  const decisionIndex = plan.story.decisionPath.indexOf(slide.id);
+  if (decisionIndex >= 0) {
+    const marker = shape("decision-marker", 12.85 - decisionIndex * 0.28, 0.1, 0.16, 0.16, tokens.colors.accent, tokens.colors.accent);
+    marker.shape = "ellipse";
+    marker.style = {
+      fill: tokens.colors.accent,
+      line: tokens.colors.accent,
+      backgroundColor: tokens.colors.accent,
+      borderColor: tokens.colors.accent,
+      borderWidth: 0
+    };
+    next.push(marker);
+  }
+  return next.map(boundedElement);
+}
+
+function assetSource(options, asset) {
+  if (options.assetSourceById instanceof Map) return options.assetSourceById.get(asset.id) ?? asset.provenance.sourceRef;
+  return options.assetSourceById?.[asset.id] ?? asset.provenance.sourceRef;
+}
+
+function applyVisualAssets(elements, slide, assets, options, assetIntensity) {
+  const visualAssets = slide.assetIds
+    .map((assetId) => assets.find((asset) => asset.id === assetId))
+    .filter((asset) => asset && VISUAL_ASSET_KINDS.has(asset.kind));
+  if (visualAssets.length === 0) return elements;
+
+  const heroId = slide.attentionTarget.kind === "asset" ? slide.attentionTarget.ref : visualAssets[0].id;
+  const heroWidth = 3.8 + Number(assetIntensity) * 0.015;
+  const heroHeight = 4.3 + Number(assetIntensity) * 0.014;
+  const heroX = W - 0.7 - heroWidth;
+  const heroY = (H - heroHeight) / 2;
+  const contentWidth = Math.max(5.25, heroX - 0.45);
+  const native = elements.map((element) => {
+    if (element.role === "connector" || ["role-marker", "section-eyebrow", "decision-marker"].includes(element.id)) return element;
+    const next = structuredClone(element);
+    const scale = contentWidth / W;
+    next.x = 0.55 + next.x * scale;
+    next.w *= scale;
+    return boundedElement(next);
+  });
+  const ordered = [...visualAssets].sort((left, right) => Number(right.id === heroId) - Number(left.id === heroId));
+  const imageElements = ordered.map((asset, index) => {
+    const hero = asset.id === heroId;
+    const x = hero ? heroX : 7.5 + (index % 2) * 2.55;
+    const y = hero ? heroY : 1.15 + Math.floor(index / 2) * 2.25;
+    const w = hero ? heroWidth : 1.8 + Number(assetIntensity) * 0.004;
+    const h = hero ? heroHeight : 1.55 + Number(assetIntensity) * 0.0035;
+    const sizingType = ["contain", "none"].includes(asset.cropPolicy) ? "contain" : "cover";
+    return boundedElement({
+      type: "image",
+      id: `asset-${asset.id}`,
+      assetId: asset.id,
+      src: assetSource(options, asset),
+      x, y, w, h,
+      focalPoint: asset.focalPoint,
+      cropPolicy: asset.cropPolicy,
+      alt: asset.altText,
+      altText: asset.altText,
+      sizing: { type: sizingType }
+    });
+  });
+  return [...native, ...imageElements];
 }
 
 function compileCover(content) {
@@ -221,6 +536,8 @@ export function validateDeckPlan(plan) {
 export function compileDeckPlan(plan, options = {}) {
   const validation = validateDeckPlan(plan);
   if (!validation.valid) throw new Error(`deck.plan invalid: ${validation.errors.join("; ")}`);
+  const designTokens = normalizedDesignTokens(options.designTokens);
+  const metricFont = resolveMetricFont(designTokens, plan.designIntent.locks);
   return {
     version: "0.2.0",
     metadata: {
@@ -235,7 +552,9 @@ export function compileDeckPlan(plan, options = {}) {
         intentOverride: structuredClone(plan.designIntent.locks),
         qualityProfile: plan.context.qualityProfile,
         context: structuredClone(plan.context),
-        story: structuredClone(plan.story)
+        story: structuredClone(plan.story),
+        typographyResolution: { metricFont: structuredClone(metricFont) },
+        ...(options.designSystemSelection ? { designSystemSelection: structuredClone(options.designSystemSelection) } : {})
       },
       generator: { name: "deck-plan.mjs" }
     },
@@ -247,13 +566,17 @@ export function compileDeckPlan(plan, options = {}) {
       size: { preset: "wide", width: W, height: H, unit: "in" }
     },
     assets: plan.assets.map((asset) => ({
-      id: asset.id,
-      src: asset.provenance.sourceRef,
+      ...structuredClone(asset),
+      src: assetSource(options, asset),
       ...structuredClone(asset.provenance)
     })),
-    slides: plan.slides.map((slide) => {
+    slides: plan.slides.map((slide, slideIndex) => {
       const family = slide.contentModel.kind;
       const strategy = slide.compositionIntent.strategy;
+      const baseElements = applyCompositionStrategy(REGISTRY[family].compile(slide.contentModel.data), strategy);
+      const themedElements = applyDesignTokens(baseElements, designTokens, family, metricFont);
+      const semanticElements = applySemanticIntent(themedElements, slide, plan, slideIndex, designTokens);
+      const visualElements = applyVisualAssets(semanticElements, slide, plan.assets, options, plan.context.assetIntensity);
       return {
         id: slide.id,
         type: family,
@@ -265,8 +588,8 @@ export function compileDeckPlan(plan, options = {}) {
         routePolicy: structuredClone(slide.routePolicy),
         title: slide.message,
         notes: slide.message,
-        background: { type: "solid", color: family === "closing" ? "#111827" : "#FFFFFF" },
-        elements: resolveSemanticConnectors(applyCompositionStrategy(REGISTRY[family].compile(slide.contentModel.data), strategy))
+        background: { type: "solid", color: designTokens.colors.background },
+        elements: resolveSemanticConnectors(visualElements.map(boundedElement))
       };
     })
   };

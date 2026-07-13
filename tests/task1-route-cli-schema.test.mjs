@@ -54,6 +54,11 @@ describe("Task 1 public CLI", () => {
     const { buildInvocation } = await import("../scripts/pptx.mjs");
     expect(buildInvocation(["text", "artifacts", "out"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "creative", "artifacts", "out"] });
     expect(buildInvocation(["text", "artifacts", "out", "--creative"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "creative", "artifacts", "out"], warning: expect.stringMatching(/deprecated/) });
+    expect(buildInvocation(["text", "artifacts", "out", "--design-system", "dark-tech"])).toMatchObject({
+      route: "text",
+      script: "run-route-pipeline.mjs",
+      args: ["text", "creative", "artifacts", "out", "--design-system", "dark-tech"]
+    });
     expect(buildInvocation(["text", "deck.json", "out", "--direct"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "direct", "deck.json", "out"] });
     expect(buildInvocation(["html", "input.html", "out"])).toMatchObject({
       route: "html-replica",
@@ -70,11 +75,28 @@ describe("Task 1 public CLI", () => {
     const help = await execFileAsync(process.execPath, [cli, "--help"], { cwd: root });
     expect(help.stdout).toContain("pptx <text|html|image|pdf|manifest>");
     expect(help.stdout).toContain("--direct");
+    expect(help.stdout).toContain("--design-system <path-or-name>");
 
     await expect(execFileAsync(process.execPath, [cli, "unknown"], { cwd: root })).rejects.toMatchObject({ code: 1 });
     await expect(execFileAsync(process.execPath, [cli, "html", "input.html"], { cwd: root })).rejects.toMatchObject({ code: 1 });
     await expect(execFileAsync(process.execPath, [cli, "text", "deck.json", "out", "--direct", "--creative"], { cwd: root }))
       .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/mutually exclusive/) });
+    await expect(execFileAsync(process.execPath, [cli, "text", "deck.json", "out", "--design-system"], { cwd: root }))
+      .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/requires a value|expected/i) });
+    await expect(execFileAsync(process.execPath, [cli, "text", "deck.json", "out", "--direct", "--design-system", "dark-tech"], { cwd: root }))
+      .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/creative|direct/i) });
+  });
+
+  it("forwards the creative design-system option through the second routing hop", async () => {
+    const { buildRouteInvocation } = await import("../scripts/run-route-pipeline.mjs");
+    expect(buildRouteInvocation(["text", "creative", "deck.plan.json", "out", "--design-system", "dark-tech"])).toEqual({
+      route: "text",
+      mode: "creative",
+      input: "deck.plan.json",
+      outputDir: "out",
+      options: { designSystem: "dark-tech", allowRemoteAssets: false }
+    });
+    expect(() => buildRouteInvocation(["text", "creative", "deck.plan.json", "out", "--design-system"])).toThrow(/requires a value/i);
   });
 });
 

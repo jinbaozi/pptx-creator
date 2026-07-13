@@ -101,7 +101,7 @@ output/
 Use this for polished business, product, technical, roadshow, research, or training decks:
 
 ```bash
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --creative
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --design-system dark-tech
 ```
 
 The single coordinate-free creative intermediate is `deck.plan.json`:

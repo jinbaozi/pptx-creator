@@ -100,7 +100,7 @@ output/
 适合从文本生成更精美、更有变化的商务或技术 PPT：
 
 ```bash
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --design-system dark-tech
 ```
 
 唯一创意中间产物是无坐标的 `deck.plan.json`：

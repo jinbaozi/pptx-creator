@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import JSZip from "jszip";
 
 describe("creative deck-plan pipeline", () => {
   it("preserves the creative plan when input and output directories are the same", () => {
@@ -26,8 +27,6 @@ describe("creative deck-plan pipeline", () => {
       outputDir,
       "--design-system",
       "design-systems/product-roadshow/DESIGN.md",
-      "--design-system-name",
-      "Product Roadshow",
       "--mode",
       "creative"
     ], { stdio: "pipe" });
@@ -41,5 +40,105 @@ describe("creative deck-plan pipeline", () => {
     expect(review.deckScore).toBeGreaterThan(0);
     const outputManifest = JSON.parse(fs.readFileSync(path.join(outputDir, "output-manifest.json"), "utf8"));
     expect(outputManifest.files).toContain("deck.plan.json");
+    const manifest = JSON.parse(fs.readFileSync(path.join(outputDir, "deck.manifest.json"), "utf8"));
+    expect(manifest.designSystem).toMatchObject({ source: "design-system/DESIGN.md", name: "Product Roadshow" });
   });
+
+  it("forwards a public built-in design selection and records portable provenance", () => {
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-public-design-"));
+    execFileSync("node", [
+      "scripts/pptx.mjs",
+      "text",
+      "examples/text-input/creative/deck.plan.json",
+      outputDir,
+      "--design-system",
+      "dark-tech"
+    ], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    });
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(outputDir, "deck.manifest.json"), "utf8"));
+    expect(manifest.designSystem).toMatchObject({ source: "design-system/DESIGN.md", name: "Dark Tech" });
+    expect(manifest.metadata.designIntent.designSystemSelection).toEqual({
+      request: "dark-tech",
+      resolvedSource: path.resolve("design-systems/dark-tech/DESIGN.md")
+    });
+    expect(manifest.slides[0].background.color).toBe("#020617");
+  }, 60000);
+
+  it("localizes visual assets, preserves provenance, and embeds media through the public CLI", async () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-public-assets-input-"));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-public-assets-output-"));
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    const assetFile = path.join(inputDir, "hero.png");
+    fs.copyFileSync("examples/image-input/business-slide.png", assetFile);
+    plan.assets.push({
+      id: "asset-hero",
+      kind: "photo",
+      role: "hero evidence",
+      description: "A local evidence image",
+      provenance: { origin: "project", sourceRef: "hero.png", license: "project-owned" },
+      focalPoint: "top-right",
+      cropPolicy: "cover",
+      altText: "Business evidence slide",
+      fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+    });
+    plan.slides[0].assetIds = ["asset-hero"];
+    plan.slides[0].attentionTarget = { kind: "asset", ref: "asset-hero" };
+    plan.slides[0].compositionIntent.emphasis = "asset";
+    fs.writeFileSync(path.join(inputDir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+
+    execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    });
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(outputDir, "deck.manifest.json"), "utf8"));
+    expect(manifest.assets[0]).toMatchObject({
+      id: "asset-hero",
+      kind: "photo",
+      role: "hero evidence",
+      src: expect.stringMatching(/^assets\/asset-hero-[a-f0-9]{12}\.png$/),
+      provenance: { origin: "project", sourceRef: "hero.png", license: "project-owned" }
+    });
+    expect(fs.existsSync(path.join(outputDir, manifest.assets[0].src))).toBe(true);
+    expect(manifest.slides[0].elements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "image", assetId: "asset-hero", src: manifest.assets[0].src, sizing: { type: "cover" } })
+    ]));
+    const zip = await JSZip.loadAsync(fs.readFileSync(path.join(outputDir, "final.pptx")));
+    expect(Object.keys(zip.files).filter((name) => name.startsWith("ppt/media/")).length).toBeGreaterThan(0);
+    const slideXml = (await Promise.all(Object.entries(zip.files)
+      .filter(([name]) => name.startsWith("ppt/slides/slide") && name.endsWith(".xml"))
+      .map(([, entry]) => entry.async("string")))).join("\n");
+    expect(slideXml).toContain('descr="Business evidence slide"');
+  }, 60000);
+
+  it.each([
+    ["remote", "https://example.com/hero.png"],
+    ["missing", "missing/hero.png"]
+  ])("fails closed for a %s asset source before publishing final.pptx", (_label, sourceRef) => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-invalid-assets-input-"));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-invalid-assets-output-"));
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    plan.assets.push({
+      id: "asset-hero",
+      kind: "photo",
+      role: "hero evidence",
+      description: "An invalid evidence image",
+      provenance: { origin: "web", sourceRef },
+      focalPoint: "center",
+      cropPolicy: "cover",
+      altText: "Evidence image",
+      fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+    });
+    plan.slides[0].assetIds = ["asset-hero"];
+    fs.writeFileSync(path.join(inputDir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    })).toThrow();
+    expect(fs.existsSync(path.join(outputDir, "final.pptx"))).toBe(false);
+  }, 60000);
 });
