@@ -12,18 +12,19 @@ describe("creative deck plan schema", () => {
     const schema = JSON.parse(fs.readFileSync("schemas/deck-plan.schema.json", "utf8"));
     expect(validateJsonSchema(plan, schema)).toEqual({ valid: true, errors: [] });
     expect(validateDeckPlan(plan)).toEqual({ valid: true, errors: [] });
+    expect(plan.version).toBe("0.2.0");
   });
 
   it("rejects a plan without the contextual dials", () => {
     const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
-    delete plan.dials.visualEnergy;
+    delete plan.designIntent.dials.visualEnergy;
     expect(validateDeckPlan(plan).valid).toBe(false);
   });
 
   it("direct consumers reject coordinate keys recursively from the public schema", () => {
     for (const key of ["x", "y", "w", "h", "left", "top", "right", "bottom", "width", "height"]) {
       const plan = load();
-      plan.intentOverride = { nested: { deeper: [{ [key]: 1 }] } };
+      plan.slides[0].contentModel.data[key] = 1;
       expect(validateJsonSchema(plan, schema).valid, key).toBe(false);
     }
   });
@@ -41,7 +42,7 @@ describe("creative deck plan schema", () => {
     };
     for (const [family, content] of Object.entries(invalidContent)) {
       const plan = load();
-      plan.slides.find((slide) => slide.layoutFamily === family).content = content;
+      plan.slides.find((slide) => slide.contentModel.kind === family).contentModel.data = content;
       expect(validateJsonSchema(plan, schema).valid, family).toBe(false);
     }
   });

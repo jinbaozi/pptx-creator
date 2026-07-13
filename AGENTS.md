@@ -68,13 +68,13 @@ Built-in design systems: `business-neutral`, `warm-editorial`, `paper-minimal`, 
 
 ### 2. Creative text pipeline
 
-For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and write one coordinate-free `deck.plan.json` version `0.1.0`. It carries the design read, contextual dials, audience, narrative beats, slide messages, selected layout families, and content/asset references.
+For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and write one coordinate-free `deck.plan.json` version `0.2.0`. Its exact top-level contract is `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry semantic page roles, strict native content models, attention targets, composition intent, asset IDs, and native-first route policy. Assets require non-empty provenance `sourceRef` values; empty asset lists remain valid. Coordinates, manifest geometry, `elements`, and full-slide rasters are prohibited. Version `0.1.0` is retired and fails closed.
 
-`scripts/lib/deck-plan.mjs` validates each advertised archetype and compiles materially distinct native geometry into `deck.manifest.json`. Direction candidates are optional only for material ambiguity or high risk. HTML is optional only when explicitly requested or necessary; it is not a required text intermediate.
+`schemas/deck-plan.schema.json` is the only structural validator. `scripts/lib/deck-plan.mjs` adds only uniqueness, reference, required membership, and ordering checks, then compiles the current eight strict content families (`cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, `closing`) into materially distinct native geometry. Direction candidates are optional only for material ambiguity or high risk. HTML is optional only when explicitly requested or necessary; it is not a required text intermediate.
 
 ### 3. Manifest → PPTX (manifest-first)
 
-`references/manifest-spec.md` is the canonical contract. Required top-level: `version`, `designSystem.source`, `designSystem.mode`, `deck.size`, `slides[]`. Coordinates are inches. Element style values can reference DESIGN.md tokens (`{colors.primary}`, `{typography.title}`, `{components.hero-card}`).
+`references/manifest-spec.md` is the canonical contract. Required top-level: `version`, `metadata`, `designSystem`, `deck`, `assets`, and `slides`; `designSystem` requires `source` and `name`, and `deck.size` carries dimensions. Coordinates are inches. Element style values can reference DESIGN.md tokens (`{colors.primary}`, `{typography.title}`, `{components.hero-card}`).
 
 Element types: `text`, `shape`, `image`, `table`, `line`, `icon` (v0.2), `chart` (v0.2), `diagram` (visual roadmap). Schemas live in `schemas/`.
 

@@ -1,19 +1,129 @@
 {
-  "version": "0.1.0",
-  "title": "From Brief to Editable Deck",
-  "language": "en-US",
-  "designRead": "A confident editorial-technical story with deliberate asymmetry, restrained density, and one strong visual idea per slide.",
-  "dials": { "compositionVariance": 72, "visualDensity": 54, "visualEnergy": 62 },
-  "audience": "Product and engineering leaders deciding how to operationalize presentation quality",
-  "narrativeBeats": ["Frame the promise", "Explain the system", "Compare choices", "Show execution", "Prove outcomes", "Land the message"],
+  "version": "0.2.0",
+  "context": {
+    "title": "From Brief to Editable Deck",
+    "language": "en-US",
+    "audience": {
+      "primary": "Product and engineering leaders deciding how to operationalize presentation quality",
+      "knowledgeLevel": "informed"
+    },
+    "decisionGoal": "Adopt a native-first creative presentation workflow",
+    "durationMinutes": 15,
+    "environment": { "viewingMode": "hybrid", "presentedOrReadAlone": "both" },
+    "tone": "Confident, editorial, technical, and evidence-led",
+    "mustRemember": ["Start with intent and finish with evidence"],
+    "brand": { "references": [], "antiReferences": ["generic template stacks"] },
+    "qualityProfile": "premium",
+    "targetSuites": [
+      { "suite": "libreoffice", "required": true },
+      { "suite": "powerpoint", "required": true }
+    ],
+    "editabilityFloor": 4,
+    "assetIntensity": 20,
+    "visualAmbition": 72
+  },
+  "designIntent": {
+    "designRead": "A confident editorial-technical story with deliberate asymmetry, restrained density, and one strong visual idea per slide.",
+    "typography": "Decisive grotesk hierarchy with compact supporting copy",
+    "palette": "Ink, cobalt, warm white, and restrained accents",
+    "material": "Flat native editorial planes",
+    "imagery": "Evidence-led diagrams; imagery only when it adds proof",
+    "composition": { "direction": "Rhythmic asymmetry across materially distinct native layouts", "visibleGrid": false },
+    "dials": { "compositionVariance": 72, "visualDensity": 54, "visualEnergy": 62 },
+    "locks": { "sourceLocked": false, "brandLocked": false, "protectedTokens": [], "protectedAssets": [] }
+  },
+  "story": {
+    "narrativeBeats": ["Frame the promise", "Explain the system", "Compare choices", "Show execution", "Prove outcomes", "Land the message"],
+    "sections": [
+      {
+        "id": "section-main",
+        "title": "From intent to evidence",
+        "slideIds": ["slide-cover", "slide-architecture", "slide-comparison", "slide-process", "slide-dashboard", "slide-quote", "slide-matrix", "slide-closing"]
+      }
+    ],
+    "decisionPath": ["slide-cover", "slide-comparison", "slide-dashboard", "slide-closing"]
+  },
+  "assets": [],
   "slides": [
-    { "id": "slide-cover", "message": "Editable decks can be both systematic and distinctive", "layoutFamily": "cover", "contentReferences": ["brief:promise"], "assetReferences": [], "content": { "headline": "From Brief to Editable Deck", "subtitle": "A quality system for faster, clearer presentation production" } },
-    { "id": "slide-architecture", "message": "A single plan connects intent to native PowerPoint objects", "layoutFamily": "architecture", "contentReferences": ["brief:system"], "assetReferences": [], "content": { "headline": "One plan, four deterministic layers", "layers": ["Audience and narrative", "Contextual design intent", "Archetype compiler", "Native PowerPoint output"] } },
-    { "id": "slide-comparison", "message": "Plan-first keeps creative intent without turning HTML into ceremony", "layoutFamily": "comparison", "contentReferences": ["brief:tradeoffs"], "assetReferences": [], "content": { "headline": "Choose the shortest truthful route", "primary": { "title": "Manifest-first", "items": ["Direct and editable", "Best default for authored content"] }, "secondary": { "title": "Optional HTML", "items": ["Useful for source-defined layout", "Never a mandatory intermediate"] } } },
-    { "id": "slide-process", "message": "The pipeline makes every quality decision observable", "layoutFamily": "process", "contentReferences": ["brief:workflow"], "assetReferences": [], "content": { "headline": "A bounded, inspectable workflow", "steps": ["Plan", "Compile", "Preflight", "Render", "Package"] } },
-    { "id": "slide-dashboard", "message": "Creative output clears explicit hard thresholds", "layoutFamily": "dashboard", "contentReferences": ["brief:quality-targets"], "assetReferences": [], "content": { "headline": "Quality is a gate, not a vibe", "metrics": [{ "label": "Deck score", "value": "≥80" }, { "label": "Slide floor", "value": "≥70" }, { "label": "Slop risk", "value": "≤20" }, { "label": "Editability", "value": "L4+" }] } },
-    { "id": "slide-quote", "message": "Context should govern taste", "layoutFamily": "quote", "contentReferences": ["brief:principle"], "assetReferences": [], "content": { "quote": "Taste is the discipline of making the right choice for this audience and this source.", "attribution": "Creative quality principle" } },
-    { "id": "slide-matrix", "message": "Layout choice follows density and energy", "layoutFamily": "matrix", "contentReferences": ["brief:selection"], "assetReferences": [], "content": { "headline": "Match the archetype to the communication job", "xAxis": "Low to high density", "yAxis": "Low to high energy", "quadrants": ["Key message", "Dashboard", "Editorial story", "Architecture"] } },
-    { "id": "slide-closing", "message": "Start with intent and finish with evidence", "layoutFamily": "closing", "contentReferences": ["brief:close"], "assetReferences": [], "content": { "headline": "Design with intent. Ship with evidence.", "callToAction": "Use deck.plan when the work is genuinely creative." } }
+    {
+      "id": "slide-cover",
+      "pageRole": "cover",
+      "message": "Editable decks can be both systematic and distinctive",
+      "contentModel": { "kind": "cover", "data": { "headline": "From Brief to Editable Deck", "subtitle": "A quality system for faster, clearer presentation production" } },
+      "attentionTarget": { "kind": "message", "ref": "brief:promise" },
+      "compositionIntent": { "strategy": "asymmetric", "whitespace": "spacious", "emphasis": "message" },
+      "assetIds": [],
+      "routePolicy": { "preferred": "native", "allowed": ["native"], "fullSlideRaster": false }
+    },
+    {
+      "id": "slide-architecture",
+      "pageRole": "architecture",
+      "message": "A single plan connects intent to native PowerPoint objects",
+      "contentModel": { "kind": "architecture", "data": { "headline": "One plan, four deterministic layers", "layers": ["Audience and narrative", "Contextual design intent", "Archetype compiler", "Native PowerPoint output"] } },
+      "attentionTarget": { "kind": "diagram", "ref": "brief:system" },
+      "compositionIntent": { "strategy": "structural", "whitespace": "balanced", "emphasis": "evidence" },
+      "assetIds": [],
+      "routePolicy": { "preferred": "native", "allowed": ["native"], "fullSlideRaster": false }
+    },
+    {
+      "id": "slide-comparison",
+      "pageRole": "comparison",
+      "message": "Plan-first keeps creative intent without turning HTML into ceremony",
+      "contentModel": { "kind": "comparison", "data": { "headline": "Choose the shortest truthful route", "primary": { "title": "Manifest-first", "items": ["Direct and editable", "Best default for authored content"] }, "secondary": { "title": "Optional HTML", "items": ["Useful for source-defined layout", "Never a mandatory intermediate"] } } },
+      "attentionTarget": { "kind": "content", "ref": "brief:tradeoffs" },
+      "compositionIntent": { "strategy": "split", "whitespace": "balanced", "emphasis": "evidence" },
+      "assetIds": [],
+      "routePolicy": { "preferred": "native", "allowed": ["native", "html-assisted"], "fullSlideRaster": false }
+    },
+    {
+      "id": "slide-process",
+      "pageRole": "process",
+      "message": "The pipeline makes every quality decision observable",
+      "contentModel": { "kind": "process", "data": { "headline": "A bounded, inspectable workflow", "steps": ["Plan", "Compile", "Preflight", "Render", "Package"] } },
+      "attentionTarget": { "kind": "diagram", "ref": "brief:workflow" },
+      "compositionIntent": { "strategy": "editorial", "whitespace": "balanced", "emphasis": "evidence" },
+      "assetIds": [],
+      "routePolicy": { "preferred": "native", "allowed": ["native"], "fullSlideRaster": false }
+    },
+    {
+      "id": "slide-dashboard",
+      "pageRole": "data",
+      "message": "Creative output clears explicit hard thresholds",
+      "contentModel": { "kind": "dashboard", "data": { "headline": "Quality is a gate, not a vibe", "metrics": [{ "label": "Deck score", "value": "≥80" }, { "label": "Slide floor", "value": "≥70" }, { "label": "Slop risk", "value": "≤20" }, { "label": "Editability", "value": "L4+" }] } },
+      "attentionTarget": { "kind": "data", "ref": "brief:quality-targets" },
+      "compositionIntent": { "strategy": "data-led", "whitespace": "compact", "emphasis": "data" },
+      "assetIds": [],
+      "routePolicy": { "preferred": "native", "allowed": ["native"], "fullSlideRaster": false }
+    },
+    {
+      "id": "slide-quote",
+      "pageRole": "quote",
+      "message": "Context should govern taste",
+      "contentModel": { "kind": "quote", "data": { "quote": "Taste is the discipline of making the right choice for this audience and this source.", "attribution": "Creative quality principle" } },
+      "attentionTarget": { "kind": "message", "ref": "brief:principle" },
+      "compositionIntent": { "strategy": "minimal-whitespace", "whitespace": "spacious", "emphasis": "message" },
+      "assetIds": [],
+      "routePolicy": { "preferred": "native", "allowed": ["native"], "fullSlideRaster": false }
+    },
+    {
+      "id": "slide-matrix",
+      "pageRole": "comparison",
+      "message": "Layout choice follows density and energy",
+      "contentModel": { "kind": "matrix", "data": { "headline": "Match the archetype to the communication job", "xAxis": "Low to high density", "yAxis": "Low to high energy", "quadrants": ["Key message", "Dashboard", "Editorial story", "Architecture"] } },
+      "attentionTarget": { "kind": "data", "ref": "brief:selection" },
+      "compositionIntent": { "strategy": "focus", "whitespace": "balanced", "emphasis": "data" },
+      "assetIds": [],
+      "routePolicy": { "preferred": "native", "allowed": ["native"], "fullSlideRaster": false }
+    },
+    {
+      "id": "slide-closing",
+      "pageRole": "closing",
+      "message": "Start with intent and finish with evidence",
+      "contentModel": { "kind": "closing", "data": { "headline": "Design with intent. Ship with evidence.", "callToAction": "Use deck.plan when the work is genuinely creative." } },
+      "attentionTarget": { "kind": "message", "ref": "brief:close" },
+      "compositionIntent": { "strategy": "immersive", "whitespace": "spacious", "emphasis": "message" },
+      "assetIds": [],
+      "routePolicy": { "preferred": "native", "allowed": ["native"], "fullSlideRaster": false }
+    }
   ]
 }

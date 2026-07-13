@@ -96,4 +96,14 @@ describe("Task 1 deck schema 0.2.0", () => {
     expect(schema.properties.slides.items.properties.compositionStrategy.enum).toContain("asymmetric");
     expect(schema.propertyNames).toEqual({ not: { pattern: "^_" } });
   });
+
+  it("publishes deck.plan 0.2.0 as the coordinate-free creative contract", async () => {
+    const schema = JSON.parse(await readFile(join(root, "schemas/deck-plan.schema.json"), "utf8"));
+    expect(schema.properties.version.const).toBe("0.2.0");
+    expect(schema.required).toEqual(["version", "context", "designIntent", "story", "assets", "slides"]);
+    expect(schema.properties.slides.items.$ref).toBe("#/$defs/slide");
+    expect(schema.$defs.slide.additionalProperties).toBe(false);
+    expect(schema.$defs.routePolicy.properties.preferred.const).toBe("native");
+    expect(schema.$defs.routePolicy.properties.fullSlideRaster.const).toBe(false);
+  });
 });

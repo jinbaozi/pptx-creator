@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { validateJsonSchema } from "./schema-utils.mjs";
 import { resolveSemanticConnectors } from "./connector-resolver.mjs";
 
 const W = 13.333;
 const H = 7.5;
+const DECK_PLAN_SCHEMA = JSON.parse(readFileSync(new URL("../../schemas/deck-plan.schema.json", import.meta.url), "utf8"));
 
 const text = (id, value, x, y, w, h, style = {}) => ({
   type: "text", id, x, y, w, h, text: Array.isArray(value) ? value.join("\n") : String(value ?? ""), style
@@ -24,8 +26,11 @@ const line = (id, x, y, w, h, color = "#2563EB", connector = null) => ({
 });
 const title = (value) => text("headline", value, 0.72, 0.42, 11.9, 0.62, { fontSize: 28, bold: true, color: "#111827" });
 const itemText = (item) => typeof item === "string" ? item : item?.label ?? item?.title ?? item?.name ?? JSON.stringify(item);
-const PAGE_ROLES = new Set(["cover", "section", "point", "evidence", "comparison", "process", "architecture", "data", "case-study", "quote", "closing"]);
-const COMPOSITION_STRATEGIES = new Set(["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"]);
+const PAGE_ROLE_MAP = Object.freeze({
+  "single-point": "point",
+  decision: "evidence",
+  appendix: "section"
+});
 
 function applyCompositionStrategy(elements, strategy) {
   if (!strategy) return elements;
@@ -112,89 +117,104 @@ function compileClosing(content) {
   return [text("headline", content.headline, 1.25, 1.75, 10.85, 1.25, { fontSize: 39, bold: true, color: "#FFFFFF", align: "center" }), text("call-to-action", content.callToAction, 2.3, 3.4, 8.75, 0.72, { fontSize: 20, color: "#BFDBFE", align: "center" }), shape("closing-accent", 5.2, 5.28, 2.9, 0.1, "#60A5FA", "#60A5FA")];
 }
 
-const nonEmptyString = Object.freeze({ type: "string", minLength: 1, maxLength: 500 });
-const stringList = (minItems, maxItems) => ({ type: "array", minItems, maxItems, items: nonEmptyString });
-const objectSchema = ($id, required, properties) => ({ $id, type: "object", additionalProperties: false, required, properties });
-const namedItems = objectSchema("archetype:shared:named-items", ["title", "items"], { title: nonEmptyString, items: stringList(1, 6) });
-const metric = objectSchema("archetype:shared:metric", ["label", "value"], { label: nonEmptyString, value: { anyOf: [nonEmptyString, { type: "number" }] } });
-
-function schemaValidator(family, schema) {
+function schemaValidator(family) {
+  const schema = {
+    $defs: DECK_PLAN_SCHEMA.$defs,
+    $ref: `#/$defs/${family}Content`
+  };
   return (content = {}) => {
     const result = validateJsonSchema(content, schema);
     return result.valid ? null : `${family} schema: ${result.errors.map((error) => `${error.path} ${error.message}`).join("; ")}`;
   };
 }
 
-const SCHEMAS = Object.freeze({
-  cover: objectSchema("archetype:cover", ["headline", "subtitle"], { headline: nonEmptyString, subtitle: nonEmptyString }),
-  architecture: objectSchema("archetype:architecture", ["headline", "layers"], { headline: nonEmptyString, layers: stringList(2, 4) }),
-  comparison: objectSchema("archetype:comparison", ["headline", "primary", "secondary"], { headline: nonEmptyString, primary: namedItems, secondary: namedItems }),
-  process: objectSchema("archetype:process", ["headline", "steps"], { headline: nonEmptyString, steps: stringList(2, 5) }),
-  dashboard: objectSchema("archetype:dashboard", ["headline", "metrics"], { headline: nonEmptyString, metrics: { type: "array", minItems: 1, maxItems: 4, items: metric } }),
-  quote: objectSchema("archetype:quote", ["quote", "attribution"], { quote: nonEmptyString, attribution: nonEmptyString }),
-  matrix: objectSchema("archetype:matrix", ["headline", "xAxis", "yAxis", "quadrants"], { headline: nonEmptyString, xAxis: nonEmptyString, yAxis: nonEmptyString, quadrants: stringList(4, 4) }),
-  closing: objectSchema("archetype:closing", ["headline", "callToAction"], { headline: nonEmptyString, callToAction: nonEmptyString })
-});
-
 const REGISTRY = Object.freeze({
-  cover: { schema: SCHEMAS.cover, validate: schemaValidator("cover", SCHEMAS.cover), compile: compileCover },
-  architecture: { schema: SCHEMAS.architecture, validate: schemaValidator("architecture", SCHEMAS.architecture), compile: compileArchitecture },
-  comparison: { schema: SCHEMAS.comparison, validate: schemaValidator("comparison", SCHEMAS.comparison), compile: compileComparison },
-  process: { schema: SCHEMAS.process, validate: schemaValidator("process", SCHEMAS.process), compile: compileProcess },
-  dashboard: { schema: SCHEMAS.dashboard, validate: schemaValidator("dashboard", SCHEMAS.dashboard), compile: compileDashboard },
-  quote: { schema: SCHEMAS.quote, validate: schemaValidator("quote", SCHEMAS.quote), compile: compileQuote },
-  matrix: { schema: SCHEMAS.matrix, validate: schemaValidator("matrix", SCHEMAS.matrix), compile: compileMatrix },
-  closing: { schema: SCHEMAS.closing, validate: schemaValidator("closing", SCHEMAS.closing), compile: compileClosing }
+  cover: { schema: DECK_PLAN_SCHEMA.$defs.coverContent, validate: schemaValidator("cover"), compile: compileCover },
+  architecture: { schema: DECK_PLAN_SCHEMA.$defs.architectureContent, validate: schemaValidator("architecture"), compile: compileArchitecture },
+  comparison: { schema: DECK_PLAN_SCHEMA.$defs.comparisonContent, validate: schemaValidator("comparison"), compile: compileComparison },
+  process: { schema: DECK_PLAN_SCHEMA.$defs.processContent, validate: schemaValidator("process"), compile: compileProcess },
+  dashboard: { schema: DECK_PLAN_SCHEMA.$defs.dashboardContent, validate: schemaValidator("dashboard"), compile: compileDashboard },
+  quote: { schema: DECK_PLAN_SCHEMA.$defs.quoteContent, validate: schemaValidator("quote"), compile: compileQuote },
+  matrix: { schema: DECK_PLAN_SCHEMA.$defs.matrixContent, validate: schemaValidator("matrix"), compile: compileMatrix },
+  closing: { schema: DECK_PLAN_SCHEMA.$defs.closingContent, validate: schemaValidator("closing"), compile: compileClosing }
 });
 
 export const ADVERTISED_ARCHETYPES = Object.freeze(Object.keys(REGISTRY));
 export const getArchetypeRegistry = () => ({ ...REGISTRY });
 
-const PROHIBITED_PLAN_KEYS = new Set(["x", "y", "w", "h", "left", "top", "right", "bottom", "width", "height"]);
-function findProhibitedKeys(value, path = "$") {
-  const findings = [];
-  if (Array.isArray(value)) value.forEach((item, index) => findings.push(...findProhibitedKeys(item, `${path}[${index}]`)));
-  else if (value && typeof value === "object") {
-    for (const [key, child] of Object.entries(value)) {
-      if (PROHIBITED_PLAN_KEYS.has(key)) findings.push(`${path}.${key}`);
-      findings.push(...findProhibitedKeys(child, `${path}.${key}`));
-    }
+function duplicateIdErrors(items, label) {
+  const seen = new Set();
+  const errors = [];
+  for (const item of items) {
+    if (seen.has(item.id)) errors.push(`${label} id "${item.id}" must be unique`);
+    seen.add(item.id);
   }
-  return findings;
+  return errors;
 }
 
-function validateSlide(slide, index, errors) {
-  const family = slide?.layoutFamily;
-  const entry = REGISTRY[family];
-  if (!entry) { errors.push(`slides[${index}] unknown layoutFamily ${family}`); return; }
-  if (!slide.id || !slide.message) errors.push(`slides[${index}] requires id and message`);
-  if (!Array.isArray(slide.contentReferences) || !Array.isArray(slide.assetReferences)) errors.push(`slides[${index}] requires contentReferences and assetReferences`);
-  if (slide.pageRole !== undefined && !PAGE_ROLES.has(slide.pageRole)) errors.push(`slides[${index}].pageRole is unsupported`);
-  if (slide.compositionStrategy !== undefined && !COMPOSITION_STRATEGIES.has(slide.compositionStrategy)) errors.push(`slides[${index}].compositionStrategy is unsupported`);
-  const familyError = entry.validate(slide.content);
-  if (familyError) errors.push(`${family} slide ${slide.id ?? index}: ${familyError}`);
+function validateSemanticRules(plan) {
+  const errors = [
+    ...duplicateIdErrors(plan.slides, "slide"),
+    ...duplicateIdErrors(plan.assets, "asset")
+  ];
+  const slideIds = new Set(plan.slides.map((slide) => slide.id));
+  const assetIds = new Set(plan.assets.map((asset) => asset.id));
+  const suites = new Set();
+
+  for (const target of plan.context.targetSuites) {
+    if (suites.has(target.suite)) errors.push(`context.targetSuites suite "${target.suite}" must be unique`);
+    suites.add(target.suite);
+  }
+  if (!plan.context.targetSuites.some((target) => target.suite === "libreoffice" && target.required === true)) {
+    errors.push("context.targetSuites must include libreoffice with required true");
+  }
+
+  plan.story.sections.forEach((section, sectionIndex) => {
+    section.slideIds.forEach((slideId) => {
+      if (!slideIds.has(slideId)) errors.push(`story.sections[${sectionIndex}] references unknown slide "${slideId}"`);
+    });
+  });
+  plan.story.decisionPath.forEach((slideId) => {
+    if (!slideIds.has(slideId)) errors.push(`story.decisionPath references unknown slide "${slideId}"`);
+  });
+
+  plan.slides.forEach((slide, slideIndex) => {
+    if (slide.attentionTarget.kind === "asset" && !assetIds.has(slide.attentionTarget.ref)) {
+      errors.push(`slides[${slideIndex}].attentionTarget references unknown asset "${slide.attentionTarget.ref}"`);
+    }
+    slide.assetIds.forEach((assetId) => {
+      if (!assetIds.has(assetId)) errors.push(`slides[${slideIndex}].assetIds references unknown asset "${assetId}"`);
+    });
+    if (!slide.routePolicy.allowed.includes(slide.routePolicy.preferred)) {
+      errors.push(`slides[${slideIndex}].routePolicy preferred must belong to allowed`);
+    }
+    if (!slide.routePolicy.allowed.includes("native")) {
+      errors.push(`slides[${slideIndex}].routePolicy.allowed must include native`);
+    }
+  });
+
+  for (let index = 2; index < plan.slides.length; index += 1) {
+    const strategy = plan.slides[index].compositionIntent.strategy;
+    if (strategy === plan.slides[index - 1].compositionIntent.strategy
+      && strategy === plan.slides[index - 2].compositionIntent.strategy) {
+      errors.push(`slides[${index - 2}..${index}] repeat the same composition strategy for three consecutive slides`);
+    }
+  }
+  return errors;
 }
 
 export function validateDeckPlan(plan) {
-  const errors = [];
-  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return { valid: false, errors: ["deck.plan must be an object"] };
-  for (const path of findProhibitedKeys(plan)) errors.push(`prohibited coordinate/layout key at ${path}`);
-  if (plan.version !== "0.1.0") errors.push("version must be 0.1.0");
-  if (typeof plan.designRead !== "string" || !plan.designRead.trim() || plan.designRead.includes("\n")) errors.push("designRead must be one non-empty line");
-  for (const dial of ["compositionVariance", "visualDensity", "visualEnergy"]) if (!Number.isFinite(plan.dials?.[dial]) || plan.dials[dial] < 0 || plan.dials[dial] > 100) errors.push(`dials.${dial} must be 0..100`);
-  if (typeof plan.audience !== "string" || !plan.audience.trim()) errors.push("audience is required");
-  if (plan.visibleGrid !== undefined && typeof plan.visibleGrid !== "boolean") errors.push("visibleGrid must be boolean when provided");
-  if (!Array.isArray(plan.narrativeBeats) || plan.narrativeBeats.length < 1) errors.push("narrativeBeats must be non-empty");
-  if (!Array.isArray(plan.slides) || plan.slides.length < 1) errors.push("slides must be non-empty");
-  else {
-    plan.slides.forEach((slide, index) => validateSlide(slide, index, errors));
-    for (let index = 2; index < plan.slides.length; index += 1) {
-      const strategy = plan.slides[index].compositionStrategy;
-      if (strategy && strategy === plan.slides[index - 1].compositionStrategy && strategy === plan.slides[index - 2].compositionStrategy) {
-        errors.push(`slides[${index - 2}..${index}] repeat the same compositionStrategy for three consecutive slides`);
-      }
-    }
+  if (plan?.version === "0.1.0") {
+    return { valid: false, errors: ["deck.plan 0.1.0 is retired; expected 0.2.0"] };
   }
+  const structural = validateJsonSchema(plan, DECK_PLAN_SCHEMA);
+  if (!structural.valid) {
+    return {
+      valid: false,
+      errors: structural.errors.map((error) => `${error.path} ${error.message}`)
+    };
+  }
+  const errors = validateSemanticRules(plan);
   return { valid: errors.length === 0, errors };
 }
 
@@ -203,11 +223,52 @@ export function compileDeckPlan(plan, options = {}) {
   if (!validation.valid) throw new Error(`deck.plan invalid: ${validation.errors.join("; ")}`);
   return {
     version: "0.2.0",
-    metadata: { mode: "creative", inputType: "text", qualityProfile: "creative", designIntent: { source: "deck.plan", read: plan.designRead, dials: plan.dials, visibleGrid: plan.visibleGrid === true, visualDirection: plan.visualDirection ?? null, intentOverride: plan.intentOverride ?? null }, generator: { name: "deck-plan.mjs" } },
+    metadata: {
+      mode: "creative",
+      inputType: "text",
+      qualityProfile: "creative",
+      designIntent: {
+        source: "deck.plan",
+        ...structuredClone(plan.designIntent),
+        read: plan.designIntent.designRead,
+        visibleGrid: plan.designIntent.composition.visibleGrid,
+        intentOverride: structuredClone(plan.designIntent.locks),
+        qualityProfile: plan.context.qualityProfile,
+        context: structuredClone(plan.context),
+        story: structuredClone(plan.story)
+      },
+      generator: { name: "deck-plan.mjs" }
+    },
     designSystem: { source: options.designSystemSource ?? "design-systems/business-neutral/DESIGN.md", name: options.designSystemName ?? "Business Neutral" },
-    deck: { title: plan.title, language: plan.language, editabilityFloor: 4, size: { preset: "wide", width: W, height: H, unit: "in" } },
-    assets: [],
-    slides: plan.slides.map((slide) => ({ id: slide.id, type: slide.layoutFamily, pageRole: slide.pageRole ?? slide.layoutFamily, compositionStrategy: slide.compositionStrategy ?? null, title: slide.message, notes: slide.message, background: { type: "solid", color: slide.layoutFamily === "closing" ? "#111827" : "#FFFFFF" }, elements: resolveSemanticConnectors(applyCompositionStrategy(REGISTRY[slide.layoutFamily].compile(slide.content), slide.compositionStrategy)) }))
+    deck: {
+      title: plan.context.title,
+      language: plan.context.language,
+      editabilityFloor: plan.context.editabilityFloor,
+      size: { preset: "wide", width: W, height: H, unit: "in" }
+    },
+    assets: plan.assets.map((asset) => ({
+      id: asset.id,
+      src: asset.provenance.sourceRef,
+      ...structuredClone(asset.provenance)
+    })),
+    slides: plan.slides.map((slide) => {
+      const family = slide.contentModel.kind;
+      const strategy = slide.compositionIntent.strategy;
+      return {
+        id: slide.id,
+        type: family,
+        pageRole: PAGE_ROLE_MAP[slide.pageRole] ?? slide.pageRole,
+        semanticPageRole: slide.pageRole,
+        compositionStrategy: strategy,
+        attentionTarget: structuredClone(slide.attentionTarget),
+        compositionIntent: structuredClone(slide.compositionIntent),
+        routePolicy: structuredClone(slide.routePolicy),
+        title: slide.message,
+        notes: slide.message,
+        background: { type: "solid", color: family === "closing" ? "#111827" : "#FFFFFF" },
+        elements: resolveSemanticConnectors(applyCompositionStrategy(REGISTRY[family].compile(slide.contentModel.data), strategy))
+      };
+    })
   };
 }
 
@@ -250,21 +311,70 @@ function familyFromIntent(intent) {
   return rules.find(([pattern]) => pattern.test(normalized))?.[1] ?? null;
 }
 
+const FIXTURE_SLIDE_INTENT = Object.freeze({
+  cover: { pageRole: "cover", strategy: "focus", whitespace: "spacious", emphasis: "message" },
+  architecture: { pageRole: "architecture", strategy: "structural", whitespace: "balanced", emphasis: "evidence" },
+  comparison: { pageRole: "comparison", strategy: "split", whitespace: "balanced", emphasis: "evidence" },
+  process: { pageRole: "process", strategy: "editorial", whitespace: "balanced", emphasis: "evidence" },
+  dashboard: { pageRole: "data", strategy: "data-led", whitespace: "compact", emphasis: "data" },
+  quote: { pageRole: "quote", strategy: "minimal-whitespace", whitespace: "spacious", emphasis: "message" },
+  matrix: { pageRole: "comparison", strategy: "asymmetric", whitespace: "balanced", emphasis: "data" },
+  closing: { pageRole: "closing", strategy: "immersive", whitespace: "spacious", emphasis: "message" }
+});
+
 export function buildPlanFromBriefFixture(fixture) {
   const intent = BRIEF_DOMAIN_INTENT[fixture?.domain];
   const family = familyFromIntent(fixture?.input?.intent);
   if (!intent || !REGISTRY[family]) throw new Error(`unsupported brief fixture ${fixture?.id ?? "(unknown)"}`);
+  const slideId = `slide-${fixture.id}-1`;
+  const slideIntent = FIXTURE_SLIDE_INTENT[family];
   return {
-    version: "0.1.0",
-    title: fixture.brief,
-    language: fixture.language,
-    designRead: intent.designRead,
-    dials: { ...intent.dials },
-    audience: fixture.input.audience || `${fixture.domain} decision makers`,
-    narrativeBeats: ["Frame", "Explain", "Decide"],
+    version: "0.2.0",
+    context: {
+      title: fixture.brief,
+      language: fixture.language,
+      audience: { primary: fixture.input.audience || `${fixture.domain} decision makers`, knowledgeLevel: "mixed" },
+      decisionGoal: fixture.brief,
+      durationMinutes: 5,
+      environment: { viewingMode: "desktop", presentedOrReadAlone: "read-alone" },
+      tone: "Clear, concise, and evidence-led",
+      mustRemember: [fixture.brief],
+      brand: { references: [], antiReferences: [] },
+      qualityProfile: "standard",
+      targetSuites: [{ suite: "libreoffice", required: true }],
+      editabilityFloor: 4,
+      assetIntensity: 0,
+      visualAmbition: intent.dials.visualEnergy
+    },
+    designIntent: {
+      designRead: intent.designRead,
+      typography: "Clear sans-serif hierarchy",
+      palette: "Neutral foundation with one contextual accent",
+      material: "Flat native PowerPoint geometry",
+      imagery: "No external imagery required",
+      composition: { direction: "One decisive native composition", visibleGrid: false },
+      dials: { ...intent.dials },
+      locks: { sourceLocked: false, brandLocked: false, protectedTokens: [], protectedAssets: [] }
+    },
+    story: {
+      narrativeBeats: ["Frame", "Explain", "Decide"],
+      sections: [{ id: `section-${fixture.id}`, title: fixture.brief, slideIds: [slideId] }],
+      decisionPath: [slideId]
+    },
+    assets: [],
     slides: [{
-      id: `${fixture.id}-slide-1`, message: fixture.brief, layoutFamily: family,
-      contentReferences: [`brief:${fixture.id}`], assetReferences: [], content: fixtureContent(family, fixture.brief)
+      id: slideId,
+      pageRole: slideIntent.pageRole,
+      message: fixture.brief,
+      contentModel: { kind: family, data: fixtureContent(family, fixture.brief) },
+      attentionTarget: { kind: "message", ref: `brief:${fixture.id}` },
+      compositionIntent: {
+        strategy: slideIntent.strategy,
+        whitespace: slideIntent.whitespace,
+        emphasis: slideIntent.emphasis
+      },
+      assetIds: [],
+      routePolicy: { preferred: "native", allowed: ["native"], fullSlideRaster: false }
     }]
   };
 }

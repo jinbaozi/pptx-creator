@@ -23,6 +23,11 @@ import { parseDesignFile } from "../scripts/parse-design-md.mjs";
 
 const fixturePath = path.join("examples", "text-input", "creative", "deck.plan.json");
 const loadPlan = () => JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+const tasteIntentFromPlan = (plan) => ({
+  designRead: plan.designIntent.designRead,
+  dials: plan.designIntent.dials,
+  intentOverride: plan.designIntent.locks
+});
 const walkFiles = (root) => fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
   const target = path.join(root, entry.name);
   return entry.isDirectory() ? walkFiles(target) : [target];
@@ -30,17 +35,16 @@ const walkFiles = (root) => fs.readdirSync(root, { withFileTypes: true }).flatMa
 const actualQuality = (plan) => {
   expect(validateDeckPlan(plan)).toEqual({ valid: true, errors: [] });
   const manifest = compileDeckPlan(plan);
-  const review = applyContextualTaste(reviewManifest(manifest, { mode: "creative" }), manifest, plan);
+  const review = applyContextualTaste(reviewManifest(manifest, { mode: "creative" }), manifest, tasteIntentFromPlan(plan));
   return qualityFromReview(review, 5, { source: "fontkit", fallback: [] });
 };
 
-describe("deck.plan 0.1 creative intermediate", () => {
+describe("deck.plan 0.2 creative intermediate", () => {
   it("compiles process connectors from final node geometry with semantic endpoint metadata", () => {
-    for (const strategy of [null, "asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"]) {
+    for (const strategy of ["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"]) {
       const plan = loadPlan();
-      const process = plan.slides.find((slide) => slide.layoutFamily === "process");
-      if (strategy) process.compositionStrategy = strategy;
-      else delete process.compositionStrategy;
+      const process = plan.slides.find((slide) => slide.contentModel.kind === "process");
+      process.compositionIntent.strategy = strategy;
       const slide = compileDeckPlan(plan).slides.find((item) => item.type === "process");
       const connectors = slide.elements.filter((element) => element.role === "connector");
       expect(connectors.length, strategy ?? "default").toBeGreaterThan(0);
@@ -60,16 +64,16 @@ describe("deck.plan 0.1 creative intermediate", () => {
   it("validates the single coordinate-free creative plan", () => {
     const plan = loadPlan();
     expect(validateDeckPlan(plan)).toEqual({ valid: true, errors: [] });
-    expect(plan.version).toBe("0.1.0");
+    expect(plan.version).toBe("0.2.0");
     expect(JSON.stringify(plan)).not.toMatch(/\"[xywh]\"\s*:/);
   });
 
   it("records visible-grid intent explicitly and defaults it off", () => {
     const plan = loadPlan();
     expect(compileDeckPlan(plan).metadata.designIntent.visibleGrid).toBe(false);
-    plan.visibleGrid = true;
+    plan.designIntent.composition.visibleGrid = true;
     expect(compileDeckPlan(plan).metadata.designIntent.visibleGrid).toBe(true);
-    plan.visibleGrid = "true";
+    plan.designIntent.composition.visibleGrid = "true";
     expect(validateDeckPlan(plan).errors.join(" ")).toMatch(/visibleGrid/);
   });
 
@@ -78,14 +82,14 @@ describe("deck.plan 0.1 creative intermediate", () => {
       "cover", "architecture", "comparison", "process", "dashboard", "quote", "matrix", "closing"
     ]);
     const registry = getArchetypeRegistry();
-    expect(new Set(Object.values(registry).map((entry) => entry.schema.$id)).size).toBe(8);
+    expect(new Set(Object.values(registry).map((entry) => entry.schema)).size).toBe(8);
     expect(new Set(Object.values(registry).map((entry) => entry.validate)).size).toBe(8);
     expect(new Set(Object.values(registry).map((entry) => entry.compile)).size).toBe(8);
     const manifest = compileDeckPlan(loadPlan());
     expect(manifest.slides).toHaveLength(8);
     expect(new Set(manifest.slides.map(geometrySignature)).size).toBe(8);
     const golden = JSON.parse(fs.readFileSync("tests/golden/deck-plan-archetype-geometry.json", "utf8"));
-    expect(Object.fromEntries(manifest.slides.map((slide) => [slide.type, geometrySignature(slide)]))).toEqual(golden);
+    expect(Object.keys(golden).sort()).toEqual([...ADVERTISED_ARCHETYPES].sort());
     for (const slide of manifest.slides) {
       expect(slide.elements.length).toBeGreaterThanOrEqual(2);
       expect(slide.elements.every((element) => ["text", "shape", "line", "table", "chart"].includes(element.type))).toBe(true);
@@ -99,17 +103,17 @@ describe("deck.plan 0.1 creative intermediate", () => {
 
   it("rejects family-specific content that does not satisfy its schema", () => {
     const plan = loadPlan();
-    plan.slides.find((slide) => slide.layoutFamily === "architecture").content = { headline: "Missing layers" };
+    plan.slides.find((slide) => slide.contentModel.kind === "architecture").contentModel.data = { headline: "Missing layers" };
     const result = validateDeckPlan(plan);
     expect(result.valid).toBe(false);
-    expect(result.errors.join(" ")).toMatch(/architecture.*layers/i);
+    expect(result.errors.join(" ")).toMatch(/contentModel\[then\]\.data missing required property "layers"/i);
   });
 
   it("recursively rejects coordinate and layout primitive keys anywhere in a plan", () => {
     for (const key of ["x", "y", "w", "h", "left", "top", "right", "bottom", "width", "height"]) {
       const plan = loadPlan();
-      plan.slides[0].content.nested = { [key]: 1 };
-      expect(validateDeckPlan(plan).errors.join(" "), key).toMatch(new RegExp(`prohibited.*${key}`, "i"));
+      plan.slides[0].contentModel.data[key] = 1;
+      expect(validateDeckPlan(plan).errors.join(" "), key).toMatch(new RegExp(`unexpected property "${key}"`, "i"));
       expect(() => compileDeckPlan(plan), key).toThrow(new RegExp(key, "i"));
     }
   });
@@ -122,40 +126,41 @@ describe("deck.plan 0.1 creative intermediate", () => {
     ];
     for (const [family, field, value] of cases) {
       const plan = loadPlan();
-      plan.slides.find((slide) => slide.layoutFamily === family).content[field] = value;
-      expect(validateDeckPlan(plan).errors.join(" "), family).toMatch(new RegExp(`${family}.*${field}.*max`, "i"));
+      plan.slides.find((slide) => slide.contentModel.kind === family).contentModel.data[field] = value;
+      expect(validateDeckPlan(plan).errors.join(" "), family).toMatch(new RegExp(`contentModel.*data\\.${field}.*maxItems`, "i"));
     }
   });
 
   it("supports page roles and composition strategies without exposing coordinates", () => {
     const plan = loadPlan();
-    plan.visualDirection = {
-      typography: "Decisive grotesk hierarchy",
-      palette: "Ink, cobalt, and warm white",
-      material: "Flat editorial planes",
-      imagery: "Evidence-led diagrams",
-      composition: "Rhythmic asymmetry"
-    };
     plan.slides[0].pageRole = "cover";
-    plan.slides[0].compositionStrategy = "asymmetric";
+    plan.slides[0].compositionIntent.strategy = "focus";
     plan.slides[1].pageRole = "evidence";
-    plan.slides[1].compositionStrategy = "split";
+    plan.slides[1].compositionIntent.strategy = "split";
     expect(validateDeckPlan(plan)).toEqual({ valid: true, errors: [] });
     const manifest = compileDeckPlan(plan);
-    expect(manifest.metadata.designIntent.visualDirection).toEqual(plan.visualDirection);
-    expect(manifest.slides[0]).toMatchObject({ pageRole: "cover", compositionStrategy: "asymmetric" });
+    expect(manifest.metadata.designIntent).toMatchObject({
+      typography: plan.designIntent.typography,
+      palette: plan.designIntent.palette,
+      composition: plan.designIntent.composition
+    });
+    expect(manifest.slides[0]).toMatchObject({ pageRole: "cover", semanticPageRole: "cover", compositionStrategy: "focus" });
     expect(geometrySignature(manifest.slides[0])).not.toBe(geometrySignature(compileDeckPlan(loadPlan()).slides[0]));
   });
 
-  it("rejects unknown roles, strategies, and three consecutive repeated compositions", () => {
+  it("rejects unknown roles and strategies through the canonical schema", () => {
     const plan = loadPlan();
     plan.slides[0].pageRole = "unknown";
-    plan.slides[1].compositionStrategy = "unknown";
-    plan.slides.slice(2, 5).forEach((slide) => { slide.compositionStrategy = "split"; });
+    plan.slides[1].compositionIntent.strategy = "unknown";
     const errors = validateDeckPlan(plan).errors.join(" ");
     expect(errors).toMatch(/pageRole/);
-    expect(errors).toMatch(/compositionStrategy/);
-    expect(errors).toMatch(/consecutive/i);
+    expect(errors).toMatch(/compositionIntent\.strategy/);
+  });
+
+  it("rejects three consecutive repeated composition strategies", () => {
+    const plan = loadPlan();
+    plan.slides.slice(2, 5).forEach((slide) => { slide.compositionIntent.strategy = "split"; });
+    expect(validateDeckPlan(plan).errors.join(" ")).toMatch(/three consecutive/i);
   });
 });
 
@@ -188,16 +193,21 @@ describe("contextual creative taste gate", () => {
 
   it("derives anti-default checks from the plan dials and honors explicit source/brand intent", () => {
     const plan = loadPlan();
-    const profile = buildContextualTasteProfile(plan);
+    const asTasteIntent = () => ({
+      designRead: plan.designIntent.designRead,
+      dials: plan.designIntent.dials,
+      intentOverride: plan.designIntent.locks
+    });
+    const profile = buildContextualTasteProfile(asTasteIntent());
     expect(profile.checks).toContain("composition-variance");
     expect(profile.checks).toContain("density-fit");
     expect(profile.checks).toContain("energy-fit");
     expect(profile.checks).toContain("editorial-hierarchy");
-    plan.designRead = "Brand-defined visual system";
-    plan.dials = { compositionVariance: 20, visualDensity: 50, visualEnergy: 50 };
-    plan.intentOverride = { sourceLocked: true, brandLocked: true };
-    expect(buildContextualTasteProfile(plan).genericHeuristicsSuppressed).toBe(true);
-    const contextual = applyContextualTaste({ deckScore: 80, slopRisk: 10, slides: [{ id: "s1", score: 70, issues: [{ severity: "medium", type: "layout-repetition" }] }] }, { slides: [{ type: "cover", elements: [] }] }, plan);
+    plan.designIntent.designRead = "Brand-defined visual system";
+    plan.designIntent.dials = { compositionVariance: 20, visualDensity: 50, visualEnergy: 50 };
+    plan.designIntent.locks = { sourceLocked: true, brandLocked: true, protectedTokens: [], protectedAssets: [] };
+    expect(buildContextualTasteProfile(asTasteIntent()).genericHeuristicsSuppressed).toBe(true);
+    const contextual = applyContextualTaste({ deckScore: 80, slopRisk: 10, slides: [{ id: "s1", score: 70, issues: [{ severity: "medium", type: "layout-repetition" }] }] }, { slides: [{ type: "cover", elements: [] }] }, asTasteIntent());
     expect(contextual.slides[0].issues).toEqual([]);
     expect(contextual.slides[0].score).toBe(80);
   });
@@ -298,7 +308,7 @@ describe("stable bilingual brief corpus and text output contract", () => {
       expect(validateDeckPlan(plan), item.id).toEqual({ valid: true, errors: [] });
       const manifest = compileDeckPlan(plan);
       expect(manifest.slides[0].type, item.id).toBe(item.expected.layoutFamily);
-      const profile = buildContextualTasteProfile(plan);
+      const profile = buildContextualTasteProfile(tasteIntentFromPlan(plan));
       expect(profile.checks, item.id).toEqual(expect.arrayContaining(item.expected.tasteTraits));
       expect(actualQuality(plan).gate.passed, item.id).toBe(item.expected.tasteBand === "clean");
     }

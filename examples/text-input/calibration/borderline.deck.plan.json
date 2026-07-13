@@ -1,12 +1,47 @@
 {
-  "version": "0.1.0",
-  "title": "Borderline Density",
-  "language": "en-US",
-  "designRead": "A sparse board update with one restrained message.",
-  "dials": { "compositionVariance": 20, "visualDensity": 30, "visualEnergy": 50 },
-  "audience": "Board members",
-  "narrativeBeats": ["Signal", "Decision"],
+  "version": "0.2.0",
+  "context": {
+    "title": "Borderline Density",
+    "language": "en-US",
+    "audience": { "primary": "Board members", "knowledgeLevel": "expert" },
+    "decisionGoal": "Surface one sparse decision",
+    "durationMinutes": 3,
+    "environment": { "viewingMode": "room", "presentedOrReadAlone": "presented" },
+    "tone": "Restrained and direct",
+    "mustRemember": ["One sparse decision"],
+    "brand": { "references": [], "antiReferences": [] },
+    "qualityProfile": "standard",
+    "targetSuites": [{ "suite": "libreoffice", "required": true }],
+    "editabilityFloor": 4,
+    "assetIntensity": 0,
+    "visualAmbition": 30
+  },
+  "designIntent": {
+    "designRead": "A sparse board update with one restrained message.",
+    "typography": "Restrained board-report hierarchy",
+    "palette": "Neutral with one cool accent",
+    "material": "Flat native metric cards",
+    "imagery": "No external imagery",
+    "composition": { "direction": "One compact data composition", "visibleGrid": false },
+    "dials": { "compositionVariance": 20, "visualDensity": 30, "visualEnergy": 50 },
+    "locks": { "sourceLocked": false, "brandLocked": false, "protectedTokens": [], "protectedAssets": [] }
+  },
+  "story": {
+    "narrativeBeats": ["Signal", "Decision"],
+    "sections": [{ "id": "section-decision", "title": "Decision", "slideIds": ["slide-borderline"] }],
+    "decisionPath": ["slide-borderline"]
+  },
+  "assets": [],
   "slides": [
-    { "id": "b1", "message": "One sparse decision", "layoutFamily": "dashboard", "contentReferences": ["b:1"], "assetReferences": [], "content": { "headline": "Too much for the requested density", "metrics": [{ "label": "A", "value": "1" }, { "label": "B", "value": "2" }, { "label": "C", "value": "3" }] } }
+    {
+      "id": "slide-borderline",
+      "pageRole": "data",
+      "message": "One sparse decision",
+      "contentModel": { "kind": "dashboard", "data": { "headline": "Too much for the requested density", "metrics": [{ "label": "A", "value": "1" }, { "label": "B", "value": "2" }, { "label": "C", "value": "3" }] } },
+      "attentionTarget": { "kind": "data", "ref": "borderline:decision" },
+      "compositionIntent": { "strategy": "data-led", "whitespace": "spacious", "emphasis": "data" },
+      "assetIds": [],
+      "routePolicy": { "preferred": "native", "allowed": ["native"], "fullSlideRaster": false }
+    }
   ]
 }
