@@ -165,6 +165,219 @@ describe("creative deck-plan pipeline", () => {
     expect(fs.existsSync(sourcePath)).toBe(true);
   }, 60000);
 
+  it("rolls back earlier localized assets when a later content-hash target collides", () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-asset-transaction-input-"));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-asset-transaction-output-"));
+    const firstSource = path.join(inputDir, "first.png");
+    const secondSource = path.join(inputDir, "second.png");
+    fs.copyFileSync("examples/image-input/business-slide.png", firstSource);
+    fs.copyFileSync("examples/image-input/replica-golden.png", secondSource);
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    plan.assets.push(
+      {
+        id: "asset-first",
+        kind: "photo",
+        role: "first evidence",
+        description: "The first local evidence image",
+        provenance: { origin: "project", sourceRef: "first.png", license: "project-owned" },
+        focalPoint: "center",
+        cropPolicy: "cover",
+        altText: "First evidence image",
+        fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+      },
+      {
+        id: "asset-second",
+        kind: "photo",
+        role: "second evidence",
+        description: "The second local evidence image",
+        provenance: { origin: "project", sourceRef: "second.png", license: "project-owned" },
+        focalPoint: "center",
+        cropPolicy: "cover",
+        altText: "Second evidence image",
+        fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+      }
+    );
+    plan.slides[0].assetIds = ["asset-first", "asset-second"];
+    plan.slides[0].attentionTarget = { kind: "asset", ref: "asset-first" };
+    plan.slides[0].compositionIntent.emphasis = "asset";
+    fs.writeFileSync(path.join(inputDir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+
+    const firstBytes = fs.readFileSync(firstSource);
+    const secondBytes = fs.readFileSync(secondSource);
+    const firstDigest = createHash("sha256").update(firstBytes).digest("hex").slice(0, 12);
+    const secondDigest = createHash("sha256").update(secondBytes).digest("hex").slice(0, 12);
+    const firstTarget = path.join(outputDir, "assets", `asset-first-${firstDigest}.png`);
+    const secondTarget = path.join(outputDir, "assets", `asset-second-${secondDigest}.png`);
+    const userBytes = Buffer.from("pre-existing user-owned collision target", "utf8");
+    fs.mkdirSync(path.dirname(secondTarget), { recursive: true });
+    fs.writeFileSync(secondTarget, userBytes);
+
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    })).toThrow();
+
+    expect(fs.existsSync(firstTarget), "first generated target").toBe(false);
+    expect(fs.readFileSync(secondTarget).equals(userBytes), "pre-existing collision target bytes").toBe(true);
+    expect(fs.existsSync(path.join(outputDir, ".pptx-generated-assets.json")), "ownership registry").toBe(false);
+  }, 60000);
+
+  it("rolls back created targets when a later filesystem write fails", () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-asset-write-failure-input-"));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-asset-write-failure-output-"));
+    const firstSource = path.join(inputDir, "first.png");
+    const secondSource = path.join(inputDir, "second.png");
+    fs.copyFileSync("examples/image-input/business-slide.png", firstSource);
+    fs.copyFileSync("examples/image-input/replica-golden.png", secondSource);
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    const failingAssetId = `asset-${"x".repeat(300)}`;
+    plan.assets.push(
+      {
+        id: "asset-first",
+        kind: "photo",
+        role: "first evidence",
+        description: "The first local evidence image",
+        provenance: { origin: "project", sourceRef: "first.png", license: "project-owned" },
+        focalPoint: "center",
+        cropPolicy: "cover",
+        altText: "First evidence image",
+        fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+      },
+      {
+        id: failingAssetId,
+        kind: "photo",
+        role: "write failure evidence",
+        description: "A valid asset whose generated basename exceeds filesystem limits",
+        provenance: { origin: "project", sourceRef: "second.png", license: "project-owned" },
+        focalPoint: "center",
+        cropPolicy: "cover",
+        altText: "Write failure evidence image",
+        fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+      }
+    );
+    plan.slides[0].assetIds = ["asset-first", failingAssetId];
+    plan.slides[0].attentionTarget = { kind: "asset", ref: "asset-first" };
+    plan.slides[0].compositionIntent.emphasis = "asset";
+    fs.writeFileSync(path.join(inputDir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+
+    const firstBytes = fs.readFileSync(firstSource);
+    const firstDigest = createHash("sha256").update(firstBytes).digest("hex").slice(0, 12);
+    const firstTarget = path.join(outputDir, "assets", `asset-first-${firstDigest}.png`);
+
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    })).toThrow();
+
+    expect(fs.existsSync(firstTarget), "first generated target after later write failure").toBe(false);
+    expect(fs.existsSync(path.join(outputDir, ".pptx-generated-assets.json")), "ownership registry").toBe(false);
+  }, 60000);
+
+  it("fails closed when the creative assets root is a symlink", () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-symlink-assets-input-"));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-symlink-assets-output-"));
+    const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-symlink-assets-external-"));
+    const sourcePath = path.join(inputDir, "hero.png");
+    const sourceBytes = fs.readFileSync("examples/image-input/business-slide.png");
+    fs.writeFileSync(sourcePath, sourceBytes);
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    plan.assets.push({
+      id: "asset-hero",
+      kind: "photo",
+      role: "hero evidence",
+      description: "A normal local evidence image",
+      provenance: { origin: "project", sourceRef: "hero.png", license: "project-owned" },
+      focalPoint: "center",
+      cropPolicy: "cover",
+      altText: "Local evidence image",
+      fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+    });
+    plan.slides[0].assetIds = ["asset-hero"];
+    plan.slides[0].attentionTarget = { kind: "asset", ref: "asset-hero" };
+    plan.slides[0].compositionIntent.emphasis = "asset";
+    fs.writeFileSync(path.join(inputDir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+
+    const externalBytes = Buffer.from("external hash-valid user asset", "utf8");
+    const externalDigest = createHash("sha256").update(externalBytes).digest("hex").slice(0, 12);
+    const externalName = `asset-external-${externalDigest}.png`;
+    const externalOwned = path.join(externalDir, externalName);
+    fs.writeFileSync(externalOwned, externalBytes);
+    fs.symlinkSync(externalDir, path.join(outputDir, "assets"), "dir");
+    fs.writeFileSync(path.join(outputDir, ".pptx-generated-assets.json"), `${JSON.stringify({
+      version: "0.1.0",
+      owner: "creative-deck-plan-assets",
+      files: [path.posix.join("assets", externalName)]
+    }, null, 2)}\n`, "utf8");
+    const sourceDigest = createHash("sha256").update(sourceBytes).digest("hex").slice(0, 12);
+    const externalLocalizedTarget = path.join(externalDir, `asset-hero-${sourceDigest}.png`);
+
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    })).toThrow();
+
+    expect(fs.existsSync(externalOwned), "external hash-valid user asset").toBe(true);
+    expect(fs.existsSync(externalLocalizedTarget), "external localized target").toBe(false);
+  }, 60000);
+
+  it("ignores unsafe and non-file entries in the creative asset ownership registry", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-unsafe-asset-registry-"));
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    plan.assets.push({
+      id: "asset-remote",
+      kind: "photo",
+      role: "remote evidence",
+      description: "An intentionally invalid remote image",
+      provenance: { origin: "web", sourceRef: "https://example.com/remote.png" },
+      focalPoint: "center",
+      cropPolicy: "cover",
+      altText: "Remote evidence image",
+      fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+    });
+    plan.slides[0].assetIds = ["asset-remote"];
+    fs.writeFileSync(path.join(dir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+
+    const assetsDir = path.join(dir, "assets");
+    const nestedDir = path.join(assetsDir, "nested");
+    const userOwned = path.join(assetsDir, "user-owned.png");
+    const nestedOwned = path.join(nestedDir, "nested-owned.png");
+    const absoluteOwned = path.join(assetsDir, "absolute-owned.png");
+    const forgedHashOwned = path.join(assetsDir, "asset-forged-000000000000.png");
+    const outsideName = `${path.basename(dir)}-outside-owned.png`;
+    const outsideOwned = path.resolve(dir, "..", outsideName);
+    fs.mkdirSync(nestedDir, { recursive: true });
+    fs.writeFileSync(userOwned, "user-owned", "utf8");
+    fs.writeFileSync(nestedOwned, "nested-owned", "utf8");
+    fs.writeFileSync(absoluteOwned, "absolute-owned", "utf8");
+    fs.writeFileSync(forgedHashOwned, "forged-hash-owned", "utf8");
+    fs.writeFileSync(outsideOwned, "outside-owned", "utf8");
+    fs.writeFileSync(path.join(dir, ".pptx-generated-assets.json"), `${JSON.stringify({
+      version: "0.1.0",
+      owner: "creative-deck-plan-assets",
+      files: [
+        "assets",
+        "assets/user-owned.png",
+        "assets/asset-forged-000000000000.png",
+        `../${outsideName}`,
+        "assets/nested/nested-owned.png",
+        absoluteOwned
+      ]
+    }, null, 2)}\n`, "utf8");
+
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", dir, dir], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    })).toThrow();
+
+    expect(fs.existsSync(userOwned), "direct user-owned asset").toBe(true);
+    expect(fs.existsSync(nestedOwned), "nested user-owned asset").toBe(true);
+    expect(fs.existsSync(absoluteOwned), "absolute-path user-owned asset").toBe(true);
+    expect(fs.existsSync(forgedHashOwned), "hash-mismatched user-owned asset").toBe(true);
+    expect(fs.existsSync(outsideOwned), "out-of-bounds user-owned asset").toBe(true);
+    expect(fs.existsSync(path.join(dir, ".pptx-generated-assets.json")), "stale registry").toBe(false);
+    fs.rmSync(outsideOwned, { force: true });
+  }, 60000);
+
   it.each([
     ["remote", "https://example.com/hero.png"],
     ["missing", "missing/hero.png"]
@@ -188,12 +401,14 @@ describe("creative deck-plan pipeline", () => {
     fs.copyFileSync("design-systems/business-neutral/DESIGN.md", path.join(inputDir, "DESIGN.md"));
     fs.mkdirSync(path.join(inputDir, "assets"), { recursive: true });
     fs.copyFileSync("examples/image-input/business-slide.png", path.join(inputDir, "assets", "user-source.png"));
-    const staleOwnedAsset = path.join(inputDir, "assets", "asset-old-deadbeef.png");
-    fs.copyFileSync("examples/image-input/business-slide.png", staleOwnedAsset);
+    const staleOwnedBytes = fs.readFileSync("examples/image-input/business-slide.png");
+    const staleOwnedDigest = createHash("sha256").update(staleOwnedBytes).digest("hex").slice(0, 12);
+    const staleOwnedAsset = path.join(inputDir, "assets", `asset-old-${staleOwnedDigest}.png`);
+    fs.writeFileSync(staleOwnedAsset, staleOwnedBytes);
     fs.writeFileSync(path.join(inputDir, ".pptx-generated-assets.json"), `${JSON.stringify({
       version: "0.1.0",
       owner: "creative-deck-plan-assets",
-      files: ["assets/asset-old-deadbeef.png"]
+      files: [path.posix.join("assets", path.basename(staleOwnedAsset))]
     }, null, 2)}\n`, "utf8");
 
     const staleFiles = [

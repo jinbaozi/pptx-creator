@@ -43,18 +43,42 @@ function localizedAssetName(asset, bytes, sourcePath) {
   return `${safeId}-${digest}${extension}`;
 }
 
+function assertRealAssetsDirectory(outputDir, { allowMissing = true } = {}) {
+  const assetsRoot = path.resolve(outputDir, "assets");
+  let entry;
+  try { entry = fs.lstatSync(assetsRoot); } catch (error) {
+    if (allowMissing && error?.code === "ENOENT") return assetsRoot;
+    throw error;
+  }
+  if (!entry.isDirectory() || entry.isSymbolicLink()) {
+    throw new Error(`creative assets root must be a real directory: ${assetsRoot}`);
+  }
+  return assetsRoot;
+}
+
 function removePreviouslyLocalizedAssets(outputDir, protectedPaths) {
   const ownershipPath = path.resolve(outputDir, CREATIVE_ASSET_REGISTRY);
   let registry;
   try { registry = JSON.parse(fs.readFileSync(ownershipPath, "utf8")); } catch { return; }
   if (registry.owner !== CREATIVE_ASSET_OWNER || !Array.isArray(registry.files)) return;
   const outputRoot = path.resolve(outputDir);
+  const assetsRoot = assertRealAssetsDirectory(outputRoot);
   const protectedSet = new Set(protectedPaths.map((candidate) => path.resolve(candidate)));
   for (const relativePath of registry.files) {
     if (typeof relativePath !== "string") continue;
+    if (relativePath !== path.posix.join("assets", path.posix.basename(relativePath))) continue;
+    const generatedName = path.posix.basename(relativePath).match(/^[A-Za-z0-9._-]+-([a-f0-9]{12})(?:\.[^/]+)$/);
+    if (!generatedName) continue;
     const candidate = path.resolve(outputRoot, relativePath);
-    if (!candidate.startsWith(`${outputRoot}${path.sep}`) || protectedSet.has(candidate)) continue;
-    fs.rmSync(candidate, { force: true, recursive: true });
+    if (path.dirname(candidate) !== assetsRoot || protectedSet.has(candidate)) continue;
+    let entry;
+    try { entry = fs.lstatSync(candidate); } catch { continue; }
+    if (!entry.isFile()) continue;
+    let bytes;
+    try { bytes = fs.readFileSync(candidate); } catch { continue; }
+    const actualDigest = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+    if (actualDigest !== generatedName[1]) continue;
+    fs.rmSync(candidate, { force: true });
   }
   fs.rmSync(ownershipPath, { force: true });
 }
@@ -68,6 +92,7 @@ function localizePlanAssets(plan, planPath, outputDir) {
     return fs.existsSync(candidate) && fs.statSync(candidate).isFile() ? [candidate] : [];
   });
   removePreviouslyLocalizedAssets(outputDir, actualSourcePaths);
+  const assetsRoot = assertRealAssetsDirectory(outputDir);
   const assets = plan.assets.map((asset) => {
     const sourceRef = asset.provenance.sourceRef;
     if (remoteReference.test(sourceRef) || sourceRef.startsWith("//")) {
@@ -90,16 +115,30 @@ function localizePlanAssets(plan, planPath, outputDir) {
     };
   });
 
-  if (assets.length > 0) fs.mkdirSync(path.resolve(outputDir, "assets"), { recursive: true });
+  if (assets.length > 0) {
+    fs.mkdirSync(assetsRoot, { recursive: true });
+    assertRealAssetsDirectory(outputDir, { allowMissing: false });
+  }
   for (const asset of assets) {
-    if (asset.sourcePath === asset.targetPath) continue;
-    if (asset.targetExisted) {
-      if (!fs.readFileSync(asset.targetPath).equals(asset.bytes)) {
-        throw new Error(`asset ${asset.asset.id} content-hash target collision: ${asset.targetPath}`);
-      }
-      continue;
+    if (asset.sourcePath === asset.targetPath || !asset.targetExisted) continue;
+    let targetEntry;
+    try { targetEntry = fs.lstatSync(asset.targetPath); } catch { targetEntry = null; }
+    if (!targetEntry?.isFile() || !fs.readFileSync(asset.targetPath).equals(asset.bytes)) {
+      throw new Error(`asset ${asset.asset.id} content-hash target collision: ${asset.targetPath}`);
     }
-    fs.writeFileSync(asset.targetPath, asset.bytes);
+  }
+  const createdTargets = [];
+  try {
+    for (const asset of assets) {
+      if (asset.sourcePath === asset.targetPath || asset.targetExisted) continue;
+      assertRealAssetsDirectory(outputDir, { allowMissing: false });
+      const fileDescriptor = fs.openSync(asset.targetPath, "wx");
+      createdTargets.push(asset.targetPath);
+      try { fs.writeFileSync(fileDescriptor, asset.bytes); } finally { fs.closeSync(fileDescriptor); }
+    }
+  } catch (error) {
+    for (const targetPath of createdTargets.reverse()) fs.rmSync(targetPath, { force: true });
+    throw error;
   }
   const ownedAssets = assets.filter((asset) => asset.sourcePath !== asset.targetPath && !asset.targetExisted);
   const ownershipPath = path.resolve(outputDir, CREATIVE_ASSET_REGISTRY);
@@ -112,7 +151,7 @@ function localizePlanAssets(plan, planPath, outputDir) {
       owner: CREATIVE_ASSET_OWNER,
       files: ownedAssets.map((asset) => asset.relativePath)
     },
-    createdTargets: ownedAssets.map((asset) => asset.targetPath)
+    createdTargets
   };
 }
 

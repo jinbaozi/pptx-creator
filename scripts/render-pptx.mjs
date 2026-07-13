@@ -98,7 +98,12 @@ function componentStyle(element, design) {
     ? resolveValue(style.component, design.tokens)
     : {};
   const { component: _component, ...overrides } = style;
-  return { ...component, ...overrides };
+  const merged = { ...component, ...overrides };
+  const explicitBackgroundColor = overrides.backgroundColor ?? overrides.fill;
+  const explicitBorderColor = overrides.borderColor ?? overrides.line;
+  if (explicitBackgroundColor !== undefined) merged.backgroundColor = explicitBackgroundColor;
+  if (explicitBorderColor !== undefined) merged.borderColor = explicitBorderColor;
+  return merged;
 }
 
 function shadowOptions(shadow) {
