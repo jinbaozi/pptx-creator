@@ -73,7 +73,7 @@
         "attempts": { "type": "integer", "minimum": 0, "maximum": 3 },
         "stopReason": {
           "type": "string",
-          "enum": ["not-run", "initial-proof-passed", "accepted", "repair-unavailable", "no-improvement", "attempt-limit"]
+          "enum": ["not-run", "initial-proof-passed", "accepted", "repair-unavailable", "no-improvement", "attempt-limit", "publication-failed"]
         },
         "history": {
           "type": "array",

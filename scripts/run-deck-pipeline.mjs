@@ -2,8 +2,8 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { copyFile, cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
@@ -407,6 +407,21 @@ async function validateCreativeProofContract(proof) {
   }
 }
 
+function toPosixPath(value) {
+  return String(value).split(sep).join("/");
+}
+
+function withCreativeEvidencePaths(proof, evidenceDir, outputDir) {
+  const relativeSlidesDir = toPosixPath(relative(outputDir, join(evidenceDir, "slides")));
+  return {
+    ...proof,
+    previews: (proof?.previews ?? []).map((preview) => `${relativeSlidesDir}/${basename(preview)}`),
+    contactSheet: proof?.contactSheet
+      ? { ...proof.contactSheet, path: `${relativeSlidesDir}/${basename(proof.contactSheet.path)}` }
+      : null
+  };
+}
+
 async function assessCreativeArtifact({
   artifact,
   repoRoot = root,
@@ -456,7 +471,7 @@ async function assessCreativeArtifact({
     };
   }
   const proofQuality = summarizeCreativeQuality(quality);
-  const proof = {
+  const proof = withCreativeEvidencePaths({
     ...baseProof,
     version: "0.1.0",
     mode: "creative",
@@ -466,7 +481,7 @@ async function assessCreativeArtifact({
       && proofQuality.gate.passed,
     quality: proofQuality,
     repair
-  };
+  }, evidenceDir, outputDir);
   await validateCreativeProofContract(proof);
   if (writeAttemptEvidence) {
     await mkdir(evidenceDir, { recursive: true });
@@ -492,11 +507,10 @@ async function materializeCreativeCandidate({
   iteration,
   manifest,
   sourceManifestPath,
+  publicManifestPath,
   repoRoot = root,
-  design,
   outputDir,
   planIntent,
-  fontPreflight,
   buildCreativeProof,
   reviewCreativeManifest,
   renderCreativeArtifact
@@ -509,34 +523,78 @@ async function materializeCreativeCandidate({
   const manifestPath = join(attemptDir, "deck.manifest.json");
   const renderManifestPath = join(attemptDir, "render.manifest.json");
   const pptxPath = join(attemptDir, "final.pptx");
-  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-  const renderManifest = structuredClone(manifest);
-  renderManifest.designSystem.source = design?.source
-    ?? resolve(dirname(sourceManifestPath ?? manifestPath), manifest.designSystem.source);
-  await writeFile(renderManifestPath, `${JSON.stringify(renderManifest, null, 2)}\n`, "utf8");
-  const renderer = typeof renderCreativeArtifact === "function" ? renderCreativeArtifact : defaultRenderCreativeArtifact;
-  const renderedResult = renderedArtifact(await renderer({
-    root: repoRoot,
-    iteration,
-    outputDir: attemptDir,
-    manifest: renderManifest,
-    manifestPath: renderManifestPath,
-    pptxPath
-  }), { manifest: renderManifest, manifestPath: renderManifestPath, pptxPath });
-  const rendered = { ...renderedResult, manifest, manifestPath, pptxPath: renderedResult.pptxPath ?? pptxPath };
-  if (!rendered.intermediate) throw new Error("creative repair renderer did not emit intermediate facts");
-  return assessCreativeArtifact({
-    artifact: rendered,
-    repoRoot,
-    outputDir,
-    evidenceDir,
-    planIntent,
-    fontPreflight,
-    buildCreativeProof,
-    reviewCreativeManifest,
-    design,
-    writeAttemptEvidence: true
-  });
+  try {
+    const suppliedManifest = manifest ?? JSON.parse(await readFile(sourceManifestPath, "utf8"));
+    const sourceBase = dirname(resolve(sourceManifestPath ?? publicManifestPath ?? manifestPath));
+    const candidate = structuredClone(suppliedManifest);
+    const absoluteLocalPath = (value) => typeof value === "string" && value.length > 0 && !/^https?:\/\//i.test(value)
+      ? resolve(sourceBase, value)
+      : value;
+    if (candidate.designSystem && typeof candidate.designSystem === "object") {
+      candidate.designSystem.source = absoluteLocalPath(candidate.designSystem.source);
+    }
+    for (const asset of Array.isArray(candidate.assets) ? candidate.assets : []) {
+      if (asset && typeof asset === "object") asset.src = absoluteLocalPath(asset.src);
+    }
+    for (const slide of Array.isArray(candidate.slides) ? candidate.slides : []) {
+      if (!slide || typeof slide !== "object") continue;
+      if (slide.background?.type === "image") slide.background.src = absoluteLocalPath(slide.background.src);
+      for (const element of Array.isArray(slide.elements) ? slide.elements : []) {
+        if (!element || typeof element !== "object") continue;
+        if (["image", "cropped-asset"].includes(element.type) && element.src) {
+          element.src = absoluteLocalPath(element.src);
+        }
+      }
+    }
+    await writeFile(manifestPath, `${JSON.stringify(candidate, null, 2)}\n`, "utf8");
+    try {
+      await runPython([join(repoRoot, "scripts/validate-manifest.py"), manifestPath], { cwd: repoRoot });
+    } catch (error) {
+      const detail = error.stderr?.toString?.().trim()
+        || error.stdout?.toString?.().trim()
+        || (error instanceof Error ? error.message : String(error));
+      throw new Error(`candidate manifest invalid: ${detail}`);
+    }
+
+    const design = await parseDesignFile(candidate.designSystem.source);
+    const candidateFontPreflight = await preflightFonts(candidate, design);
+    const { textFit: candidateTextFit } = await buildCreativeTextFit(candidate, manifestPath, design);
+    await writeFile(renderManifestPath, `${JSON.stringify(candidate, null, 2)}\n`, "utf8");
+    const renderer = typeof renderCreativeArtifact === "function" ? renderCreativeArtifact : defaultRenderCreativeArtifact;
+    const renderedResult = renderedArtifact(await renderer({
+      root: repoRoot,
+      iteration,
+      outputDir: attemptDir,
+      manifest: candidate,
+      manifestPath: renderManifestPath,
+      pptxPath
+    }), { manifest: candidate, manifestPath: renderManifestPath, pptxPath });
+    const rendered = {
+      ...renderedResult,
+      manifest: candidate,
+      manifestPath,
+      publicManifestPath: publicManifestPath ?? sourceManifestPath,
+      pptxPath: renderedResult.pptxPath ?? pptxPath
+    };
+    if (!rendered.intermediate) throw new Error("creative repair renderer did not emit intermediate facts");
+    return assessCreativeArtifact({
+      artifact: rendered,
+      repoRoot,
+      outputDir,
+      evidenceDir,
+      planIntent,
+      fontPreflight: candidateFontPreflight,
+      buildCreativeProof,
+      reviewCreativeManifest,
+      design,
+      textFit: candidateTextFit,
+      writeAttemptEvidence: true
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    await writeFile(join(attemptDir, "materialization-failure.json"), `${JSON.stringify({ iteration, reason }, null, 2)}\n`, "utf8");
+    throw error;
+  }
 }
 
 export async function runCreativeRepairAttempt({
@@ -544,8 +602,8 @@ export async function runCreativeRepairAttempt({
   artifact,
   root: repoRoot = root,
   outputDir,
+  publicManifestPath,
   planIntent,
-  fontPreflight,
   buildCreativeProof,
   reviewCreativeManifest,
   renderCreativeArtifact
@@ -559,12 +617,11 @@ export async function runCreativeRepairAttempt({
     const candidate = await materializeCreativeCandidate({
       iteration,
       manifest: applyRepairPatch(manifest, repairPatch),
-      sourceManifestPath: artifact?.manifestPath,
+      sourceManifestPath: artifact?.publicManifestPath ?? artifact?.manifestPath,
+      publicManifestPath: publicManifestPath ?? artifact?.publicManifestPath ?? artifact?.manifestPath,
       repoRoot,
-      design: artifact?.design,
       outputDir,
       planIntent,
-      fontPreflight,
       buildCreativeProof,
       reviewCreativeManifest,
       renderCreativeArtifact
@@ -582,27 +639,25 @@ async function runCallbackCreativeRepairAttempt({
   artifact,
   outputDir,
   route,
+  publicManifestPath,
   planIntent,
-  fontPreflight,
   buildCreativeProof,
   reviewCreativeManifest,
   renderCreativeArtifact
 }) {
   const supplied = await callback({ iteration, proof, artifact, manifest: artifact?.manifest, outputDir, route, mode: "creative" });
   const candidateArtifact = supplied?.artifact ?? supplied;
-  const candidateManifest = candidateArtifact?.manifest ?? (candidateArtifact?.manifestPath
-    ? JSON.parse(await readFile(candidateArtifact.manifestPath, "utf8"))
-    : null);
-  if (!candidateManifest) return { proof: null, artifact: null };
+  const candidateManifest = candidateArtifact?.manifest ?? null;
+  const candidateManifestPath = candidateArtifact?.manifestPath ?? null;
+  if (!candidateManifest && !candidateManifestPath) return { proof: null, artifact: null };
   try {
     const candidate = await materializeCreativeCandidate({
       iteration,
       manifest: candidateManifest,
-      sourceManifestPath: candidateArtifact?.manifestPath ?? artifact?.manifestPath,
-      design: candidateArtifact?.design ?? artifact?.design,
+      sourceManifestPath: candidateManifestPath ?? artifact?.publicManifestPath ?? artifact?.manifestPath,
+      publicManifestPath: publicManifestPath ?? artifact?.publicManifestPath ?? artifact?.manifestPath,
       outputDir,
       planIntent,
-      fontPreflight,
       buildCreativeProof,
       reviewCreativeManifest,
       renderCreativeArtifact
@@ -611,26 +666,6 @@ async function runCallbackCreativeRepairAttempt({
   } catch {
     return { proof: null, artifact: null };
   }
-}
-
-async function publishCreativeEvidence(evidenceDir, outputDir) {
-  const publicProofDir = join(outputDir, "creative-proof");
-  if (!evidenceDir || resolve(evidenceDir) === resolve(publicProofDir)) return;
-  const publicSlides = join(publicProofDir, "slides");
-  await rm(publicSlides, { recursive: true, force: true });
-  await cp(join(evidenceDir, "slides"), publicSlides, { recursive: true });
-  await copyFile(join(evidenceDir, "render-report.json"), join(publicProofDir, "render-report.json"));
-}
-
-function withPublicCreativeEvidencePaths(proof, outputDir) {
-  const publicSlides = join(outputDir, "creative-proof", "slides");
-  return {
-    ...proof,
-    previews: (proof?.previews ?? []).map((preview) => join(publicSlides, basename(preview))),
-    contactSheet: proof?.contactSheet
-      ? { ...proof.contactSheet, path: join(publicSlides, basename(proof.contactSheet.path)) }
-      : null
-  };
 }
 
 function normalizeInputType(value, manifest) {
@@ -656,7 +691,55 @@ async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy,
   throw error;
 }
 
-export async function publishRepairArtifact(items){const token=randomUUID();const entries=items.filter((item)=>item?.source&&item?.target&&resolve(item.source)!==resolve(item.target)).map((item)=>({...item,stage:`${item.target}.repair-stage-${token}`,backup:`${item.target}.repair-backup-${token}`,backed:false,published:false}));if(!entries.length)return;try{for(const entry of entries)await copyFile(entry.source,entry.stage);}catch(error){for(const entry of entries)await rm(entry.stage,{force:true});throw error;}try{for(const entry of entries){await rename(entry.target,entry.backup);entry.backed=true;}for(const entry of entries){await rename(entry.stage,entry.target);entry.published=true;}}catch(error){for(const entry of [...entries].reverse()){if(entry.published)await rm(entry.target,{force:true});if(entry.backed)await rename(entry.backup,entry.target).catch(()=>{});await rm(entry.stage,{force:true});}throw error;}for(const entry of entries)await rm(entry.backup,{force:true});}
+export async function publishRepairArtifact(items) {
+  const token = randomUUID();
+  const entries = items
+    .filter((item) => item?.source && item?.target && resolve(item.source) !== resolve(item.target))
+    .map((item) => ({
+      ...item,
+      stage: `${item.target}.repair-stage-${token}`,
+      backup: `${item.target}.repair-backup-${token}`,
+      backed: false,
+      published: false
+    }));
+  if (!entries.length) return;
+
+  try {
+    for (const entry of entries) {
+      const sourceStat = await stat(entry.source);
+      await mkdir(dirname(entry.stage), { recursive: true });
+      if (sourceStat.isDirectory()) await cp(entry.source, entry.stage, { recursive: true });
+      else await copyFile(entry.source, entry.stage);
+    }
+  } catch (error) {
+    await Promise.all(entries.map((entry) => rm(entry.stage, { force: true, recursive: true })));
+    throw error;
+  }
+
+  try {
+    for (const entry of entries) {
+      try {
+        await rename(entry.target, entry.backup);
+        entry.backed = true;
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+      }
+    }
+    for (const entry of entries) {
+      await rename(entry.stage, entry.target);
+      entry.published = true;
+    }
+  } catch (error) {
+    for (const entry of [...entries].reverse()) {
+      if (entry.published) await rm(entry.target, { force: true, recursive: true });
+      if (entry.backed) await rename(entry.backup, entry.target).catch(() => {});
+      await rm(entry.stage, { force: true, recursive: true });
+    }
+    throw error;
+  }
+
+  await Promise.all(entries.map((entry) => rm(entry.backup, { force: true, recursive: true }).catch(() => {})));
+}
 
 export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const resolvedInput = resolve(manifestPath);
@@ -824,7 +907,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   let initialCreativeArtifact = null;
   if (mode === "creative") {
     initialCreativeArtifact = await assessCreativeArtifact({
-      artifact: { manifest, manifestPath: resolvedManifest, pptxPath: finalPptxPath, intermediate },
+      artifact: { manifest, manifestPath: resolvedManifest, publicManifestPath: resolvedManifest, pptxPath: finalPptxPath, intermediate },
       outputDir: resolvedOutput,
       evidenceDir: join(resolvedOutput, "creative-proof"),
       planIntent,
@@ -876,8 +959,8 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         artifact,
         outputDir: resolvedOutput,
         route,
+        publicManifestPath: resolvedManifest,
         planIntent,
-        fontPreflight,
         buildCreativeProof: options.buildCreativeProof,
         reviewCreativeManifest: options.reviewCreativeManifest,
         renderCreativeArtifact: options.renderCreativeArtifact
@@ -887,8 +970,8 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         artifact,
         root,
         outputDir: resolvedOutput,
+        publicManifestPath: resolvedManifest,
         planIntent,
-        fontPreflight,
         buildCreativeProof: options.buildCreativeProof,
         reviewCreativeManifest: options.reviewCreativeManifest,
         renderCreativeArtifact: options.renderCreativeArtifact
@@ -902,16 +985,16 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     });
     repairAttempts = repair.attempts;
     const finalRepair = summarizeCreativeRepair({ attempts: repair.attempts, stopReason: repair.stopReason, history: repair.history });
-    creativeVisualProof = {
-      ...(repair.proof ?? creativeVisualProof),
-      accepted: repair.accepted === true && repair.proof?.accepted === true,
-      repair: finalRepair
-    };
-    await validateCreativeProofContract(creativeVisualProof);
-    await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
-    proofOk = repair.accepted;
+    proofOk = repair.accepted === true && repair.proof?.accepted === true;
     proofStep.ok = proofOk;
     if (!proofOk) {
+      creativeVisualProof = {
+        ...initialCreativeArtifact.proof,
+        accepted: false,
+        repair: finalRepair
+      };
+      await validateCreativeProofContract(creativeVisualProof);
+      await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
       steps.push({ label: "bounded-repair", ok: false, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
       const visualDetail = [...(creativeVisualProof.p0 ?? []), ...(creativeVisualProof.p1 ?? [])]
         .map((finding) => `${finding.type}: ${finding.message}`)
@@ -919,11 +1002,44 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
       await blockPipeline(resolvedManifest, resolvedOutput, steps, "bounded-repair", `${proofLabel} failed; ${visualDetail || repair.stopReason}`);
     }
     const accepted = repair.artifact;
-    await publishRepairArtifact([
-      { source: accepted?.manifestPath, target: resolvedManifest },
-      { source: accepted?.pptxPath, target: finalPptxPath }
-    ]);
-    await publishCreativeEvidence(accepted?.evidenceDir, resolvedOutput);
+    const publicEvidenceDir = join(resolvedOutput, "creative-proof");
+    const acceptedProof = withCreativeEvidencePaths(
+      { ...accepted.proof, accepted: true, repair: finalRepair },
+      publicEvidenceDir,
+      resolvedOutput
+    );
+    await validateCreativeProofContract(acceptedProof);
+    try {
+      await publishRepairArtifact([
+        { source: accepted?.manifestPath, target: resolvedManifest },
+        { source: accepted?.pptxPath, target: finalPptxPath },
+        { source: join(accepted?.evidenceDir ?? "", "slides"), target: join(publicEvidenceDir, "slides") },
+        { source: join(accepted?.evidenceDir ?? "", "render-report.json"), target: join(publicEvidenceDir, "render-report.json") }
+      ]);
+    } catch (error) {
+      const publicationRepair = summarizeCreativeRepair({
+        attempts: repair.attempts,
+        stopReason: "publication-failed",
+        history: repair.history
+      });
+      creativeVisualProof = {
+        ...initialCreativeArtifact.proof,
+        accepted: false,
+        repair: publicationRepair
+      };
+      proofOk = false;
+      proofStep.ok = false;
+      await validateCreativeProofContract(creativeVisualProof);
+      await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
+      steps.push({ label: "bounded-repair", ok: false, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: "publication-failed" });
+      await blockPipeline(
+        resolvedManifest,
+        resolvedOutput,
+        steps,
+        "bounded-repair",
+        `creative repair publication failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
     manifest = accepted.manifest;
     intermediate = accepted.intermediate;
     design = accepted.design;
@@ -931,11 +1047,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     textFitReport = accepted.textFit;
     creativeReview = accepted.review;
     creativeQuality = accepted.quality;
-    creativeVisualProof = withPublicCreativeEvidencePaths(
-      { ...accepted.proof, accepted: true, repair: finalRepair },
-      resolvedOutput
-    );
-    await validateCreativeProofContract(creativeVisualProof);
+    creativeVisualProof = acceptedProof;
     await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
     steps.push({ label: "bounded-repair", ok: true, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
   } else if (!proofOk) {
@@ -973,10 +1085,10 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     steps.push({ label: "bounded-repair", ok: true, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
   } else {
     if (mode === "creative") {
-      creativeVisualProof = withPublicCreativeEvidencePaths({
+      creativeVisualProof = {
         ...creativeVisualProof,
         repair: summarizeCreativeRepair({ attempts: 0, stopReason: "initial-proof-passed", history: [] })
-      }, resolvedOutput);
+      };
       await validateCreativeProofContract(creativeVisualProof);
       await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
     }

@@ -61,7 +61,7 @@ function proofBase({ accepted, manifest, review, textFit, evidenceMarker }) {
 }
 
 function deterministicSeams() {
-  const calls = { render: [], proof: [], review: [] };
+  const calls = { render: [], renderSources: [], proof: [], proofQuality: [], review: [] };
   return {
     calls,
     reviewCreativeManifest(manifest) {
@@ -84,6 +84,7 @@ function deterministicSeams() {
       const value = manifest ?? JSON.parse(await readFile(manifestPath, "utf8"));
       const fontSize = value.slides[0].elements.find((element) => element.id === "title")?.style?.fontSize;
       calls.render.push(fontSize);
+      calls.renderSources.push(value.designSystem?.source);
       await mkdir(dirname(pptxPath), { recursive: true });
       await writeFile(pptxPath, `pptx-font-size=${fontSize}\n`, "utf8");
       const elements = value.slides.flatMap((slide) => slide.elements ?? []);
@@ -96,13 +97,14 @@ function deterministicSeams() {
       };
       return { pptxPath, intermediate: { editabilityCounter: counter, countersBySlide: [counter] } };
     },
-    async buildCreativeProof({ evidenceDir, outputDir, manifest, review, textFit }) {
+    async buildCreativeProof({ evidenceDir, outputDir, manifest, review, textFit, quality }) {
       const proofDir = evidenceDir ?? join(outputDir, "creative-proof");
       const slidesDir = join(proofDir, "slides");
       await mkdir(slidesDir, { recursive: true });
       const fontSize = manifest.slides[0].elements.find((element) => element.id === "title")?.style?.fontSize;
       const marker = `proof-font-size=${fontSize}`;
       calls.proof.push({ fontSize, proofDir });
+      calls.proofQuality.push(quality);
       await writeFile(join(slidesDir, "slide-1.png"), marker, "utf8");
       await writeFile(join(slidesDir, "contact-sheet.png"), marker, "utf8");
       await writeFile(join(proofDir, "render-report.json"), `${JSON.stringify({ status: "ok", marker })}\n`, "utf8");
@@ -153,8 +155,8 @@ describe("creative pipeline repair", () => {
       quality: { deckScore: 94, slideFloor: 94, slopRisk: 4, criticalFindings: 0, editabilityLevel: 5, gate: { passed: true, reasons: [] } },
       repair: { attempts: 1, stopReason: "accepted", history: [{ iteration: 1, outcome: "accepted", comparison: 1 }] }
     });
-    expect(proof.previews).toEqual([join(outputDir, "creative-proof", "slides", "slide-1.png")]);
-    expect(proof.contactSheet.path).toBe(join(outputDir, "creative-proof", "slides", "contact-sheet.png"));
+    expect(proof.previews).toEqual(["creative-proof/slides/slide-1.png"]);
+    expect(proof.contactSheet.path).toBe("creative-proof/slides/contact-sheet.png");
     expect(validateJsonSchema(proof, proofSchema)).toEqual({ valid: true, errors: [] });
     expect(review).toMatchObject({ deckScore: 94, slopRisk: 4, slides: [{ score: 94, issues: [], recommendedRepairs: [] }] });
     expect(quality).toMatchObject({ deckScore: 94, slopRisk: 4, editabilityLevel: 5, gate: { passed: true } });
@@ -174,6 +176,8 @@ describe("creative pipeline repair", () => {
     expect(rerun.steps.find((step) => step.label === "bounded-repair")).toMatchObject({ ok: true, attempts: 0 });
     expect(second.calls.render).toEqual([24]);
     expect(rerunProof.repair).toEqual({ attempts: 0, stopReason: "initial-proof-passed", history: [] });
+    expect(rerunProof.previews).toEqual(["creative-proof/slides/slide-1.png"]);
+    expect(rerunProof.contactSheet.path).toBe("creative-proof/slides/contact-sheet.png");
     expect(rerunConsistency.feedback.retryCount).toBe(0);
   }, 60000);
 
@@ -204,7 +208,110 @@ describe("creative pipeline repair", () => {
     expect(persisted.version).toBe("0.1.0");
     expect(persisted.accepted).toBe(false);
     expect(persisted.version).not.toBe("forged");
+    expect(persisted.previews).toEqual(["creative-proof/slides/slide-1.png"]);
+    expect(persisted.contactSheet.path).toBe("creative-proof/slides/contact-sheet.png");
+    expect(await readFile(join(outputDir, "creative-proof", "slides", "contact-sheet.png"), "utf8")).toBe("proof-font-size=18");
+    const attemptProof = JSON.parse(await readFile(join(outputDir, "creative-proof", "attempts", "1", "creative-proof.json"), "utf8"));
+    expect(attemptProof.previews).toEqual(["creative-proof/attempts/1/slides/slide-1.png"]);
+    expect(attemptProof.contactSheet.path).toBe("creative-proof/attempts/1/slides/contact-sheet.png");
     await expect(access(join(outputDir, "replica-evidence.json"))).rejects.toThrow();
+  }, 60000);
+
+  it("rolls back manifest, PPTX, and public evidence when accepted evidence cannot be staged", async () => {
+    const { manifestPath, outputDir } = await temporaryDeck();
+    const seams = deterministicSeams();
+    const buildProofWithMissingAcceptedEvidence = seams.buildCreativeProof;
+    seams.buildCreativeProof = async (args) => {
+      const fontSize = args.manifest.slides[0].elements.find((element) => element.id === "title")?.style?.fontSize;
+      if (fontSize !== 24) return buildProofWithMissingAcceptedEvidence(args);
+      seams.calls.proof.push({ fontSize, proofDir: args.evidenceDir });
+      seams.calls.proofQuality.push(args.quality);
+      return proofBase({ accepted: true, manifest: args.manifest, review: args.review, textFit: args.textFit, evidenceMarker: fontSize });
+    };
+
+    await expect(runDeckPipeline(manifestPath, outputDir, {
+      mode: "creative",
+      inputType: "text",
+      ...seams
+    })).rejects.toThrow(/publication|creative-proof|slides/i);
+
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const proof = JSON.parse(await readFile(join(outputDir, "creative-proof.json"), "utf8"));
+    expect(manifest.slides[0].elements.find((element) => element.id === "title").style.fontSize).toBe(18);
+    expect(await readFile(join(outputDir, "final.pptx"), "utf8")).toBe("pptx-font-size=18\n");
+    expect(await readFile(join(outputDir, "creative-proof", "slides", "contact-sheet.png"), "utf8")).toBe("proof-font-size=18");
+    expect(proof).toMatchObject({ accepted: false, repair: { attempts: 1, stopReason: "publication-failed" } });
+    expect(proof.previews).toEqual(["creative-proof/slides/slide-1.png"]);
+    await expect(access(join(outputDir, "visual-review.json"))).rejects.toThrow();
+    await expect(access(join(outputDir, "quality-report.json"))).rejects.toThrow();
+  }, 60000);
+
+  it("ignores callback design and font state and independently resolves the candidate manifest", async () => {
+    const { directory, manifestPath, outputDir } = await temporaryDeck();
+    const seams = deterministicSeams();
+    const declaredDesign = join(root, "design-systems/business-neutral/DESIGN.md");
+
+    const summary = await runDeckPipeline(manifestPath, outputDir, {
+      mode: "creative",
+      inputType: "text",
+      maxRepairAttempts: 1,
+      ...seams,
+      async runRepairAttempt({ artifact }) {
+        const candidate = structuredClone(artifact.manifest);
+        const title = candidate.slides[0].elements.find((element) => element.id === "title");
+        title.style.fontSize = 24;
+        title.style.fontFamily = "DefinitelyMissingReviewFont";
+        return {
+          proof: { accepted: true },
+          artifact: {
+            manifest: candidate,
+            design: { source: join(directory, "forged-design.md"), tokens: { typography: { body: { fontSize: 99 } } } },
+            fontPreflight: { source: "forged", fallback: [] },
+            intermediate: { editabilityCounter: { text: 99 } }
+          }
+        };
+      }
+    });
+
+    expect(summary.status).toBe("passed");
+    expect(seams.calls.renderSources).toEqual([declaredDesign, declaredDesign]);
+    expect(seams.calls.proofQuality[1].compatibility.source).not.toBe("forged");
+    expect(seams.calls.proofQuality[1].compatibility.fallback).toEqual(expect.arrayContaining([
+      expect.objectContaining({ requested: "DefinitelyMissingReviewFont" })
+    ]));
+    const published = JSON.parse(await readFile(manifestPath, "utf8"));
+    const independentlyAssessed = JSON.parse(await readFile(join(outputDir, ".creative-repair", "attempt-1", "deck.manifest.json"), "utf8"));
+    expect(published).toEqual(independentlyAssessed);
+    const publishedDesign = published.designSystem.source.startsWith("/")
+      ? published.designSystem.source
+      : join(dirname(manifestPath), published.designSystem.source);
+    await expect(access(publishedDesign)).resolves.toBeUndefined();
+    expect(published.slides[0].elements.find((element) => element.id === "title").style.fontFamily).toBe("DefinitelyMissingReviewFont");
+  }, 60000);
+
+  it("rejects an invalid callback candidate before candidate render or proof", async () => {
+    const { manifestPath, outputDir } = await temporaryDeck();
+    const seams = deterministicSeams();
+
+    await expect(runDeckPipeline(manifestPath, outputDir, {
+      mode: "creative",
+      inputType: "text",
+      maxRepairAttempts: 1,
+      ...seams,
+      async runRepairAttempt({ artifact }) {
+        const candidate = structuredClone(artifact.manifest);
+        delete candidate.deck;
+        candidate.slides[0].elements.find((element) => element.id === "title").style.fontSize = 24;
+        return { artifact: { manifest: candidate } };
+      }
+    })).rejects.toThrow(/bounded-repair|candidate manifest/i);
+
+    expect(seams.calls.render).toEqual([18]);
+    expect(seams.calls.proof.map(({ fontSize }) => fontSize)).toEqual([18]);
+    const failure = JSON.parse(await readFile(join(outputDir, ".creative-repair", "attempt-1", "materialization-failure.json"), "utf8"));
+    expect(failure.reason).toMatch(/deck|required/i);
+    const published = JSON.parse(await readFile(manifestPath, "utf8"));
+    expect(published.deck.title).toBe("Initial creative state");
   }, 60000);
 
   it("blocks missing creative editability prerequisites before rendering", async () => {
