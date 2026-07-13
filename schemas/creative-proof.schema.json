@@ -4,7 +4,7 @@
   "title": "Creative Rendered Visual Proof",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "mode", "accepted", "expectedSlides", "renderedSlides", "previews", "contactSheet", "p0", "p1", "p2"],
+  "required": ["version", "mode", "accepted", "expectedSlides", "renderedSlides", "decorativeBackgroundLines", "previews", "contactSheet", "textFit", "quality", "repair", "p0", "p1", "p2"],
   "properties": {
     "version": { "const": "0.1.0" },
     "mode": { "const": "creative" },
@@ -40,6 +40,53 @@
           "properties": {
             "checked": { "type": "integer", "minimum": 0 },
             "overflowCount": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deckScore", "slideFloor", "slopRisk", "criticalFindings", "editabilityLevel", "gate"],
+      "properties": {
+        "deckScore": { "type": "number", "minimum": 0, "maximum": 100 },
+        "slideFloor": { "type": "number", "minimum": 0, "maximum": 100 },
+        "slopRisk": { "type": "number", "minimum": 0, "maximum": 100 },
+        "criticalFindings": { "type": "integer", "minimum": 0 },
+        "editabilityLevel": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["passed", "reasons"],
+          "properties": {
+            "passed": { "type": "boolean" },
+            "reasons": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "repair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempts", "stopReason", "history"],
+      "properties": {
+        "attempts": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "stopReason": {
+          "type": "string",
+          "enum": ["not-run", "initial-proof-passed", "accepted", "repair-unavailable", "no-improvement", "attempt-limit"]
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["iteration", "outcome"],
+            "properties": {
+              "iteration": { "type": "integer", "minimum": 1, "maximum": 3 },
+              "outcome": { "type": "string", "enum": ["unavailable", "accepted", "no-improvement", "improved"] },
+              "comparison": { "type": "number" },
+              "score": { "type": "number" }
+            }
           }
         }
       }

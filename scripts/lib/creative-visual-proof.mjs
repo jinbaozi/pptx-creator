@@ -4,7 +4,39 @@ import { runPython } from "./python-utils.mjs";
 
 const issue = (type, message, slideId = null) => ({ type, message, ...(slideId ? { slideId } : {}) });
 
-export function evaluateCreativeVisualProof({ manifest = {}, preview = {}, review = {}, textFit = null } = {}) {
+function finite(value, fallback) {
+  return Number.isFinite(Number(value)) ? Number(value) : fallback;
+}
+
+export function summarizeCreativeQuality(quality = {}) {
+  const slideScores = (quality.slides ?? []).map((slide) => Number(slide?.score)).filter(Number.isFinite);
+  return {
+    deckScore: finite(quality.deckScore, 0),
+    slideFloor: finite(quality.slideFloor, slideScores.length ? Math.min(...slideScores) : 0),
+    slopRisk: finite(quality.slopRisk, 100),
+    criticalFindings: finite(quality.criticalFindings, 0),
+    editabilityLevel: finite(quality.editabilityLevel, 1),
+    gate: {
+      passed: quality.gate?.passed === true,
+      reasons: Array.isArray(quality.gate?.reasons) ? quality.gate.reasons.map(String) : []
+    }
+  };
+}
+
+export function summarizeCreativeRepair(repair = {}) {
+  return {
+    attempts: Number.isInteger(repair.attempts) ? repair.attempts : 0,
+    stopReason: typeof repair.stopReason === "string" && repair.stopReason ? repair.stopReason : "not-run",
+    history: (repair.history ?? []).map((entry) => ({
+      iteration: entry.iteration,
+      outcome: entry.outcome,
+      ...(Number.isFinite(entry.comparison) ? { comparison: entry.comparison } : {}),
+      ...(Number.isFinite(entry.score) ? { score: entry.score } : {})
+    }))
+  };
+}
+
+export function evaluateCreativeVisualProof({ manifest = {}, preview = {}, review = {}, textFit = null, quality = {}, repair = {} } = {}) {
   const expectedSlides = manifest.slides?.length ?? 0;
   const decorativeBackgroundLines = (manifest.slides ?? []).reduce((count, slide) => count + (slide.elements ?? []).filter(
     (element) => element?.type === "line" && (element.role === "decorative" || /(?:background-)?grid/i.test(element.id ?? ""))
@@ -31,10 +63,12 @@ export function evaluateCreativeVisualProof({ manifest = {}, preview = {}, revie
       else p2.push(normalized);
     }
   }
+  const proofQuality = summarizeCreativeQuality(quality);
+  const proofRepair = summarizeCreativeRepair(repair);
   return {
     version: "0.1.0",
     mode: "creative",
-    accepted: p0.length === 0 && p1.length === 0,
+    accepted: p0.length === 0 && p1.length === 0 && proofQuality.gate.passed,
     expectedSlides,
     renderedSlides,
     decorativeBackgroundLines,
@@ -49,17 +83,20 @@ export function evaluateCreativeVisualProof({ manifest = {}, preview = {}, revie
       source: "unavailable",
       summary: { checked: 0, overflowCount: 0 }
     },
+    quality: proofQuality,
+    repair: proofRepair,
     p0,
     p1,
     p2
   };
 }
 
-export async function buildCreativeVisualProof({ root, pptxPath, outputDir, manifest, review, textFit }) {
-  const renderDir = join(outputDir, "creative-proof", "slides");
-  const reportPath = join(outputDir, "creative-proof", "render-report.json");
+export async function buildCreativeVisualProof({ root, pptxPath, outputDir, evidenceDir, manifest, review, textFit, quality, repair }) {
+  const proofDir = evidenceDir ?? join(outputDir, "creative-proof");
+  const renderDir = join(proofDir, "slides");
+  const reportPath = join(proofDir, "render-report.json");
   await mkdir(renderDir, { recursive: true });
   await runPython([join(root, "scripts/render-preview.py"), pptxPath, renderDir, "--report", reportPath], { cwd: root });
   const preview = JSON.parse(await readFile(reportPath, "utf8"));
-  return evaluateCreativeVisualProof({ manifest, preview, review, textFit });
+  return evaluateCreativeVisualProof({ manifest, preview, review, textFit, quality, repair });
 }

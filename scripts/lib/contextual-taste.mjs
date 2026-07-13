@@ -26,7 +26,13 @@ export function applyContextualTaste(review, manifest, plan) {
     const removedPenalty = originalIssues
       .filter((issue) => !issues.includes(issue))
       .reduce((sum, issue) => sum + (issue.severity === "high" ? 18 : 10), 0);
-    return { ...slide, score: Math.min(100, slide.score + removedPenalty), issues };
+    const retainedTargets = new Set(issues
+      .map((issue) => issue?.target)
+      .filter((target) => typeof target === "string" && target));
+    const recommendedRepairs = (slide.recommendedRepairs ?? []).filter(
+      (repair) => typeof repair?.target === "string" && retainedTargets.has(repair.target)
+    );
+    return { ...slide, score: Math.min(100, slide.score + removedPenalty), issues, recommendedRepairs };
   });
   const findings = [];
   if (profile.checks.includes("composition-variance") && (manifest.slides?.length ?? 0) >= 4) {
