@@ -271,6 +271,37 @@ describe("render-pptx", () => {
     expect(xml).toContain("<a:outerShdw");
   });
 
+  it("merges resolved component baselines before explicit semantic style overrides", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-component-precedence-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements = [{
+      type: "shape",
+      id: "semantic-hero",
+      shape: "roundRect",
+      x: 0.8,
+      y: 1,
+      w: 4,
+      h: 1.4,
+      style: {
+        component: "{components.hero-card}",
+        backgroundColor: "#123456",
+        borderColor: "#ABCDEF",
+        borderWidth: 3
+      }
+    }];
+    const manifest = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
+
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifest, pptxPath], { cwd: root });
+
+    const xml = await slideXml(pptxPath);
+    expect(xml).toContain('val="123456"');
+    expect(xml).toContain('val="ABCDEF"');
+    expect(xml).toContain('w="38100"');
+  });
+
   it("renders native radial gradient shape fills into slide XML", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-radial-gradient-"));
     const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));

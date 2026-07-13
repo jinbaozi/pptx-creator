@@ -22,6 +22,8 @@ The current migration shell supports the eight native content families `cover`, 
 
 Asset `sourceRef` values resolve absolutely or relative to the plan directory. Scripts never fetch remote sources. Existing local files are copied to deterministic content-hashed paths under `output/assets/`; visual asset kinds become native image objects with declared alt text and `contain`/`cover` sizing, while chart-data and diagram-source assets remain non-visual inputs. Missing or remote sources block before `final.pptx` is published.
 
+Per slide, `assetIds` must be unique and may include at most five visual assets. Asset attention must reference a visual asset in that slide; asset emphasis requires one. The compiler uses one hero plus a bounded support grid. Reusing an output directory invalidates stale public deliverables before plan/design/asset preflight, and generated-asset ownership cleanup preserves unrelated user files.
+
 Successful output contains `final.pptx`, `quality-report.json`, `quality-report.md`, `creative-proof.json`, rendered slide evidence with a contact sheet, and `preview/index.html`. Internal plan and manifest artifacts remain available for audit.
 
 ## Blocking conditions

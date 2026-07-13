@@ -6,10 +6,12 @@ import { compileDeckPlan, validateDeckPlan } from "./lib/deck-plan.mjs";
 import { resolveDesignSystem } from "./lib/design-system-resolver.mjs";
 import { createFontMetricsCatalog } from "./lib/font-preflight.mjs";
 import { fitManifestText, materializeTextFonts } from "./lib/text-fit.mjs";
-import { runDeckPipeline } from "./run-deck-pipeline.mjs";
+import { invalidatePublishedOutputs, runDeckPipeline } from "./run-deck-pipeline.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const remoteReference = /^[a-z][a-z0-9+.-]*:/i;
+const CREATIVE_ASSET_REGISTRY = ".pptx-generated-assets.json";
+const CREATIVE_ASSET_OWNER = "creative-deck-plan-assets";
 
 function parseArgs(argv) {
   const [inputDir, outputDir, ...rest] = argv;
@@ -41,8 +43,31 @@ function localizedAssetName(asset, bytes, sourcePath) {
   return `${safeId}-${digest}${extension}`;
 }
 
+function removePreviouslyLocalizedAssets(outputDir, protectedPaths) {
+  const ownershipPath = path.resolve(outputDir, CREATIVE_ASSET_REGISTRY);
+  let registry;
+  try { registry = JSON.parse(fs.readFileSync(ownershipPath, "utf8")); } catch { return; }
+  if (registry.owner !== CREATIVE_ASSET_OWNER || !Array.isArray(registry.files)) return;
+  const outputRoot = path.resolve(outputDir);
+  const protectedSet = new Set(protectedPaths.map((candidate) => path.resolve(candidate)));
+  for (const relativePath of registry.files) {
+    if (typeof relativePath !== "string") continue;
+    const candidate = path.resolve(outputRoot, relativePath);
+    if (!candidate.startsWith(`${outputRoot}${path.sep}`) || protectedSet.has(candidate)) continue;
+    fs.rmSync(candidate, { force: true, recursive: true });
+  }
+  fs.rmSync(ownershipPath, { force: true });
+}
+
 function localizePlanAssets(plan, planPath, outputDir) {
   const planDirectory = path.dirname(path.resolve(planPath));
+  const actualSourcePaths = plan.assets.flatMap((asset) => {
+    const sourceRef = asset.provenance.sourceRef;
+    if (remoteReference.test(sourceRef) || sourceRef.startsWith("//")) return [];
+    const candidate = path.isAbsolute(sourceRef) ? path.resolve(sourceRef) : path.resolve(planDirectory, sourceRef);
+    return fs.existsSync(candidate) && fs.statSync(candidate).isFile() ? [candidate] : [];
+  });
+  removePreviouslyLocalizedAssets(outputDir, actualSourcePaths);
   const assets = plan.assets.map((asset) => {
     const sourceRef = asset.provenance.sourceRef;
     if (remoteReference.test(sourceRef) || sourceRef.startsWith("//")) {
@@ -55,75 +80,114 @@ function localizePlanAssets(plan, planPath, outputDir) {
     const bytes = fs.readFileSync(sourcePath);
     const fileName = localizedAssetName(asset, bytes, sourcePath);
     const targetPath = path.resolve(outputDir, "assets", fileName);
-    return { asset, sourcePath, targetPath, relativePath: path.posix.join("assets", fileName) };
+    return {
+      asset,
+      sourcePath,
+      targetPath,
+      relativePath: path.posix.join("assets", fileName),
+      bytes,
+      targetExisted: fs.existsSync(targetPath)
+    };
   });
 
   if (assets.length > 0) fs.mkdirSync(path.resolve(outputDir, "assets"), { recursive: true });
   for (const asset of assets) {
-    if (asset.sourcePath !== asset.targetPath) fs.copyFileSync(asset.sourcePath, asset.targetPath);
+    if (asset.sourcePath === asset.targetPath) continue;
+    if (asset.targetExisted) {
+      if (!fs.readFileSync(asset.targetPath).equals(asset.bytes)) {
+        throw new Error(`asset ${asset.asset.id} content-hash target collision: ${asset.targetPath}`);
+      }
+      continue;
+    }
+    fs.writeFileSync(asset.targetPath, asset.bytes);
   }
+  const ownedAssets = assets.filter((asset) => asset.sourcePath !== asset.targetPath && !asset.targetExisted);
+  const ownershipPath = path.resolve(outputDir, CREATIVE_ASSET_REGISTRY);
   return {
     sourceById: Object.fromEntries(assets.map((asset) => [asset.asset.id, asset.relativePath])),
-    protectedPaths: assets.flatMap((asset) => [asset.sourcePath, asset.targetPath])
+    protectedPaths: assets.flatMap((asset) => [asset.sourcePath, asset.targetPath]),
+    ownershipPath,
+    ownership: {
+      version: "0.1.0",
+      owner: CREATIVE_ASSET_OWNER,
+      files: ownedAssets.map((asset) => asset.relativePath)
+    },
+    createdTargets: ownedAssets.map((asset) => asset.targetPath)
   };
+}
+
+function cleanupLocalizedPlanAssets(localizedAssets) {
+  for (const targetPath of localizedAssets.createdTargets) fs.rmSync(targetPath, { force: true });
+  fs.rmSync(localizedAssets.ownershipPath, { force: true });
 }
 
 async function main() {
   const { inputDir, outputDir, options } = parseArgs(process.argv.slice(2));
   const resolvedInput = path.resolve(inputDir);
+  const resolvedOutput = path.resolve(outputDir);
+  fs.mkdirSync(resolvedOutput, { recursive: true });
+  const explicitDesignInput = options.designSystem && fs.existsSync(path.resolve(options.designSystem))
+    ? path.resolve(options.designSystem)
+    : null;
+  await invalidatePublishedOutputs(resolvedOutput, [resolvedInput, ...(explicitDesignInput ? [explicitDesignInput] : [])]);
   const planPath = fs.statSync(resolvedInput).isDirectory() ? path.join(resolvedInput, "deck.plan.json") : resolvedInput;
   const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
   const validation = validateDeckPlan(plan);
   if (!validation.valid) throw new Error(`deck.plan invalid: ${validation.errors.join("; ")}`);
   const selection = await resolveDesignSystem({ request: options.designSystem, inputPath: planPath, projectRoot });
-  const localizedAssets = localizePlanAssets(plan, planPath, outputDir);
-  fs.mkdirSync(outputDir, { recursive: true });
-  const designOutputDir = path.join(outputDir, "design-system");
-  const designOutputPath = path.join(designOutputDir, "DESIGN.md");
-  fs.mkdirSync(designOutputDir, { recursive: true });
-  if (selection.resolvedSource !== path.resolve(designOutputPath)) fs.copyFileSync(selection.resolvedSource, designOutputPath);
-  const design = selection.design;
-  const compiledManifest = compileDeckPlan(plan, {
-    designSystemSource: "design-system/DESIGN.md",
-    designSystemName: design.name,
-    designTokens: design.tokens,
-    designSystemSelection: { request: selection.request, resolvedSource: selection.resolvedSource },
-    assetSourceById: localizedAssets.sourceById
-  });
-  const fontCatalog = await createFontMetricsCatalog();
-  const materializedFonts = materializeTextFonts(compiledManifest, design.tokens, fontCatalog);
-  const fitted = await fitManifestText(materializedFonts.manifest, {
-    designTokens: design.tokens,
-    fontCatalog,
-    ...(fontCatalog.source === "unavailable"
-      ? { source: "unavailable", reason: "fontkit could not open any installed font faces" }
-      : {})
-  });
-  if (fitted.unresolved.length > 0 || fitted.report.status !== "passed") {
-    throw new Error(`creative text fit unresolved: ${fitted.unresolved.map((item) => `${item.slideId}/${item.elementId}:${item.status}`).join(", ")}`);
-  }
-  const manifest = fitted.manifest;
-  const manifestPath = path.join(outputDir, "deck.manifest.json");
-  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-
-  const designFirstOptions = {
-    inputType: "text",
-    inputSource: planPath,
-    copyManifest: false,
-    mode: options.mode,
-    strictLayoutSafety: true,
-    protectedInputs: [
-      planPath,
-      designOutputPath,
-      ...localizedAssets.protectedPaths
-    ],
-    beforePackage: async () => {
-      const target = path.join(outputDir, "deck.plan.json");
-      if (path.resolve(planPath) !== path.resolve(target)) fs.copyFileSync(planPath, target);
+  const localizedAssets = localizePlanAssets(plan, planPath, resolvedOutput);
+  try {
+    const designOutputDir = path.join(resolvedOutput, "design-system");
+    const designOutputPath = path.join(designOutputDir, "DESIGN.md");
+    fs.mkdirSync(designOutputDir, { recursive: true });
+    if (selection.resolvedSource !== path.resolve(designOutputPath)) fs.copyFileSync(selection.resolvedSource, designOutputPath);
+    const design = selection.design;
+    const compiledManifest = compileDeckPlan(plan, {
+      designSystemSource: "design-system/DESIGN.md",
+      designSystemName: design.name,
+      designTokens: design.tokens,
+      designSystemSelection: { request: selection.request, resolvedSource: selection.resolvedSource },
+      assetSourceById: localizedAssets.sourceById
+    });
+    const fontCatalog = await createFontMetricsCatalog();
+    const materializedFonts = materializeTextFonts(compiledManifest, design.tokens, fontCatalog);
+    const fitted = await fitManifestText(materializedFonts.manifest, {
+      designTokens: design.tokens,
+      fontCatalog,
+      ...(fontCatalog.source === "unavailable"
+        ? { source: "unavailable", reason: "fontkit could not open any installed font faces" }
+        : {})
+    });
+    if (fitted.unresolved.length > 0 || fitted.report.status !== "passed") {
+      throw new Error(`creative text fit unresolved: ${fitted.unresolved.map((item) => `${item.slideId}/${item.elementId}:${item.status}`).join(", ")}`);
     }
-  };
-  await runDeckPipeline(manifestPath, outputDir, designFirstOptions);
-  console.log(`Creative text pipeline complete: ${path.join(outputDir, "final.pptx")}`);
+    const manifest = fitted.manifest;
+    const manifestPath = path.join(resolvedOutput, "deck.manifest.json");
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    const designFirstOptions = {
+      inputType: "text",
+      inputSource: planPath,
+      copyManifest: false,
+      mode: options.mode,
+      strictLayoutSafety: true,
+      protectedInputs: [
+        planPath,
+        designOutputPath,
+        ...localizedAssets.protectedPaths
+      ],
+      beforePackage: async () => {
+        const target = path.join(resolvedOutput, "deck.plan.json");
+        if (path.resolve(planPath) !== path.resolve(target)) fs.copyFileSync(planPath, target);
+        fs.writeFileSync(localizedAssets.ownershipPath, `${JSON.stringify(localizedAssets.ownership, null, 2)}\n`, "utf8");
+      }
+    };
+    await runDeckPipeline(manifestPath, resolvedOutput, designFirstOptions);
+    console.log(`Creative text pipeline complete: ${path.join(resolvedOutput, "final.pptx")}`);
+  } catch (error) {
+    cleanupLocalizedPlanAssets(localizedAssets);
+    throw error;
+  }
 }
 
 main().catch((error) => {

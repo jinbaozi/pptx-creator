@@ -286,6 +286,7 @@ describe("deck.plan 0.2 compilation provenance", () => {
     empty.designIntent.locks.protectedAssets = [];
     empty.slides[1].assetIds = [];
     empty.slides[1].attentionTarget = { kind: "message", ref: "native-first" };
+    empty.slides[1].compositionIntent.emphasis = "message";
     expect(validateDeckPlan(empty)).toEqual({ valid: true, errors: [] });
     expect(compileDeckPlan(empty).assets).toEqual([]);
   });

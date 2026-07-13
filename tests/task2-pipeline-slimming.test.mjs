@@ -59,6 +59,32 @@ describe("Task 2 public surface and deletion contract", () => {
 });
 
 describe("Task 2 single pipeline contract", () => {
+  it("invalidates only published outputs at the safe preflight boundary", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-public-invalidation-"));
+    const planPath = join(dir, "deck.plan.json");
+    const designPath = join(dir, "DESIGN.md");
+    const assetPath = join(dir, "assets", "source.png");
+    await mkdir(join(dir, "assets"));
+    await writeFile(planPath, "{}\n", "utf8");
+    await writeFile(designPath, "source design\n", "utf8");
+    await writeFile(assetPath, "source asset\n", "utf8");
+    for (const name of ["final.pptx", "output-manifest.json", "deck.manifest.json", "quality-report.json", "visual-review.json"]) {
+      await writeFile(join(dir, name), "stale-success", "utf8");
+    }
+    for (const directory of ["preview", "creative-proof"]) {
+      await mkdir(join(dir, directory));
+      await writeFile(join(dir, directory, "stale.txt"), "stale-success", "utf8");
+    }
+
+    expect(typeof pipeline.invalidatePublishedOutputs).toBe("function");
+    await pipeline.invalidatePublishedOutputs(dir, [planPath, designPath, assetPath]);
+
+    for (const name of ["final.pptx", "output-manifest.json", "deck.manifest.json", "quality-report.json", "visual-review.json", "preview", "creative-proof"]) {
+      await expect(access(join(dir, name)), name).rejects.toThrow();
+    }
+    for (const preserved of [planPath, designPath, assetPath]) await expect(access(preserved)).resolves.toBeUndefined();
+  });
+
   it("removes stale consumable outputs before a failing run", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-stale-output-"));
     const manifest = join(dir, "invalid.manifest.json");

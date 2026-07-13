@@ -34,6 +34,12 @@ The public creative route accepts `--design-system <path-or-name>`. Existing loc
 
 Plan assets resolve relative to the plan directory unless already absolute. Remote or missing sources block before rendering. Local files are copied to deterministic content-hashed paths under `output/assets/`, the full asset contract remains in `manifest.assets`, and referenced visual assets become native image objects. `alt` is the canonical accessibility field used by deterministic analysis and PPT rendering; the authored `altText` remains as provenance. Non-visual data assets never become fake images.
 
+Each slide may reference at most five visual assets and may not repeat an asset ID. Asset attention must point to a visual asset listed by that slide. One visual becomes the hero; up to four supporting visuals occupy a deterministic gapped grid inside the reserved media zone, without crossing native-content bounds. `emphasis: asset` requires at least one visual asset.
+
+Starting a creative run immediately invalidates previously published PPTX, manifest, report, review, and preview artifacts while preserving in-place plan, design, and source-asset inputs. Localized asset ownership is recorded only after normal pipeline cleanup and only for files created by the run; a later run removes those owned hashes without deleting unrelated or in-place user assets.
+
+For native containers, resolved `hero-card` and `content-card` component tokens provide the baseline. Page-role, attention, and compatibility adjustments are explicit overrides, so component resolution cannot erase semantic emphasis.
+
 ## Gate
 
 Creative output currently passes only when deck score is at least 80, every slide is at least 70, slop risk is at most 20, P0/P1 findings are zero, deterministic text-fit evidence passes, and editability is at least Level 4. The plan's requested L4 or L5 `context.editabilityFloor` is preserved in the compiled manifest and design-intent provenance for the later quality-profile task; it does not yet raise this gate above Level 4. The proof must include a real LibreOffice render of every page and a complete contact sheet. Contextual checks come from the design read and dials. Explicit user brand and source locks override generic heuristics. Font compatibility is reported from real font preflight data, and visible background grids must match `metadata.designIntent.visibleGrid`.

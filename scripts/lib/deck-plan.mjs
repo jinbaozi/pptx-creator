@@ -20,6 +20,7 @@ const DEFAULT_DESIGN_TOKENS = Object.freeze({
   }
 });
 const VISUAL_ASSET_KINDS = new Set(["photo", "illustration", "icon", "logo", "texture"]);
+const MAX_VISUAL_ASSETS_PER_SLIDE = 5;
 
 const text = (id, value, x, y, w, h, style = {}) => ({
   type: "text", id, x, y, w, h, text: Array.isArray(value) ? value.join("\n") : String(value ?? ""), style
@@ -160,6 +161,27 @@ function typographyForRole(tokens, role, metricFont) {
   return { ...typography, fontFamily: metricFont.resolved };
 }
 
+function resolveDesignToken(value, tokens) {
+  if (typeof value !== "string") return value;
+  const match = value.match(/^\{([^}]+)\}$/);
+  if (!match) return value;
+  let cursor = tokens;
+  for (const segment of match[1].split(".")) cursor = cursor?.[segment];
+  return cursor ?? value;
+}
+
+function resolvedComponent(tokens, name) {
+  const source = tokens.components?.[name];
+  if (!source || typeof source !== "object" || Array.isArray(source)) return {};
+  return Object.fromEntries(Object.entries(source).map(([key, value]) => [key, resolveDesignToken(value, tokens)]));
+}
+
+function componentForShape(element) {
+  if (["left-panel", "layer-0", "step-0", "kpi-card-0"].includes(element.id)) return "hero-card";
+  if (element.id === "right-panel" || /^(?:layer|step|kpi-card)-\d+$/.test(element.id)) return "content-card";
+  return null;
+}
+
 function applyDesignTokens(elements, tokens, family, metricFont) {
   const semanticColors = semanticTextColors(tokens);
   return elements.map((element, index) => {
@@ -188,14 +210,21 @@ function applyDesignTokens(elements, tokens, family, metricFont) {
       const decorative = /accent|quote-mark/.test(next.id);
       const diagramNode = /^(?:layer|step)-/.test(next.id);
       const alternate = numericIndex % 2 === 0;
+      const componentName = componentForShape(next);
+      const component = componentName ? resolvedComponent(tokens, componentName) : {};
+      const fallbackFill = alternate ? tokens.colors.surfaceAlt : tokens.colors.surface;
+      const fallbackLine = diagramNode ? tokens.colors.primary : tokens.colors.border;
       next.style.fill = decorative
         ? tokens.colors.primary
-        : alternate
-          ? tokens.colors.surfaceAlt
-          : tokens.colors.surface;
-      next.style.line = decorative ? tokens.colors.primary : diagramNode ? tokens.colors.primary : tokens.colors.border;
+        : component.backgroundColor ?? fallbackFill;
+      next.style.line = decorative ? tokens.colors.primary : component.borderColor ?? fallbackLine;
       next.style.backgroundColor = next.style.fill;
       next.style.borderColor = next.style.line;
+      if (componentName) {
+        next.style.component = `{components.${componentName}}`;
+        if (component.padding !== undefined) next.style.padding = component.padding;
+        if (component.rounded !== undefined) next.style.rounded = component.rounded;
+      }
     } else if (next.type === "line") {
       next.style.color = tokens.colors.primary;
     }
@@ -222,24 +251,60 @@ function pageRoleColor(pageRole, colors) {
   return roles[pageRole] ?? colors.primary;
 }
 
+const PAGE_ROLE_PROFILES = Object.freeze({
+  cover: { headlineScale: 1.04, contentScale: 0.98, contentShift: 0 },
+  section: { headlineScale: 1.08, contentScale: 0.94, contentShift: 0.1 },
+  "single-point": { headlineScale: 1.1, contentScale: 0.92, contentShift: 0.14 },
+  evidence: { headlineScale: 0.98, contentScale: 1.02, contentShift: 0 },
+  data: { headlineScale: 0.94, contentScale: 1.04, contentShift: 0.04 },
+  comparison: { headlineScale: 0.98, contentScale: 1, contentShift: 0.04 },
+  process: { headlineScale: 0.98, contentScale: 1.01, contentShift: 0.02 },
+  architecture: { headlineScale: 0.98, contentScale: 1.02, contentShift: 0.03 },
+  "case-study": { headlineScale: 1.02, contentScale: 0.98, contentShift: 0.08 },
+  quote: { headlineScale: 1.06, contentScale: 0.96, contentShift: 0.1 },
+  decision: { headlineScale: 1.06, contentScale: 0.96, contentShift: 0.12 },
+  closing: { headlineScale: 1.03, contentScale: 0.97, contentShift: 0 },
+  appendix: { headlineScale: 0.92, contentScale: 1.04, contentShift: 0 }
+});
+
 function applySemanticIntent(elements, slide, plan, slideIndex, tokens) {
   const variance = Number(plan.designIntent.dials.compositionVariance);
   const density = Number(plan.designIntent.dials.visualDensity);
   const energy = Number(plan.designIntent.dials.visualEnergy);
   const ambition = Number(plan.context.visualAmbition);
+  const roleProfile = PAGE_ROLE_PROFILES[slide.pageRole] ?? PAGE_ROLE_PROFILES.evidence;
   const varianceAmplitude = ((variance - 50) / 50) * 0.055;
   const densityScale = 0.98 + density * 0.0004;
+  const ambitionDelta = (ambition - 50) / 50;
+  const ambitionScale = 1 + ambitionDelta * 0.025;
   const whitespaceScale = { compact: 1.02, balanced: 1, spacious: 0.97 }[slide.compositionIntent.whitespace] ?? 1;
   const next = elements.map((element, elementIndex) => {
     const result = structuredClone(element);
     if (result.role !== "connector") {
       const centerX = result.x + result.w / 2;
       const centerY = result.y + result.h / 2;
-      const factor = densityScale * whitespaceScale;
+      const factor = densityScale * whitespaceScale * ambitionScale;
       result.w *= factor;
       result.h *= factor;
-      result.x = centerX - result.w / 2 + varianceAmplitude * (((slideIndex + elementIndex) % 3) - 1);
+      const ambitionOffset = ambitionDelta * 0.07 * (((slideIndex + elementIndex) % 3) - 1);
+      result.x = centerX - result.w / 2 + varianceAmplitude * (((slideIndex + elementIndex) % 3) - 1) + ambitionOffset;
       result.y = centerY - result.h / 2 + varianceAmplitude * (slideIndex % 2 ? 0.35 : -0.35);
+      if (result.id === "headline") {
+        result.style.fontSize = Number((Number(result.style.fontSize ?? tokens.typography.title.fontSize) * roleProfile.headlineScale).toFixed(2));
+        result.w *= 1 + (roleProfile.headlineScale - 1) * 0.3;
+      } else {
+        result.x += roleProfile.contentShift;
+        result.w *= roleProfile.contentScale;
+      }
+      if (result.type === "shape") {
+        result.style.borderWidth = Number((0.7 + energy * 0.014).toFixed(2));
+      } else if (result.type === "line") {
+        result.style.width = Number((1.2 + energy * 0.018).toFixed(2));
+      } else if (result.type === "text" && (result.id === "headline" || typographyRole(result) === "metric")) {
+        result.style.fontSize = Number((Number(result.style.fontSize) + energy * 0.01).toFixed(2));
+        result.style.fontWeight = Math.max(Number(result.style.fontWeight ?? 400), Math.round(580 + energy * 1.2));
+        result.style.bold = result.style.fontWeight >= 600;
+      }
     }
     return result;
   });
@@ -330,6 +395,25 @@ function assetSource(options, asset) {
   return options.assetSourceById?.[asset.id] ?? asset.provenance.sourceRef;
 }
 
+const MEDIA_ZONE = Object.freeze({ x: 8.25, y: 0.75, w: 4.38, h: 6 });
+const MEDIA_GAP = 0.16;
+
+function mediaImageElement(asset, options, geometry) {
+  const sizingType = ["contain", "none"].includes(asset.cropPolicy) ? "contain" : "cover";
+  return boundedElement({
+    type: "image",
+    id: `asset-${asset.id}`,
+    assetId: asset.id,
+    src: assetSource(options, asset),
+    ...geometry,
+    focalPoint: asset.focalPoint,
+    cropPolicy: asset.cropPolicy,
+    alt: asset.altText,
+    altText: asset.altText,
+    sizing: { type: sizingType }
+  });
+}
+
 function applyVisualAssets(elements, slide, assets, options, assetIntensity) {
   const visualAssets = slide.assetIds
     .map((assetId) => assets.find((asset) => asset.id === assetId))
@@ -337,39 +421,58 @@ function applyVisualAssets(elements, slide, assets, options, assetIntensity) {
   if (visualAssets.length === 0) return elements;
 
   const heroId = slide.attentionTarget.kind === "asset" ? slide.attentionTarget.ref : visualAssets[0].id;
-  const heroWidth = 3.8 + Number(assetIntensity) * 0.015;
-  const heroHeight = 4.3 + Number(assetIntensity) * 0.014;
-  const heroX = W - 0.7 - heroWidth;
-  const heroY = (H - heroHeight) / 2;
-  const contentWidth = Math.max(5.25, heroX - 0.45);
+  const hero = visualAssets.find((asset) => asset.id === heroId) ?? visualAssets[0];
+  const supports = visualAssets.filter((asset) => asset.id !== hero.id);
+  const intensity = clamp(assetIntensity, 0, 100);
+  const zonePadding = 0.18 - intensity * 0.0012;
+  const frame = {
+    x: MEDIA_ZONE.x + zonePadding,
+    y: MEDIA_ZONE.y + zonePadding,
+    w: MEDIA_ZONE.w - zonePadding * 2,
+    h: MEDIA_ZONE.h - zonePadding * 2
+  };
+  const contentLeft = 0.55;
+  const contentRight = MEDIA_ZONE.x - 0.32;
+  const reflowElements = elements.filter((element) => element.role !== "connector"
+    && !["role-marker", "section-eyebrow", "decision-marker"].includes(element.id));
+  const sourceLeft = Math.min(...reflowElements.map((element) => element.x));
+  const sourceRight = Math.max(...reflowElements.map((element) => element.x + element.w));
+  const contentScale = Math.min(1, (contentRight - contentLeft) / Math.max(0.01, sourceRight - sourceLeft));
   const native = elements.map((element) => {
     if (element.role === "connector" || ["role-marker", "section-eyebrow", "decision-marker"].includes(element.id)) return element;
     const next = structuredClone(element);
-    const scale = contentWidth / W;
-    next.x = 0.55 + next.x * scale;
-    next.w *= scale;
+    next.x = contentLeft + (next.x - sourceLeft) * contentScale;
+    next.w *= contentScale;
     return boundedElement(next);
   });
-  const ordered = [...visualAssets].sort((left, right) => Number(right.id === heroId) - Number(left.id === heroId));
-  const imageElements = ordered.map((asset, index) => {
-    const hero = asset.id === heroId;
-    const x = hero ? heroX : 7.5 + (index % 2) * 2.55;
-    const y = hero ? heroY : 1.15 + Math.floor(index / 2) * 2.25;
-    const w = hero ? heroWidth : 1.8 + Number(assetIntensity) * 0.004;
-    const h = hero ? heroHeight : 1.55 + Number(assetIntensity) * 0.0035;
-    const sizingType = ["contain", "none"].includes(asset.cropPolicy) ? "contain" : "cover";
-    return boundedElement({
-      type: "image",
-      id: `asset-${asset.id}`,
-      assetId: asset.id,
-      src: assetSource(options, asset),
-      x, y, w, h,
-      focalPoint: asset.focalPoint,
-      cropPolicy: asset.cropPolicy,
-      alt: asset.altText,
-      altText: asset.altText,
-      sizing: { type: sizingType }
-    });
+
+  if (supports.length === 0) {
+    return [...native, mediaImageElement(hero, options, frame)];
+  }
+
+  const heroRatio = 0.55 + intensity * 0.0008;
+  const heroHeight = (frame.h - MEDIA_GAP) * heroRatio;
+  const supportY = frame.y + heroHeight + MEDIA_GAP;
+  const supportHeight = frame.h - heroHeight - MEDIA_GAP;
+  const columns = supports.length === 1 ? 1 : 2;
+  const rows = Math.ceil(supports.length / columns);
+  const cellWidth = (frame.w - MEDIA_GAP * (columns - 1)) / columns;
+  const cellHeight = (supportHeight - MEDIA_GAP * (rows - 1)) / rows;
+  const imageElements = [mediaImageElement(hero, options, {
+    x: frame.x,
+    y: frame.y,
+    w: frame.w,
+    h: heroHeight
+  })];
+  supports.forEach((asset, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    imageElements.push(mediaImageElement(asset, options, {
+      x: frame.x + column * (cellWidth + MEDIA_GAP),
+      y: supportY + row * (cellHeight + MEDIA_GAP),
+      w: cellWidth,
+      h: cellHeight
+    }));
   });
   return [...native, ...imageElements];
 }
@@ -474,6 +577,7 @@ function validateSemanticRules(plan) {
   ];
   const slideIds = new Set(plan.slides.map((slide) => slide.id));
   const assetIds = new Set(plan.assets.map((asset) => asset.id));
+  const assetsById = new Map(plan.assets.map((asset) => [asset.id, asset]));
   const suites = new Set();
 
   for (const target of plan.context.targetSuites) {
@@ -494,8 +598,29 @@ function validateSemanticRules(plan) {
   });
 
   plan.slides.forEach((slide, slideIndex) => {
-    if (slide.attentionTarget.kind === "asset" && !assetIds.has(slide.attentionTarget.ref)) {
-      errors.push(`slides[${slideIndex}].attentionTarget references unknown asset "${slide.attentionTarget.ref}"`);
+    const seenSlideAssets = new Set();
+    for (const assetId of slide.assetIds) {
+      if (seenSlideAssets.has(assetId)) errors.push(`slides[${slideIndex}].assetIds must be unique; duplicate "${assetId}"`);
+      seenSlideAssets.add(assetId);
+    }
+    const visualAssets = slide.assetIds
+      .map((assetId) => assetsById.get(assetId))
+      .filter((asset) => asset && VISUAL_ASSET_KINDS.has(asset.kind));
+    if (visualAssets.length > MAX_VISUAL_ASSETS_PER_SLIDE) {
+      errors.push(`slides[${slideIndex}].assetIds must reference at most ${MAX_VISUAL_ASSETS_PER_SLIDE} visual assets`);
+    }
+    if (slide.attentionTarget.kind === "asset") {
+      const attentionAsset = assetsById.get(slide.attentionTarget.ref);
+      if (!attentionAsset) {
+        errors.push(`slides[${slideIndex}].attentionTarget references unknown asset "${slide.attentionTarget.ref}"`);
+      } else if (!slide.assetIds.includes(attentionAsset.id)) {
+        errors.push(`slides[${slideIndex}].attentionTarget asset "${attentionAsset.id}" must belong to slide.assetIds`);
+      } else if (!VISUAL_ASSET_KINDS.has(attentionAsset.kind)) {
+        errors.push(`slides[${slideIndex}].attentionTarget asset "${attentionAsset.id}" must reference a visual renderable asset`);
+      }
+    }
+    if (slide.compositionIntent.emphasis === "asset" && visualAssets.length === 0) {
+      errors.push(`slides[${slideIndex}].compositionIntent emphasis "asset" requires at least one visual asset`);
     }
     slide.assetIds.forEach((assetId) => {
       if (!assetIds.has(assetId)) errors.push(`slides[${slideIndex}].assetIds references unknown asset "${assetId}"`);

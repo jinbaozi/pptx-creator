@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import JSZip from "jszip";
 
 describe("creative deck-plan pipeline", () => {
@@ -112,14 +113,64 @@ describe("creative deck-plan pipeline", () => {
       .filter(([name]) => name.startsWith("ppt/slides/slide") && name.endsWith(".xml"))
       .map(([, entry]) => entry.async("string")))).join("\n");
     expect(slideXml).toContain('descr="Business evidence slide"');
+
+    const firstLocalizedSource = manifest.assets[0].src;
+    const userOwnedAsset = path.join(outputDir, "assets", "user-owned.png");
+    fs.copyFileSync("examples/image-input/business-slide.png", userOwnedAsset);
+    fs.copyFileSync("examples/image-input/replica-golden.png", assetFile);
+    execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    });
+    const rerunManifest = JSON.parse(fs.readFileSync(path.join(outputDir, "deck.manifest.json"), "utf8"));
+    expect(rerunManifest.assets[0].src).not.toBe(firstLocalizedSource);
+    expect(fs.existsSync(path.join(outputDir, firstLocalizedSource))).toBe(false);
+    expect(fs.existsSync(path.join(outputDir, rerunManifest.assets[0].src))).toBe(true);
+    expect(fs.existsSync(userOwnedAsset)).toBe(true);
+  }, 120000);
+
+  it("does not claim an in-place content-hash source as generated ownership", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-in-place-hash-asset-"));
+    const bytes = fs.readFileSync("examples/image-input/business-slide.png");
+    const digest = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+    const relativeSource = path.posix.join("assets", `asset-hero-${digest}.png`);
+    const sourcePath = path.join(dir, relativeSource);
+    fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+    fs.writeFileSync(sourcePath, bytes);
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    plan.assets.push({
+      id: "asset-hero",
+      kind: "photo",
+      role: "hero evidence",
+      description: "An in-place content-hash source",
+      provenance: { origin: "user", sourceRef: relativeSource, license: "user-owned" },
+      focalPoint: "center",
+      cropPolicy: "cover",
+      altText: "User-owned evidence image",
+      fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+    });
+    plan.slides[0].assetIds = ["asset-hero"];
+    plan.slides[0].attentionTarget = { kind: "asset", ref: "asset-hero" };
+    plan.slides[0].compositionIntent.emphasis = "asset";
+    const planPath = path.join(dir, "deck.plan.json");
+    fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+
+    execFileSync("node", ["scripts/pptx.mjs", "text", dir, dir, "--design-system", "business-neutral"], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    });
+
+    const registry = JSON.parse(fs.readFileSync(path.join(dir, ".pptx-generated-assets.json"), "utf8"));
+    expect(registry).toMatchObject({ owner: "creative-deck-plan-assets", files: [] });
+    expect(fs.existsSync(sourcePath)).toBe(true);
   }, 60000);
 
   it.each([
     ["remote", "https://example.com/hero.png"],
     ["missing", "missing/hero.png"]
-  ])("fails closed for a %s asset source before publishing final.pptx", (_label, sourceRef) => {
-    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-invalid-assets-input-"));
-    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-invalid-assets-output-"));
+  ])("invalidates stale public output for a %s asset source while preserving in-place inputs", (_label, sourceRef) => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-invalid-assets-in-place-"));
+    const outputDir = inputDir;
     const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
     plan.assets.push({
       id: "asset-hero",
@@ -134,11 +185,39 @@ describe("creative deck-plan pipeline", () => {
     });
     plan.slides[0].assetIds = ["asset-hero"];
     fs.writeFileSync(path.join(inputDir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+    fs.copyFileSync("design-systems/business-neutral/DESIGN.md", path.join(inputDir, "DESIGN.md"));
+    fs.mkdirSync(path.join(inputDir, "assets"), { recursive: true });
+    fs.copyFileSync("examples/image-input/business-slide.png", path.join(inputDir, "assets", "user-source.png"));
+    const staleOwnedAsset = path.join(inputDir, "assets", "asset-old-deadbeef.png");
+    fs.copyFileSync("examples/image-input/business-slide.png", staleOwnedAsset);
+    fs.writeFileSync(path.join(inputDir, ".pptx-generated-assets.json"), `${JSON.stringify({
+      version: "0.1.0",
+      owner: "creative-deck-plan-assets",
+      files: ["assets/asset-old-deadbeef.png"]
+    }, null, 2)}\n`, "utf8");
+
+    const staleFiles = [
+      "final.pptx", "output-manifest.json", "deck.manifest.json", "editable-report.md", "qa-report.md",
+      "compatibility-report.md", "consistency-report.json", "consistency-report.md", "layout-safety-report.json",
+      "text-fit-report.json", "quality-report.json", "quality-report.md", "creative-proof.json", "visual-review.json",
+      "run.json", "pipeline-blocked.json"
+    ];
+    for (const name of staleFiles) fs.writeFileSync(path.join(outputDir, name), "stale-success", "utf8");
+    for (const directory of ["preview", "creative-proof"]) {
+      fs.mkdirSync(path.join(outputDir, directory), { recursive: true });
+      fs.writeFileSync(path.join(outputDir, directory, "stale.txt"), "stale-success", "utf8");
+    }
 
     expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     })).toThrow();
-    expect(fs.existsSync(path.join(outputDir, "final.pptx"))).toBe(false);
+    for (const name of staleFiles) expect(fs.existsSync(path.join(outputDir, name)), name).toBe(false);
+    for (const directory of ["preview", "creative-proof"]) expect(fs.existsSync(path.join(outputDir, directory)), directory).toBe(false);
+    expect(fs.existsSync(staleOwnedAsset), "stale owned asset").toBe(false);
+    expect(fs.existsSync(path.join(inputDir, ".pptx-generated-assets.json")), "stale ownership registry").toBe(false);
+    for (const preserved of ["deck.plan.json", "DESIGN.md", path.join("assets", "user-source.png")]) {
+      expect(fs.existsSync(path.join(inputDir, preserved)), preserved).toBe(true);
+    }
   }, 60000);
 });

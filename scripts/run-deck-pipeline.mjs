@@ -24,6 +24,34 @@ import { parseDesignFile } from "./parse-design-md.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const PUBLISHED_OUTPUTS = Object.freeze([
+  "final.pptx",
+  "output-manifest.json",
+  "deck.manifest.json",
+  "editable-report.md",
+  "qa-report.md",
+  "compatibility-report.md",
+  "consistency-report.json",
+  "consistency-report.md",
+  "layout-safety-report.json",
+  "text-fit-report.json",
+  "html-layout-report.json",
+  "html-repair-report.json",
+  "quality-report.json",
+  "quality-report.md",
+  "creative-proof.json",
+  "creative-proof",
+  ".creative-repair",
+  "replica-evidence.json",
+  "visual-regression-report.json",
+  "visual-review.json",
+  "html-pipeline-summary.json",
+  "html-preview",
+  "preview",
+  "previews",
+  "run.json",
+  "pipeline-blocked.json"
+]);
 const CONSUMABLE_OUTPUTS = Object.freeze([
   "final.pptx",
   "output-manifest.json",
@@ -85,6 +113,22 @@ async function removeOwnedPath(candidate, protectedSet) {
   let entries;
   try { entries = await readdir(candidate, { withFileTypes: true }); } catch { return; }
   await Promise.all(entries.map((entry) => removeOwnedPath(resolve(candidate, entry.name), protectedSet)));
+}
+
+export async function invalidatePublishedOutputs(outputDir, protectedPaths = []) {
+  const outputRoot = resolve(outputDir);
+  const protectedSet = new Set(protectedPaths.map((candidate) => resolve(candidate)));
+  let dynamicOutputs = [];
+  try {
+    dynamicOutputs = (await readdir(outputRoot))
+      .filter((name) => /^preview-diff-.*\.json$/i.test(name))
+      .map((name) => resolve(outputRoot, name));
+  } catch {}
+  const candidates = [
+    ...PUBLISHED_OUTPUTS.map((name) => resolve(outputRoot, name)),
+    ...dynamicOutputs
+  ];
+  await Promise.all([...new Set(candidates)].map((candidate) => removeOwnedPath(candidate, protectedSet)));
 }
 
 export async function clearConsumableOutputs(outputDir, protectedPaths = []) {

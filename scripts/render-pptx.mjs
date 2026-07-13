@@ -93,7 +93,12 @@ function bulletOptions(bullet) {
 
 function componentStyle(element, design) {
   const style = resolveValue(element.style ?? {}, design.tokens);
-  return resolveValue(style.component ?? style, design.tokens);
+  if (!style || typeof style !== "object" || Array.isArray(style)) return {};
+  const component = style.component && typeof style.component === "object" && !Array.isArray(style.component)
+    ? resolveValue(style.component, design.tokens)
+    : {};
+  const { component: _component, ...overrides } = style;
+  return { ...component, ...overrides };
 }
 
 function shadowOptions(shadow) {
