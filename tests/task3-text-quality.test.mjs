@@ -89,7 +89,7 @@ describe("deck.plan 0.2 creative intermediate", () => {
     expect(manifest.slides).toHaveLength(8);
     expect(new Set(manifest.slides.map(geometrySignature)).size).toBe(8);
     const golden = JSON.parse(fs.readFileSync("tests/golden/deck-plan-archetype-geometry.json", "utf8"));
-    expect(Object.keys(golden).sort()).toEqual([...ADVERTISED_ARCHETYPES].sort());
+    expect(Object.fromEntries(manifest.slides.map((slide) => [slide.type, geometrySignature(slide)]))).toEqual(golden);
     for (const slide of manifest.slides) {
       expect(slide.elements.length).toBeGreaterThanOrEqual(2);
       expect(slide.elements.every((element) => ["text", "shape", "line", "table", "chart"].includes(element.type))).toBe(true);

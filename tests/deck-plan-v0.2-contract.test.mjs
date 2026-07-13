@@ -128,6 +128,25 @@ describe("deck.plan 0.2 canonical contract", () => {
     expect(validateDeckPlan(plan).valid).toBe(false);
   });
 
+  it("rejects slide IDs that cannot satisfy the manifest contract", () => {
+    const plan = validPlanV02();
+    plan.slides[0].id = "cover";
+    plan.story.sections[0].slideIds[0] = "cover";
+    plan.story.decisionPath[0] = "cover";
+    const planSchema = JSON.parse(fs.readFileSync("schemas/deck-plan.schema.json", "utf8"));
+    const manifestSchema = JSON.parse(fs.readFileSync("schemas/deck.schema.json", "utf8"));
+    const planValidation = validateJsonSchema(plan, planSchema);
+    const manifestValidation = planValidation.valid
+      ? validateJsonSchema(compileDeckPlan(plan), manifestSchema)
+      : { valid: true, errors: [] };
+
+    expect(planValidation.valid && !manifestValidation.valid).toBe(false);
+    expect(planValidation.valid).toBe(false);
+    expect(planValidation.errors.map((error) => `${error.path} ${error.message}`).join(" ")).toMatch(/slides\[0\]\.id.*pattern/i);
+    expect(validateDeckPlan(plan).valid).toBe(false);
+    expect(() => compileDeckPlan(plan)).toThrow(/slides\[0\]\.id.*pattern/i);
+  });
+
   it("retires 0.1 explicitly and compileDeckPlan surfaces the same invalid-plan error", () => {
     const legacy = JSON.parse(fs.readFileSync(legacyFixture, "utf8"));
     const result = validateDeckPlan(legacy);

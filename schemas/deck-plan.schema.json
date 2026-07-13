@@ -434,7 +434,7 @@
       "additionalProperties": false,
       "required": ["id", "pageRole", "message", "contentModel", "attentionTarget", "compositionIntent", "assetIds", "routePolicy"],
       "properties": {
-        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "id": { "$ref": "#/$defs/nonEmptyString", "pattern": "^slide-" },
         "pageRole": { "enum": ["cover", "section", "single-point", "evidence", "data", "comparison", "process", "architecture", "case-study", "quote", "decision", "closing", "appendix"] },
         "message": { "$ref": "#/$defs/nonEmptyString" },
         "contentModel": { "$ref": "#/$defs/contentModel" },
