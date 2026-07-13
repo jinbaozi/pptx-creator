@@ -56,11 +56,25 @@ function convertRecommendation(slideId, recommendation) {
   return null;
 }
 
-export function buildCreativeRepairPatch(review, attempt) {
+function targetIdsBySlide(manifest) {
+  const targetIds = new Map();
+  for (const slide of manifest?.slides ?? []) {
+    if (typeof slide?.id !== "string" || !slide.id) continue;
+    targetIds.set(slide.id, new Set((slide.elements ?? []).map((element) => element?.id).filter((id) => typeof id === "string" && id)));
+  }
+  return targetIds;
+}
+
+export function buildCreativeRepairPatch(review, attempt, manifest) {
+  if (!Number.isInteger(attempt) || attempt < 1 || attempt > 3) {
+    throw new Error("buildCreativeRepairPatch attempt must be an integer from 1 through 3");
+  }
   const patches = [];
   const evidence = [];
+  const targetIds = targetIdsBySlide(manifest);
   for (const [slideIndex, slide] of (review?.slides ?? []).entries()) {
     for (const [repairIndex, recommendation] of (slide?.recommendedRepairs ?? []).entries()) {
+      if (!targetIds.get(slide?.id)?.has(recommendation?.target)) continue;
       const patch = convertRecommendation(slide?.id, recommendation);
       if (!patch) continue;
       patches.push(patch);

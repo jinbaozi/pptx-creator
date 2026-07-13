@@ -33,6 +33,8 @@ describe("bounded repair convergence", () => {
     const result = await runBoundedRepair({ initialProof: proof(0.8), initialArtifact: "original", attempt });
     expect(attempt).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ artifact: "original", attempts: 1, stopReason: "no-improvement" });
+    expect(result.history[0]).toMatchObject({ outcome: "no-improvement", score: 0.79 });
+    expect(result.history[0]).not.toHaveProperty("comparison");
   });
 
   it("stops as soon as an accepted proof is measured", async () => {
@@ -55,6 +57,7 @@ describe("bounded repair convergence", () => {
 
     expect(compare).toHaveBeenCalledWith(candidateProof, initialProof);
     expect(result).toMatchObject({ accepted: true, proof: candidateProof, artifact: "candidate", attempts: 1, stopReason: "accepted" });
+    expect(result.history).toEqual([{ iteration: 1, outcome: "accepted", comparison: 0 }]);
   });
 
   it("rejects an accepted candidate when the injected comparator reports a regression", async () => {
@@ -70,6 +73,7 @@ describe("bounded repair convergence", () => {
 
     expect(compare).toHaveBeenCalledWith(candidateProof, initialProof);
     expect(result).toMatchObject({ accepted: false, proof: initialProof, artifact: "original", attempts: 1, stopReason: "no-improvement" });
+    expect(result.history).toEqual([{ iteration: 1, outcome: "no-improvement", comparison: -1 }]);
   });
 
   it("does not claim attempts when no deterministic repair is available", async () => {

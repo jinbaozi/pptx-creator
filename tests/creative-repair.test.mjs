@@ -46,12 +46,21 @@ function sampleManifest() {
 }
 
 describe("creative proof repair ordering", () => {
-  it("orders blocking defects before slop risk and visual score", () => {
+  it("builds the required ordered defect vector", () => {
     const candidate = proof({ slopRisk: 9, deckScore: 18 });
-    const current = proof({ p1: 1, slopRisk: 0, deckScore: 100 });
 
     expect(creativeRepairVector(candidate)).toEqual([0, 0, 0, 0, 9, -18]);
-    expect(compareCreativeProof(candidate, current)).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["P0 before P1", { p0: 0, p1: 9 }, { p0: 1, p1: 0 }],
+    ["P1 before overflow", { p1: 0, overflowCount: 9 }, { p1: 1, overflowCount: 0 }],
+    ["overflow before hard-gate failures", { overflowCount: 0, gateFailures: 9 }, { overflowCount: 1, gateFailures: 0 }],
+    ["hard-gate failures before slop risk", { gateFailures: 0, slopRisk: 100 }, { gateFailures: 1, slopRisk: 0 }],
+    ["slop risk before deck score", { slopRisk: 9, deckScore: 0 }, { slopRisk: 10, deckScore: 100 }],
+    ["deck score as the final tiebreaker", { deckScore: 90 }, { deckScore: 80 }]
+  ])("orders %s", (_label, candidateValues, currentValues) => {
+    expect(compareCreativeProof(proof(candidateValues), proof(currentValues))).toBeGreaterThan(0);
   });
 
   it("rejects an editability regression regardless of later metric gains", () => {
@@ -80,7 +89,7 @@ describe("creative critic repair patch adapter", () => {
       ]
     };
 
-    const repairPatch = buildCreativeRepairPatch(review, 2);
+    const repairPatch = buildCreativeRepairPatch(review, 2, manifest);
 
     expect(repairPatch).toMatchObject({
       attempt: 2,
@@ -108,6 +117,7 @@ describe("creative critic repair patch adapter", () => {
   });
 
   it("returns an empty patch when the review has no safe recommendation", () => {
+    const manifest = sampleManifest();
     expect(buildCreativeRepairPatch({
       slides: [{
         id: "slide-001",
@@ -116,11 +126,43 @@ describe("creative critic repair patch adapter", () => {
           { action: "move", target: "card", params: { x: 1 } }
         ]
       }]
-    }, 1)).toEqual({
+    }, 1, manifest)).toEqual({
       attempt: 1,
       reason: "visual-critic-deterministic-recommendations",
       evidence: [],
       patches: []
     });
+  });
+
+  it("fails closed when the manifest is absent", () => {
+    expect(buildCreativeRepairPatch({
+      slides: [{
+        id: "slide-001",
+        recommendedRepairs: [{ action: "updateStyle", target: "title", params: { fontSize: 16 } }]
+      }]
+    }, 1)).toMatchObject({ evidence: [], patches: [] });
+  });
+
+  it("fails closed when the review slide is missing from the manifest", () => {
+    expect(buildCreativeRepairPatch({
+      slides: [{
+        id: "slide-missing",
+        recommendedRepairs: [{ action: "updateStyle", target: "title", params: { fontSize: 16 } }]
+      }]
+    }, 1, sampleManifest())).toMatchObject({ evidence: [], patches: [] });
+  });
+
+  it("fails closed when the target element is missing from the manifest slide", () => {
+    expect(buildCreativeRepairPatch({
+      slides: [{
+        id: "slide-001",
+        recommendedRepairs: [{ action: "updateStyle", target: "ghost", params: { fontSize: 16 } }]
+      }]
+    }, 1, sampleManifest())).toMatchObject({ evidence: [], patches: [] });
+  });
+
+  it.each([undefined, null, 0, 4, 1.5, "1", Number.NaN])("rejects invalid attempt %s", (attempt) => {
+    expect(() => buildCreativeRepairPatch({}, attempt, sampleManifest()))
+      .toThrow("buildCreativeRepairPatch attempt must be an integer from 1 through 3");
   });
 });
