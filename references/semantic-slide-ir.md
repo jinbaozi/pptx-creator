@@ -101,6 +101,22 @@ and a coordinate-free `layout`. Slide IDs and asset IDs are unique deck-wide;
 node and layout IDs are unique within a slide. The stable node address is
 `(slideId, nodeId)`.
 
+When and only when the host writes `compositionIntent.blockId`, the slide also
+contains a closed `compositionBlock` snapshot with requested/resolved IDs,
+version, canonical topology-definition hash, fallback provenance, and
+coordinate-free topology. The hash is recomputable from exactly
+`{version, id: resolvedId, topology}`, so IR-to-manifest lowering never reopens
+the registry. The supplied and recomputed hashes must also equal the immutable
+canonical hash bound to `resolvedId`. Validation then replays the immutable
+requested/resolved block compatibility contract from slide role, global dials,
+same-slide asset kinds/cardinality, fallback provenance, and semantic slots.
+Unknown IDs, intent mismatch, unsupported or false fallback provenance,
+canonical identity substitution, incompatible roles/slots, or topology/hash
+drift fail closed. A separate complete-definition hash protects built-in block
+objects at resolver, fixture, and public apply boundaries; it is intentionally
+not serialized into this smaller self-contained IR snapshot. See
+`references/composition-blocks.md`.
+
 Every node has these common fields:
 
 ```json
@@ -190,6 +206,8 @@ family geometry
 -> bounds
 -> connector resolution
 -> manifest assembly
+-> optional selected composition-block group transform
+-> connector re-resolution and bounds proof
 ```
 
 The primary manifest element for a semantic node keeps the node ID. When a
@@ -214,15 +232,16 @@ canonicalTokenSnapshotHash(tokens)       // stable sha256 token fingerprint
 
 Validation combines JSON Schema enforcement with semantic checks for ID and
 reference integrity, family authority, derived-node authority, route and asset
-membership, token resolution, layout ownership, and connector topology. Callers
-must treat any error as a hard preflight failure; no manifest is emitted from
-an invalid IR.
+membership, token resolution, layout ownership, connector topology, canonical
+composition identity, and trusted requested-to-resolved compatibility replay.
+Callers must treat any error as a hard preflight failure; no manifest is emitted
+from an invalid IR.
 
 ## Current boundary
 
 This version publishes the selected canonical IR and indexes it in `run.json`.
-It deliberately does not generate, score, or persist visual concept candidates,
-and it does not provide composition/block registries. Those remain later
-Creative Director pipeline stages. It also preserves the eight existing family
-geometry compilers instead of introducing a generic layout engine, which keeps
-existing geometry goldens and editability behavior stable.
+It provides an explicitly host-selected fifteen-block composition registry but
+does not generate, rank, score, or persist visual concept candidates. A block
+is a bounded post-family topology transform, not a replacement generic
+renderer. The eight existing family geometry compilers remain the default and
+stay byte/geometry compatible when no `compositionIntent.blockId` is present.

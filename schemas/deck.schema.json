@@ -26,7 +26,8 @@
       "properties": {
         "strategy": { "enum": ["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"] },
         "whitespace": { "enum": ["compact", "balanced", "spacious"] },
-        "emphasis": { "enum": ["message", "evidence", "asset", "data"] }
+        "emphasis": { "enum": ["message", "evidence", "asset", "data"] },
+        "blockId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "minLength": 1, "maxLength": 80 }
       }
     },
     "routePolicy": {

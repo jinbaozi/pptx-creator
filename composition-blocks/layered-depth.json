@@ -1,0 +1,32 @@
+{
+  "version": "0.1.0",
+  "id": "layered-depth",
+  "whenToUse": ["A system or idea benefits from a clear foreground, working layer, and secondary cue."],
+  "notFor": ["Dense matrices that require equal cell access."],
+  "pageRoles": ["single-point", "evidence", "architecture", "case-study"],
+  "contentShape": { "requiredSlots": ["headline", "primary", "accent"], "optionalSlots": [] },
+  "dialRange": {
+    "compositionVariance": { "min": 0.45, "max": 1 },
+    "visualDensity": { "min": 0.25, "max": 0.85 },
+    "visualEnergy": { "min": 0.3, "max": 0.95 }
+  },
+  "assetRequirements": { "required": false, "kinds": ["diagram-source", "illustration"], "role": "Optional system evidence", "min": 0, "max": 1 },
+  "editability": { "minimumLevel": 5, "nativeText": true, "nativeVisual": true, "fullSlideRaster": false },
+  "pptSafeEffects": ["solid-fill", "thin-border", "native-transparency", "divider"],
+  "fallback": { "mode": "native-family", "when": ["content-overflow", "unsupported-content"] },
+  "antiPatterns": ["Fake 3D extrusion", "Heavy shadows or raster glow"],
+  "contentLimits": { "headlineChars": 64, "bodyChars": 540, "maxItems": 6 },
+  "topology": {
+    "primitive": "safe-area",
+    "insets": { "blockStart": "{spacing.lg}", "inlineEnd": "{spacing.lg}", "blockEnd": "{spacing.lg}", "inlineStart": "{spacing.lg}" },
+    "child": {
+      "primitive": "overlay",
+      "children": [
+        { "slot": "primary" },
+        { "primitive": "anchor", "anchor": "top-left", "size": "compact", "inset": "{spacing.sm}", "child": { "slot": "headline" } },
+        { "primitive": "anchor", "anchor": "bottom-right", "size": "compact", "inset": "{spacing.lg}", "child": { "slot": "accent" } }
+      ]
+    }
+  },
+  "fixtures": [{ "id": "layered-system", "slots": { "headline": "Intent guides the system", "primary": ["Experience", "Services", "Platform"], "accent": "Boundary" } }]
+}

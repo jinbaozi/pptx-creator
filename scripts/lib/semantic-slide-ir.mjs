@@ -2,10 +2,21 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { compileLegacyDeckPlan, resolvedDeckPlanDesign, validateDeckPlan } from "./deck-plan-core.mjs";
 import { resolveSemanticConnectors } from "./connector-resolver.mjs";
+import {
+  CANONICAL_COMPOSITION_BLOCK_HASHES,
+  CANONICAL_COMPOSITION_BLOCK_CONTRACTS,
+  applyCompositionBlockToSlide,
+  canonicalCompositionBlockHash,
+  canonicalCompositionSnapshotHash,
+  resolveCompositionBlock,
+  solveCompositionTopology,
+  validateCompositionTopology
+} from "./composition-blocks.mjs";
 import { validateJsonSchema } from "./schema-utils.mjs";
 
 const SCHEMA = JSON.parse(readFileSync(new URL("../../schemas/semantic-slide-ir.schema.json", import.meta.url), "utf8"));
 const VISUAL_KINDS = new Set(["photo", "illustration", "icon", "logo", "texture"]);
+const COMPOSITION_BLOCK_IDS = new Set(Object.keys(CANONICAL_COMPOSITION_BLOCK_HASHES));
 const GAP = "{spacing.md}";
 
 const ref = (nodeRef) => ({ nodeRef });
@@ -151,6 +162,96 @@ export function canonicalTokenSnapshotHash(tokens) {
   return `sha256:${createHash("sha256").update(JSON.stringify(canonical(tokens ?? {}))).digest("hex")}`;
 }
 
+function availableCompositionSlots(nodes) {
+  const slots = new Set();
+  for (const entry of nodes) {
+    if (entry.role === "headline" || entry.role === "quotation" || entry.kind === "quote") slots.add("headline");
+    if (entry.kind === "media") slots.add("media");
+    if (entry.kind === "metric") {
+      slots.add("metric");
+      slots.add("supporting");
+    }
+    if (entry.kind === "divider") slots.add("accent");
+    if (["subtitle", "section-marker", "decision-marker", "call-to-action", "comparison-secondary"].includes(entry.role)) slots.add("supporting");
+    if (entry.role !== "headline" && entry.kind !== "divider" && entry.kind !== "media") slots.add("primary");
+  }
+  return [...slots];
+}
+
+function replayTrustedCompositionContract(ir, slide, compositionBlock, assets, errors) {
+  const requested = CANONICAL_COMPOSITION_BLOCK_CONTRACTS[compositionBlock.requestedId];
+  const resolved = CANONICAL_COMPOSITION_BLOCK_CONTRACTS[compositionBlock.resolvedId];
+  if (!requested || !resolved) return;
+
+  const validateContext = (contract, id, phase) => {
+    if (!contract.pageRoles.includes(slide.pageRole)) {
+      errors.push(`${slide.id} ${phase} composition block ${id} is incompatible with page role ${slide.pageRole}`);
+    }
+    for (const name of ["compositionVariance", "visualDensity", "visualEnergy"]) {
+      const normalized = Number(ir.designIntent?.dials?.[name]) / 100;
+      const range = contract.dialRange[name];
+      if (!Number.isFinite(normalized) || normalized < range.min || normalized > range.max) {
+        errors.push(`${slide.id} ${phase} composition block ${id} is incompatible with ${name} ${normalized}; expected ${range.min}..${range.max}`);
+      }
+    }
+  };
+
+  validateContext(requested, compositionBlock.requestedId, "requested");
+  const allowedKinds = new Set(requested.assetRequirements.kinds);
+  const matchingAssets = allowedKinds.size === 0 ? [] : (slide.assetRefs ?? [])
+    .map((id) => assets.get(id))
+    .filter((asset) => asset && allowedKinds.has(asset.kind));
+  if (matchingAssets.length > requested.assetRequirements.max) {
+    errors.push(`${slide.id} ${compositionBlock.requestedId} compositionBlock has ${matchingAssets.length} matching slide assets; max is ${requested.assetRequirements.max}`);
+  }
+  const missingAssets = requested.assetRequirements.required
+    && matchingAssets.length < requested.assetRequirements.min;
+  const declaresMissingFallback = compositionBlock.fallbackApplied === true
+    && compositionBlock.fallbackReason === "missing-assets";
+  if (missingAssets) {
+    const declared = requested.fallback.mode === "block"
+      && requested.fallback.blockId === compositionBlock.resolvedId
+      && requested.fallback.when.includes("missing-assets")
+      && declaresMissingFallback;
+    if (!declared) {
+      errors.push(`${slide.id} non-fallback ${compositionBlock.requestedId} compositionBlock has no matching slide asset; missing-assets fallback is required`);
+    }
+  } else if (declaresMissingFallback) {
+    errors.push(`${slide.id} missing-assets fallback for ${compositionBlock.requestedId} is invalid because matching slide assets exist or assets are not required`);
+  }
+
+  validateContext(resolved, compositionBlock.resolvedId, "resolved");
+  const availableSlots = new Set(availableCompositionSlots(slide.nodes ?? []));
+  for (const slot of resolved.requiredSlots) {
+    if (!availableSlots.has(slot)) {
+      errors.push(`${slide.id} resolved composition block ${compositionBlock.resolvedId} requires unavailable slot ${slot}`);
+    }
+  }
+}
+
+function selectedCompositionBlock(plan, slide, nodes, options) {
+  const requestedId = slide.compositionIntent?.blockId;
+  if (!requestedId) return null;
+  if (!(options.compositionBlockRegistry instanceof Map)) {
+    throw new Error(`slide ${slide.id} selects composition block ${requestedId} but no composition block registry was supplied`);
+  }
+  const resolution = resolveCompositionBlock(options.compositionBlockRegistry, requestedId, {
+    pageRole: slide.pageRole,
+    dials: plan.designIntent.dials,
+    assets: slide.assetIds.map((id) => plan.assets.find((asset) => asset.id === id)).filter(Boolean),
+    availableSlots: availableCompositionSlots(nodes)
+  });
+  return {
+    requestedId: resolution.requestedId,
+    resolvedId: resolution.resolvedId,
+    version: resolution.block.version,
+    definitionHash: canonicalCompositionBlockHash(resolution.block),
+    fallbackApplied: resolution.fallbackApplied,
+    fallbackReason: resolution.fallbackReason,
+    topology: structuredClone(resolution.block.topology)
+  };
+}
+
 export function compileDeckPlanToIr(plan, options = {}) {
   const validation = validateDeckPlan(plan);
   if (!validation.valid) throw new Error(`deck.plan invalid: ${validation.errors.join("; ")}`);
@@ -180,6 +281,7 @@ export function compileDeckPlanToIr(plan, options = {}) {
       const base = familyNodes(slide);
       const derived = derivedNodes(plan, slide, plan.assets);
       const nodes = [...base, ...derived];
+      const compositionBlock = selectedCompositionBlock(plan, slide, nodes, options);
       return {
         id: slide.id,
         family: slide.contentModel.kind,
@@ -190,7 +292,8 @@ export function compileDeckPlanToIr(plan, options = {}) {
         assetRefs: [...slide.assetIds],
         routePolicy: structuredClone(slide.routePolicy),
         nodes,
-        layout: slideLayout(slide, nodes)
+        layout: slideLayout(slide, nodes),
+        ...(compositionBlock ? { compositionBlock } : {})
       };
     })
   };
@@ -504,6 +607,60 @@ export function validateSemanticDeckIr(ir, { design } = {}) {
     const nodeIds = slide.nodes?.map((entry) => entry.id) ?? [];
     for (const id of duplicates(nodeIds)) errors.push(`${slide.id} duplicate node id ${id}`);
     const byId = new Map((slide.nodes ?? []).map((entry) => [entry.id, entry]));
+    const blockId = slide.compositionIntent?.blockId;
+    const compositionBlock = slide.compositionBlock;
+    if (blockId && !compositionBlock) errors.push(`${slide.id} compositionIntent.blockId requires a compositionBlock snapshot`);
+    if (!blockId && compositionBlock) errors.push(`${slide.id} compositionBlock snapshot requires compositionIntent.blockId`);
+    if (compositionBlock) {
+      if (compositionBlock.requestedId !== blockId) {
+        errors.push(`${slide.id} compositionBlock.requestedId must match compositionIntent.blockId`);
+      }
+      if (!COMPOSITION_BLOCK_IDS.has(compositionBlock.requestedId)) {
+        errors.push(`${slide.id} compositionBlock requestedId is unknown: ${compositionBlock.requestedId}`);
+      }
+      if (!COMPOSITION_BLOCK_IDS.has(compositionBlock.resolvedId)) {
+        errors.push(`${slide.id} compositionBlock resolvedId is unknown: ${compositionBlock.resolvedId}`);
+      }
+      if (compositionBlock.fallbackApplied === false) {
+        if (compositionBlock.requestedId !== compositionBlock.resolvedId) {
+          errors.push(`${slide.id} non-fallback compositionBlock must keep requestedId equal to resolvedId`);
+        }
+        if (compositionBlock.fallbackReason !== null) errors.push(`${slide.id} non-fallback compositionBlock fallbackReason must be null`);
+      } else {
+        if (compositionBlock.requestedId === compositionBlock.resolvedId) {
+          errors.push(`${slide.id} fallback compositionBlock must change resolvedId`);
+        }
+        if (compositionBlock.fallbackReason !== "missing-assets") {
+          errors.push(`${slide.id} compositionBlock supports only declared missing-assets fallback provenance`);
+        }
+        const declaredFallback = CANONICAL_COMPOSITION_BLOCK_CONTRACTS[compositionBlock.requestedId]?.fallback;
+        if (declaredFallback?.mode !== "block"
+          || declaredFallback.blockId !== compositionBlock.resolvedId
+          || !declaredFallback.when.includes("missing-assets")) {
+          errors.push(`${slide.id} compositionBlock fallback pair ${compositionBlock.requestedId} -> ${compositionBlock.resolvedId} is not declared`);
+        }
+      }
+      replayTrustedCompositionContract(ir, slide, compositionBlock, assets, errors);
+      try {
+        const recomputedHash = canonicalCompositionSnapshotHash(compositionBlock);
+        if (recomputedHash !== compositionBlock.definitionHash) {
+          errors.push(`${slide.id} compositionBlock definition hash drifted from its self-contained topology`);
+        }
+        const canonicalHash = CANONICAL_COMPOSITION_BLOCK_HASHES[compositionBlock.resolvedId];
+        if (canonicalHash && (compositionBlock.definitionHash !== canonicalHash || recomputedHash !== canonicalHash)) {
+          errors.push(`${slide.id} compositionBlock canonical identity hash does not match resolvedId ${compositionBlock.resolvedId}`);
+        }
+      } catch (error) {
+        errors.push(`${slide.id} compositionBlock definition hash cannot be recomputed: ${error.message}`);
+      }
+      const topologyValidation = validateCompositionTopology(compositionBlock.topology);
+      for (const error of topologyValidation.errors) errors.push(`${slide.id} compositionBlock topology: ${error}`);
+      try {
+        solveCompositionTopology(compositionBlock.topology, { width: 13.333, height: 7.5, tokens: design?.tokens });
+      } catch (error) {
+        errors.push(`${slide.id} compositionBlock topology cannot solve: ${error.message}`);
+      }
+    }
     const state = { layoutIds: [], nodeRefs: [], connectorRefs: [] };
     collectLayout(slide.layout, state);
     const authority = validateNodeAuthority(ir, slide, assets, errors);
@@ -700,13 +857,24 @@ export function compileSemanticDeckIr(ir, { design } = {}) {
   const plan = planFromIr(ir);
   const { provided: selectionProvided, ...selectionValue } = ir.designSystem.selection ?? {};
   const selection = selectionProvided ? { designSystemSelection: selectionValue } : {};
-  return attachSemanticIdentity(compileLegacyDeckPlan(plan, {
+  const manifest = attachSemanticIdentity(compileLegacyDeckPlan(plan, {
     designTokens: design.tokens,
     designSystemName: ir.designSystem.name,
     designSystemSource: ir.designSystem.source,
     ...selection,
     assetSourceById: Object.fromEntries(ir.assets.map((asset) => [asset.id, asset.src]))
   }), ir);
+  const irById = new Map(ir.slides.map((slide) => [slide.id, slide]));
+  manifest.slides = manifest.slides.map((slide) => {
+    const source = irById.get(slide.id);
+    if (!source?.compositionBlock) return slide;
+    return applyCompositionBlockToSlide(slide, source, source.compositionBlock, {
+      design,
+      width: manifest.deck.size.width,
+      height: manifest.deck.size.height
+    });
+  });
+  return manifest;
 }
 
 export function compileIrCompatibilityFixture(plan, options = {}) {

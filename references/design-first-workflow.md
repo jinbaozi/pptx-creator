@@ -29,11 +29,25 @@ The plan is version `0.2.0` with exactly six required top-level keys: `version`,
 - `designIntent` records the design read; typography, palette, material, imagery, composition direction and `visibleGrid`; contextual composition/density/energy dials; and source/brand locks.
 - `story` records narrative beats, ordered sections with slide references, and the decision path.
 - `assets` records localized asset intent and provenance. Every asset has a non-empty `provenance.sourceRef`; empty asset lists remain valid.
-- Every slide records `pageRole`, one message, a strict `contentModel`, an explicit `attentionTarget`, `compositionIntent`, `assetIds`, and a `routePolicy` whose preferred route is `native`, whose allowed routes include `native`, and whose `fullSlideRaster` is always `false`.
+- Every slide records `pageRole`, one message, a strict `contentModel`, an explicit `attentionTarget`, `compositionIntent`, `assetIds`, and a `routePolicy` whose preferred route is `native`, whose allowed routes include `native`, and whose `fullSlideRaster` is always `false`. The host may explicitly add `compositionIntent.blockId` from the built-in composition registry; it is the only public block-selection knob.
 
 The current migration shell keeps eight strict native content families: `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. It is coordinate-free at every depth: coordinates, manifest geometry, and `elements` are invalid. `schemas/deck-plan.schema.json` is the only structural validator; runtime checks add only ID uniqueness, reference resolution, required route/suite membership, and composition ordering. Version `0.1.0` is retired and cannot compile.
 
 Direction candidates are optional. Use them only when material ambiguity or high risk makes a single direction unsafe; candidate count, scoring, and recommendation are host-agent judgments, never fixed deterministic outputs.
+
+Composition blocks are also host-selected, never ranked or inferred by scripts.
+The Creative runner loads the closed built-in registry once and passes it only
+to plan-to-IR compilation. A selected block is checked against page role,
+normalized dials, semantic slots, and assets, then snapshotted into the
+canonical IR. Without `blockId`, the IR and all eight family geometries remain
+unchanged. IR validation binds the resolved ID to an immutable canonical hash
+and replays the immutable requested/resolved compatibility contract without a
+registry scan. Resolver and fixture block-object boundaries additionally bind
+each built-in ID to a hash over its complete definition, rejecting schema-valid
+fixture, editability, optional-slot, guidance, or limit drift without changing
+the smaller IR topology-hash contract. Custom non-built-in IDs remain explicit
+extension points. See `references/composition-blocks.md` for the exact grammar,
+fallback, hashing, fixture, and native lowering contract.
 
 The manifest remains the renderer's sole render truth. HTML is optional only
 when explicitly requested or genuinely necessary for source-defined layout; it

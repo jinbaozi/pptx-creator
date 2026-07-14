@@ -1,0 +1,31 @@
+{
+  "version": "0.1.0",
+  "id": "timeline",
+  "whenToUse": ["A bounded sequence needs a visible direction and endpoint."],
+  "notFor": ["Non-sequential capability maps."],
+  "pageRoles": ["section", "evidence", "process", "case-study"],
+  "contentShape": { "requiredSlots": ["headline", "primary", "accent"], "optionalSlots": [] },
+  "dialRange": {
+    "compositionVariance": { "min": 0.2, "max": 0.85 },
+    "visualDensity": { "min": 0.3, "max": 0.9 },
+    "visualEnergy": { "min": 0.2, "max": 0.85 }
+  },
+  "assetRequirements": { "required": false, "kinds": ["diagram-source"], "role": "Optional milestone source", "min": 0, "max": 1 },
+  "editability": { "minimumLevel": 5, "nativeText": true, "nativeVisual": true, "fullSlideRaster": false },
+  "pptSafeEffects": ["solid-fill", "thin-border", "divider", "native-connector"],
+  "fallback": { "mode": "native-family", "when": ["content-overflow", "unsupported-content"] },
+  "antiPatterns": ["More than six milestones", "Decorative chronology without decisions"],
+  "contentLimits": { "headlineChars": 68, "bodyChars": 520, "maxItems": 6 },
+  "topology": {
+    "primitive": "safe-area",
+    "insets": { "blockStart": "{spacing.lg}", "inlineEnd": "{spacing.lg}", "blockEnd": "{spacing.lg}", "inlineStart": "{spacing.lg}" },
+    "child": {
+      "primitive": "stack",
+      "direction": "vertical",
+      "gap": "{spacing.sm}",
+      "weights": [1, 4, 0.35],
+      "children": [{ "slot": "headline" }, { "slot": "primary" }, { "slot": "accent" }]
+    }
+  },
+  "fixtures": [{ "id": "bounded-sequence", "slots": { "headline": "Move from framing to proof", "primary": ["Frame", "Test", "Decide", "Deliver"], "accent": "Now → Next" } }]
+}

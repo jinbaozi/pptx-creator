@@ -1,0 +1,31 @@
+{
+  "version": "0.1.0",
+  "id": "masonry",
+  "whenToUse": ["A set of heterogeneous evidence fragments needs controlled variety."],
+  "notFor": ["Strict comparisons requiring identical cell geometry."],
+  "pageRoles": ["evidence", "case-study", "appendix"],
+  "contentShape": { "requiredSlots": ["headline", "primary", "supporting", "accent"], "optionalSlots": [] },
+  "dialRange": {
+    "compositionVariance": { "min": 0.55, "max": 1 },
+    "visualDensity": { "min": 0.35, "max": 0.9 },
+    "visualEnergy": { "min": 0.25, "max": 0.9 }
+  },
+  "assetRequirements": { "required": false, "kinds": ["photo", "illustration", "chart-data"], "role": "Optional evidence fragment", "min": 0, "max": 3 },
+  "editability": { "minimumLevel": 5, "nativeText": true, "nativeVisual": true, "fullSlideRaster": false },
+  "pptSafeEffects": ["solid-fill", "thin-border", "divider", "crop"],
+  "fallback": { "mode": "native-family", "when": ["content-overflow", "unsupported-content"] },
+  "antiPatterns": ["Random card sizes", "More fragments than the reading order can support"],
+  "contentLimits": { "headlineChars": 62, "bodyChars": 620, "maxItems": 6 },
+  "topology": {
+    "primitive": "safe-area",
+    "insets": { "blockStart": "{spacing.lg}", "inlineEnd": "{spacing.lg}", "blockEnd": "{spacing.lg}", "inlineStart": "{spacing.lg}" },
+    "child": {
+      "primitive": "grid",
+      "columns": 2,
+      "columnGap": "{spacing.lg}",
+      "rowGap": "{spacing.sm}",
+      "children": [{ "slot": "headline" }, { "slot": "primary" }, { "slot": "supporting" }, { "slot": "accent" }]
+    }
+  },
+  "fixtures": [{ "id": "evidence-mosaic", "slots": { "headline": "Four signals tell one story", "primary": "Observed behavior", "supporting": "User explanation", "accent": "Measured outcome" } }]
+}

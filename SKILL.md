@@ -25,6 +25,9 @@ artifacts. IR and run publication commits only after packaging succeeds; hook
 or package failure triggers best-effort rollback before blocked evidence is
 written. Direct manifest rendering is an explicit advanced compatibility path
 only. HTML is optional, never a mandatory text intermediate.
+An optional `compositionIntent.blockId` is a host-authored Creative choice;
+deterministic scripts validate and snapshot it but never rank or infer blocks.
+Without that field, the existing family geometry is unchanged.
 
 ## Shared invariants
 

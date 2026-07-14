@@ -222,7 +222,8 @@
       "properties": {
         "strategy": { "enum": ["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"] },
         "whitespace": { "enum": ["compact", "balanced", "spacious"] },
-        "emphasis": { "enum": ["message", "evidence", "asset", "data"] }
+        "emphasis": { "enum": ["message", "evidence", "asset", "data"] },
+        "blockId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "minLength": 1, "maxLength": 80 }
       }
     },
     "routePolicy": {
@@ -665,6 +666,100 @@
         "child": { "$ref": "#/$defs/child" }
       }
     },
+    "compositionSlot": { "enum": ["headline", "primary", "supporting", "metric", "media", "accent"] },
+    "compositionSlotLeaf": {
+      "type": "object", "additionalProperties": false, "required": ["slot"],
+      "properties": { "slot": { "$ref": "#/$defs/compositionSlot" } }
+    },
+    "compositionChild": {
+      "oneOf": [
+        { "$ref": "#/$defs/compositionSlotLeaf" }, { "$ref": "#/$defs/compositionStack" },
+        { "$ref": "#/$defs/compositionSplit" }, { "$ref": "#/$defs/compositionGrid" },
+        { "$ref": "#/$defs/compositionOverlay" }, { "$ref": "#/$defs/compositionAnchor" }
+      ]
+    },
+    "compositionStack": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "direction", "gap", "children"],
+      "properties": {
+        "primitive": { "const": "stack" },
+        "direction": { "enum": ["horizontal", "vertical"] },
+        "gap": { "$ref": "#/$defs/spacingRef" },
+        "weights": { "type": "array", "minItems": 1, "items": { "type": "number", "exclusiveMinimum": 0 } },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/compositionChild" } }
+      }
+    },
+    "compositionSplit": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "direction", "ratios", "gap", "children"],
+      "properties": {
+        "primitive": { "const": "split" },
+        "direction": { "enum": ["horizontal", "vertical"] },
+        "ratios": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number", "exclusiveMinimum": 0 } },
+        "gap": { "$ref": "#/$defs/spacingRef" },
+        "children": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/compositionChild" } }
+      }
+    },
+    "compositionGrid": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "columns", "columnGap", "rowGap", "children"],
+      "properties": {
+        "primitive": { "const": "grid" },
+        "columns": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "columnGap": { "$ref": "#/$defs/spacingRef" },
+        "rowGap": { "$ref": "#/$defs/spacingRef" },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/compositionChild" } }
+      }
+    },
+    "compositionOverlay": {
+      "type": "object", "additionalProperties": false, "required": ["primitive", "children"],
+      "properties": {
+        "primitive": { "const": "overlay" },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/compositionChild" } }
+      }
+    },
+    "compositionAnchor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "anchor", "size", "inset", "child"],
+      "properties": {
+        "primitive": { "const": "anchor" },
+        "anchor": { "enum": ["top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"] },
+        "size": { "enum": ["compact", "medium", "full"] },
+        "inset": { "$ref": "#/$defs/spacingRef" },
+        "child": { "$ref": "#/$defs/compositionChild" }
+      }
+    },
+    "compositionSafeArea": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "insets", "child"],
+      "properties": {
+        "primitive": { "const": "safe-area" },
+        "insets": {
+          "type": "object", "additionalProperties": false,
+          "required": ["blockStart", "inlineEnd", "blockEnd", "inlineStart"],
+          "properties": {
+            "blockStart": { "$ref": "#/$defs/spacingRef" },
+            "inlineEnd": { "$ref": "#/$defs/spacingRef" },
+            "blockEnd": { "$ref": "#/$defs/spacingRef" },
+            "inlineStart": { "$ref": "#/$defs/spacingRef" }
+          }
+        },
+        "child": { "$ref": "#/$defs/compositionChild" }
+      }
+    },
+    "compositionBlock": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requestedId", "resolvedId", "version", "definitionHash", "fallbackApplied", "fallbackReason", "topology"],
+      "properties": {
+        "requestedId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "minLength": 1, "maxLength": 80 },
+        "resolvedId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "minLength": 1, "maxLength": 80 },
+        "version": { "const": "0.1.0" },
+        "definitionHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "fallbackApplied": { "type": "boolean" },
+        "fallbackReason": { "enum": [null, "missing-assets"] },
+        "topology": { "$ref": "#/$defs/compositionSafeArea" }
+      }
+    },
     "slide": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "family", "pageRole", "message", "attentionTarget", "compositionIntent", "assetRefs", "routePolicy", "nodes", "layout"],
@@ -675,6 +770,7 @@
         "message": { "$ref": "#/$defs/nonEmptyString" },
         "attentionTarget": { "$ref": "#/$defs/attentionTarget" },
         "compositionIntent": { "$ref": "#/$defs/compositionIntent" },
+        "compositionBlock": { "$ref": "#/$defs/compositionBlock" },
         "assetRefs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmptyString" } },
         "routePolicy": { "$ref": "#/$defs/routePolicy" },
         "nodes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } },

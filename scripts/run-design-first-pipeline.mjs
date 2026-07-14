@@ -3,6 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { compileDeckPlanArtifacts, validateDeckPlan } from "./lib/deck-plan.mjs";
+import { loadCompositionBlockRegistry } from "./lib/composition-blocks.mjs";
 import { resolveDesignSystem } from "./lib/design-system-resolver.mjs";
 import { createFontMetricsCatalog } from "./lib/font-preflight.mjs";
 import { buildRunIndex, contentDerivedRunId, writeRunIndex } from "./lib/run-index.mjs";
@@ -10,6 +11,7 @@ import { fitManifestText, materializeTextFonts } from "./lib/text-fit.mjs";
 import { invalidatePublishedOutputs, runDeckPipeline } from "./run-deck-pipeline.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const compositionBlockRegistry = loadCompositionBlockRegistry(path.join(projectRoot, "composition-blocks"));
 const remoteReference = /^[a-z][a-z0-9+.-]*:/i;
 const CREATIVE_ASSET_REGISTRY = ".pptx-generated-assets.json";
 const CREATIVE_ASSET_OWNER = "creative-deck-plan-assets";
@@ -187,7 +189,8 @@ async function main() {
       designSystemName: design.name,
       designTokens: design.tokens,
       designSystemSelection: { request: selection.request, resolvedSource: selection.resolvedSource },
-      assetSourceById: localizedAssets.sourceById
+      assetSourceById: localizedAssets.sourceById,
+      compositionBlockRegistry
     });
     const fontCatalog = await createFontMetricsCatalog();
     const materializedFonts = materializeTextFonts(compiledManifest, design.tokens, fontCatalog);

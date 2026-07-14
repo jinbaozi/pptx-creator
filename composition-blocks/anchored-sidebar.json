@@ -1,0 +1,34 @@
+{
+  "version": "0.1.0",
+  "id": "anchored-sidebar",
+  "whenToUse": ["Persistent context should anchor a larger working area."],
+  "notFor": ["Single-line statements with no supporting context."],
+  "pageRoles": ["section", "evidence", "architecture", "appendix"],
+  "contentShape": { "requiredSlots": ["headline", "primary", "supporting"], "optionalSlots": [] },
+  "dialRange": {
+    "compositionVariance": { "min": 0.25, "max": 0.85 },
+    "visualDensity": { "min": 0.35, "max": 1 },
+    "visualEnergy": { "min": 0.1, "max": 0.7 }
+  },
+  "assetRequirements": { "required": false, "kinds": [], "role": "No external asset required", "min": 0, "max": 0 },
+  "editability": { "minimumLevel": 5, "nativeText": true, "nativeVisual": true, "fullSlideRaster": false },
+  "pptSafeEffects": ["solid-fill", "thin-border", "divider"],
+  "fallback": { "mode": "native-family", "when": ["content-overflow", "unsupported-content"] },
+  "antiPatterns": ["Sidebar wider than the main evidence", "Repeated navigation chrome"],
+  "contentLimits": { "headlineChars": 68, "bodyChars": 680, "maxItems": 7 },
+  "topology": {
+    "primitive": "safe-area",
+    "insets": { "blockStart": "{spacing.lg}", "inlineEnd": "{spacing.lg}", "blockEnd": "{spacing.lg}", "inlineStart": "{spacing.lg}" },
+    "child": {
+      "primitive": "split",
+      "direction": "horizontal",
+      "ratios": [1, 3],
+      "gap": "{spacing.lg}",
+      "children": [
+        { "primitive": "stack", "direction": "vertical", "gap": "{spacing.md}", "weights": [1, 2], "children": [{ "slot": "headline" }, { "slot": "supporting" }] },
+        { "slot": "primary" }
+      ]
+    }
+  },
+  "fixtures": [{ "id": "context-sidebar", "slots": { "headline": "Context", "supporting": ["Audience", "Constraint", "Decision"], "primary": "The main evidence remains spacious and editable." } }]
+}

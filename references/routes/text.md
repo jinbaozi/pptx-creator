@@ -14,7 +14,7 @@ npm run pptx -- text <deck.plan.json|plan-directory> <output-dir> [--creative] [
 
 ## Inputs and outputs
 
-The host agent converts raw text into an internal coordinate-free `deck.plan.json` version `0.2.0`; deterministic scripts validate it against `schemas/deck-plan.schema.json`, compile the selected canonical `semantic-slide-ir.json`, lower that IR to a `0.2.0` manifest, and render an editable PPTX. Its exact top-level keys are `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry a semantic page role, strict native `contentModel`, explicit attention target, composition intent, asset IDs, and native-first route policy. Plan assets require non-empty provenance `sourceRef` values. Coordinates, manifest geometry, `elements`, and full-slide raster output are prohibited.
+The host agent converts raw text into an internal coordinate-free `deck.plan.json` version `0.2.0`; deterministic scripts validate it against `schemas/deck-plan.schema.json`, compile the selected canonical `semantic-slide-ir.json`, lower that IR to a `0.2.0` manifest, and render an editable PPTX. Its exact top-level keys are `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry a semantic page role, strict native `contentModel`, explicit attention target, composition intent, asset IDs, and native-first route policy. The host may add one optional `compositionIntent.blockId`; scripts validate and lower that explicit choice but never rank or invent it. Plan assets require non-empty provenance `sourceRef` values. Coordinates, manifest geometry, `elements`, and full-slide raster output are prohibited.
 
 The current migration shell supports the eight native content families `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. HTML is optional only when genuinely necessary and is never a mandatory text intermediate. An authored manifest requires the explicit advanced flag `--direct`; `--creative` remains only as a deprecated compatibility alias. `deck.plan` `0.1.0` is retired and fails closed before final, manifest, or quality artifacts are written.
 
@@ -40,7 +40,7 @@ evidence, any P0/P1 visual finding, or more than three repair attempts.
 ## Next references
 
 1. `references/semantic-slide-ir.md`
-2. `references/manifest-spec.md`
+2. `references/composition-blocks.md`
 3. `references/design-first-workflow.md`
 
 ## Migration from 0.1.1

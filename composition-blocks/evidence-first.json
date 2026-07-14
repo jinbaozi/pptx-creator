@@ -1,0 +1,34 @@
+{
+  "version": "0.1.0",
+  "id": "evidence-first",
+  "whenToUse": ["A concrete finding should occupy more space than its interpretation."],
+  "notFor": ["Opening slides with no evidence yet introduced."],
+  "pageRoles": ["evidence", "data", "comparison", "case-study", "decision"],
+  "contentShape": { "requiredSlots": ["headline", "primary", "supporting"], "optionalSlots": [] },
+  "dialRange": {
+    "compositionVariance": { "min": 0.2, "max": 0.9 },
+    "visualDensity": { "min": 0.35, "max": 1 },
+    "visualEnergy": { "min": 0.1, "max": 0.8 }
+  },
+  "assetRequirements": { "required": false, "kinds": ["chart-data", "diagram-source", "photo"], "role": "Optional evidence source", "min": 0, "max": 2 },
+  "editability": { "minimumLevel": 5, "nativeText": true, "nativeVisual": true, "fullSlideRaster": false },
+  "pptSafeEffects": ["solid-fill", "thin-border", "divider", "native-connector"],
+  "fallback": { "mode": "native-family", "when": ["content-overflow", "unsupported-content"] },
+  "antiPatterns": ["Conclusion before evidence", "Equal visual weight for caveat and finding"],
+  "contentLimits": { "headlineChars": 72, "bodyChars": 720, "maxItems": 8 },
+  "topology": {
+    "primitive": "safe-area",
+    "insets": { "blockStart": "{spacing.lg}", "inlineEnd": "{spacing.xl}", "blockEnd": "{spacing.lg}", "inlineStart": "{spacing.xl}" },
+    "child": {
+      "primitive": "stack",
+      "direction": "vertical",
+      "gap": "{spacing.lg}",
+      "weights": [1, 4],
+      "children": [
+        { "slot": "headline" },
+        { "primitive": "split", "direction": "horizontal", "ratios": [2.2, 1], "gap": "{spacing.md}", "children": [{ "slot": "primary" }, { "slot": "supporting" }] }
+      ]
+    }
+  },
+  "fixtures": [{ "id": "finding-first", "slots": { "headline": "Observed behavior changed", "primary": ["Verified observation", "Measured impact", "Source trace"], "supporting": "Interpretation and limitation" } }]
+}
