@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { scoreSlopRisk, SLOP_WEIGHTS, __test__ } from "../scripts/lib/slop-risk.mjs";
+import { readFile } from "node:fs/promises";
+import { calibrateSlopRules, scoreSlopRisk, SLOP_RULES, SLOP_WEIGHTS, __test__ } from "../scripts/lib/slop-risk.mjs";
+import { reviewManifest } from "../scripts/lib/visual-critic.mjs";
+import { validateJsonSchema } from "../scripts/lib/schema-utils.mjs";
 
 function slide(elements) {
   return {
@@ -9,6 +12,32 @@ function slide(elements) {
     assets: [],
     slides: [{ id: "slide-001", elements }]
   };
+}
+
+function scenario(name) {
+  const text = (id, value, style = {}, extra = {}) => ({ type: "text", id, x: 0, y: 0, w: 2, h: 0.5, text: value, style, ...extra });
+  const shape = (id, value, x, y, style = {}) => ({ type: "shape", id, shape: value, x, y, w: 0.5, h: 0.5, style });
+  const cases = {
+    clean: [text("body", "Clear evidence", { fontFamily: "Inter" })],
+    "clean-zh": [text("title", "清晰的证据", { typography: "{typography.title}" })],
+    "font-four": ["Inter", "Roboto", "Source Serif Pro", "JetBrains Mono"].map((font, index) => text(`f${index}`, font, { fontFamily: font })),
+    "font-three": ["Inter", "Roboto", "Source Serif Pro"].map((font, index) => text(`f${index}`, font, { fontFamily: font })),
+    emoji: [text("emoji", "Launch 🚀")],
+    gradient: [shape("gradient", "rect", 0, 0, { fill: "linear-gradient(90deg,#fff,#000)" })],
+    "multicolor-chart": [{ type: "chart", id: "chart", x: 0, y: 0, w: 4, h: 3, data: [{ label: "A", value: 1, color: "#f00" }, { label: "B", value: 2, color: "#00f" }] }],
+    "caps-treatment": [text("hero", "POWER", { stroke: "#000", shadow: "2px 2px #000" })],
+    "caps-no-shadow": [text("hero", "POWER", { stroke: "#000" })],
+    "zh-rhetoric": [text("title", "Unlock the power of AI 平台", { typography: "{typography.title}" })],
+    "rounded-cards": [shape("card1", "roundRect", 0, 0, { borderRadius: "rounded.lg" }), shape("card2", "roundRect", 2, 0, { borderRadius: "rounded.lg" })],
+    "rounded-mixed": [shape("card1", "roundRect", 0, 0, { borderRadius: "rounded.sm" }), shape("card2", "roundRect", 2, 0, { borderRadius: "rounded.lg" })],
+    "circle-triad": [0, 1, 2].map((x) => shape(`i${x}`, "ellipse", x, 1)),
+    "circle-pair": [0, 1].map((x) => shape(`i${x}`, "ellipse", x, 1)),
+    "kpi-row": [0, 1, 2].map((x) => text(`kpi-${x}`, `${x}`, {}, { role: "metric", x, y: 2 })),
+    "kpi-pair": [0, 1].map((x) => text(`kpi-${x}`, `${x}`, {}, { role: "metric", x, y: 2 })),
+    "equal-rhythm": [1, 2, 3, 4].map((y) => text(`r${y}`, `${y}`, {}, { y })),
+    "varied-rhythm": [1, 1.8, 3.2, 4.5].map((y, index) => text(`r${index}`, `${index}`, {}, { y }))
+  };
+  return slide(cases[name] ?? cases.clean);
 }
 
 describe("slop-risk.mjs — role inference (KTD-8)", () => {
@@ -186,5 +215,56 @@ describe("slop-risk.mjs — score range and idempotence", () => {
       "rounded-token-variance",
       "vertical-rhythm-variance"
     ]);
+  });
+});
+
+describe("slop-risk.mjs — contextual rule contracts and paired calibration", () => {
+  it("declares the complete closed policy fields for all nine rules", () => {
+    expect(SLOP_RULES).toHaveLength(9);
+    for (const rule of SLOP_RULES) {
+      expect(Object.keys(rule)).toEqual(["id", "category", "applicableWhen", "exemptWhen", "severity", "confidence", "evidence", "repairCommand", "brandOverrideAllowed", "readabilityOverrideAllowed"]);
+      expect(rule.applicableWhen.length).toBeGreaterThan(0);
+      expect(rule.exemptWhen.length).toBeGreaterThan(0);
+      expect(rule.readabilityOverrideAllowed).toBe(false);
+    }
+  });
+
+  it("calibrates every rule on at least six flag and six pass fixtures", async () => {
+    const fixture = JSON.parse(await readFile(new URL("./fixtures/slop-rules/paired-cases.json", import.meta.url), "utf8"));
+    const records = [];
+    for (const group of fixture.rules) {
+      expect(group.shouldFlag).toHaveLength(6);
+      expect(group.shouldPass).toHaveLength(6);
+      for (const [expectedFlag, cases] of [[true, group.shouldFlag], [false, group.shouldPass]]) {
+        for (const item of cases) {
+          const report = scoreSlopRisk(scenario(item.scenario ?? group.trigger), {}, item.context ?? {});
+          const signal = report.signals.find((entry) => entry.id === group.ruleId);
+          expect(signal.weight > 0, item.id).toBe(expectedFlag);
+          records.push({ ruleId: group.ruleId, expectedFlag, formulaFlag: signal.weight > 0, reviewerRisk: expectedFlag ? SLOP_WEIGHTS[Object.keys(SLOP_WEIGHTS).find((key) => SLOP_RULES.find((rule) => rule.id === group.ruleId) && key.toLowerCase().replace(/[^a-z]/g, "") === group.ruleId.replace(/-/g, ""))] ?? signal.weight : 0, formulaRisk: signal.weight });
+        }
+      }
+    }
+    const calibration = calibrateSlopRules(records);
+    expect(calibration.passed).toBe(true);
+    for (const entry of calibration.perRule) {
+      expect(entry).toMatchObject({ cases: 12, recall: 1, specificity: 1, falsePositiveRate: 0, passed: true });
+    }
+    expect(calibration.agreement).toMatchObject({ agreementWithin20: 1, spearman: 1, mae: 0 });
+  });
+
+  it("never lets a contextual exemption suppress an active readability risk", () => {
+    const report = scoreSlopRisk(scenario("gradient"), {}, { brandLocked: true, gradientIntent: "approved-brand", readabilityRisk: true });
+    const signal = report.signals.find((entry) => entry.id === "css-gradient");
+    expect(signal).toMatchObject({ applicable: true, exempted: false, readabilityOverrideAllowed: false });
+    expect(signal.weight).toBe(SLOP_WEIGHTS.cssGradient);
+  });
+
+  it("emits schema-valid closed rule evidence through the visual critic", async () => {
+    const schema = JSON.parse(await readFile(new URL("../schemas/visual-review.schema.json", import.meta.url), "utf8"));
+    const review = reviewManifest(scenario("gradient"), { mode: "creative" });
+    expect(validateJsonSchema(review, schema)).toEqual({ valid: true, errors: [] });
+    expect(review.slides[0].slopSignals.find((entry) => entry.id === "css-gradient")).toMatchObject({
+      category: "color-material", repairCommand: "colorize", readabilityOverrideAllowed: false
+    });
   });
 });

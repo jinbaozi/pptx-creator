@@ -517,7 +517,7 @@ export function reviewManifest(manifest, options = {}, consistencyReport = null,
     });
     let slopEntry = perSlideSlop.get(slide.id);
     if (!slopEntry) {
-      const fallback = scoreSlopRisk({ slides: [slide] }, designTokens);
+      const fallback = scoreSlopRisk({ metadata: manifest.metadata, slides: [slide] }, designTokens, options.slopContext);
       slopEntry = { id: slide.id, score: fallback.score, signals: fallback.signals };
     }
     result.scores.slopRisk = slopEntry.score;

@@ -49,6 +49,16 @@ describe("references/visual-design-calibration.md artifact", () => {
     expect(md).toMatch(/≥ 80%/);
   });
 
+  it("documents the contextual per-rule confusion-matrix thresholds", () => {
+    const md = readText(ARTIFACT_PATH);
+    expect(md).toMatch(/recall ≥ 90%/);
+    expect(md).toMatch(/specificity ≥ 95%/);
+    expect(md).toMatch(/false-positive rate ≤ 5%/);
+    expect(md).toMatch(/Spearman rank correlation ≥ 0\.70/);
+    expect(md).toMatch(/mean absolute error ≤ 15/);
+    expect(md).toMatch(/external.*pending/is);
+  });
+
   it("contains all 6 required section headings", () => {
     const md = readText(ARTIFACT_PATH);
     expect(md).toMatch(/## Distribution table/);

@@ -6,6 +6,23 @@ and the `tests/visual-design-calibration.test.mjs` CI gate. Per R4 in the
 visual-design-quality plan, the locked target is **reviewer-vs-formula agreement
 ≥ 80% within ±20 points**.
 
+The contextual rule gate is separately calibrated by paired manifest fixtures
+under `tests/fixtures/slop-rules/paired-cases.json`. Each of the nine rules has
+six positive and six negative cases. The executable report from
+`calibrateSlopRules()` includes a per-rule confusion matrix and enforces:
+
+- recall ≥ 90%;
+- specificity ≥ 95%;
+- false-positive rate ≤ 5%;
+- reviewer/formula agreement within ±20 ≥ 80%;
+- Spearman rank correlation ≥ 0.70;
+- mean absolute error ≤ 15.
+
+The paired negative set explicitly covers approved brand fonts/gradients/
+display treatments, literal or brand-voice emoji, dashboards, data reviews,
+multicolor charts, government templates, and editorial templates. Contextual
+exemptions never override an active readability risk.
+
 Fixtures live under `examples/slopRisk-corpus/`:
 
 - `internal/` — 6 decks symlinked from `examples/{text-input,html-input,design-first,image-input}/`.
@@ -38,16 +55,17 @@ Each fixture has a sidecar `*.expected.json` recording one reviewer's
 | external-009-reveal-js-template           | hakimel/reveal.js                                       | 65                | (pending U3 + PNG)    |
 
 **Aggregate (annotations only):** 15 / 15 decks labeled → **100% coverage**.
-**Aggregate (agreement):** to be filled after U3 ships the `scoreSlopRisk`
-scorer. Target: **≥ 80% within ±20 points**.
+**Aggregate (external-deck agreement):** remains pending the manually localized
+external screenshots. This is not confused with the passing deterministic
+per-rule paired-fixture gate.
 
 - **Threshold default:** reviewer-vs-formula agreement ≥ 80% within ±20 points
   (locked per R4 / R2a in the plan)
 - **Clearance target:** ≥ 80% (CI gate; below this, the slopRisk scorer
   cannot ship per R2 in the plan)
 - **Corpus size:** 15 decks (6 internal + 9 external) — Cal-0
-- **Verdict (structure phase, U2):** artifact + corpus + sidecar structure
-  complete; agreement rate pending U3 scorer.
+- **Verdict:** structure and paired per-rule calibration are complete; external
+  screenshot agreement remains explicitly pending.
 
 ## Reviewer protocol
 
@@ -103,9 +121,9 @@ The agreement-phase test (shipped in U3) reads:
 - `examples/slopRisk-corpus/annotations.csv` — for reviewer annotations.
 - `scripts/lib/slop-risk.mjs` `scoreSlopRisk(deck)` (U3) — for the formula score.
 
-The structure-phase test (shipped in U2) does **not** call `scoreSlopRisk` —
-that function does not exist yet. Structure-phase assertions only verify the
-artifacts exist + corpus is complete + sidecar fields are present.
+The corpus structure assertions remain separate from the paired contextual
+rule calibration. Missing external PNGs cannot be interpreted as a formula
+pass.
 
 ## Regeneration rules
 

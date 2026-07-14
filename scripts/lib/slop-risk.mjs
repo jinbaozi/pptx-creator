@@ -24,9 +24,9 @@
  * dimensions are upgraded to compute from manifest walks (post-v1), they
  * MUST NOT import from this module — copy the helpers instead.
  *
- * Initial weights are PLACEHOLDERS tuned to Cal-0 once the corpus is
- * downloaded. The reviewer-vs-formula agreement target is ≥ 80% within
- * ±20 points (per `references/visual-design-calibration.md`).
+ * Weights are stable penalties; contextual applicability and exemptions are
+ * calibrated per rule against paired fixtures. External-deck screenshot
+ * agreement remains a separate capability gate.
  *
  * Exports:
  *   scoreSlopRisk(manifest, designTokens = {}) → {
@@ -48,6 +48,48 @@ export const SLOP_WEIGHTS = Object.freeze({
   kpiSandwich: 10,
   verticalRhythmVariance: 10
 });
+
+export const SLOP_RULES = Object.freeze([
+  { id: "font-family-dedup", category: "typography", applicableWhen: ["text-elements-present", "more-than-three-font-families"], exemptWhen: ["approved-brand-font-system", "approved-government-template"], severity: "P2", confidence: 0.95, evidence: ["resolved-font-family-set"], repairCommand: "typeset", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
+  { id: "emoji-as-icon", category: "iconography", applicableWhen: ["emoji-codepoint-used-in-visual-element"], exemptWhen: ["literal-content", "approved-brand-voice"], severity: "P2", confidence: 0.9, evidence: ["element-text-codepoint"], repairCommand: "harden", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
+  { id: "css-gradient", category: "color-material", applicableWhen: ["inline-gradient-present"], exemptWhen: ["approved-brand-gradient", "intentional-editorial-gradient"], severity: "P2", confidence: 0.94, evidence: ["element-fill-or-background"], repairCommand: "colorize", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
+  { id: "all-caps-stroke-shadow", category: "typography", applicableWhen: ["all-caps-text-with-stroke-and-shadow"], exemptWhen: ["approved-display-treatment"], severity: "P2", confidence: 0.92, evidence: ["text-style-combination"], repairCommand: "quieter", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
+  { id: "english-rhetoric-on-zh", category: "copy", applicableWhen: ["cjk-title-with-stock-english-rhetoric"], exemptWhen: ["verbatim-source-quote"], severity: "P1", confidence: 0.96, evidence: ["title-text-and-language"], repairCommand: "distill", brandOverrideAllowed: false, readabilityOverrideAllowed: false },
+  { id: "rounded-token-variance", category: "components", applicableWhen: ["repeated-card-radius-without-semantic-role"], exemptWhen: ["dashboard-component-system", "government-template", "approved-brand-component-system"], severity: "P2", confidence: 0.88, evidence: ["card-radius-token-run"], repairCommand: "polish", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
+  { id: "icon-circle-triad", category: "iconography", applicableWhen: ["three-or-more-circle-icon-containers-in-row"], exemptWhen: ["approved-icon-system", "government-navigation-system"], severity: "P2", confidence: 0.9, evidence: ["circle-row-geometry"], repairCommand: "layout", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
+  { id: "kpi-sandwich", category: "data-layout", applicableWhen: ["three-or-more-peer-kpis-in-row"], exemptWhen: ["dashboard", "data-review", "required-peer-comparison"], severity: "P2", confidence: 0.93, evidence: ["metric-role-row"], repairCommand: "layout", brandOverrideAllowed: false, readabilityOverrideAllowed: false },
+  { id: "vertical-rhythm-variance", category: "rhythm", applicableWhen: ["mechanically-identical-gap-run"], exemptWhen: ["intentional-structured-rhythm", "government-template", "editorial-baseline-grid"], severity: "P2", confidence: 0.86, evidence: ["ordered-y-gap-series"], repairCommand: "polish", brandOverrideAllowed: true, readabilityOverrideAllowed: false }
+].map(Object.freeze));
+
+const RULE_BY_ID = new Map(SLOP_RULES.map((rule) => [rule.id, rule]));
+
+function effectiveContext(manifest, context) {
+  return { ...(manifest?.metadata?.slopContext ?? {}), ...(context && typeof context === "object" ? context : {}) };
+}
+
+function exemptionReason(ruleId, context) {
+  const brand = context.brandLocked === true;
+  const template = context.templateType;
+  if (context.readabilityRisk === true) return null;
+  if (ruleId === "font-family-dedup" && ((brand && context.fontPolicy === "approved-brand") || template === "government")) return "approved font system";
+  if (ruleId === "emoji-as-icon" && ["literal-content", "approved-brand-voice"].includes(context.emojiPurpose)) return "intentional emoji content";
+  if (ruleId === "css-gradient" && ((brand && context.gradientIntent === "approved-brand") || (template === "editorial" && context.gradientIntent === "editorial"))) return "intentional approved gradient";
+  if (ruleId === "all-caps-stroke-shadow" && brand && context.displayTreatmentApproved === true) return "approved display treatment";
+  if (ruleId === "english-rhetoric-on-zh" && context.verbatimSourceQuote === true) return "verbatim source quotation";
+  if (ruleId === "rounded-token-variance" && (["dashboard", "government"].includes(template) || (brand && context.componentSystemApproved === true))) return "approved repeated component system";
+  if (ruleId === "icon-circle-triad" && (context.iconSystemApproved === true || template === "government")) return "approved icon system";
+  if (ruleId === "kpi-sandwich" && ["dashboard", "data-review"].includes(context.contentPurpose)) return "peer KPI comparison is the content";
+  if (ruleId === "vertical-rhythm-variance" && (context.rhythmIntent === "structured" || ["government", "editorial"].includes(template))) return "intentional structured rhythm";
+  return null;
+}
+
+export function evaluateSlopRule(ruleId, count, context = {}) {
+  const rule = RULE_BY_ID.get(ruleId);
+  if (!rule) throw new Error(`unknown slop rule: ${ruleId}`);
+  const applicable = Number(count) > 0;
+  const exemption = applicable ? exemptionReason(ruleId, context) : null;
+  return { rule, applicable, exempted: Boolean(exemption), exemption };
+}
 
 // Generic CSS font families we don't count toward the dedup cap.
 const GENERIC_FONT_FAMILIES = new Set([
@@ -152,6 +194,7 @@ function collectElements(manifest) {
     const elements = Array.isArray(slide?.elements) ? slide.elements : [];
     for (const el of elements) {
       out.push({
+        slideId: slide.id ?? "(unknown)",
         id: el.id ?? "(unknown)",
         type: el.type,
         role: inferRole(el),
@@ -287,13 +330,13 @@ function countRoundedTokenVariance(elements, designTokens) {
     if (!el || el.type !== "shape") continue;
     const token = extractRoundedToken(el, designTokens);
     if (!token) continue;
-    const slideId = el._slideId ?? "(unknown)";
-    if (!slideMap.has(slideId)) slideMap.set(slideId, new Set());
-    slideMap.get(slideId).add(token);
+    const slideId = entry.slideId;
+    if (!slideMap.has(slideId)) slideMap.set(slideId, []);
+    slideMap.get(slideId).push(token);
   }
   let count = 0;
-  for (const tokenSet of slideMap.values()) {
-    if (tokenSet.size <= 1 && tokenSet.size > 0) count += 1;
+  for (const tokens of slideMap.values()) {
+    if (tokens.length >= 2 && new Set(tokens).size === 1) count += 1;
   }
   return count;
 }
@@ -323,11 +366,11 @@ function countIconCircleTriad(elements) {
   // sibling icon/glyph inside or adjacent. We approximate "triad" as 3+
   // circle-shaped elements clustered at the same y-coordinate.
   const yBuckets = new Map();
-  for (const { el } of elements) {
+  for (const { el, slideId } of elements) {
     if (!el || el.type !== "shape") continue;
     const shapeName = String(el.shape ?? "").toLowerCase();
     if (shapeName !== "ellipse" && shapeName !== "circle" && shapeName !== "oval") continue;
-    const yKey = Math.round(Number(el.y ?? 0) * 4) / 4; // bucket to 0.25 in
+    const yKey = `${slideId}:${Math.round(Number(el.y ?? 0) * 4) / 4}`; // bucket to 0.25 in
     if (!yBuckets.has(yKey)) yBuckets.set(yKey, 0);
     yBuckets.set(yKey, yBuckets.get(yKey) + 1);
   }
@@ -345,9 +388,9 @@ function countKpiSandwich(elements) {
   // where each card has a metric-shaped id but a distinct x — we bucket
   // by y AND count the row regardless of how many cards share the row.
   const yBuckets = new Map();
-  for (const { role, el } of elements) {
+  for (const { role, el, slideId } of elements) {
     if (role !== "metric") continue;
-    const yKey = Math.round(Number(el.y ?? 0) * 4) / 4;
+    const yKey = `${slideId}:${Math.round(Number(el.y ?? 0) * 4) / 4}`;
     if (!yBuckets.has(yKey)) yBuckets.set(yKey, 0);
     yBuckets.set(yKey, yBuckets.get(yKey) + 1);
   }
@@ -364,17 +407,23 @@ function countVerticalRhythmVariance(elements) {
   // (variance == 0), flag the slide.
   // We approximate by reading every element's y on the manifest order
   // (since true slide partitioning requires slideId propagation).
-  const ys = elements.map(({ el }) => Number(el.y ?? 0)).filter((n) => Number.isFinite(n));
-  if (ys.length < 3) return 0;
-  const sorted = [...ys].sort((a, b) => a - b);
-  const gaps = [];
-  for (let i = 1; i < sorted.length; i += 1) {
-    const g = +(sorted[i] - sorted[i - 1]).toFixed(3);
-    if (g > 0) gaps.push(g);
+  const bySlide = new Map();
+  for (const { el, slideId } of elements) {
+    const y = Number(el.y ?? 0);
+    if (Number.isFinite(y)) bySlide.set(slideId, [...(bySlide.get(slideId) ?? []), y]);
   }
-  if (gaps.length < 2) return 0;
-  const distinct = new Set(gaps);
-  return distinct.size === 1 ? 1 : 0;
+  let count = 0;
+  for (const ys of bySlide.values()) {
+    if (ys.length < 3) continue;
+    const sorted = [...ys].sort((a, b) => a - b);
+    const gaps = [];
+    for (let i = 1; i < sorted.length; i += 1) {
+      const gap = +(sorted[i] - sorted[i - 1]).toFixed(3);
+      if (gap > 0) gaps.push(gap);
+    }
+    if (gaps.length >= 2 && new Set(gaps).size === 1) count += 1;
+  }
+  return count;
 }
 
 /**
@@ -384,7 +433,7 @@ function countVerticalRhythmVariance(elements) {
  * @param {object} [designTokens]  Decoded DESIGN.md token table.
  * @returns {{score: number, signals: Array<{id: string, weight: number, count: number}>}}
  */
-export function scoreSlopRisk(manifest, designTokens = {}) {
+export function scoreSlopRisk(manifest, designTokens = {}, context = {}) {
   const elements = collectElements(manifest);
   const safeTokens = (designTokens && typeof designTokens === "object") ? designTokens : {};
 
@@ -474,9 +523,85 @@ export function scoreSlopRisk(manifest, designTokens = {}) {
     });
   }
 
-  const penalty = signals.reduce((sum, s) => sum + s.weight, 0);
+  const calibratedContext = effectiveContext(manifest, context);
+  const calibratedSignals = signals.map((signal) => {
+    const evaluation = evaluateSlopRule(signal.id, signal.count, calibratedContext);
+    return {
+      ...signal,
+      weight: evaluation.exempted ? 0 : signal.weight,
+      category: evaluation.rule.category,
+      severity: evaluation.rule.severity,
+      confidence: evaluation.rule.confidence,
+      evidence: evaluation.rule.evidence,
+      repairCommand: evaluation.rule.repairCommand,
+      applicable: evaluation.applicable,
+      exempted: evaluation.exempted,
+      exemption: evaluation.exemption,
+      brandOverrideAllowed: evaluation.rule.brandOverrideAllowed,
+      readabilityOverrideAllowed: false
+    };
+  });
+  const penalty = calibratedSignals.reduce((sum, s) => sum + s.weight, 0);
   const score = Math.max(0, Math.min(100, penalty));
-  return { score, signals };
+  return { score, signals: calibratedSignals };
+}
+
+function rank(values) {
+  const sorted = values.map((value, index) => ({ value, index })).sort((a, b) => a.value - b.value);
+  const ranks = Array(values.length);
+  for (let start = 0; start < sorted.length;) {
+    let end = start + 1;
+    while (end < sorted.length && sorted[end].value === sorted[start].value) end += 1;
+    const average = (start + end - 1) / 2 + 1;
+    for (let index = start; index < end; index += 1) ranks[sorted[index].index] = average;
+    start = end;
+  }
+  return ranks;
+}
+
+function pearson(left, right) {
+  if (left.length !== right.length || left.length < 2) return 0;
+  const meanLeft = left.reduce((sum, value) => sum + value, 0) / left.length;
+  const meanRight = right.reduce((sum, value) => sum + value, 0) / right.length;
+  let numerator = 0; let leftSquare = 0; let rightSquare = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    const a = left[index] - meanLeft; const b = right[index] - meanRight;
+    numerator += a * b; leftSquare += a * a; rightSquare += b * b;
+  }
+  const denominator = Math.sqrt(leftSquare * rightSquare);
+  return denominator === 0 ? (left.every((value, index) => value === right[index]) ? 1 : 0) : numerator / denominator;
+}
+
+export function calibrateSlopRules(records = []) {
+  const perRule = [];
+  for (const rule of SLOP_RULES) {
+    const cases = records.filter((record) => record.ruleId === rule.id);
+    const confusion = { truePositive: 0, falsePositive: 0, trueNegative: 0, falseNegative: 0 };
+    for (const record of cases) {
+      if (record.expectedFlag && record.formulaFlag) confusion.truePositive += 1;
+      else if (!record.expectedFlag && record.formulaFlag) confusion.falsePositive += 1;
+      else if (!record.expectedFlag && !record.formulaFlag) confusion.trueNegative += 1;
+      else confusion.falseNegative += 1;
+    }
+    const positive = confusion.truePositive + confusion.falseNegative;
+    const negative = confusion.trueNegative + confusion.falsePositive;
+    const recall = positive ? confusion.truePositive / positive : 1;
+    const specificity = negative ? confusion.trueNegative / negative : 1;
+    const falsePositiveRate = negative ? confusion.falsePositive / negative : 0;
+    perRule.push({ ruleId: rule.id, cases: cases.length, confusion, recall, specificity, falsePositiveRate, passed: cases.length >= 12 && recall >= 0.9 && specificity >= 0.95 && falsePositiveRate <= 0.05 });
+  }
+  const scored = records.filter((record) => Number.isFinite(record.reviewerRisk) && Number.isFinite(record.formulaRisk));
+  const absolute = scored.map((record) => Math.abs(record.reviewerRisk - record.formulaRisk));
+  const agreementWithin20 = scored.length ? absolute.filter((value) => value <= 20).length / scored.length : 0;
+  const mae = scored.length ? absolute.reduce((sum, value) => sum + value, 0) / scored.length : Infinity;
+  const spearman = scored.length >= 2 ? pearson(rank(scored.map((record) => record.reviewerRisk)), rank(scored.map((record) => record.formulaRisk))) : 0;
+  return {
+    version: "0.1.0",
+    thresholds: { recall: 0.9, specificity: 0.95, falsePositiveRate: 0.05, agreementWithin20: 0.8, spearman: 0.7, mae: 15 },
+    perRule,
+    agreement: { cases: scored.length, agreementWithin20, spearman, mae },
+    passed: perRule.every((entry) => entry.passed) && agreementWithin20 >= 0.8 && spearman >= 0.7 && mae <= 15
+  };
 }
 
 export const __test__ = {
