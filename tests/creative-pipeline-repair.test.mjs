@@ -57,7 +57,7 @@ function seams() {
       await writeFile(pptxPath, `pptx-${fontSize}`, "utf8");
       return { pptxPath, intermediate: { editabilityCounter: { text: 1, shape: 1, image: 0, croppedAsset: 0, table: 0 }, countersBySlide: [{ text: 1, shape: 1, image: 0, croppedAsset: 0, table: 0 }] } };
     },
-    async buildCreativeProof({ evidenceDir, outputDir, manifest }) {
+    async buildCreativeProof({ evidenceDir, outputDir, manifest, hostFinalReview }) {
       const fontSize = manifest.slides[0].elements[0].style.fontSize;
       const repaired = fontSize === 24;
       calls.proof.push(fontSize);
@@ -81,6 +81,17 @@ function seams() {
         renderReport: { path: "creative-proof/render-report.json", hash: hash("8") }
       };
       const packet = buildFinalReviewPacket({ identity, rendering });
+      const review = hostFinalReview?.testReject === true ? {
+        version: "0.1.0", packetHash: packet.packetHash, artifacts: packet.artifacts,
+        status: "completed", overallVerdict: "reject",
+        perSlide: [{
+          slideId: "slide-001", screenshotPath: packet.pages[0].path, screenshotHash: packet.pages[0].hash,
+          focus: "clear", hierarchy: "unclear", thumbnailReadability: "pass", attentionTargetAlignment: "pass",
+          findings: [{ severity: "P2", type: "polish-spacing", reason: "Align title to measured grid.", evidence: [{ path: packet.pages[0].path, hash: packet.pages[0].hash }] }]
+        }],
+        deckRhythm: { rhythm: "uneven", consistency: "consistent", signatureMoment: "absent-appropriate", reason: "One title alignment breaks rhythm." },
+        summary: "Reject until the title alignment is corrected.", findings: []
+      } : null;
       return evaluateCreativeVisualProof({
         identity, rendering,
         tokenLedger: { version: "0.1.0", status: "passed", expectedSnapshotHash: hash("4"), actualSnapshotHash: hash("4"), designSystem: { name: "Business Neutral", source: "design-system/DESIGN.md" }, protectedTokens: [], drift: [], lineage: "snapshot-only" },
@@ -90,7 +101,7 @@ function seams() {
           nativeCoverage: { status: "passed", editabilityLevel: 5, nativeObjects: 2, rasterObjects: 0 }, rhythm: { status: "passed", topologyRuns: [], densityRuns: [] },
           quality: { status: repaired ? "passed" : "failed", deckScore: repaired ? 96 : 62, slideFloor: repaired ? 94 : 58 }, visualCritic: { status: repaired ? "passed" : "failed", findings: [] }
         },
-        hostReview: { packet, review: null }, selection: { status: "not-applicable", reason: "direction exploration did not occur" },
+        hostReview: { packet, review }, selection: { status: "not-applicable", reason: "direction exploration did not occur" },
         suites: [{ suite: "libreoffice", required: true, status: "passed", environment: "test", artifacts: ["creative-proof/render-report.json"], reason: "test render" }],
         repair: { attempts: 0, stopReason: "not-run", history: [] }, refinement: { status: "not-applicable", plan: null, history: [] },
         findings: repaired ? [] : [{ severity: "P1", source: "visual-critic", type: "aesthetic-hierarchy", message: "Hierarchy is weak.", slideId: "slide-001", evidence: ["visual-review.json"] }],
@@ -102,31 +113,47 @@ function seams() {
 
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
 
-describe("Creative Proof 0.2 repair boundary", () => {
-  it("repairs deterministic defects but still requires a new Host final review", async () => {
+describe("Creative Proof 0.2 refinement boundary", () => {
+  it("does not spend an unapproved in-process Creative repair attempt", async () => {
     const { manifestPath, outputDir } = await fixture();
     const testSeams = seams();
     await expect(runDeckPipeline(manifestPath, outputDir, { mode: "creative", inputType: "text", maxRepairAttempts: 3, ...testSeams }))
       .rejects.toThrow(/host-final-visual-review/);
-    expect(testSeams.calls.render).toEqual([18, 24]);
-    expect(testSeams.calls.proof).toEqual([18, 24, 24]);
+    expect(testSeams.calls.render).toEqual([18]);
+    expect(testSeams.calls.proof).toEqual([18]);
     const proof = JSON.parse(await readFile(join(outputDir, "creative-proof.json"), "utf8"));
-    expect(proof).toMatchObject({ version: "0.2.0", accepted: false, acceptance: { status: "awaiting-host-review" }, repair: { attempts: 1 } });
+    expect(proof).toMatchObject({ version: "0.2.0", accepted: false, repair: { attempts: 0, stopReason: "evidence-led-refinement-required" } });
     expect(JSON.parse(await readFile(join(outputDir, "pipeline-blocked.json"), "utf8")).blockedBy).toBe("host-final-visual-review");
     expect(existsSync(join(outputDir, "creative-proof", "candidate", "final.pptx"))).toBe(false);
     for (const name of ["final.pptx", "run.json", "output-manifest.json"]) expect(existsSync(join(outputDir, name))).toBe(false);
     await expect(access(join(outputDir, "replica-evidence.json"))).rejects.toThrow();
   }, 60_000);
 
-  it("never accepts a callback-supplied forged proof", async () => {
+  it("ignores the retired callback repair surface and never accepts forged proof", async () => {
     const { manifestPath, outputDir } = await fixture();
     const testSeams = seams();
+    let called = false;
     await expect(runDeckPipeline(manifestPath, outputDir, {
       mode: "creative", inputType: "text", maxRepairAttempts: 1, ...testSeams,
-      async runRepairAttempt({ artifact }) { return { proof: { version: "forged", accepted: true }, artifact: { manifest: artifact.manifest } }; }
-    })).rejects.toThrow(/bounded-repair/);
+      async runRepairAttempt({ artifact }) { called = true; return { proof: { version: "forged", accepted: true }, artifact: { manifest: artifact.manifest } }; }
+    })).rejects.toThrow(/host-final-visual-review/);
+    expect(called).toBe(false);
     const proof = JSON.parse(await readFile(join(outputDir, "creative-proof.json"), "utf8"));
     expect(proof.version).toBe("0.2.0");
     expect(proof.accepted).toBe(false);
+  }, 60_000);
+
+  it("routes a completed Host rejection to a dry-run approval boundary", async () => {
+    const { manifestPath, outputDir } = await fixture();
+    const testSeams = seams();
+    await expect(runDeckPipeline(manifestPath, outputDir, {
+      mode: "creative", inputType: "text", ...testSeams, hostFinalReview: { testReject: true },
+      proofContext: { ir: { designIntent: { locks: { brandLocked: false, sourceLocked: false } } } }
+    })).rejects.toThrow(/awaiting-refinement-approval/);
+    const plan = JSON.parse(await readFile(join(outputDir, "refinement-plan.json"), "utf8"));
+    expect(plan).toMatchObject({ status: "awaiting-refinement-approval", dryRun: true, attemptBudget: { used: 0, max: 3 } });
+    expect(plan.operations[0]).toMatchObject({ command: "polish", targetLayer: "manifest", delta: null, approval: { status: "required" } });
+    expect(JSON.parse(await readFile(join(outputDir, "pipeline-blocked.json"), "utf8")).blockedBy).toBe("awaiting-refinement-approval");
+    for (const name of ["final.pptx", "run.json", "output-manifest.json"]) expect(existsSync(join(outputDir, name))).toBe(false);
   }, 60_000);
 });

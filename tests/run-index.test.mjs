@@ -32,6 +32,7 @@ describe("run index generation", () => {
     await writeFile(join(dir, "creative-direction-blind", "blind-packet.json"), "{}");
     await writeFile(join(dir, "final.pptx"), "");
     await writeFile(join(dir, "consistency-report.json"), "{}");
+    await writeFile(join(dir, "refinement-plan.json"), "{}");
     await mkdir(join(dir, "previews"), { recursive: true });
     await writeFile(join(dir, "previews", "slide-001.png"), "");
 
@@ -49,6 +50,7 @@ describe("run index generation", () => {
     expect(run.artifacts.creativeSelection).toBe("creative-selection.json");
     expect(run.artifacts.blindPacket).toBe("creative-direction-blind/blind-packet.json");
     expect(run.artifacts.previews).toEqual(["previews/slide-001.png"]);
+    expect(run.artifacts.refinementPlan).toBe("refinement-plan.json");
     expect(run.status).toBe("ready-for-review");
     expect(run).not.toHaveProperty("directions");
 
@@ -57,7 +59,7 @@ describe("run index generation", () => {
     expect(Object.keys(run.artifacts)).toEqual([
       "deckPlan", "semanticIr", "manifest", "pptx", "previews", "reviews",
       "consistencyReport", "sources", "assetRegistry", "creativeCandidates", "creativeSelection", "blindPacket",
-      "creativeProof", "creativeProofEvidence", "hostVisualReview"
+      "creativeProof", "creativeProofEvidence", "hostVisualReview", "refinementPlan"
     ]);
   });
 
@@ -75,6 +77,7 @@ describe("run index generation", () => {
     expect(run.artifacts.creativeCandidates).toBeNull();
     expect(run.artifacts.creativeSelection).toBeNull();
     expect(run.artifacts.blindPacket).toBeNull();
+    expect(run.artifacts.refinementPlan).toBeNull();
     expect(validateJsonSchema(run, schema)).toEqual({ valid: true, errors: [] });
 
     const withUnknownArtifact = structuredClone(run);

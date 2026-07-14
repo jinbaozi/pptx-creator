@@ -11,7 +11,8 @@ import { runBoundedRepair } from "./lib/bounded-repair.mjs";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
 import { applyContextualTaste, editabilityLevelFromCounter, qualityFromReview } from "./lib/contextual-taste.mjs";
 import { buildCreativeRepairPatch, compareCreativeProof } from "./lib/creative-repair.mjs";
-import { buildCreativeVisualProof, summarizeCreativeRepair } from "./lib/creative-visual-proof.mjs";
+import { buildCreativeVisualProof, proofContentHash, summarizeCreativeRepair } from "./lib/creative-visual-proof.mjs";
+import { compareRefinementProof, routeRefinementFindings } from "./lib/creative-refinement.mjs";
 import { createFontMetricsCatalog, preflightFonts } from "./lib/font-preflight.mjs";
 import { writePipelineReports } from "./lib/pipeline-report-writer.mjs";
 import { runPython } from "./lib/python-utils.mjs";
@@ -51,6 +52,8 @@ const PUBLISHED_OUTPUTS = Object.freeze([
   "creative-proof.json",
   "creative-proof",
   "host-visual-review.json",
+  "refinement-plan.json",
+  ".creative-refinement",
   ".creative-repair",
   "replica-evidence.json",
   "visual-regression-report.json",
@@ -825,6 +828,45 @@ async function blockForHostFinalReview({ resolvedManifest, resolvedOutput, steps
   await blockPipeline(resolvedManifest, resolvedOutput, steps, "host-final-visual-review", detail);
 }
 
+async function blockForRefinement({ resolvedManifest, resolvedOutput, steps, proof, manifest, proofContext }) {
+  const sourceHash = proofContentHash(proof);
+  const plan = routeRefinementFindings(proof, {
+    sourceProofPath: "creative-proof.json",
+    attemptBudget: { used: proofContext?.refinementState?.plan?.attemptBudget?.used ?? proof.repair?.attempts ?? 0, max: 3 },
+    brandLocked: proofContext?.ir?.designIntent?.locks?.brandLocked === true,
+    sourceLocked: proofContext?.ir?.designIntent?.locks?.sourceLocked === true,
+    signatureMoment: proofContext?.refinementState?.plan?.signatureMoment ?? null,
+    ir: proofContext?.ir,
+    manifest
+  });
+  const planSchema = JSON.parse(await readFile(join(root, "schemas/refinement-plan.schema.json"), "utf8"));
+  const planContract = validateJsonSchema(plan, planSchema);
+  if (!planContract.valid) throw new Error(`refinement plan contract invalid: ${planContract.errors.map((item) => `${item.path} ${item.message}`).join("; ")}`);
+  const nextProof = {
+    ...proof,
+    refinement: {
+      status: plan.operations.length ? "planned" : "failed",
+      plan,
+      history: proofContext?.refinementState?.history ?? [],
+      finalIdentity: null
+    }
+  };
+  await validateCreativeProofContract(nextProof);
+  await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(nextProof, null, 2)}\n`, "utf8");
+  await writeFile(join(resolvedOutput, "refinement-plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+  const bestDir = join(resolvedOutput, ".creative-refinement");
+  await mkdir(bestDir, { recursive: true });
+  await writeFile(join(bestDir, "best-proof.json"), `${JSON.stringify(proof, null, 2)}\n`, "utf8");
+  await rm(join(resolvedOutput, "final.pptx"), { force: true });
+  await rm(join(resolvedOutput, "run.json"), { force: true });
+  await rm(join(resolvedOutput, "output-manifest.json"), { force: true });
+  const blockedBy = plan.operations.length ? "awaiting-refinement-approval" : "creative-refinement";
+  const detail = plan.operations.length
+    ? `dry-run refinement plan ${plan.planId} is ready and bound to ${sourceHash}; approve exactly one operation in a protected --refinement-state sidecar`
+    : "Host rejection contains no supported evidence-bound refinement operation";
+  await blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy, detail);
+}
+
 async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy, detail = null) {
   const summary = {
     manifest: resolvedManifest,
@@ -841,7 +883,7 @@ async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy,
   );
   const error = new Error(`pipeline blocked at ${blockedBy}${detail ? `: ${detail}` : ""}`);
   error.summary = summary;
-  if (blockedBy === "host-final-visual-review") error.preserveLocalizedAssets = true;
+  if (["host-final-visual-review", "awaiting-refinement-approval", "creative-refinement"].includes(blockedBy)) error.preserveLocalizedAssets = true;
   throw error;
 }
 
@@ -1114,7 +1156,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   steps.push(proofStep);
   const repairLimit = normalizeRepairLimit(options.maxRepairAttempts ?? 3);
   stageGuard.enter("bounded-repair");
-  if (mode === "creative" && !deterministicCreativeProofPassed(creativeVisualProof)) {
+  if (mode === "creative" && options.enableLegacyCreativeAutoRepair === true && !deterministicCreativeProofPassed(creativeVisualProof)) {
     const attempt = typeof options.runRepairAttempt === "function"
       ? ({ iteration, proof, artifact }) => runCallbackCreativeRepairAttempt({
         callback: options.runRepairAttempt,
@@ -1264,16 +1306,56 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     steps.push({ label: "bounded-repair", ok: true, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
   } else {
     if (mode === "creative") {
+      const deterministicPassed = deterministicCreativeProofPassed(creativeVisualProof);
       creativeVisualProof = {
         ...creativeVisualProof,
-        repair: summarizeCreativeRepair({ attempts: 0, stopReason: "initial-deterministic-proof-passed", history: [] })
+        repair: summarizeCreativeRepair({
+          attempts: 0,
+          stopReason: deterministicPassed ? "initial-deterministic-proof-passed" : "evidence-led-refinement-required",
+          history: []
+        })
       };
       await validateCreativeProofContract(creativeVisualProof);
       await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
     }
-    steps.push({ label: "bounded-repair", ok: true, attempts: 0, maxAttempts: repairLimit, stopReason: "initial-deterministic-proof-passed" });
+    const stopReason = mode === "creative" && !deterministicCreativeProofPassed(creativeVisualProof)
+      ? "evidence-led-refinement-required"
+      : "initial-deterministic-proof-passed";
+    steps.push({ label: "bounded-repair", ok: mode !== "creative" || deterministicCreativeProofPassed(creativeVisualProof), attempts: 0, maxAttempts: repairLimit, stopReason });
   }
 
+  if (mode === "creative" && !isDirectionProbeProof(creativeVisualProof) && creativeVisualProof?.accepted !== true
+    && creativeVisualProof?.hostVisualReview?.status === "completed"
+    && !(options.proofContext?.refinementState?.status === "applied" && options.proofContext?.bestProof)) {
+    proofStep.ok = false;
+    await blockForRefinement({ resolvedManifest, resolvedOutput, steps, proof: creativeVisualProof, manifest, proofContext: options.proofContext });
+  }
+  if (mode === "creative" && creativeVisualProof?.hostVisualReview?.status === "completed"
+    && options.proofContext?.refinementState?.status === "applied" && options.proofContext?.bestProof) {
+    const comparison = compareRefinementProof(creativeVisualProof, options.proofContext.bestProof);
+    creativeVisualProof = {
+      ...creativeVisualProof,
+      refinement: {
+        ...creativeVisualProof.refinement,
+        history: (creativeVisualProof.refinement?.history ?? []).map((entry, index, history) => index === history.length - 1 ? {
+          ...entry,
+          comparison,
+          outcome: creativeVisualProof.accepted && comparison >= 0 ? "accepted" : comparison > 0 ? "improved" : "no-improvement"
+        } : entry)
+      }
+    };
+    await validateCreativeProofContract(creativeVisualProof);
+    await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
+    if (comparison < 0 || (comparison === 0 && creativeVisualProof.accepted !== true)) {
+      await rm(join(resolvedOutput, "final.pptx"), { force: true });
+      await rm(join(resolvedOutput, "run.json"), { force: true });
+      await rm(join(resolvedOutput, "output-manifest.json"), { force: true });
+      await blockPipeline(resolvedManifest, resolvedOutput, steps, "creative-refinement", "candidate did not improve the artifact-bound best proof; best diagnostic state retained");
+    }
+    if (comparison > 0 && creativeVisualProof.accepted !== true) {
+      await blockForRefinement({ resolvedManifest, resolvedOutput, steps, proof: creativeVisualProof, manifest, proofContext: options.proofContext });
+    }
+  }
   if (mode === "creative" && !isDirectionProbeProof(creativeVisualProof) && creativeVisualProof?.accepted !== true) {
     proofStep.ok = false;
     const hostStatus = creativeVisualProof?.hostVisualReview?.status ?? "missing";

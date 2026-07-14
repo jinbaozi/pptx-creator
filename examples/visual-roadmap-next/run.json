@@ -21,6 +21,7 @@
     "blindPacket": null,
     "creativeProof": null,
     "creativeProofEvidence": null,
-    "hostVisualReview": null
+    "hostVisualReview": null,
+    "refinementPlan": null
   }
 }

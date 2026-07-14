@@ -30,7 +30,8 @@ export async function runRoutePipeline(route, mode, input, outputDir, options = 
       ...(options.designSystem ? ["--design-system", options.designSystem] : []),
       ...(options.creativeDirections ? ["--creative-directions", options.creativeDirections] : []),
       ...(options.hostReview ? ["--host-review", options.hostReview] : []),
-      ...(options.hostFinalReview ? ["--host-final-review", options.hostFinalReview] : [])
+      ...(options.hostFinalReview ? ["--host-final-review", options.hostFinalReview] : []),
+      ...(options.refinementState ? ["--refinement-state", options.refinementState] : [])
     ]);
     if (code !== 0) throw new Error(`creative text pipeline failed with exit ${code}`);
     return { route, mode, outputDir: resolve(outputDir), status: "passed" };
@@ -57,6 +58,7 @@ export function buildRouteInvocation(argv) {
   let creativeDirections = null;
   let hostReview = null;
   let hostFinalReview = null;
+  let refinementState = null;
   for (let index = 0; index < flags.length; index += 1) {
     const flag = flags[index];
     if (flag === "--allow-remote-assets") allowRemoteAssets = true;
@@ -66,7 +68,7 @@ export function buildRouteInvocation(argv) {
       if (!value || value.startsWith("--")) throw new Error("--design-system requires a value");
       designSystem = value;
       index += 1;
-    } else if (["--creative-directions", "--host-review", "--host-final-review"].includes(flag)) {
+    } else if (["--creative-directions", "--host-review", "--host-final-review", "--refinement-state"].includes(flag)) {
       const value = flags[index + 1];
       if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value`);
       if (flag === "--creative-directions") {
@@ -75,9 +77,12 @@ export function buildRouteInvocation(argv) {
       } else if (flag === "--host-review") {
         if (hostReview !== null) throw new Error("--host-review may be provided only once");
         hostReview = value;
-      } else {
+      } else if (flag === "--host-final-review") {
         if (hostFinalReview !== null) throw new Error("--host-final-review may be provided only once");
         hostFinalReview = value;
+      } else {
+        if (refinementState !== null) throw new Error("--refinement-state may be provided only once");
+        refinementState = value;
       }
       index += 1;
     } else throw new Error(`unknown option: ${flag}`);
@@ -85,7 +90,7 @@ export function buildRouteInvocation(argv) {
   if (designSystem && (route !== "text" || mode !== "creative")) {
     throw new Error("--design-system is available only for creative text mode");
   }
-  if ((creativeDirections || hostReview || hostFinalReview) && (route !== "text" || mode !== "creative")) {
+  if ((creativeDirections || hostReview || hostFinalReview || refinementState) && (route !== "text" || mode !== "creative")) {
     throw new Error("creative review options are available only for creative text mode");
   }
   if (hostReview && !creativeDirections) throw new Error("--host-review requires --creative-directions");
@@ -97,7 +102,8 @@ export function buildRouteInvocation(argv) {
     allowRemoteAssets,
     ...(creativeDirections ? { creativeDirections } : {}),
     ...(hostReview ? { hostReview } : {}),
-    ...(hostFinalReview ? { hostFinalReview } : {})
+    ...(hostFinalReview ? { hostFinalReview } : {}),
+    ...(refinementState ? { refinementState } : {})
   } };
 }
 

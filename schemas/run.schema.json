@@ -20,7 +20,7 @@
     "artifacts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["deckPlan", "semanticIr", "manifest", "pptx", "previews", "reviews", "consistencyReport", "sources", "assetRegistry", "creativeCandidates", "creativeSelection", "blindPacket", "creativeProof", "creativeProofEvidence", "hostVisualReview"],
+      "required": ["deckPlan", "semanticIr", "manifest", "pptx", "previews", "reviews", "consistencyReport", "sources", "assetRegistry", "creativeCandidates", "creativeSelection", "blindPacket", "creativeProof", "creativeProofEvidence", "hostVisualReview", "refinementPlan"],
       "properties": {
         "deckPlan": { "type": ["string", "null"] },
         "semanticIr": { "type": ["string", "null"] },
@@ -36,7 +36,8 @@
         "blindPacket": { "type": ["string", "null"] },
         "creativeProof": { "type": ["string", "null"] },
         "creativeProofEvidence": { "type": ["string", "null"] },
-        "hostVisualReview": { "type": ["string", "null"] }
+        "hostVisualReview": { "type": ["string", "null"] },
+        "refinementPlan": { "type": ["string", "null"] }
       }
     },
     "metadata": {

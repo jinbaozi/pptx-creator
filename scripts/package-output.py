@@ -203,6 +203,20 @@ def validate_creative_evidence(output_dir: Path) -> None:
         fail("creative proof acceptance state is not canonical")
     if proof.get("hostVisualReview", {}).get("status") != "completed":
         fail("creative proof requires completed Host final visual review")
+    refinement_identity = proof.get("identity", {}).get("refinement")
+    if refinement_identity is None:
+        if artifacts.get("refinementPlan") is not None:
+            fail("unrefined creative proof must not index a refinement plan")
+    else:
+        if artifacts.get("refinementPlan") != "refinement-plan.json":
+            fail("refined creative run must index refinement-plan.json")
+        refinement_path = require_regular_relative(output_dir, "refinement-plan.json", "run.artifacts.refinementPlan")
+        try:
+            refinement_document = json.loads(refinement_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            fail(f"invalid refinement plan: {error}")
+        if canonical_sha256(refinement_document) != refinement_identity.get("hash"):
+            fail("refinement plan hash does not match Creative Proof identity")
     if run.get("status") != "accepted":
         fail("creative run status must be accepted")
     identity = proof.get("identity")

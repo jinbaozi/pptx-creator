@@ -26,7 +26,8 @@ export async function buildRunIndex(outputDir, options) {
     blindPacket: await exists(root, join("creative-direction-blind", "blind-packet.json")),
     creativeProof: await exists(root, "creative-proof.json"),
     creativeProofEvidence: await exists(root, "creative-proof"),
-    hostVisualReview: await exists(root, "host-visual-review.json")
+    hostVisualReview: await exists(root, "host-visual-review.json"),
+    refinementPlan: await exists(root, "refinement-plan.json")
   };
 
   let accepted = false;

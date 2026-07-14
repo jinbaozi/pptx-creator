@@ -119,6 +119,19 @@ npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative
 `--host-final-review` 是两个独立判断阶段。完整契约见
 [`references/creative-visual-proof.md`](references/creative-visual-proof.md)。
 
+如果最终全稿复核拒绝，流水线会输出只读的 `refinement-plan.json` 并停在
+`awaiting-refinement-approval`。Host 在输出目录外准备只批准一个操作的
+`creative-refinement-state.json`，再恢复运行；任何 delta 都会使旧截图复核
+失效，并消耗共享的最多 3 次 Creative 修复/精炼预算：
+
+```bash
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative \
+  --design-system dark-tech \
+  --refinement-state /absolute/path/creative-refinement-state.json
+```
+
+完整契约见 [`references/creative-refinement.md`](references/creative-refinement.md)。
+
 成功完成打包的 Creative 路线发布 plan、选中的 canonical Semantic Slide
 IR、render manifest 和真实 run index：
 

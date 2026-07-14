@@ -42,6 +42,9 @@ accepted: the host must inspect every full-size rendered slide and provide a
 packet-bound `--host-final-review` sidecar. Until then the pipeline exposes only
 candidate evidence and withholds the top-level PPTX, successful run index, and
 output manifest.
+A rejecting final review follows `references/creative-refinement.md`: emit a
+dry-run evidence plan, wait for one protected Host-approved operation, then
+render and review again. Creative repair/refinement shares a three-delta cap.
 
 ## Shared invariants
 

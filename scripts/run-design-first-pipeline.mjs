@@ -33,6 +33,10 @@ import {
   validateHostReview
 } from "./lib/creative-candidates.mjs";
 import { invalidatePublishedOutputs, runDeckPipeline } from "./run-deck-pipeline.mjs";
+import { compileSemanticDeckIr } from "./lib/semantic-slide-ir.mjs";
+import { proofContentHash } from "./lib/creative-visual-proof.mjs";
+import { replayApprovedRefinements, validateRefinementState } from "./lib/creative-refinement.mjs";
+import { validateJsonSchema } from "./lib/schema-utils.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const compositionBlockRegistry = loadCompositionBlockRegistry(path.join(projectRoot, "composition-blocks"));
@@ -74,6 +78,12 @@ function parseArgs(argv) {
       const value = rest[i + 1];
       if (!value || value.startsWith("--")) throw new Error("--host-final-review requires a local JSON path");
       options.hostFinalReview = value;
+      i += 1;
+    } else if (rest[i] === "--refinement-state") {
+      if (options.refinementState) throw new Error("--refinement-state may be provided only once");
+      const value = rest[i + 1];
+      if (!value || value.startsWith("--")) throw new Error("--refinement-state requires a protected local JSON path");
+      options.refinementState = value;
       i += 1;
     } else throw new Error(`unknown option: ${rest[i]}`);
   }
@@ -518,7 +528,10 @@ async function runFinalCreativePlan({
   hostFinalReview = null,
   candidateSet = null,
   creativeSelection = null,
-  creativeSelectionValid = false
+  creativeSelectionValid = false,
+  refinementState = null,
+  refinementSourceProof = null,
+  refinementBestProof = null
 }) {
   const designOutputDir = path.join(outputDir, "design-system");
   const designOutputPath = path.join(designOutputDir, "DESIGN.md");
@@ -527,12 +540,51 @@ async function runFinalCreativePlan({
   } else {
     assertSafeCreativePublicationTarget(outputDir, designOutputPath);
   }
-  const compiled = await compileFittedCreativePlan({
+  let compiled = await compileFittedCreativePlan({
     plan: canonicalPlan,
     selection,
     localizedAssets,
     fontCatalog: fontCatalog ?? await createFontMetricsCatalog()
   });
+  let refinement = null;
+  if (refinementState) {
+    const catalog = fontCatalog ?? await createFontMetricsCatalog();
+    const replay = await replayApprovedRefinements({
+      state: refinementState,
+      ir: compiled.ir,
+      manifest: compiled.manifest,
+      design: compiled.design,
+      registry: buildCanonicalAssetRegistry(canonicalPlan, localizedAssets, compiled.manifest, compiled.ir),
+      compileIr: async (ir, { design }) => {
+        const lowered = compileSemanticDeckIr(ir, { design });
+        const materialized = materializeTextFonts(lowered, design.tokens, catalog);
+        const fitted = await fitManifestText(materialized.manifest, { designTokens: design.tokens, fontCatalog: catalog });
+        if (fitted.unresolved.length > 0 || fitted.report.status !== "passed") {
+          throw new Error(`refined IR text fit unresolved: ${fitted.unresolved.map((item) => `${item.slideId}/${item.elementId}:${item.status}`).join(", ")}`);
+        }
+        return fitted.manifest;
+      }
+    });
+    compiled = { ...compiled, ir: replay.ir, manifest: replay.manifest };
+    refinement = {
+      version: "0.1.0",
+      sourceProofHash: refinementState.sourceProofHash,
+      baseRunHash: refinementState.baseRunHash,
+      attemptBudget: { used: replay.attemptsUsed, max: 3 },
+      history: replay.history,
+      signatureMoment: replay.signatureMoment,
+      bestIdentity: structuredClone(refinementState.bestIdentity),
+      sourceProof: { hash: refinementState.sourceProofHash }
+    };
+    await atomicPublishCreativeBytes(outputDir, path.join(outputDir, "refinement-plan.json"), Buffer.from(`${JSON.stringify(refinement, null, 2)}\n`, "utf8"));
+    if (refinementBestProof) {
+      await atomicPublishCreativeBytes(
+        outputDir,
+        path.join(outputDir, ".creative-refinement", "best-proof.json"),
+        Buffer.from(`${JSON.stringify(refinementBestProof, null, 2)}\n`, "utf8")
+      );
+    }
+  }
   const manifestPath = path.join(outputDir, "deck.manifest.json");
   await atomicPublishCreativeBytes(
     outputDir,
@@ -549,7 +601,10 @@ async function runFinalCreativePlan({
     mode,
     ownershipPath: localizedAssets.ownershipPath,
     ownership: localizedAssets.ownership,
-    publicArtifacts,
+    publicArtifacts: [
+      ...publicArtifacts,
+      ...(refinement ? [{ relativePath: "refinement-plan.json", bytes: Buffer.from(`${JSON.stringify(refinement, null, 2)}\n`, "utf8") }] : [])
+    ],
     runMetadata
   });
   await runDeckPipeline(manifestPath, outputDir, {
@@ -569,11 +624,17 @@ async function runFinalCreativePlan({
     beforePackageCommit: authoringTransaction.beforePackageCommit,
     beforePackageRollback: authoringTransaction.beforePackageRollback,
     hostFinalReview,
+    refinementState,
     proofContext: {
       purpose: "final-deck",
       ir: compiled.ir,
       design: compiled.design,
       assetRegistry: (finalManifest) => buildCanonicalAssetRegistry(canonicalPlan, localizedAssets, finalManifest, compiled.ir),
+      ...(refinement ? {
+        refinement,
+        refinementState: { status: "applied", plan: refinement, history: refinement.history },
+        ...(refinementBestProof ? { bestProof: refinementBestProof } : {})
+      } : {}),
       ...(candidateSet ? { candidateSet } : {}),
       ...(creativeSelection ? { selection: creativeSelection, selectionValid: creativeSelectionValid } : {})
     }
@@ -1085,8 +1146,40 @@ async function main() {
   const directionInput = options.creativeDirections ? path.resolve(options.creativeDirections) : null;
   const hostReviewInput = options.hostReview ? path.resolve(options.hostReview) : null;
   const hostFinalReviewInput = options.hostFinalReview ? path.resolve(options.hostFinalReview) : null;
+  const refinementStateInput = options.refinementState ? path.resolve(options.refinementState) : null;
+  let refinementState = null;
+  let refinementSourceProof = null;
+  let refinementBestProof = null;
+  if (refinementStateInput) {
+    if (refinementStateInput === resolvedOutput || refinementStateInput.startsWith(`${resolvedOutput}${path.sep}`)) {
+      throw new Error("--refinement-state must remain outside the generated output directory");
+    }
+    refinementState = readLocalJsonSidecar(refinementStateInput, "creative refinement state");
+    const refinementStateSchema = JSON.parse(fs.readFileSync(path.join(projectRoot, "schemas/refinement-state.schema.json"), "utf8"));
+    const stateContract = validateJsonSchema(refinementState, refinementStateSchema);
+    if (!stateContract.valid) throw new Error(`creative refinement state schema invalid: ${stateContract.errors.map((item) => `${item.path} ${item.message}`).join("; ")}`);
+    const priorProofPath = path.join(resolvedOutput, "creative-proof.json");
+    if (!fs.existsSync(priorProofPath)) throw new Error("--refinement-state requires the source creative-proof.json in the output directory");
+    refinementSourceProof = JSON.parse(fs.readFileSync(priorProofPath, "utf8"));
+    const bestProofPath = path.join(resolvedOutput, ".creative-refinement", "best-proof.json");
+    if (fs.existsSync(bestProofPath)) refinementBestProof = JSON.parse(fs.readFileSync(bestProofPath, "utf8"));
+    const expectedSourceProofHash = refinementSourceProof.refinement?.plan?.sourceProofHash
+      ?? refinementSourceProof.refinement?.plan?.sourceProof?.proof?.hash
+      ?? proofContentHash(refinementSourceProof);
+    const expectedBaseRunHash = refinementSourceProof.refinement?.plan?.sourceProof?.semanticIr?.hash
+      ?? refinementBestProof?.identity?.semanticIr?.hash
+      ?? refinementSourceProof.identity?.semanticIr?.hash;
+    const stateValidation = validateRefinementState(refinementState, {
+      sourceProofHash: expectedSourceProofHash,
+      ...(expectedBaseRunHash ? { baseRunHash: expectedBaseRunHash } : {})
+    });
+    if (!stateValidation.valid) throw new Error(`creative refinement state invalid: ${stateValidation.errors.join("; ")}`);
+    if (refinementBestProof && proofContentHash(refinementBestProof) !== refinementState.sourceProofHash) {
+      throw new Error("diagnostic best proof drifted from the protected refinement state");
+    }
+  }
   const publicBlindRoot = path.join(resolvedOutput, "creative-direction-blind");
-  for (const [label, candidate] of [["creative direction request", directionInput], ["Host review", hostReviewInput], ["Host final review", hostFinalReviewInput]]) {
+  for (const [label, candidate] of [["creative direction request", directionInput], ["Host review", hostReviewInput], ["Host final review", hostFinalReviewInput], ["refinement state", refinementStateInput]]) {
     if (candidate && (candidate === publicBlindRoot || candidate.startsWith(`${publicBlindRoot}${path.sep}`))) {
       throw new Error(`${label} must remain outside the public blind packet directory`);
     }
@@ -1096,7 +1189,8 @@ async function main() {
     ...(explicitDesignInput ? [explicitDesignInput] : []),
     ...(directionInput ? [directionInput] : []),
     ...(hostReviewInput ? [hostReviewInput] : []),
-    ...(hostFinalReviewInput ? [hostFinalReviewInput] : [])
+    ...(hostFinalReviewInput ? [hostFinalReviewInput] : []),
+    ...(refinementStateInput ? [refinementStateInput] : [])
   ]);
   const planPath = fs.statSync(resolvedInput).isDirectory() ? path.join(resolvedInput, "deck.plan.json") : resolvedInput;
   const reservedManifestPath = path.join(resolvedOutput, "deck.manifest.json");
@@ -1188,7 +1282,10 @@ async function main() {
         mode: options.mode,
         fontCatalog,
         hostFinalReview,
-        protectedInputs: [hostFinalReviewInput].filter(Boolean)
+        refinementState,
+        refinementSourceProof,
+        refinementBestProof,
+        protectedInputs: [hostFinalReviewInput, refinementStateInput].filter(Boolean)
       });
       console.log(`Creative text pipeline complete: ${path.join(resolvedOutput, "final.pptx")}`);
       return;
@@ -1286,7 +1383,7 @@ async function main() {
       localizedAssets,
       mode: options.mode,
       fontCatalog,
-      protectedInputs: [directionInput, hostReviewInput, hostFinalReviewInput, publicBlindRoot].filter(Boolean),
+      protectedInputs: [directionInput, hostReviewInput, hostFinalReviewInput, refinementStateInput, publicBlindRoot].filter(Boolean),
       publicArtifacts: [
         { relativePath: "creative-candidates.json", bytes: Buffer.from(`${JSON.stringify(candidates, null, 2)}\n`, "utf8") },
         { relativePath: "creative-selection.json", bytes: Buffer.from(`${JSON.stringify(creativeSelection, null, 2)}\n`, "utf8") }
@@ -1297,6 +1394,9 @@ async function main() {
         selectedCandidateId: creativeSelection.selectedCandidateId
       },
       hostFinalReview,
+      refinementState,
+      refinementSourceProof,
+      refinementBestProof,
       candidateSet: candidates,
       creativeSelection,
       creativeSelectionValid: selectionValidation.valid

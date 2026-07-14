@@ -127,10 +127,24 @@ export function validateHostVisualReview({ packet, review }) {
     else if (slide.screenshotPath !== page.path || slide.screenshotHash !== page.hash) errors.push(`Host final review screenshot evidence is stale for ${slide.slideId}`);
     if (slide?.focus !== "clear" || slide?.hierarchy !== "clear"
       || slide?.thumbnailReadability !== "pass" || slide?.attentionTargetAlignment !== "pass") hardJudgmentFailed = true;
-    for (const finding of slide?.findings ?? []) findings.push(hostFinding(finding, slide.slideId));
+    for (const finding of slide?.findings ?? []) {
+      if ((finding.evidence ?? []).some((entry) => entry.path.split("#")[0] !== page?.path || entry.hash !== page?.hash)) {
+        errors.push(`Host finding evidence is stale for ${slide.slideId}`);
+      }
+      findings.push(hostFinding(finding, slide.slideId));
+    }
   }
   if (seen.size !== pages.size || [...pages.keys()].some((slideId) => !seen.has(slideId))) errors.push("Host final review must cover every rendered slide exactly once");
-  for (const finding of review.findings ?? []) findings.push(hostFinding(finding));
+  const deckEvidence = new Map([
+    ...(packet?.pages ?? []).map((page) => [page.path, page.hash]),
+    ...(packet?.contactSheet ? [[packet.contactSheet.path, packet.contactSheet.hash]] : [])
+  ]);
+  for (const finding of review.findings ?? []) {
+    if ((finding.evidence ?? []).some((entry) => deckEvidence.get(entry.path.split("#")[0]) !== entry.hash)) {
+      errors.push("Host deck finding evidence is stale");
+    }
+    findings.push(hostFinding(finding));
+  }
   const severe = findings.some((finding) => ["P0", "P1"].includes(finding.severity));
   const deckFailed = review.deckRhythm?.rhythm === "broken"
     || review.deckRhythm?.consistency === "inconsistent"
@@ -177,6 +191,7 @@ function hostReviewSummary(packet, review, validation) {
     reviewHash: review ? proofContentHash(review) : null,
     overallVerdict: review?.overallVerdict ?? null,
     perSlideCount: review?.perSlide?.length ?? 0,
+    signatureMoment: review?.deckRhythm?.signatureMoment ?? null,
     summary: review?.summary ?? null,
     findings: validation.findings
   };
@@ -191,6 +206,20 @@ function normalizeFinding(finding) {
     ...(finding?.slideId ? { slideId: finding.slideId } : {}),
     evidence: Array.isArray(finding?.evidence) ? finding.evidence.map((entry) => typeof entry === "string" ? entry : entry?.path).filter(Boolean) : []
   };
+}
+
+function refinementValidation(refinement, identity) {
+  if (!refinement || refinement.status === "not-applicable") return { passed: true, reasons: [] };
+  if (refinement.status !== "applied") return { passed: false, reasons: [`refinement status ${refinement.status ?? "missing"} is not publishable`] };
+  const finalIdentity = refinement.finalIdentity;
+  const used = refinement.plan?.attemptBudget?.used;
+  const reasons = [];
+  if (!Number.isInteger(used) || used < 1 || used > 3) reasons.push("refinement shared attempt budget is invalid");
+  if ((refinement.history?.length ?? 0) !== used) reasons.push("refinement history length does not match applied attempts");
+  if (finalIdentity?.semanticIrHash !== identity?.semanticIr?.hash) reasons.push("refinement final Semantic IR hash drifted");
+  if (finalIdentity?.manifestHash !== identity?.manifest?.hash) reasons.push("refinement final manifest hash drifted");
+  if (finalIdentity?.pptxHash !== identity?.pptx?.hash) reasons.push("refinement final PPTX hash drifted");
+  return { passed: reasons.length === 0, reasons };
 }
 
 export function evaluateCreativeVisualProof({
@@ -208,7 +237,9 @@ export function evaluateCreativeVisualProof({
   hardGateInputs = {}
 } = {}) {
   const packet = hostReview?.packet ?? buildFinalReviewPacket({ identity, rendering });
+  const normalizedRefinement = { ...(structuredClone(refinement) ?? { status: "not-applicable", plan: null, history: [] }), finalIdentity: refinement?.finalIdentity ?? null };
   const reviewValidation = validateHostVisualReview({ packet, review: hostReview?.review ?? null });
+  const refinementCheck = refinementValidation(normalizedRefinement, identity);
   const render = renderingValidation(rendering);
   const contact = contactSheetValidation(rendering);
   const requiredSuitesPassed = (suites ?? []).every((entry) => !entry.required || entry.status === "passed");
@@ -229,6 +260,7 @@ export function evaluateCreativeVisualProof({
     gate("editability-native-coverage", hardGateInputs.editability === true && diagnostics?.nativeCoverage?.status === "passed" ? "passed" : "failed", true, ["quality-report.json"], hardGateInputs.editability === true ? [] : ["native editability coverage did not pass"]),
     gate("required-suites", requiredSuitesPassed ? "passed" : "failed", true, (suites ?? []).flatMap((entry) => entry.artifacts ?? []), requiredSuitesPassed ? [] : ["a required office suite is unavailable or failed"]),
     gate("selection-validity", selectionPassed ? "passed" : "failed", true, identity?.selection ? [identity.selection.path] : [], selectionPassed ? [] : [selection?.reason ?? "selection is invalid"]),
+    gate("refinement-validity", refinementCheck.passed ? "passed" : "failed", true, identity?.refinement ? [identity.refinement.path] : [], refinementCheck.reasons),
     gate("visual-critic", hardGateInputs.visualCritic === true && diagnostics?.visualCritic?.status === "passed" ? "passed" : "failed", true, ["visual-review.json"], hardGateInputs.visualCritic === true ? [] : ["deterministic visual critic did not pass"]),
     gate("final-host-review", hostStatus, hostRequired, ["creative-proof/final-review-packet.json"], probe ? [] : reviewValidation.errors.length ? reviewValidation.errors : hostStatus === "passed" ? [] : ["Host final visual review is missing or unavailable"])
   ];
@@ -258,7 +290,7 @@ export function evaluateCreativeVisualProof({
     selection: structuredClone(selection),
     suites: structuredClone(suites),
     repair: structuredClone(repair),
-    refinement: structuredClone(refinement),
+    refinement: normalizedRefinement,
     findings: allFindings,
     acceptance: { status: acceptanceStatus, reasons: [...new Set(reasons)] },
     accepted
@@ -459,6 +491,15 @@ export async function buildCreativeVisualProof({
     slideId: slide.id,
     evidence: ["visual-review.json"]
   })));
+  const refinementState = proofContext.refinementState ?? { status: "not-applicable", plan: null, history: [], finalIdentity: null };
+  const boundRefinementState = refinementState.status === "applied" ? {
+    ...structuredClone(refinementState),
+    finalIdentity: {
+      semanticIrHash: identity.semanticIr.hash,
+      manifestHash: identity.manifest.hash,
+      pptxHash: identity.pptx.hash
+    }
+  } : { ...structuredClone(refinementState), finalIdentity: refinementState.finalIdentity ?? null };
   const proof = evaluateCreativeVisualProof({
     identity,
     rendering,
@@ -469,7 +510,7 @@ export async function buildCreativeVisualProof({
     selection,
     suites,
     repair: summarizeCreativeRepair(repair),
-    refinement: proofContext.refinementState ?? { status: "not-applicable", plan: null, history: [] },
+    refinement: boundRefinementState,
     findings: criticFindings,
     hardGateInputs: {
       schema: true,

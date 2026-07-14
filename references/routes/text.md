@@ -10,7 +10,7 @@ Do not select when HTML, an image, or a PDF defines the visual layout, or when a
 
 ## Public command
 
-npm run pptx -- text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] [--creative-directions <json>] [--host-review <json>] [--host-final-review <json>]
+npm run pptx -- text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] [--creative-directions <json>] [--host-review <json>] [--host-final-review <json>] [--refinement-state <json>]
 
 ## Inputs and outputs
 
@@ -41,6 +41,13 @@ Host writes a packet-bound review and resumes with `--host-final-review`.
 Stale, incomplete, unavailable, duplicate, rejecting, or internally
 inconsistent review evidence blocks. See
 `references/creative-visual-proof.md`.
+
+If that exact final review rejects the deck, Creative mode writes an
+evidence-routed dry-run plan and waits for one explicitly approved operation in
+an external `--refinement-state` sidecar. Applying a delta invalidates the old
+review and consumes one shared repair/refinement attempt (maximum three). IR
+changes recompile canonical Semantic Slide IR; manifest changes are restricted
+to reversible optical corrections. See `references/creative-refinement.md`.
 
 Asset `sourceRef` values resolve absolutely or relative to the plan directory. Scripts never fetch remote sources. Existing local files are copied to deterministic content-addressed paths under `output/assets/`; runtime paths must be normalized POSIX paths strictly below `assets/`, and publication re-reads the localized files to verify the complete SHA-256 digest. Plan, IR, and final manifest must preserve the same canonical asset contract. Native images must carry the same asset ID, same-slide membership, source, alt text, focal point, crop policy, and effective `contain`/`cover` sizing. Creative cropped assets and image backgrounds fail closed until the renderer can preserve those semantics. Missing, remote, anonymous, off-slide, or drifted sources block before public evidence is committed.
 

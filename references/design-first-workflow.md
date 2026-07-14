@@ -14,6 +14,12 @@ full-size PNG, resume with `--host-final-review <creative-final-review.json>`.
 See `references/creative-visual-proof.md` for the closed review, hash binding,
 acceptance, and publication contract.
 
+A completed rejection enters the separate evidence-led protocol in
+`references/creative-refinement.md`. The pipeline emits a dry-run plan, waits
+for one protected Host-approved `--refinement-state`, invalidates the old
+review after applying it, and requires a new screenshot-bound final review.
+Creative repair and refinement share one maximum of three applied deltas.
+
 `deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX`
 
 ## Artifacts

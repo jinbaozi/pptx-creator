@@ -168,11 +168,11 @@
     },
     "hostReviewSummary": {
       "type": "object", "additionalProperties": false,
-      "required": ["status", "packetHash", "reviewHash", "overallVerdict", "perSlideCount", "summary", "findings"],
+      "required": ["status", "packetHash", "reviewHash", "overallVerdict", "perSlideCount", "signatureMoment", "summary", "findings"],
       "properties": {
         "status": { "enum": ["missing", "unavailable", "invalid", "completed"] }, "packetHash": { "$ref": "#/$defs/hash" },
         "reviewHash": { "$ref": "#/$defs/nullableHash" }, "overallVerdict": { "type": ["string", "null"], "enum": ["accept", "reject", "unavailable", null] },
-        "perSlideCount": { "type": "integer", "minimum": 0 }, "summary": { "type": ["string", "null"] },
+        "perSlideCount": { "type": "integer", "minimum": 0 }, "signatureMoment": { "type": ["string", "null"], "enum": ["restrained", "overused", "absent-appropriate", "missing", null] }, "summary": { "type": ["string", "null"] },
         "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } }
       }
     },
@@ -196,8 +196,16 @@
       "properties": { "attempts": { "type": "integer", "minimum": 0, "maximum": 3 }, "stopReason": { "$ref": "#/$defs/nonEmpty" }, "history": { "type": "array", "items": { "type": "object" } } }
     },
     "refinement": {
-      "type": "object", "additionalProperties": false, "required": ["status", "plan", "history"],
-      "properties": { "status": { "enum": ["not-applicable", "applied", "failed"] }, "plan": { "type": ["object", "null"] }, "history": { "type": "array", "items": { "type": "object" } } }
+      "type": "object", "additionalProperties": false, "required": ["status", "plan", "history", "finalIdentity"],
+      "properties": {
+        "status": { "enum": ["not-applicable", "planned", "applied", "failed"] }, "plan": { "type": ["object", "null"] }, "history": { "type": "array", "items": { "type": "object" } },
+        "finalIdentity": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "object", "additionalProperties": false, "required": ["semanticIrHash", "manifestHash", "pptxHash"], "properties": { "semanticIrHash": { "$ref": "#/$defs/hash" }, "manifestHash": { "$ref": "#/$defs/hash" }, "pptxHash": { "$ref": "#/$defs/hash" } } }
+          ]
+        }
+      }
     },
     "finding": {
       "type": "object", "additionalProperties": false, "required": ["severity", "source", "type", "message", "evidence"],
