@@ -2,9 +2,11 @@
 import hashlib
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
+import zipfile
 from pathlib import Path, PurePosixPath
 
 
@@ -26,6 +28,33 @@ def fail(message: str) -> None:
 def canonical_sha256(value) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
+
+
+def byte_sha256(path: Path) -> str:
+    return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+
+
+def canonical_pptx_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with zipfile.ZipFile(path) as archive:
+            for name in sorted(info.filename for info in archive.infolist() if not info.is_dir()):
+                payload = archive.read(name)
+                if name == "docProps/core.xml":
+                    text = payload.decode("utf-8")
+                    text = re.sub(
+                        r"(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:(?:created|modified)>)",
+                        r"\1TIMESTAMP-NORMALIZED\2",
+                        text,
+                    )
+                    payload = text.encode("utf-8")
+                digest.update(name.encode("utf-8"))
+                digest.update(b"\0")
+                digest.update(payload)
+                digest.update(b"\0")
+    except (OSError, zipfile.BadZipFile, UnicodeDecodeError) as error:
+        fail(f"invalid PPTX proof artifact: {error}")
+    return f"sha256:{digest.hexdigest()}"
 
 
 def assert_no_symlink_below_trusted_anchor(candidate: Path) -> Path:
@@ -138,6 +167,136 @@ def validate_creative_evidence(output_dir: Path) -> None:
         if artifacts.get(key) != relative:
             fail(f"creative run artifact pointer {key} must equal {relative}")
         require_regular_relative(output_dir, relative, f"run.artifacts.{key}")
+    try:
+        early_registry = json.loads((output_dir / "assets/asset-registry.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        fail(f"invalid creative asset registry: {error}")
+    for asset in early_registry.get("assets", []):
+        if not isinstance(asset, dict) or not isinstance(asset.get("localPath"), str):
+            fail("creative asset registry contains an invalid localPath")
+        target = require_regular_relative(output_dir, asset["localPath"], "asset localPath")
+        if byte_sha256(target) != asset.get("contentHash"):
+            fail(f"creative asset content hash mismatch: {asset.get('id', 'asset')}")
+    proof_paths = {
+        "creativeProof": "creative-proof.json",
+        "creativeProofEvidence": "creative-proof",
+        "hostVisualReview": "host-visual-review.json",
+    }
+    for key, relative in proof_paths.items():
+        if artifacts.get(key) != relative:
+            fail(f"creative run artifact pointer {key} must equal {relative}")
+    evidence_dir = output_dir / "creative-proof"
+    if evidence_dir.is_symlink() or not evidence_dir.is_dir():
+        fail("creative proof evidence must be a real directory")
+    proof_path = require_regular_relative(output_dir, "creative-proof.json", "run.artifacts.creativeProof")
+    review_path = require_regular_relative(output_dir, "host-visual-review.json", "run.artifacts.hostVisualReview")
+    packet_path = require_regular_relative(output_dir, "creative-proof/final-review-packet.json", "final review packet")
+    try:
+        proof = json.loads(proof_path.read_text(encoding="utf-8"))
+        host_final_review = json.loads(review_path.read_text(encoding="utf-8"))
+        final_packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        fail(f"invalid Creative Proof 0.2 evidence: {error}")
+    if proof.get("version") != "0.2.0" or proof.get("accepted") is not True:
+        fail("creative package requires accepted Creative Proof 0.2")
+    if proof.get("acceptance") != {"status": "accepted", "reasons": []}:
+        fail("creative proof acceptance state is not canonical")
+    if proof.get("hostVisualReview", {}).get("status") != "completed":
+        fail("creative proof requires completed Host final visual review")
+    if run.get("status") != "accepted":
+        fail("creative run status must be accepted")
+    identity = proof.get("identity")
+    rendering = proof.get("rendering")
+    if not isinstance(identity, dict) or not isinstance(rendering, dict):
+        fail("creative proof identity or rendering evidence is missing")
+    json_bindings = {
+        "semanticIr": "semantic-slide-ir.json",
+        "manifest": "deck.manifest.json",
+        "assetRegistry": "assets/asset-registry.json",
+    }
+    for key, relative in json_bindings.items():
+        artifact = identity.get(key)
+        if not isinstance(artifact, dict) or artifact.get("path") != relative:
+            fail(f"creative proof identity {key} path is stale")
+        try:
+            value = json.loads(require_regular_relative(output_dir, relative, f"proof.identity.{key}").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            fail(f"invalid proof identity artifact {relative}: {error}")
+        if artifact.get("hash") != canonical_sha256(value):
+            fail(f"creative proof identity {key} hash is stale")
+    candidate_pptx = identity.get("pptx")
+    if not isinstance(candidate_pptx, dict):
+        fail("creative proof candidate PPTX identity is missing")
+    candidate_path = require_regular_relative(output_dir, candidate_pptx.get("path"), "proof.identity.pptx")
+    final_pptx_path = require_regular_relative(output_dir, "final.pptx", "run.artifacts.pptx")
+    if candidate_pptx.get("hash") != canonical_pptx_sha256(candidate_path) or candidate_pptx.get("hash") != canonical_pptx_sha256(final_pptx_path):
+        fail("creative proof PPTX hash does not bind candidate and final deliverable bytes")
+    if byte_sha256(candidate_path) != byte_sha256(final_pptx_path):
+        fail("creative candidate and final deliverable PPTX bytes differ")
+    token_ledger = proof.get("tokenLedger", {})
+    if token_ledger.get("status") != "passed" or identity.get("designTokens", {}).get("hash") != token_ledger.get("actualSnapshotHash"):
+        fail("creative proof design token binding is stale")
+    render_report = rendering.get("renderReport", {})
+    contact_sheet = rendering.get("contactSheet", {})
+    for label, artifact in [("render report", render_report), ("contact sheet", contact_sheet)]:
+        if not isinstance(artifact, dict):
+            fail(f"creative proof {label} identity is missing")
+        target = require_regular_relative(output_dir, artifact.get("path"), f"proof.rendering.{label}")
+        if artifact.get("hash") != byte_sha256(target):
+            fail(f"creative proof {label} hash is stale")
+    unsigned_packet = dict(final_packet)
+    packet_hash = unsigned_packet.pop("packetHash", None)
+    if packet_hash != canonical_sha256(unsigned_packet):
+        fail("creative final review packet hash is stale")
+    if host_final_review.get("packetHash") != packet_hash:
+        fail("Host final review is bound to a stale packet")
+    if host_final_review.get("artifacts") != final_packet.get("artifacts"):
+        fail("Host final review artifact hashes are stale")
+    expected_packet_artifacts = {
+        "semanticIrHash": identity["semanticIr"]["hash"],
+        "manifestHash": identity["manifest"]["hash"],
+        "pptxHash": identity["pptx"]["hash"],
+        "designTokenHash": identity["designTokens"]["hash"],
+        "assetRegistryHash": identity["assetRegistry"]["hash"],
+        "selectionHash": identity.get("selection", {}).get("hash") if identity.get("selection") else None,
+        "refinementHash": identity.get("refinement", {}).get("hash") if identity.get("refinement") else None,
+        "renderReportHash": render_report.get("hash"),
+        "contactSheetHash": contact_sheet.get("hash"),
+    }
+    if final_packet.get("artifacts") != expected_packet_artifacts:
+        fail("creative final review packet does not bind the published proof identity")
+    if proof.get("hostVisualReview", {}).get("packetHash") != packet_hash:
+        fail("creative proof Host packet binding is stale")
+    if proof.get("hostVisualReview", {}).get("reviewHash") != canonical_sha256(host_final_review):
+        fail("creative proof Host review hash is stale")
+    for page in rendering.get("pages", []):
+        if not isinstance(page, dict):
+            fail("creative proof contains an invalid rendered page")
+        target = require_regular_relative(output_dir, page.get("path"), "proof.rendering.page")
+        if page.get("hash") != byte_sha256(target):
+            fail(f"creative rendered page hash is stale: {page.get('slideId', 'unknown')}")
+    selection_identity = identity.get("selection")
+    if selection_identity is not None:
+        if selection_identity.get("path") != "creative-selection.json":
+            fail("creative proof selection identity path is stale")
+        try:
+            selection_document = json.loads(require_regular_relative(output_dir, "creative-selection.json", "proof.identity.selection").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            fail(f"invalid creative selection identity: {error}")
+        if selection_identity.get("hash") != canonical_sha256(selection_document):
+            fail("creative proof selection identity hash is stale")
+        if proof.get("selection", {}).get("status") != "valid":
+            fail("creative proof selection validity did not pass")
+    elif proof.get("selection", {}).get("status") != "not-applicable":
+        fail("creative proof selection state is inconsistent")
+    if proof.get("assetLedger", {}).get("status") != "passed":
+        fail("creative proof asset ledger did not pass")
+    if any(gate.get("required") and gate.get("status") != "passed" for gate in proof.get("hardGates", [])):
+        fail("creative proof contains an unpassed required hard gate")
+    if any(finding.get("severity") in {"P0", "P1"} for finding in proof.get("findings", [])):
+        fail("creative proof contains a P0/P1 finding")
+    if any(suite.get("required") and suite.get("status") != "passed" for suite in proof.get("suites", [])):
+        fail("creative proof contains an unavailable required target suite")
     registry_path = output_dir / expected["assetRegistry"]
     try:
         registry = json.loads(registry_path.read_text(encoding="utf-8"))

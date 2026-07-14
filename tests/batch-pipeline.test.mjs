@@ -18,8 +18,8 @@ describe("run-batch-pipeline U11 — layoutSafety aggregation", () => {
       `﻿${JSON.stringify(
         {
           jobs: [
-            { id: "text", manifest: textManifest, outputDir: join(outputDir, "text"), mode: "creative" },
-            { id: "text-secondary", manifest: secondaryTextManifest, outputDir: join(outputDir, "text-secondary"), mode: "creative" }
+            { id: "text", manifest: textManifest, outputDir: join(outputDir, "text"), mode: "direct" },
+            { id: "text-secondary", manifest: secondaryTextManifest, outputDir: join(outputDir, "text-secondary"), mode: "direct" }
           ]
         },
         null,
@@ -63,13 +63,11 @@ describe("run-batch-pipeline U11 — layoutSafety aggregation", () => {
     expect(aggregate.averageSlopRisk).toBeGreaterThanOrEqual(0);
     expect(aggregate.averageSlopRisk).toBeLessThanOrEqual(100);
 
-    // Per-deck consistency reports each include a slopRisk number.
+    // Direct manifest jobs do not invent Creative slopRisk evidence.
     const textReport = JSON.parse(await readFile(join(outputDir, "text", "consistency-report.json"), "utf8"));
     const secondaryTextReport = JSON.parse(await readFile(join(outputDir, "text-secondary", "consistency-report.json"), "utf8"));
-    expect(typeof textReport.slopRisk).toBe("number");
-    expect(typeof secondaryTextReport.slopRisk).toBe("number");
-    // The average across the batch is the simple mean of the two decks.
-    const expectedAvg = Number(((textReport.slopRisk + secondaryTextReport.slopRisk) / 2).toFixed(2));
-    expect(aggregate.averageSlopRisk).toBe(expectedAvg);
+    expect(textReport.slopRisk).toBeUndefined();
+    expect(secondaryTextReport.slopRisk).toBeUndefined();
+    expect(aggregate.averageSlopRisk).toBe(0);
   }, 90000);
 });

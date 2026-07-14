@@ -8,7 +8,7 @@ const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const HELP = `Usage: pptx <text|html|image|pdf|manifest> ...
 
 Routes:
-  text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] [--creative-directions <json>] [--host-review <json>]
+  text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] [--creative-directions <json>] [--host-review <json>] [--host-final-review <json>]
   text <deck.manifest.json> <output-dir> --direct
   html <input.html> <output-dir> [--allow-remote-assets]
   image <input.png> <output-dir>
@@ -29,6 +29,7 @@ export function buildInvocation(argv) {
     let designSystem = null;
     let creativeDirections = null;
     let hostReview = null;
+    let hostFinalReview = null;
     const positional = [];
     for (let index = 0; index < rest.length; index += 1) {
       const argument = rest[index];
@@ -40,20 +41,22 @@ export function buildInvocation(argv) {
         if (!value || value.startsWith("--")) throw new Error("text: --design-system requires a value");
         designSystem = value;
         index += 1;
-      } else if (argument === "--creative-directions" || argument === "--host-review") {
-        const key = argument === "--creative-directions" ? "creativeDirections" : "hostReview";
-        if ((key === "creativeDirections" ? creativeDirections : hostReview) !== null) throw new Error(`text: ${argument} may be provided only once`);
+      } else if (["--creative-directions", "--host-review", "--host-final-review"].includes(argument)) {
+        const key = argument === "--creative-directions" ? "creativeDirections" : argument === "--host-review" ? "hostReview" : "hostFinalReview";
+        const current = key === "creativeDirections" ? creativeDirections : key === "hostReview" ? hostReview : hostFinalReview;
+        if (current !== null) throw new Error(`text: ${argument} may be provided only once`);
         const value = rest[index + 1];
         if (!value || value.startsWith("--")) throw new Error(`text: ${argument} requires a value`);
         if (key === "creativeDirections") creativeDirections = value;
-        else hostReview = value;
+        else if (key === "hostReview") hostReview = value;
+        else hostFinalReview = value;
         index += 1;
       } else if (argument.startsWith("--")) throw new Error(`text: unknown option ${argument}`);
       else positional.push(argument);
     }
     if (creative && direct) throw new Error("text: --creative and --direct are mutually exclusive");
     if (direct && designSystem) throw new Error("text: --design-system is available only for creative mode, not --direct");
-    if (direct && (creativeDirections || hostReview)) throw new Error("text: creative direction options are unavailable in --direct mode");
+    if (direct && (creativeDirections || hostReview || hostFinalReview)) throw new Error("text: creative review options are unavailable in --direct mode");
     if (hostReview && !creativeDirections) throw new Error("text: --host-review requires --creative-directions");
     requireCount("text", positional, 2, "<deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] or <deck.manifest.json> <output-dir> --direct");
     return {
@@ -63,7 +66,8 @@ export function buildInvocation(argv) {
         "text", direct ? "direct" : "creative", ...positional,
         ...(designSystem ? ["--design-system", designSystem] : []),
         ...(creativeDirections ? ["--creative-directions", creativeDirections] : []),
-        ...(hostReview ? ["--host-review", hostReview] : [])
+        ...(hostReview ? ["--host-review", hostReview] : []),
+        ...(hostFinalReview ? ["--host-final-review", hostFinalReview] : [])
       ],
       ...(creative ? { warning: "--creative is deprecated because text generation is creative by default" } : {})
     };

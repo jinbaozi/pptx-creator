@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { constants, realpathSync } from "node:fs";
 import { copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, rmdir, stat, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
@@ -11,7 +11,7 @@ import { runBoundedRepair } from "./lib/bounded-repair.mjs";
 import { buildConsistencyReport } from "./lib/consistency-report-writer.mjs";
 import { applyContextualTaste, editabilityLevelFromCounter, qualityFromReview } from "./lib/contextual-taste.mjs";
 import { buildCreativeRepairPatch, compareCreativeProof } from "./lib/creative-repair.mjs";
-import { buildCreativeVisualProof, evaluateCreativeVisualProof, summarizeCreativeQuality, summarizeCreativeRepair } from "./lib/creative-visual-proof.mjs";
+import { buildCreativeVisualProof, summarizeCreativeRepair } from "./lib/creative-visual-proof.mjs";
 import { createFontMetricsCatalog, preflightFonts } from "./lib/font-preflight.mjs";
 import { writePipelineReports } from "./lib/pipeline-report-writer.mjs";
 import { runPython } from "./lib/python-utils.mjs";
@@ -50,6 +50,7 @@ const PUBLISHED_OUTPUTS = Object.freeze([
   "quality-report.md",
   "creative-proof.json",
   "creative-proof",
+  "host-visual-review.json",
   ".creative-repair",
   "replica-evidence.json",
   "visual-regression-report.json",
@@ -98,6 +99,7 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "quality-report.md",
   "creative-proof.json",
   "creative-proof",
+  "host-visual-review.json",
   ".creative-repair",
   "replica-evidence.json",
   "visual-regression-report.json",
@@ -549,21 +551,6 @@ async function validateCreativeProofContract(proof) {
   }
 }
 
-function toPosixPath(value) {
-  return String(value).split(sep).join("/");
-}
-
-function withCreativeEvidencePaths(proof, evidenceDir, outputDir) {
-  const relativeSlidesDir = toPosixPath(relative(outputDir, join(evidenceDir, "slides")));
-  return {
-    ...proof,
-    previews: (proof?.previews ?? []).map((preview) => `${relativeSlidesDir}/${basename(preview)}`),
-    contactSheet: proof?.contactSheet
-      ? { ...proof.contactSheet, path: `${relativeSlidesDir}/${basename(proof.contactSheet.path)}` }
-      : null
-  };
-}
-
 async function assessCreativeArtifact({
   artifact,
   repoRoot = root,
@@ -575,6 +562,9 @@ async function assessCreativeArtifact({
   reviewCreativeManifest,
   design: suppliedDesign,
   textFit: suppliedTextFit,
+  proofContext = {},
+  hostFinalReview = null,
+  layoutSafety = true,
   writeAttemptEvidence = false
 }) {
   const manifest = artifact.manifest ?? JSON.parse(await readFile(artifact.manifestPath, "utf8"));
@@ -585,45 +575,20 @@ async function assessCreativeArtifact({
   const quality = qualityFromReview(review, editabilityLevelFromCounter(artifact.intermediate?.editabilityCounter), fontPreflight);
   const repair = summarizeCreativeRepair({ attempts: 0, stopReason: "not-run", history: [] });
   const proofBuilder = typeof buildCreativeProof === "function" ? buildCreativeProof : buildCreativeVisualProof;
-  let baseProof;
-  try {
-    baseProof = await proofBuilder({
-      root: repoRoot,
-      pptxPath: artifact.pptxPath,
-      outputDir,
-      evidenceDir,
-      manifest,
-      review,
-      textFit: textFitResult.textFit,
-      quality,
-      repair
-    });
-  } catch (error) {
-    baseProof = evaluateCreativeVisualProof({
-      manifest,
-      preview: { status: "unavailable", previews: [] },
-      review,
-      textFit: textFitResult.textFit,
-      quality,
-      repair
-    });
-    baseProof.p0[0] = {
-      type: "render-unavailable",
-      message: error instanceof Error ? error.message : String(error)
-    };
-  }
-  const proofQuality = summarizeCreativeQuality(quality);
-  const proof = withCreativeEvidencePaths({
-    ...baseProof,
-    version: "0.1.0",
-    mode: "creative",
-    accepted: baseProof?.accepted === true
-      && (baseProof?.p0?.length ?? 0) === 0
-      && (baseProof?.p1?.length ?? 0) === 0
-      && proofQuality.gate.passed,
-    quality: proofQuality,
-    repair
-  }, evidenceDir, outputDir);
+  const proof = await proofBuilder({
+    root: repoRoot,
+    pptxPath: artifact.pptxPath,
+    outputDir,
+    evidenceDir,
+    manifest,
+    review,
+    textFit: textFitResult.textFit,
+    quality,
+    repair,
+    intermediate: artifact.intermediate,
+    proofContext: { ...proofContext, design: proofContext.design ?? textFitResult.design, layoutSafety },
+    hostFinalReview
+  });
   await validateCreativeProofContract(proof);
   if (writeAttemptEvidence) {
     await mkdir(evidenceDir, { recursive: true });
@@ -655,7 +620,10 @@ async function materializeCreativeCandidate({
   planIntent,
   buildCreativeProof,
   reviewCreativeManifest,
-  renderCreativeArtifact
+  renderCreativeArtifact,
+  proofContext,
+  hostFinalReview,
+  layoutSafety
 }) {
   const attemptDir = join(outputDir, ".creative-repair", `attempt-${iteration}`);
   const evidenceDir = join(outputDir, "creative-proof", "attempts", String(iteration));
@@ -730,6 +698,9 @@ async function materializeCreativeCandidate({
       reviewCreativeManifest,
       design,
       textFit: candidateTextFit,
+      proofContext,
+      hostFinalReview,
+      layoutSafety,
       writeAttemptEvidence: true
     });
   } catch (error) {
@@ -748,7 +719,10 @@ export async function runCreativeRepairAttempt({
   planIntent,
   buildCreativeProof,
   reviewCreativeManifest,
-  renderCreativeArtifact
+  renderCreativeArtifact,
+  proofContext,
+  hostFinalReview,
+  layoutSafety
 }) {
   const manifest = artifact?.manifest ?? (artifact?.manifestPath
     ? JSON.parse(await readFile(artifact.manifestPath, "utf8"))
@@ -766,7 +740,10 @@ export async function runCreativeRepairAttempt({
       planIntent,
       buildCreativeProof,
       reviewCreativeManifest,
-      renderCreativeArtifact
+      renderCreativeArtifact,
+      proofContext,
+      hostFinalReview,
+      layoutSafety
     });
     return { proof: candidate.proof, artifact: candidate };
   } catch {
@@ -785,7 +762,10 @@ async function runCallbackCreativeRepairAttempt({
   planIntent,
   buildCreativeProof,
   reviewCreativeManifest,
-  renderCreativeArtifact
+  renderCreativeArtifact,
+  proofContext,
+  hostFinalReview,
+  layoutSafety
 }) {
   const supplied = await callback({ iteration, proof, artifact, manifest: artifact?.manifest, outputDir, route, mode: "creative" });
   const candidateArtifact = supplied?.artifact ?? supplied;
@@ -802,7 +782,10 @@ async function runCallbackCreativeRepairAttempt({
       planIntent,
       buildCreativeProof,
       reviewCreativeManifest,
-      renderCreativeArtifact
+      renderCreativeArtifact,
+      proofContext,
+      hostFinalReview,
+      layoutSafety
     });
     return { proof: candidate.proof, artifact: candidate };
   } catch {
@@ -816,6 +799,30 @@ function normalizeInputType(value, manifest) {
     return manifest.metadata.inputType;
   }
   return "text";
+}
+
+function deterministicCreativeProofPassed(proof) {
+  if (!proof || proof.version !== "0.2.0") return false;
+  const deterministicGates = (proof.hardGates ?? []).filter((gate) => gate.required && gate.id !== "final-host-review");
+  const deterministicSevere = (proof.findings ?? []).some((finding) =>
+    ["P0", "P1"].includes(finding?.severity) && finding?.source !== "host-visual-review"
+  );
+  return deterministicGates.length > 0
+    && deterministicGates.every((gate) => gate.status === "passed")
+    && !deterministicSevere;
+}
+
+function isDirectionProbeProof(proof) {
+  return proof?.identity?.purpose === "direction-probe";
+}
+
+async function blockForHostFinalReview({ resolvedManifest, resolvedOutput, steps, proof, detail }) {
+  await validateCreativeProofContract(proof);
+  await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(proof, null, 2)}\n`, "utf8");
+  await rm(join(resolvedOutput, "final.pptx"), { force: true });
+  await rm(join(resolvedOutput, "run.json"), { force: true });
+  await rm(join(resolvedOutput, "output-manifest.json"), { force: true });
+  await blockPipeline(resolvedManifest, resolvedOutput, steps, "host-final-visual-review", detail);
 }
 
 async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy, detail = null) {
@@ -834,6 +841,7 @@ async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy,
   );
   const error = new Error(`pipeline blocked at ${blockedBy}${detail ? `: ${detail}` : ""}`);
   error.summary = summary;
+  if (blockedBy === "host-final-visual-review") error.preserveLocalizedAssets = true;
   throw error;
 }
 
@@ -1067,7 +1075,10 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
       buildCreativeProof: options.buildCreativeProof,
       reviewCreativeManifest: options.reviewCreativeManifest,
       design,
-      textFit: textFitReport
+      textFit: textFitReport,
+      proofContext: options.proofContext,
+      hostFinalReview: options.hostFinalReview,
+      layoutSafety: layout.ok
     });
     creativeReview = initialCreativeArtifact.review;
     creativeQuality = initialCreativeArtifact.quality;
@@ -1096,13 +1107,14 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     await writeFile(join(resolvedOutput, "replica-evidence.json"), `${JSON.stringify(replicaProof, null, 2)}\n`, "utf8");
   }
   let proofOk = mode === "creative"
-    ? creativeVisualProof?.accepted === true
+    ? deterministicCreativeProofPassed(creativeVisualProof)
+      && (isDirectionProbeProof(creativeVisualProof) || creativeVisualProof?.accepted === true)
     : mode === "replica" ? replicaProof.accepted === true : (intermediate.editabilityCounter?.text ?? 0) > 0;
   const proofStep = { label: proofLabel, ok: proofOk };
   steps.push(proofStep);
   const repairLimit = normalizeRepairLimit(options.maxRepairAttempts ?? 3);
   stageGuard.enter("bounded-repair");
-  if (!proofOk && mode === "creative") {
+  if (mode === "creative" && !deterministicCreativeProofPassed(creativeVisualProof)) {
     const attempt = typeof options.runRepairAttempt === "function"
       ? ({ iteration, proof, artifact }) => runCallbackCreativeRepairAttempt({
         callback: options.runRepairAttempt,
@@ -1115,7 +1127,10 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         planIntent,
         buildCreativeProof: options.buildCreativeProof,
         reviewCreativeManifest: options.reviewCreativeManifest,
-        renderCreativeArtifact: options.renderCreativeArtifact
+        renderCreativeArtifact: options.renderCreativeArtifact,
+        proofContext: options.proofContext,
+        hostFinalReview: options.hostFinalReview,
+        layoutSafety: layout.ok
       })
       : ({ iteration, artifact }) => runCreativeRepairAttempt({
         iteration,
@@ -1126,47 +1141,41 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         planIntent,
         buildCreativeProof: options.buildCreativeProof,
         reviewCreativeManifest: options.reviewCreativeManifest,
-        renderCreativeArtifact: options.renderCreativeArtifact
+        renderCreativeArtifact: options.renderCreativeArtifact,
+        proofContext: options.proofContext,
+        hostFinalReview: options.hostFinalReview,
+        layoutSafety: layout.ok
       });
     const repair = await runBoundedRepair({
       initialProof: creativeVisualProof,
       initialArtifact: initialCreativeArtifact,
       maxAttempts: repairLimit,
       attempt,
-      compare: compareCreativeProof
+      compare: compareCreativeProof,
+      accept: deterministicCreativeProofPassed
     });
     repairAttempts = repair.attempts;
     const finalRepair = summarizeCreativeRepair({ attempts: repair.attempts, stopReason: repair.stopReason, history: repair.history });
-    proofOk = repair.accepted === true && repair.proof?.accepted === true;
+    proofOk = repair.accepted === true && deterministicCreativeProofPassed(repair.proof);
     proofStep.ok = proofOk;
     if (!proofOk) {
-      creativeVisualProof = {
-        ...initialCreativeArtifact.proof,
-        accepted: false,
-        repair: finalRepair
-      };
+      creativeVisualProof = { ...(repair.proof ?? initialCreativeArtifact.proof), repair: finalRepair };
       await validateCreativeProofContract(creativeVisualProof);
       await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
       steps.push({ label: "bounded-repair", ok: false, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
-      const visualDetail = [...(creativeVisualProof.p0 ?? []), ...(creativeVisualProof.p1 ?? [])]
+      const visualDetail = (creativeVisualProof.findings ?? [])
+        .filter((finding) => ["P0", "P1"].includes(finding.severity))
         .map((finding) => `${finding.type}: ${finding.message}`)
         .join("; ");
       await blockPipeline(resolvedManifest, resolvedOutput, steps, "bounded-repair", `${proofLabel} failed; ${visualDetail || repair.stopReason}`);
     }
     const accepted = repair.artifact;
     const publicEvidenceDir = join(resolvedOutput, "creative-proof");
-    const acceptedProof = withCreativeEvidencePaths(
-      { ...accepted.proof, accepted: true, repair: finalRepair },
-      publicEvidenceDir,
-      resolvedOutput
-    );
-    await validateCreativeProofContract(acceptedProof);
     try {
       await publishRepairArtifact([
         { source: accepted?.manifestPath, target: resolvedManifest },
         { source: accepted?.pptxPath, target: finalPptxPath },
-        { source: join(accepted?.evidenceDir ?? "", "slides"), target: join(publicEvidenceDir, "slides") },
-        { source: join(accepted?.evidenceDir ?? "", "render-report.json"), target: join(publicEvidenceDir, "render-report.json") }
+        { source: join(accepted?.evidenceDir ?? "", "slides"), target: join(publicEvidenceDir, "slides") }
       ]);
     } catch (error) {
       const publicationRepair = summarizeCreativeRepair({
@@ -1175,8 +1184,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
         history: repair.history
       });
       creativeVisualProof = {
-        ...initialCreativeArtifact.proof,
-        accepted: false,
+        ...(repair.proof ?? initialCreativeArtifact.proof),
         repair: publicationRepair
       };
       proofOk = false;
@@ -1199,10 +1207,29 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     textFitReport = accepted.textFit;
     creativeReview = accepted.review;
     creativeQuality = accepted.quality;
-    creativeVisualProof = acceptedProof;
+    const reassessed = await assessCreativeArtifact({
+      artifact: { ...accepted, manifestPath: resolvedManifest, publicManifestPath: resolvedManifest, pptxPath: finalPptxPath },
+      outputDir: resolvedOutput,
+      evidenceDir: publicEvidenceDir,
+      planIntent,
+      fontPreflight,
+      buildCreativeProof: options.buildCreativeProof,
+      reviewCreativeManifest: options.reviewCreativeManifest,
+      design,
+      textFit: textFitReport,
+      proofContext: options.proofContext,
+      hostFinalReview: options.hostFinalReview,
+      layoutSafety: layout.ok
+    });
+    creativeVisualProof = { ...reassessed.proof, repair: finalRepair };
+    creativeReview = reassessed.review;
+    creativeQuality = reassessed.quality;
+    proofOk = deterministicCreativeProofPassed(creativeVisualProof)
+      && (isDirectionProbeProof(creativeVisualProof) || creativeVisualProof.accepted === true);
+    proofStep.ok = proofOk;
     await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
     steps.push({ label: "bounded-repair", ok: true, attempts: repair.attempts, maxAttempts: repairLimit, stopReason: repair.stopReason });
-  } else if (!proofOk) {
+  } else if (mode !== "creative" && !proofOk) {
     const repair = await runBoundedRepair({
       initialProof: replicaProof,
       initialArtifact: { manifestPath: resolvedManifest, pptxPath: finalPptxPath, ...(options.initialRepairArtifact ?? {}) },
@@ -1239,12 +1266,24 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     if (mode === "creative") {
       creativeVisualProof = {
         ...creativeVisualProof,
-        repair: summarizeCreativeRepair({ attempts: 0, stopReason: "initial-proof-passed", history: [] })
+        repair: summarizeCreativeRepair({ attempts: 0, stopReason: "initial-deterministic-proof-passed", history: [] })
       };
       await validateCreativeProofContract(creativeVisualProof);
       await writeFile(join(resolvedOutput, "creative-proof.json"), `${JSON.stringify(creativeVisualProof, null, 2)}\n`, "utf8");
     }
-    steps.push({ label: "bounded-repair", ok: true, attempts: 0, maxAttempts: repairLimit, stopReason: "initial-proof-passed" });
+    steps.push({ label: "bounded-repair", ok: true, attempts: 0, maxAttempts: repairLimit, stopReason: "initial-deterministic-proof-passed" });
+  }
+
+  if (mode === "creative" && !isDirectionProbeProof(creativeVisualProof) && creativeVisualProof?.accepted !== true) {
+    proofStep.ok = false;
+    const hostStatus = creativeVisualProof?.hostVisualReview?.status ?? "missing";
+    const detail = hostStatus === "missing"
+      ? "full-deck evidence is ready; inspect every rendered slide and rerun with --host-final-review"
+      : `Host final visual review is ${hostStatus}; regenerate a complete packet-bound review and rerun`;
+    await blockForHostFinalReview({ resolvedManifest, resolvedOutput, steps, proof: creativeVisualProof, detail });
+  }
+  if (mode === "creative" && creativeVisualProof?.accepted === true) {
+    await writeFile(join(resolvedOutput, "host-visual-review.json"), `${JSON.stringify(options.hostFinalReview, null, 2)}\n`, "utf8");
   }
 
   intermediate.fontNames = (fontPreflight.fallback ?? []).map((entry) => ({ element: "design-tokens", ...entry }));
@@ -1255,12 +1294,14 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     await writeFile(join(resolvedOutput, "text-fit-report.json"), `${JSON.stringify(textFitReport, null, 2)}\n`, "utf8");
     await writeFile(join(resolvedOutput, "visual-review.json"), `${JSON.stringify(creativeReview, null, 2)}\n`, "utf8");
     await writeFile(join(resolvedOutput, "quality-report.json"), `${JSON.stringify(creativeQuality, null, 2)}\n`, "utf8");
-    const qualityMarkdown = `# Creative quality report\n\nStatus: **${creativeQuality.gate.passed && creativeVisualProof?.accepted ? "PASS" : "BLOCK"}**\n\n- Deck score: ${creativeQuality.deckScore} (minimum 80)\n- Slide floor: ${Math.min(...creativeQuality.slides.map((slide) => slide.score))} (minimum 70)\n- Slop risk: ${creativeQuality.slopRisk} (maximum 20)\n- Critical findings: ${creativeQuality.criticalFindings} (required 0)\n- Rendered slides: ${creativeVisualProof?.renderedSlides ?? 0}/${creativeVisualProof?.expectedSlides ?? manifest.slides.length}\n- Visual proof P0/P1: ${creativeVisualProof?.p0?.length ?? 0}/${creativeVisualProof?.p1?.length ?? 0} (required 0/0)\n- Editability: L${creativeQuality.editabilityLevel} (minimum L4)\n- Font preflight: ${creativeQuality.compatibility.source}; ${creativeQuality.compatibility.fallback.length} fallback(s)\n`;
+    const p0Count = (creativeVisualProof?.findings ?? []).filter((finding) => finding.severity === "P0").length;
+    const p1Count = (creativeVisualProof?.findings ?? []).filter((finding) => finding.severity === "P1").length;
+    const qualityMarkdown = `# Creative quality report\n\nStatus: **${creativeQuality.gate.passed && creativeVisualProof?.accepted ? "PASS" : "BLOCK"}**\n\n- Deck score: ${creativeQuality.deckScore} (minimum 80)\n- Slide floor: ${Math.min(...creativeQuality.slides.map((slide) => slide.score))} (minimum 70)\n- Slop risk: ${creativeQuality.slopRisk} (maximum 20)\n- Critical findings: ${creativeQuality.criticalFindings} (required 0)\n- Rendered slides: ${creativeVisualProof?.rendering?.renderedPageCount ?? 0}/${creativeVisualProof?.rendering?.expectedPageCount ?? manifest.slides.length}\n- Visual proof P0/P1: ${p0Count}/${p1Count} (required 0/0)\n- Host final review: ${creativeVisualProof?.hostVisualReview?.status ?? "missing"}\n- Editability: L${creativeQuality.editabilityLevel} (minimum L4)\n- Font preflight: ${creativeQuality.compatibility.source}; ${creativeQuality.compatibility.fallback.length} fallback(s)\n`;
     await writeFile(join(resolvedOutput, "quality-report.md"), qualityMarkdown, "utf8");
     const previewDir = join(resolvedOutput, "preview");
     await mkdir(previewDir, { recursive: true });
     const previewTitle = escapePreviewHtml(manifest.deck.title);
-    await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>${previewTitle}</title><main><h1>${previewTitle}</h1><p>Creative quality: ${creativeQuality.gate.passed && creativeVisualProof?.accepted ? "PASS" : "BLOCK"}</p><figure><img src="../creative-proof/slides/contact-sheet.png" alt="Rendered slide contact sheet" style="max-width:100%;height:auto"><figcaption>LibreOffice render evidence for all ${creativeVisualProof?.renderedSlides ?? 0} slides</figcaption></figure><ol>${manifest.slides.map((slide) => `<li>${escapePreviewHtml(slide.title)}</li>`).join("")}</ol></main>\n`, "utf8");
+    await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>${previewTitle}</title><main><h1>${previewTitle}</h1><p>Creative quality: ${creativeQuality.gate.passed && creativeVisualProof?.accepted ? "PASS" : "BLOCK"}</p><figure><img src="../creative-proof/slides/contact-sheet.png" alt="Rendered slide contact sheet" style="max-width:100%;height:auto"><figcaption>LibreOffice render evidence for all ${creativeVisualProof?.rendering?.renderedPageCount ?? 0} slides</figcaption></figure><ol>${manifest.slides.map((slide) => `<li>${escapePreviewHtml(slide.title)}</li>`).join("")}</ol></main>\n`, "utf8");
   }
   if (mode === "replica" && replicaProof) {
     const quality = {

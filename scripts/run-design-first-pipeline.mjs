@@ -69,6 +69,12 @@ function parseArgs(argv) {
       if (!value || value.startsWith("--")) throw new Error("--host-review requires a local JSON path");
       options.hostReview = value;
       i += 1;
+    } else if (rest[i] === "--host-final-review") {
+      if (options.hostFinalReview) throw new Error("--host-final-review may be provided only once");
+      const value = rest[i + 1];
+      if (!value || value.startsWith("--")) throw new Error("--host-final-review requires a local JSON path");
+      options.hostFinalReview = value;
+      i += 1;
     } else throw new Error(`unknown option: ${rest[i]}`);
   }
   return { inputDir, outputDir, options };
@@ -88,7 +94,7 @@ async function publishCreativeBlocked(outputDir, blockedBy, detail, extra = {}) 
   );
   const error = new Error(`creative pipeline blocked at ${blockedBy}: ${detail}`);
   error.summary = summary;
-  error.preserveLocalizedAssets = blockedBy === "host-visual-review";
+  error.preserveLocalizedAssets = ["host-visual-review", "host-final-visual-review"].includes(blockedBy);
   throw error;
 }
 
@@ -385,6 +391,16 @@ async function materializeCreativeProbeCandidate({
   });
   const compiled = await compileFittedCreativePlan({ plan: projectedPlan, selection, localizedAssets, fontCatalog });
   const probeManifest = filterProbeManifest(compiled.manifest, probeSlideIds);
+  const probeSlideSet = new Set(probeSlideIds);
+  const probeIr = { ...structuredClone(compiled.ir), slides: compiled.ir.slides.filter((slide) => probeSlideSet.has(slide.id)) };
+  const fullRegistry = buildCanonicalAssetRegistry(projectedPlan, localizedAssets, compiled.manifest, compiled.ir);
+  const probeRegistry = {
+    ...fullRegistry,
+    assets: fullRegistry.assets.map((asset) => ({
+      ...asset,
+      usedInSlides: (asset.usedInSlides ?? []).filter((slideId) => probeSlideSet.has(slideId))
+    }))
+  };
   const stageRoot = fs.mkdtempSync(path.join(tmpdir(), "pptx-creative-probe-"));
   try {
     const designPath = path.join(stageRoot, "design-system", "DESIGN.md");
@@ -400,6 +416,12 @@ async function materializeCreativeProbeCandidate({
       mode: "creative",
       strictLayoutSafety: true,
       maxRepairAttempts: 0,
+      proofContext: {
+        purpose: "direction-probe",
+        ir: probeIr,
+        design: compiled.design,
+        assetRegistry: probeRegistry
+      },
       protectedInputs: [manifestPath, designPath, ...stagedAssets]
     });
     const publishedProbe = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
@@ -492,7 +514,11 @@ async function runFinalCreativePlan({
   protectedInputs = [],
   publicArtifacts = [],
   runMetadata = null,
-  fontCatalog = null
+  fontCatalog = null,
+  hostFinalReview = null,
+  candidateSet = null,
+  creativeSelection = null,
+  creativeSelectionValid = false
 }) {
   const designOutputDir = path.join(outputDir, "design-system");
   const designOutputPath = path.join(designOutputDir, "DESIGN.md");
@@ -541,7 +567,16 @@ async function runFinalCreativePlan({
     ],
     beforePackage: authoringTransaction.beforePackage,
     beforePackageCommit: authoringTransaction.beforePackageCommit,
-    beforePackageRollback: authoringTransaction.beforePackageRollback
+    beforePackageRollback: authoringTransaction.beforePackageRollback,
+    hostFinalReview,
+    proofContext: {
+      purpose: "final-deck",
+      ir: compiled.ir,
+      design: compiled.design,
+      assetRegistry: (finalManifest) => buildCanonicalAssetRegistry(canonicalPlan, localizedAssets, finalManifest, compiled.ir),
+      ...(candidateSet ? { candidateSet } : {}),
+      ...(creativeSelection ? { selection: creativeSelection, selectionValid: creativeSelectionValid } : {})
+    }
   });
   return compiled;
 }
@@ -899,7 +934,10 @@ export function createCreativeAuthoringTransaction({
     const optionalExpected = {
       creativeCandidates: publicArtifactSnapshots.some((entry) => entry.relativePath === "creative-candidates.json") ? "creative-candidates.json" : null,
       creativeSelection: publicArtifactSnapshots.some((entry) => entry.relativePath === "creative-selection.json") ? "creative-selection.json" : null,
-      blindPacket: runMetadataSnapshot?.explorationId ? "creative-direction-blind/blind-packet.json" : null
+      blindPacket: runMetadataSnapshot?.explorationId ? "creative-direction-blind/blind-packet.json" : null,
+      creativeProof: fs.existsSync(path.join(outputRoot, "creative-proof.json")) ? "creative-proof.json" : null,
+      creativeProofEvidence: fs.existsSync(path.join(outputRoot, "creative-proof")) ? "creative-proof" : null,
+      hostVisualReview: fs.existsSync(path.join(outputRoot, "host-visual-review.json")) ? "host-visual-review.json" : null
     };
     for (const [key, value] of Object.entries(optionalExpected)) {
       if (run?.artifacts?.[key] !== value) throw new Error(`creative run artifact pointer ${key} must equal ${String(value)}`);
@@ -1046,8 +1084,9 @@ async function main() {
     : null;
   const directionInput = options.creativeDirections ? path.resolve(options.creativeDirections) : null;
   const hostReviewInput = options.hostReview ? path.resolve(options.hostReview) : null;
+  const hostFinalReviewInput = options.hostFinalReview ? path.resolve(options.hostFinalReview) : null;
   const publicBlindRoot = path.join(resolvedOutput, "creative-direction-blind");
-  for (const [label, candidate] of [["creative direction request", directionInput], ["Host review", hostReviewInput]]) {
+  for (const [label, candidate] of [["creative direction request", directionInput], ["Host review", hostReviewInput], ["Host final review", hostFinalReviewInput]]) {
     if (candidate && (candidate === publicBlindRoot || candidate.startsWith(`${publicBlindRoot}${path.sep}`))) {
       throw new Error(`${label} must remain outside the public blind packet directory`);
     }
@@ -1056,7 +1095,8 @@ async function main() {
     resolvedInput,
     ...(explicitDesignInput ? [explicitDesignInput] : []),
     ...(directionInput ? [directionInput] : []),
-    ...(hostReviewInput ? [hostReviewInput] : [])
+    ...(hostReviewInput ? [hostReviewInput] : []),
+    ...(hostFinalReviewInput ? [hostFinalReviewInput] : [])
   ]);
   const planPath = fs.statSync(resolvedInput).isDirectory() ? path.join(resolvedInput, "deck.plan.json") : resolvedInput;
   const reservedManifestPath = path.join(resolvedOutput, "deck.manifest.json");
@@ -1092,6 +1132,7 @@ async function main() {
     );
   }
   const directionRequest = directionInput ? readLocalJsonSidecar(directionInput, "creative direction request") : null;
+  const hostFinalReview = hostFinalReviewInput ? readLocalJsonSidecar(hostFinalReviewInput, "Host final visual review") : null;
   if (directionRequest) {
     const requestValidation = validateCreativeDirectionRequest(directionRequest, {
       plan,
@@ -1145,7 +1186,9 @@ async function main() {
         selection,
         localizedAssets,
         mode: options.mode,
-        fontCatalog
+        fontCatalog,
+        hostFinalReview,
+        protectedInputs: [hostFinalReviewInput].filter(Boolean)
       });
       console.log(`Creative text pipeline complete: ${path.join(resolvedOutput, "final.pptx")}`);
       return;
@@ -1243,7 +1286,7 @@ async function main() {
       localizedAssets,
       mode: options.mode,
       fontCatalog,
-      protectedInputs: [directionInput, hostReviewInput, publicBlindRoot],
+      protectedInputs: [directionInput, hostReviewInput, hostFinalReviewInput, publicBlindRoot].filter(Boolean),
       publicArtifacts: [
         { relativePath: "creative-candidates.json", bytes: Buffer.from(`${JSON.stringify(candidates, null, 2)}\n`, "utf8") },
         { relativePath: "creative-selection.json", bytes: Buffer.from(`${JSON.stringify(creativeSelection, null, 2)}\n`, "utf8") }
@@ -1252,11 +1295,21 @@ async function main() {
         explorationId: exploration.explorationId,
         blindPacketHash: exploration.packet.packetHash,
         selectedCandidateId: creativeSelection.selectedCandidateId
-      }
+      },
+      hostFinalReview,
+      candidateSet: candidates,
+      creativeSelection,
+      creativeSelectionValid: selectionValidation.valid
     });
     console.log(`Creative text pipeline complete: ${path.join(resolvedOutput, "final.pptx")}`);
   } catch (error) {
-    if (error?.preserveLocalizedAssets !== true) cleanupLocalizedPlanAssets(localizedAssets);
+    if (error?.preserveLocalizedAssets === true) {
+      await atomicPublishCreativeBytes(
+        resolvedOutput,
+        localizedAssets.ownershipPath,
+        Buffer.from(`${JSON.stringify(localizedAssets.ownership, null, 2)}\n`, "utf8")
+      );
+    } else cleanupLocalizedPlanAssets(localizedAssets);
     throw error;
   }
 }

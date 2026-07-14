@@ -64,6 +64,8 @@ class PreviewCoreTest(unittest.TestCase):
             self.assertEqual(result["slideCount"], 2)
             self.assertTrue(Path(result["path"]).exists())
             self.assertGreater(result["width"], 320)
+            self.assertRegex(result["hash"], r"^sha256:[a-f0-9]{64}$")
+            self.assertEqual(len(result["slideHashes"]), 2)
 
     def test_render_preview_smoke_pptx_optional(self):
         if not SMOKE_PPTX.exists():
@@ -73,6 +75,10 @@ class PreviewCoreTest(unittest.TestCase):
             self.assertIn(data["status"], {"ok", "deferred", "failed"})
             if data["status"] == "ok":
                 self.assertGreater(data["previewCount"], 0)
+                self.assertEqual(len(data["pages"]), data["previewCount"])
+                self.assertRegex(data["pages"][0]["hash"], r"^sha256:[a-f0-9]{64}$")
+                self.assertGreater(data["pages"][0]["width"], 0)
+                self.assertEqual(data["environment"]["renderer"], "libreoffice")
 
     def test_compare_cli(self):
         result = subprocess.run(

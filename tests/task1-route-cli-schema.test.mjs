@@ -64,6 +64,8 @@ describe("Task 1 public CLI", () => {
       script: "run-route-pipeline.mjs",
       args: ["text", "creative", "artifacts", "out", "--creative-directions", "directions.json", "--host-review", "review.json"]
     });
+    expect(buildInvocation(["text", "artifacts", "out", "--host-final-review", "final-review.json"]).args)
+      .toEqual(["text", "creative", "artifacts", "out", "--host-final-review", "final-review.json"]);
     expect(buildInvocation(["text", "deck.json", "out", "--direct"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "direct", "deck.json", "out"] });
     expect(buildInvocation(["html", "input.html", "out"])).toMatchObject({
       route: "html-replica",
@@ -112,6 +114,8 @@ describe("Task 1 public CLI", () => {
       outputDir: "out",
       options: { designSystem: null, allowRemoteAssets: false, creativeDirections: "directions.json", hostReview: "review.json" }
     });
+    expect(buildRouteInvocation(["text", "creative", "deck.plan.json", "out", "--host-final-review", "final-review.json"]).options)
+      .toMatchObject({ hostFinalReview: "final-review.json" });
   });
 });
 

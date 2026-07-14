@@ -22,6 +22,27 @@ import { reviewManifest } from "../scripts/lib/visual-critic.mjs";
 import { parseDesignFile } from "../scripts/parse-design-md.mjs";
 
 const fixturePath = path.join("examples", "text-input", "creative", "deck.plan.json");
+
+function acceptFinalCreativeReview(output, args, options) {
+  try { execFileSync("node", args, options); } catch (error) {
+    const blocked = JSON.parse(fs.readFileSync(path.join(output, "pipeline-blocked.json"), "utf8"));
+    if (blocked.blockedBy !== "host-final-visual-review") throw error;
+  }
+  const packet = JSON.parse(fs.readFileSync(path.join(output, "creative-proof", "final-review-packet.json"), "utf8"));
+  const review = {
+    version: "0.1.0", packetHash: packet.packetHash, artifacts: packet.artifacts,
+    status: "completed", overallVerdict: "accept",
+    perSlide: packet.pages.map((page) => ({
+      slideId: page.slideId, screenshotPath: page.path, screenshotHash: page.hash,
+      focus: "clear", hierarchy: "clear", thumbnailReadability: "pass", attentionTargetAlignment: "pass", findings: []
+    })),
+    deckRhythm: { rhythm: "coherent", consistency: "consistent", signatureMoment: "restrained", reason: "The deck is coherent and visually restrained." },
+    summary: "Every rendered slide passed final visual review.", findings: []
+  };
+  const reviewPath = path.join(os.tmpdir(), `pptx-final-review-${process.pid}-${Date.now()}.json`);
+  fs.writeFileSync(reviewPath, `${JSON.stringify(review, null, 2)}\n`, "utf8");
+  execFileSync("node", [...args, "--host-final-review", reviewPath], options);
+}
 const loadPlan = () => JSON.parse(fs.readFileSync(fixturePath, "utf8"));
 const tasteIntentFromPlan = (plan) => ({
   designRead: plan.designIntent.designRead,
@@ -335,7 +356,7 @@ describe("stable bilingual brief corpus and text output contract", () => {
 
   it("creative CLI smoke emits the plan, manifest, deck, quality reports, package index, and preview index", async () => {
     const output = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-task3-text-"));
-    execFileSync("node", ["scripts/pptx.mjs", "text", fixturePath, output], {
+    acceptFinalCreativeReview(output, ["scripts/pptx.mjs", "text", fixturePath, output], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     });

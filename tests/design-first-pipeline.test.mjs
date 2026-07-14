@@ -17,6 +17,45 @@ function writeEmptyFinalManifest(outputDir) {
   fs.writeFileSync(path.join(outputDir, "deck.manifest.json"), "{\"assets\":[],\"slides\":[]}\n", "utf8");
 }
 
+function finalReviewFromPacket(packet) {
+  return {
+    version: "0.1.0",
+    packetHash: packet.packetHash,
+    artifacts: packet.artifacts,
+    status: "completed",
+    overallVerdict: "accept",
+    perSlide: packet.pages.map((page) => ({
+      slideId: page.slideId,
+      screenshotPath: page.path,
+      screenshotHash: page.hash,
+      focus: "clear",
+      hierarchy: "clear",
+      thumbnailReadability: "pass",
+      attentionTargetAlignment: "pass",
+      findings: []
+    })),
+    deckRhythm: { rhythm: "coherent", consistency: "consistent", signatureMoment: "restrained", reason: "The full deck maintains coherent hierarchy and rhythm." },
+    summary: "Every full-size rendered slide passed the final visual inspection.",
+    findings: []
+  };
+}
+
+function execCreativeAccepted(args, options = {}) {
+  const outputDir = args[0] === "scripts/pptx.mjs" ? args[3] : args[2];
+  try {
+    return execFileSync("node", args, options);
+  } catch (error) {
+    const blockedPath = path.join(outputDir, "pipeline-blocked.json");
+    if (!fs.existsSync(blockedPath)) throw error;
+    const blocked = JSON.parse(fs.readFileSync(blockedPath, "utf8"));
+    if (blocked.blockedBy !== "host-final-visual-review") throw error;
+  }
+  const packet = JSON.parse(fs.readFileSync(path.join(outputDir, "creative-proof", "final-review-packet.json"), "utf8"));
+  const reviewPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pptx-final-review-")), "creative-final-review.json");
+  fs.writeFileSync(reviewPath, `${JSON.stringify(finalReviewFromPacket(packet), null, 2)}\n`, "utf8");
+  return execFileSync("node", [...args, "--host-final-review", reviewPath], options);
+}
+
 describe("creative deck-plan pipeline", () => {
   it("blocks an eligible flagship plan before compilation when Host directions are missing", () => {
     const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-directions-required-input-"));
@@ -137,7 +176,7 @@ describe("creative deck-plan pipeline", () => {
     fs.writeFileSync(reviewPath, `${JSON.stringify(hostReview, null, 2)}\n`);
     const packetBytes = fs.readFileSync(packetPath);
 
-    execFileSync("node", [
+    execCreativeAccepted([
       "scripts/run-design-first-pipeline.mjs", planPath, outputDir,
       "--creative-directions", requestPath,
       "--host-review", reviewPath
@@ -212,7 +251,7 @@ describe("creative deck-plan pipeline", () => {
     staleSelection.candidateSetHash = staleCandidates.candidateSetHash;
     fs.writeFileSync(candidatePath, `${JSON.stringify(staleCandidates, null, 2)}\n`);
     fs.writeFileSync(selectionPath, `${JSON.stringify(staleSelection, null, 2)}\n`);
-    expectPackageRejection(/candidate set blindPacketHash is stale/i);
+    expectPackageRejection(/candidate set blindPacketHash is stale|proof selection identity hash is stale/i);
     fs.writeFileSync(candidatePath, candidateBytes);
     fs.writeFileSync(selectionPath, selectionBytes);
 
@@ -226,7 +265,7 @@ describe("creative deck-plan pipeline", () => {
     forgedSelection.pairwise[0].preference = forgedSelection.pairwise[0].preference === "left" ? "right" : "left";
     forgedSelection.hostReview.pairs = structuredClone(forgedSelection.pairwise);
     fs.writeFileSync(selectionPath, `${JSON.stringify(forgedSelection, null, 2)}\n`);
-    expectPackageRejection(/winner does not match Host pairwise review/i);
+    expectPackageRejection(/winner does not match Host pairwise review|proof selection identity hash is stale/i);
     fs.writeFileSync(selectionPath, selectionBytes);
 
     const runPath = path.join(outputDir, "run.json");
@@ -242,7 +281,7 @@ describe("creative deck-plan pipeline", () => {
     const dir = fs.mkdtempSync(path.join("/private/tmp", "pptx-design-first-in-place-"));
     fs.copyFileSync(path.join("examples/text-input/creative/deck.plan.json"), path.join(dir, "deck.plan.json"));
 
-    execFileSync("node", ["scripts/pptx.mjs", "text", dir, dir], {
+    execCreativeAccepted(["scripts/pptx.mjs", "text", dir, dir], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     });
@@ -263,7 +302,7 @@ describe("creative deck-plan pipeline", () => {
       "--mode",
       "creative"
     ];
-    execFileSync("node", args, { stdio: "pipe" });
+    execCreativeAccepted(args, { stdio: "pipe" });
 
     expect(fs.existsSync(path.join(outputDir, "deck.manifest.json"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "semantic-slide-ir.json"))).toBe(true);
@@ -295,7 +334,7 @@ describe("creative deck-plan pipeline", () => {
     expect(run).toMatchObject({
       runId: runIndex.contentDerivedRunId(ir),
       mode: "creative",
-      status: "ready-for-review",
+      status: "accepted",
       input: { type: "text", summary: "From Brief to Editable Deck" },
       artifacts: {
         deckPlan: "deck.plan.json",
@@ -306,7 +345,10 @@ describe("creative deck-plan pipeline", () => {
         consistencyReport: "consistency-report.json",
         creativeCandidates: null,
         creativeSelection: null,
-        blindPacket: null
+        blindPacket: null,
+        creativeProof: "creative-proof.json",
+        creativeProofEvidence: "creative-proof",
+        hostVisualReview: "host-visual-review.json"
       }
     });
     for (const name of ["creative-candidates.json", "creative-selection.json", "creative-direction-blind"]) {
@@ -320,7 +362,7 @@ describe("creative deck-plan pipeline", () => {
 
     const repeatArgs = [...args];
     repeatArgs[2] = secondOutputDir;
-    execFileSync("node", repeatArgs, { stdio: "pipe" });
+    execCreativeAccepted(repeatArgs, { stdio: "pipe" });
     const repeatedRun = JSON.parse(fs.readFileSync(path.join(secondOutputDir, "run.json"), "utf8"));
     expect(repeatedRun.runId).toBe(run.runId);
     expect(fs.readFileSync(path.join(secondOutputDir, "semantic-slide-ir.json"), "utf8")).toBe(irText);
@@ -328,7 +370,7 @@ describe("creative deck-plan pipeline", () => {
 
   it("forwards a public built-in design selection and records portable provenance", () => {
     const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-public-design-"));
-    execFileSync("node", [
+    execCreativeAccepted([
       "scripts/pptx.mjs",
       "text",
       "examples/text-input/creative/deck.plan.json",
@@ -376,7 +418,7 @@ describe("creative deck-plan pipeline", () => {
     plan.slides[0].compositionIntent.emphasis = "asset";
     fs.writeFileSync(path.join(inputDir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
 
-    execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+    execCreativeAccepted(["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     });
@@ -437,7 +479,7 @@ describe("creative deck-plan pipeline", () => {
     const userOwnedAsset = path.join(outputDir, "assets", "user-owned.png");
     fs.copyFileSync("examples/image-input/business-slide.png", userOwnedAsset);
     fs.copyFileSync("examples/image-input/replica-golden.png", assetFile);
-    execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+    execCreativeAccepted(["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     });
@@ -476,7 +518,7 @@ describe("creative deck-plan pipeline", () => {
     plan.slides[0].compositionIntent.emphasis = "asset";
     fs.writeFileSync(path.join(inputDir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
 
-    execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+    execCreativeAccepted(["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     });
@@ -576,7 +618,7 @@ describe("creative deck-plan pipeline", () => {
     const planPath = path.join(dir, "deck.plan.json");
     fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
 
-    execFileSync("node", ["scripts/pptx.mjs", "text", dir, dir, "--design-system", "business-neutral"], {
+    execCreativeAccepted(["scripts/pptx.mjs", "text", dir, dir, "--design-system", "business-neutral"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     });
@@ -1650,7 +1692,7 @@ describe("creative deck-plan pipeline", () => {
     fs.copyFileSync("design-systems/business-neutral/DESIGN.md", customDesign);
     const originalBytes = fs.readFileSync(customDesign);
 
-    execFileSync("node", [
+    execCreativeAccepted([
       "scripts/run-design-first-pipeline.mjs",
       "examples/text-input/creative/deck.plan.json",
       outputDir,

@@ -163,7 +163,7 @@ describe("run-deck-pipeline", () => {
     expect(rollbackCalls).toBe(1);
     const blocked = JSON.parse(await readFile(join(outputDir, "pipeline-blocked.json"), "utf8"));
     expect(blocked).toMatchObject({ status: "blocked", blockedBy: "package" });
-    expect(blocked.detail).toContain("consistency-report.json");
+    expect(blocked.detail).toMatch(/consistency-report\.json|creativeProof/);
   }, 60000);
 
   it("emits consistency-report.json with a structurally-valid shape", async () => {

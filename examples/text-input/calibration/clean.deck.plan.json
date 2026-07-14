@@ -11,7 +11,7 @@
     "mustRemember": ["Start with intent and finish with evidence"],
     "brand": { "references": [], "antiReferences": [] },
     "qualityProfile": "standard",
-    "targetSuites": [{ "suite": "libreoffice", "required": true }, { "suite": "powerpoint", "required": true }],
+    "targetSuites": [{ "suite": "libreoffice", "required": true }, { "suite": "powerpoint", "required": false }],
     "editabilityFloor": 4,
     "assetIntensity": 20,
     "visualAmbition": 72

@@ -56,7 +56,8 @@ describe("run index generation", () => {
     expect(validateJsonSchema(run, schema)).toEqual({ valid: true, errors: [] });
     expect(Object.keys(run.artifacts)).toEqual([
       "deckPlan", "semanticIr", "manifest", "pptx", "previews", "reviews",
-      "consistencyReport", "sources", "assetRegistry", "creativeCandidates", "creativeSelection", "blindPacket"
+      "consistencyReport", "sources", "assetRegistry", "creativeCandidates", "creativeSelection", "blindPacket",
+      "creativeProof", "creativeProofEvidence", "hostVisualReview"
     ]);
   });
 

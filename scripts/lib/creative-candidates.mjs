@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import JSZip from "jszip";
 import { isAbsolute } from "node:path";
 import { readFileSync } from "node:fs";
 import { validateJsonSchema } from "./schema-utils.mjs";
@@ -302,7 +303,7 @@ export async function prepareBlindExploration({ plan, baseIr, request, materiali
     if (!deepEqual(expectedProbe, materialized.probeManifest)) {
       throw new Error(`candidate ${direction.id} probe manifest does not match the selected full-manifest slides`);
     }
-    if (materialized.proof?.accepted !== true || materialized.quality?.gate?.passed !== true) {
+    if (materialized.proof?.acceptance?.status !== "evidence-ready" || materialized.proof?.accepted !== false || materialized.quality?.gate?.passed !== true) {
       throw new Error(`candidate ${direction.id} did not pass independent render/proof gates`);
     }
     const editabilityLevel = Number(materialized.quality?.editabilityLevel ?? materialized.proof?.quality?.editabilityLevel);
@@ -332,7 +333,7 @@ export async function prepareBlindExploration({ plan, baseIr, request, materiali
       probeContentHash,
       artifacts: {
         probeManifestHash: contentHash(materialized.probeManifest),
-        probePptxHash: contentHashBytes(probePptxBytes),
+        probePptxHash: await stablePptxContentHash(probePptxBytes),
         screenshotHashes: screenshots.map((entry) => entry.hash)
       },
       editabilityLevel,
@@ -370,6 +371,29 @@ export async function prepareBlindExploration({ plan, baseIr, request, materiali
 
 export function contentHashBytes(bytes) {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+async function stablePptxContentHash(bytes) {
+  try {
+    const archive = await JSZip.loadAsync(bytes);
+    const digest = createHash("sha256");
+    for (const name of Object.keys(archive.files).filter((entry) => !archive.files[entry].dir).sort()) {
+      let payload = await archive.files[name].async("nodebuffer");
+      if (name === "docProps/core.xml") {
+        payload = Buffer.from(payload.toString("utf8").replace(
+          /(<dcterms:(?:created|modified)[^>]*>)[^<]*(<\/dcterms:(?:created|modified)>)/g,
+          "$1TIMESTAMP-NORMALIZED$2"
+        ), "utf8");
+      }
+      digest.update(Buffer.from(name, "utf8"));
+      digest.update(Buffer.from([0]));
+      digest.update(payload);
+      digest.update(Buffer.from([0]));
+    }
+    return `sha256:${digest.digest("hex")}`;
+  } catch {
+    return contentHashBytes(bytes);
+  }
 }
 
 function schemaResult(value, schema, label) {

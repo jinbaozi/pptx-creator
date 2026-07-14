@@ -105,6 +105,20 @@ output/
 npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --design-system dark-tech
 ```
 
+首次运行会在确定性证据通过后停在 `host-final-visual-review`，只发布逐页
+PNG、contact sheet、候选 PPTX 与哈希绑定的复核包。Host 实际检查每张
+完整截图并填写 `creative-final-review.json` 后，再恢复运行：
+
+```bash
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative \
+  --design-system dark-tech \
+  --host-final-review /absolute/path/creative-final-review.json
+```
+
+方向盲选使用的 `--host-review` 与最终全稿验收使用的
+`--host-final-review` 是两个独立判断阶段。完整契约见
+[`references/creative-visual-proof.md`](references/creative-visual-proof.md)。
+
 成功完成打包的 Creative 路线发布 plan、选中的 canonical Semantic Slide
 IR、render manifest 和真实 run index：
 
@@ -114,6 +128,9 @@ semantic-slide-ir.json
 deck.manifest.json
 run.json
 final.pptx
+host-visual-review.json
+creative-proof.json
+creative-proof/
 quality-report.json
 quality-report.md
 preview/index.html

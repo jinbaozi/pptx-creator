@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -15,7 +17,7 @@ try:
 except ImportError:  # pragma: no cover
     Image = ImageChops = ImageStat = None  # type: ignore[misc, assignment]
 
-PREVIEW_VERSION = "0.1.0"
+PREVIEW_VERSION = "0.2.0"
 
 WINDOWS_SOFFICE_PATHS = [
     r"C:\Program Files\LibreOffice\program\soffice.exe",
@@ -47,7 +49,14 @@ def build_contact_sheet(previews: list[str], output_path: Path) -> dict[str, Any
             sheet.paste(thumb, (x, y + label_height))
         output_path.parent.mkdir(parents=True, exist_ok=True)
         sheet.save(output_path)
-        return {"path": str(output_path.resolve()), "slideCount": len(images), "width": width, "height": height}
+        return {
+            "path": str(output_path.resolve()),
+            "hash": _file_hash(output_path),
+            "slideCount": len(images),
+            "slideHashes": [_file_hash(Path(preview)) for preview in previews],
+            "width": width,
+            "height": height,
+        }
     finally:
         for image in images:
             image.close()
@@ -55,6 +64,14 @@ def build_contact_sheet(previews: list[str], output_path: Path) -> dict[str, Any
 
 def _fail(message: str) -> None:
     raise ValueError(message)
+
+
+def _file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def find_libreoffice() -> str | None:
@@ -79,9 +96,19 @@ def libreoffice_status() -> dict[str, Any]:
                 "install LibreOffice or open final.pptx manually."
             ),
         }
+    version = "unknown"
+    try:
+        version_result = subprocess.run(
+            [binary, "--version"], capture_output=True, text=True, check=False, timeout=15
+        )
+        if version_result.returncode == 0:
+            version = (version_result.stdout or version_result.stderr).strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        pass
     return {
         "status": "available",
         "binary": binary,
+        "version": version,
         "note": "Use render-preview.py to convert PPTX slides to PNG.",
     }
 
@@ -135,12 +162,34 @@ def render_pptx_preview(pptx_path: Path, output_dir: Path) -> dict[str, Any]:
         if raster.returncode != 0:
             result = raster
     previews = sorted(str(path) for path in output_dir.glob("slide-*.png"))
+    pages = []
+    for index, preview in enumerate(previews):
+        with Image.open(preview) as image:
+            width, height = image.size
+        pages.append({
+            "index": index,
+            "path": str(Path(preview).resolve()),
+            "hash": _file_hash(Path(preview)),
+            "width": width,
+            "height": height,
+        })
     contact_sheet = build_contact_sheet(previews, output_dir / "contact-sheet.png") if previews else None
     return {
         "version": PREVIEW_VERSION,
         "source": pptx_path.name,
         "renderer": lo,
+        "environment": {
+            "renderer": "libreoffice",
+            "suite": "libreoffice",
+            "platform": platform.system().lower(),
+            "architecture": platform.machine().lower() or "unknown",
+            "libreOfficeVersion": lo.get("version", "unknown"),
+            "pythonVersion": platform.python_version(),
+            "commandIdentity": "libreoffice-headless-pdf+pdftoppm-png-96dpi",
+            "settings": {"dpi": 96, "colorMode": "RGB", "timestampFree": True},
+        },
         "previews": previews,
+        "pages": pages,
         "previewCount": len(previews),
         "contactSheet": contact_sheet,
         "status": "ok" if previews else "failed",

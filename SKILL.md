@@ -36,6 +36,12 @@ High-risk text plans may enter the conditional two-stage direction protocol in
 coordinate-free candidates, inspects anonymous rendered evidence, and records
 complete pairwise preference. Scripts never invent a candidate or select from
 diagnostic scores.
+Every full Creative deck then enters the separate final-review resume protocol
+in `references/creative-visual-proof.md`. Deterministic evidence alone is never
+accepted: the host must inspect every full-size rendered slide and provide a
+packet-bound `--host-final-review` sidecar. Until then the pipeline exposes only
+candidate evidence and withholds the top-level PPTX, successful run index, and
+output manifest.
 
 ## Shared invariants
 

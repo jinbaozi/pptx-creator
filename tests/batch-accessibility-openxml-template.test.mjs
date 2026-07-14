@@ -44,8 +44,8 @@ describe("batch, accessibility, template import, and OpenXML repair", () => {
       `\uFEFF${JSON.stringify(
         {
           jobs: [
-            { id: "text", manifest: textManifest, outputDir: join(outputDir, "text"), mode: "creative" },
-            { id: "text-secondary", manifest: secondaryTextManifest, outputDir: join(outputDir, "text-secondary"), mode: "creative" }
+            { id: "text", manifest: textManifest, outputDir: join(outputDir, "text"), mode: "direct" },
+            { id: "text-secondary", manifest: secondaryTextManifest, outputDir: join(outputDir, "text-secondary"), mode: "direct" }
           ]
         },
         null,

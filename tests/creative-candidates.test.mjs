@@ -410,7 +410,7 @@ describe("candidate materialization boundary", () => {
           manifest,
           probeManifest: filterProbeManifest(manifest, probeSlideIds),
           designSystemName: spec.projection.designSystem,
-          proof: { accepted: true },
+          proof: { accepted: false, acceptance: { status: "evidence-ready", reasons: ["direction probe is evidence-only"] } },
           quality: { gate: { passed: true }, editabilityLevel: 5 },
           review: { deckScore: 88, slopRisk: 9, slides: [{ scores: { hierarchy: 85, alignment: 85, variety: 80, designSystemFit: 82, contrast: 82, density: 85, compatibility: 90 } }] },
           renderingEnvironment: { renderer: "libreoffice", status: "ok", contactSheet: { width: 100, height: 100, slideCount: probeSlideIds.length } },

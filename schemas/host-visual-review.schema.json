@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/host-visual-review.schema.json",
+  "title": "Host Final Visual Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "packetHash", "artifacts", "status", "overallVerdict", "perSlide", "deckRhythm", "summary", "findings"],
+  "properties": {
+    "version": { "const": "0.1.0" },
+    "packetHash": { "$ref": "#/$defs/hash" },
+    "artifacts": { "$ref": "#/$defs/artifacts" },
+    "status": { "enum": ["completed", "unavailable"] },
+    "overallVerdict": { "enum": ["accept", "reject", "unavailable"] },
+    "perSlide": { "type": "array", "items": { "$ref": "#/$defs/slideReview" } },
+    "deckRhythm": { "$ref": "#/$defs/deckRhythm" },
+    "summary": { "$ref": "#/$defs/nonEmpty" },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "nullableHash": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
+    "nonEmpty": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "localPath": { "type": "string", "minLength": 1, "not": { "pattern": "^(?:[a-zA-Z][a-zA-Z0-9+.-]*:|/|\\\\|.*(?:^|/)\\.\\.(?:/|$))" } },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["semanticIrHash", "manifestHash", "pptxHash", "designTokenHash", "assetRegistryHash", "selectionHash", "refinementHash", "renderReportHash", "contactSheetHash"],
+      "properties": {
+        "semanticIrHash": { "$ref": "#/$defs/hash" },
+        "manifestHash": { "$ref": "#/$defs/hash" },
+        "pptxHash": { "$ref": "#/$defs/hash" },
+        "designTokenHash": { "$ref": "#/$defs/hash" },
+        "assetRegistryHash": { "$ref": "#/$defs/hash" },
+        "selectionHash": { "$ref": "#/$defs/nullableHash" },
+        "refinementHash": { "$ref": "#/$defs/nullableHash" },
+        "renderReportHash": { "$ref": "#/$defs/hash" },
+        "contactSheetHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false, "required": ["path", "hash"],
+      "properties": { "path": { "$ref": "#/$defs/localPath" }, "hash": { "$ref": "#/$defs/hash" } }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "type", "reason", "evidence"],
+      "properties": {
+        "severity": { "enum": ["P0", "P1", "P2"] },
+        "type": { "$ref": "#/$defs/nonEmpty" },
+        "reason": { "$ref": "#/$defs/nonEmpty" },
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/evidence" } }
+      }
+    },
+    "slideReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slideId", "screenshotPath", "screenshotHash", "focus", "hierarchy", "thumbnailReadability", "attentionTargetAlignment", "findings"],
+      "properties": {
+        "slideId": { "$ref": "#/$defs/nonEmpty" },
+        "screenshotPath": { "$ref": "#/$defs/localPath" },
+        "screenshotHash": { "$ref": "#/$defs/hash" },
+        "focus": { "enum": ["clear", "unclear"] },
+        "hierarchy": { "enum": ["clear", "unclear"] },
+        "thumbnailReadability": { "enum": ["pass", "fail"] },
+        "attentionTargetAlignment": { "enum": ["pass", "fail"] },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } }
+      }
+    },
+    "deckRhythm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rhythm", "consistency", "signatureMoment", "reason"],
+      "properties": {
+        "rhythm": { "enum": ["coherent", "uneven", "broken"] },
+        "consistency": { "enum": ["consistent", "inconsistent"] },
+        "signatureMoment": { "enum": ["restrained", "overused", "absent-appropriate", "missing"] },
+        "reason": { "$ref": "#/$defs/nonEmpty" }
+      }
+    }
+  }
+}

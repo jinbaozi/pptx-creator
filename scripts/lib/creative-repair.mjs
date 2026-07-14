@@ -6,6 +6,21 @@ function safeProof(proof) {
 
 export function creativeRepairVector(proof = {}) {
   const value = safeProof(proof);
+  if (value.version === "0.2.0") {
+    const deterministicFailures = (value.hardGates ?? []).filter((gate) =>
+      gate.required && gate.id !== "final-host-review" && gate.status !== "passed"
+    ).length;
+    const p0 = (value.findings ?? []).filter((finding) => finding.severity === "P0" && finding.source !== "host-visual-review").length;
+    const p1 = (value.findings ?? []).filter((finding) => finding.severity === "P1" && finding.source !== "host-visual-review").length;
+    return [
+      p0,
+      p1,
+      deterministicFailures,
+      value.diagnostics?.antiSlop?.risk ?? 100,
+      -(value.diagnostics?.quality?.deckScore ?? 0),
+      -(value.diagnostics?.quality?.slideFloor ?? 0)
+    ];
+  }
   return [
     value.p0?.length ?? 0,
     value.p1?.length ?? 0,
@@ -19,7 +34,9 @@ export function creativeRepairVector(proof = {}) {
 export function compareCreativeProof(candidate, current) {
   const candidateProof = safeProof(candidate);
   const currentProof = safeProof(current);
-  if ((candidateProof.quality?.editabilityLevel ?? 0) < (currentProof.quality?.editabilityLevel ?? 0)) return -1;
+  const candidateEditability = candidateProof.diagnostics?.nativeCoverage?.editabilityLevel ?? candidateProof.quality?.editabilityLevel ?? 0;
+  const currentEditability = currentProof.diagnostics?.nativeCoverage?.editabilityLevel ?? currentProof.quality?.editabilityLevel ?? 0;
+  if (candidateEditability < currentEditability) return -1;
   const candidateVector = creativeRepairVector(candidateProof);
   const currentVector = creativeRepairVector(currentProof);
   for (let index = 0; index < candidateVector.length; index += 1) {

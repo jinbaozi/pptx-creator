@@ -7,6 +7,13 @@ lowers that IR into the manifest render truth, renders the editable deck,
 renders every slide through LibreOffice, and applies the Creative visual proof
 gate.
 
+Final acceptance is a resumable Host boundary. A deterministic pass writes
+Creative Proof 0.2 evidence and blocks at `host-final-visual-review`; it does
+not publish a deliverable PPTX or successful run. After inspecting every
+full-size PNG, resume with `--host-final-review <creative-final-review.json>`.
+See `references/creative-visual-proof.md` for the closed review, hash binding,
+acceptance, and publication contract.
+
 `deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX`
 
 ## Artifacts
@@ -18,6 +25,9 @@ deck.manifest.json
 assets/asset-registry.json
 run.json
 final.pptx
+host-visual-review.json
+creative-proof.json
+creative-proof/
 quality-report.json
 quality-report.md
 preview/index.html

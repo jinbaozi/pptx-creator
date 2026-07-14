@@ -18,28 +18,29 @@ export function repairScore(proof = {}) {
   return score;
 }
 
-export async function runBoundedRepair({ initialProof, initialArtifact = null, maxAttempts = HARD_LIMIT, attempt, compare } = {}) {
+export async function runBoundedRepair({ initialProof, initialArtifact = null, maxAttempts = HARD_LIMIT, attempt, compare, accept } = {}) {
   const limit = Math.min(HARD_LIMIT, Math.max(0, Number.isFinite(Number(maxAttempts)) ? Math.floor(Number(maxAttempts)) : HARD_LIMIT));
   const hasCustomComparator = typeof compare === "function";
   const compareProof = hasCustomComparator
     ? compare
     : (candidate, current) => repairScore(candidate) > repairScore(current) + 1e-9 ? 1 : -1;
+  const isAccepted = typeof accept === "function" ? accept : (proof) => proof?.accepted === true;
   let bestProof = initialProof; let artifact = initialArtifact; let attempts = 0; const history=[];
-  if (initialProof?.accepted === true) return { accepted: true, proof: initialProof, artifact, attempts, history, maxAttempts: limit, stopReason: "accepted" };
+  if (isAccepted(initialProof)) return { accepted: true, proof: initialProof, artifact, attempts, history, maxAttempts: limit, stopReason: "accepted" };
   if (typeof attempt !== "function" || limit === 0) return { accepted: false, proof: bestProof, artifact, attempts, history, maxAttempts: limit, stopReason: "repair-unavailable" };
   for (let iteration = 1; iteration <= limit; iteration += 1) {
     const candidate = await attempt({ iteration, proof: bestProof, artifact }); attempts += 1;
     if (!candidate?.proof) { history.push({iteration,outcome:"unavailable"}); return { accepted: false, proof: bestProof, artifact, attempts, history, maxAttempts: limit, stopReason: "repair-unavailable" }; }
     const comparison = compareProof(candidate.proof, bestProof);
     const measurement = hasCustomComparator ? { comparison } : { score: repairScore(candidate.proof) };
-    if (candidate.proof.accepted === true && comparison >= 0) {
+    if (isAccepted(candidate.proof) && comparison >= 0) {
       history.push({iteration,outcome:"accepted",...measurement});
       return { accepted: true, proof: candidate.proof, artifact: candidate.artifact ?? artifact, attempts, history, maxAttempts: limit, stopReason: "accepted" };
     }
     if (!(comparison > 0)) { history.push({iteration,outcome:"no-improvement",...measurement}); return { accepted: false, proof: bestProof, artifact, attempts, history, maxAttempts: limit, stopReason: "no-improvement" }; }
     history.push({iteration,outcome:"improved",...measurement});
     bestProof = candidate.proof; artifact = candidate.artifact ?? artifact;
-    if (bestProof.accepted === true) return { accepted: true, proof: bestProof, artifact, attempts, history, maxAttempts: limit, stopReason: "accepted" };
+    if (isAccepted(bestProof)) return { accepted: true, proof: bestProof, artifact, attempts, history, maxAttempts: limit, stopReason: "accepted" };
   }
   return { accepted: false, proof: bestProof, artifact, attempts, history, maxAttempts: limit, stopReason: "attempt-limit" };
 }

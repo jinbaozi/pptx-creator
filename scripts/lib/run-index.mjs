@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, stat, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
 export function contentDerivedRunId(value) {
@@ -23,13 +23,24 @@ export async function buildRunIndex(outputDir, options) {
     assetRegistry: await exists(root, join("assets", "asset-registry.json")),
     creativeCandidates: await exists(root, "creative-candidates.json"),
     creativeSelection: await exists(root, "creative-selection.json"),
-    blindPacket: await exists(root, join("creative-direction-blind", "blind-packet.json"))
+    blindPacket: await exists(root, join("creative-direction-blind", "blind-packet.json")),
+    creativeProof: await exists(root, "creative-proof.json"),
+    creativeProofEvidence: await exists(root, "creative-proof"),
+    hostVisualReview: await exists(root, "host-visual-review.json")
   };
+
+  let accepted = false;
+  if (artifacts.creativeProof && artifacts.hostVisualReview) {
+    try {
+      const proof = JSON.parse(await readFile(join(root, artifacts.creativeProof), "utf8"));
+      accepted = proof.version === "0.2.0" && proof.accepted === true && proof.acceptance?.status === "accepted";
+    } catch {}
+  }
 
   return {
     runId: options.runId,
     mode: options.mode,
-    status: artifacts.pptx ? "ready-for-review" : "in-progress",
+    status: accepted ? "accepted" : artifacts.pptx ? "ready-for-review" : "in-progress",
     input: options.input,
     artifacts,
     ...(options.metadata ? { metadata: structuredClone(options.metadata) } : {})

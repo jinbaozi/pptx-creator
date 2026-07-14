@@ -18,6 +18,9 @@
     "assetRegistry": "assets/asset-registry.json",
     "creativeCandidates": null,
     "creativeSelection": null,
-    "blindPacket": null
+    "blindPacket": null,
+    "creativeProof": null,
+    "creativeProofEvidence": null,
+    "hostVisualReview": null
   }
 }
