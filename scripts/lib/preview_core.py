@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 try:
     from PIL import Image, ImageChops, ImageStat
@@ -23,6 +24,41 @@ WINDOWS_SOFFICE_PATHS = [
     r"C:\Program Files\LibreOffice\program\soffice.exe",
     r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
 ]
+
+
+def _configure_font_environment(profile: Path, env: dict[str, str]) -> dict[str, Any]:
+    """Expose explicit benchmark font directories to isolated LibreOffice.
+
+    The bundled macOS renderer intentionally uses an isolated profile and may
+    not discover optional system fonts. Callers can provide a path-separated
+    `PPTX_CREATOR_FONT_DIRS`; the generated Fontconfig file remains inside the
+    disposable profile and never mutates user or system configuration.
+    """
+    raw = env.get("PPTX_CREATOR_FONT_DIRS", "")
+    directories = []
+    for value in raw.split(os.pathsep):
+        if not value:
+            continue
+        resolved = Path(value).expanduser().resolve()
+        if resolved.is_dir() and resolved not in directories:
+            directories.append(resolved)
+    if not directories:
+        return {"fontConfigOverride": False, "fontDirectoryCount": 0}
+    cache = profile / "fontconfig-cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    config = profile / "fontconfig.xml"
+    directory_xml = "\n".join(f"  <dir>{escape(str(item))}</dir>" for item in directories)
+    config.write_text(
+        "<?xml version=\"1.0\"?>\n"
+        "<!DOCTYPE fontconfig SYSTEM \"urn:fontconfig:fonts.dtd\">\n"
+        "<fontconfig>\n"
+        f"{directory_xml}\n"
+        f"  <cachedir>{escape(str(cache))}</cachedir>\n"
+        "</fontconfig>\n",
+        encoding="utf-8",
+    )
+    env["FONTCONFIG_FILE"] = str(config)
+    return {"fontConfigOverride": True, "fontDirectoryCount": len(directories)}
 
 
 def build_contact_sheet(previews: list[str], output_path: Path) -> dict[str, Any]:
@@ -132,6 +168,7 @@ def render_pptx_preview(pptx_path: Path, output_dir: Path) -> dict[str, Any]:
     env = os.environ.copy()
     env.setdefault("SAL_USE_VCLPLUGIN", "svp")
     with tempfile.TemporaryDirectory(prefix="pptx-lo-profile-") as profile:
+        font_settings = _configure_font_environment(Path(profile), env)
         env["HOME"] = profile
         env["XDG_CONFIG_HOME"] = str(Path(profile) / ".config")
         result = subprocess.run(
@@ -186,7 +223,7 @@ def render_pptx_preview(pptx_path: Path, output_dir: Path) -> dict[str, Any]:
             "libreOfficeVersion": lo.get("version", "unknown"),
             "pythonVersion": platform.python_version(),
             "commandIdentity": "libreoffice-headless-pdf+pdftoppm-png-96dpi",
-            "settings": {"dpi": 96, "colorMode": "RGB", "timestampFree": True},
+            "settings": {"dpi": 96, "colorMode": "RGB", "timestampFree": True, **font_settings},
         },
         "previews": previews,
         "pages": pages,

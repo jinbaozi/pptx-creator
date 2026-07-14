@@ -10,6 +10,7 @@
     "test:browser": "PLAYWRIGHT_RUN=1 vitest run tests/html-layout-safety.test.mjs tests/html-measurement.test.mjs tests/html-replica-golden.test.mjs tests/image-replica-golden.test.mjs",
     "test:visual": "vitest run tests/visual-regression.test.mjs",
     "test:py": "node scripts/run-python.mjs -m unittest discover -s tests -p \"*_test.py\"",
+    "benchmark:creative": "node scripts/run-creative-benchmark.mjs",
     "setup": "node scripts/setup.mjs"
   },
   "dependencies": {

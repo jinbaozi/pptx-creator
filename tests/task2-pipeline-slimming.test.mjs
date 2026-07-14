@@ -18,7 +18,7 @@ describe("Task 2 public surface and deletion contract", () => {
   it("exposes no more than ten public npm scripts through the unified CLI", async () => {
     const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
     expect(Object.keys(pkg.scripts)).toEqual([
-      "pptx", "test", "test:unit", "test:browser", "test:visual", "test:py", "setup"
+      "pptx", "test", "test:unit", "test:browser", "test:visual", "test:py", "benchmark:creative", "setup"
     ]);
     expect(pkg.scripts["test:unit"]).toMatch(/^PLAYWRIGHT_RUN=0 /);
   });

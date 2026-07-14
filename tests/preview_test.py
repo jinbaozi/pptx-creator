@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIB = ROOT / "scripts" / "lib"
 sys.path.insert(0, str(LIB))
 
-from preview_core import build_contact_sheet, compare_images, libreoffice_status, render_pptx_preview  # noqa: E402
+from preview_core import _configure_font_environment, build_contact_sheet, compare_images, libreoffice_status, render_pptx_preview  # noqa: E402
 
 SAMPLE_DIR = ROOT / "examples" / "image-input"
 SAMPLE_IMAGE = SAMPLE_DIR / "business-slide.png"
@@ -66,6 +66,22 @@ class PreviewCoreTest(unittest.TestCase):
             self.assertGreater(result["width"], 320)
             self.assertRegex(result["hash"], r"^sha256:[a-f0-9]{64}$")
             self.assertEqual(len(result["slideHashes"]), 2)
+
+    def test_explicit_font_directories_create_isolated_fontconfig(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "fonts & cjk"
+            second = root / "metrics"
+            first.mkdir()
+            second.mkdir()
+            env = {"PPTX_CREATOR_FONT_DIRS": f"{first}{__import__('os').pathsep}{second}"}
+            settings = _configure_font_environment(root / "profile", env)
+            self.assertEqual(settings, {"fontConfigOverride": True, "fontDirectoryCount": 2})
+            config = Path(env["FONTCONFIG_FILE"])
+            self.assertTrue(config.exists())
+            text = config.read_text(encoding="utf-8")
+            self.assertIn("fonts &amp; cjk", text)
+            self.assertIn(str(second), text)
 
     def test_render_preview_smoke_pptx_optional(self):
         if not SMOKE_PPTX.exists():

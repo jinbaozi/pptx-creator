@@ -4,13 +4,73 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+    inputs:
+      creative_lane:
+        description: Creative benchmark lane
+        required: true
+        default: fast
+        type: choice
+        options: [fast, render, nightly, release]
+      artifact_manifest:
+        description: Release artifact manifest path in the checked-out revision
+        required: false
+        default: examples/creative-benchmark/release-artifacts.json
+      review_file:
+        description: Blinded review records path in the checked-out revision
+        required: false
+        default: examples/creative-benchmark/reviews.json
+      blind_seed:
+        description: Explicit release blinding seed
+        required: false
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      creative: ${{ steps.filter.outputs.creative }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            creative:
+              - 'SKILL.md'
+              - 'agents/openai.yaml'
+              - 'composition-blocks/**'
+              - 'design-systems/**'
+              - 'examples/creative-benchmark/**'
+              - 'references/**'
+              - 'schemas/deck-plan.schema.json'
+              - 'schemas/semantic-slide-ir.schema.json'
+              - 'schemas/creative-*.schema.json'
+              - 'schemas/refinement-*.schema.json'
+              - 'schemas/visual-review.schema.json'
+              - 'scripts/lib/archetype-resolver.mjs'
+              - 'scripts/lib/blind-preference.mjs'
+              - 'scripts/lib/composition-blocks.mjs'
+              - 'scripts/lib/contextual-taste.mjs'
+              - 'scripts/lib/creative-*.mjs'
+              - 'scripts/lib/deck-plan*.mjs'
+              - 'scripts/lib/semantic-slide-ir.mjs'
+              - 'scripts/lib/slop-risk.mjs'
+              - 'scripts/lib/visual-critic.mjs'
+              - 'scripts/run-creative-benchmark.mjs'
+              - 'tests/creative-*.test.mjs'
+              - 'tests/deck-plan*.test.mjs'
+              - 'tests/slop-risk.test.mjs'
+              - 'tests/visual-design-calibration.test.mjs'
+
   fast:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +88,7 @@ jobs:
       - run: npm run test:py
 
   replica-fidelity:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,3 +105,137 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+
+  creative-fast:
+    needs: [changes]
+    if: needs.changes.outputs.creative == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run benchmark:creative -- --lane fast --output output/creative-benchmark-fast
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: creative-benchmark-fast
+          path: output/creative-benchmark-fast/benchmark-report.json
+
+  creative-render:
+    needs: [changes]
+    if: needs.changes.outputs.creative == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y libreoffice poppler-utils fonts-noto-cjk fonts-liberation
+      - run: npm ci
+      - run: python -m pip install -r requirements-core.txt
+      - run: npm run benchmark:creative -- --lane render --output output/creative-benchmark-render
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: creative-benchmark-render
+          path: |
+            output/creative-benchmark-render/**/*.pptx
+            output/creative-benchmark-render/**/*.png
+            output/creative-benchmark-render/**/creative-proof.json
+            output/creative-benchmark-render/benchmark-report.json
+
+  creative-nightly:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.creative_lane == 'nightly')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y libreoffice poppler-utils fonts-noto-cjk fonts-liberation
+      - run: npm ci
+      - run: python -m pip install -r requirements-core.txt
+      - run: npm run benchmark:creative -- --lane nightly --output output/creative-benchmark-nightly
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: creative-benchmark-nightly
+          path: |
+            output/creative-benchmark-nightly/**/*.pptx
+            output/creative-benchmark-nightly/**/*.png
+            output/creative-benchmark-nightly/**/creative-proof.json
+            output/creative-benchmark-nightly/benchmark-report.json
+
+  creative-manual-fast-or-render:
+    if: github.event_name == 'workflow_dispatch' && (inputs.creative_lane == 'fast' || inputs.creative_lane == 'render')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        if: inputs.creative_lane == 'render'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: inputs.creative_lane == 'render'
+        run: sudo apt-get update && sudo apt-get install -y libreoffice poppler-utils fonts-noto-cjk fonts-liberation
+      - run: npm ci
+      - if: inputs.creative_lane == 'render'
+        run: python -m pip install -r requirements-core.txt
+      - run: npm run benchmark:creative -- --lane ${{ inputs.creative_lane }} --output output/creative-benchmark-manual
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: creative-benchmark-${{ inputs.creative_lane }}
+          path: output/creative-benchmark-manual
+
+  creative-release:
+    if: github.event_name == 'workflow_dispatch' && inputs.creative_lane == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Evaluate blinded release preference
+        run: >-
+          npm run benchmark:creative -- --lane release
+          --output output/creative-benchmark-release
+          --artifacts "${{ inputs.artifact_manifest }}"
+          --reviews "${{ inputs.review_file }}"
+          --seed "${{ inputs.blind_seed }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: creative-benchmark-release-public-evidence
+          path: |
+            output/creative-benchmark-release/**/*.pptx
+            output/creative-benchmark-release/**/*.png
+            output/creative-benchmark-release/**/creative-proof.json
+            output/creative-benchmark-release/blind-review-packet.json
+            output/creative-benchmark-release/blind-preference-report.json
+            output/creative-benchmark-release/benchmark-report.json
+            !output/creative-benchmark-release/private/**

@@ -46,13 +46,14 @@ function localImagePath(baseDir, src) {
   return resolve(baseDir, src);
 }
 
-function textOptions(element, design) {
+function textOptions(element, design, language) {
   const style = resolveValue(element.style ?? {}, design.tokens);
   const typography = style.typography ?? {};
   const fontWeight = style.fontWeight ?? typography.fontWeight ?? 400;
   const options = {
     fontFace: style.fontFamily ?? typography.fontFamily ?? design.tokens.typography.body.fontFamily,
     fontSize: style.fontSize ?? typography.fontSize ?? design.tokens.typography.body.fontSize,
+    lang: language,
     bold: Boolean(fontWeight >= 700 || style.bold),
     italic: Boolean(style.italic),
     underline: style.underline,
@@ -165,13 +166,13 @@ function imageSourceSizing(element) {
   return { w: sourceW, h: sourceH };
 }
 
-function addText(slide, element, design) {
+function addText(slide, element, design, language) {
   const opts = applyElementRotation({
     x: element.x,
     y: element.y,
     w: element.w,
     h: element.h,
-    ...textOptions(element, design)
+    ...textOptions(element, design, language)
   }, element);
   if (element.id) opts.objectName = element.id;
   slide.addText(element.text ?? "", opts);
@@ -804,10 +805,10 @@ function expandRenderableElements(elements) {
   });
 }
 
-function renderElement(slide, element, design, baseDir, counters, manifestAssets) {
+function renderElement(slide, element, design, baseDir, counters, manifestAssets, language) {
   if (element.type === "text") {
     counters.text += 1;
-    addText(slide, element, design);
+    addText(slide, element, design, language);
   } else if (element.type === "shape") {
     counters.shape += 1;
     addShape(slide, element, design);
@@ -961,7 +962,7 @@ async function main() {
         .filter((element) => element.type === "text" && element.id && element.style?.textStroke)
         .map((element) => ({ id: element.id, textStroke: element.style.textStroke }))
     );
-    for (const element of renderableElements) renderElement(slide, element, design, baseDir, counters, manifest.assets);
+    for (const element of renderableElements) renderElement(slide, element, design, baseDir, counters, manifest.assets, manifest.deck.language);
     countersBySlide.push(counters);
   }
 

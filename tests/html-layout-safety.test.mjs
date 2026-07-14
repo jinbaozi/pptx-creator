@@ -67,7 +67,7 @@ describe("HTML layout contracts", () => {
 
   it("ships schemas and public package commands", async () => {
     const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-    expect(Object.keys(pkg.scripts)).toEqual(["pptx", "test", "test:unit", "test:browser", "test:visual", "test:py", "setup"]);
+    expect(Object.keys(pkg.scripts)).toEqual(["pptx", "test", "test:unit", "test:browser", "test:visual", "test:py", "benchmark:creative", "setup"]);
     for (const schema of ["html-layout-report.schema.json", "html-repair-report.schema.json"]) {
       expect(JSON.parse(await readFile(join(root, "schemas", schema), "utf8"))).toHaveProperty("$schema");
     }

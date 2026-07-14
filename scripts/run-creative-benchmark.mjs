@@ -1,0 +1,272 @@
+#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import JSZip from "jszip";
+import { compileDeckPlanArtifacts, validateDeckPlan } from "./lib/deck-plan.mjs";
+import { scoreSlopRisk } from "./lib/slop-risk.mjs";
+import { buildCreativeRepairPatch } from "./lib/creative-repair.mjs";
+import {
+  createBlindedReviewBundle,
+  evaluateBlindPreference,
+  loadCreativeBenchmarkCorpus,
+  selectLaneBriefs,
+  validateBenchmarkCorpus
+} from "./lib/blind-preference.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const LIMITS_MS = Object.freeze({ fast: 5 * 60_000, render: 10 * 60_000, nightly: 30 * 60_000, release: 30 * 60_000 });
+const IDENTITY_LEAK = /baseline|candidate|challenger|reference|generator|model/i;
+
+function parseArgs(argv) {
+  const options = { lane: null, output: path.join(root, "output/creative-benchmark") };
+  for (let index = 0; index < argv.length; index += 1) {
+    const key = argv[index];
+    if (key === "--lane") options.lane = argv[++index];
+    else if (key === "--output") options.output = path.resolve(argv[++index]);
+    else if (key === "--artifacts") options.artifacts = path.resolve(argv[++index]);
+    else if (key === "--reviews") options.reviews = path.resolve(argv[++index]);
+    else if (key === "--seed") options.seed = argv[++index];
+    else throw new Error(`unknown argument: ${key}`);
+  }
+  if (!new Set(["fast", "render", "nightly", "release"]).has(options.lane)) {
+    throw new Error("usage: run-creative-benchmark.mjs --lane fast|render|nightly|release [--output DIR]");
+  }
+  return options;
+}
+
+function writeJson(target, value) {
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function resolveInstalledFont(request, language) {
+  try {
+    const matched = execFileSync("fc-match", ["-f", "%{family}\t%{file}", `${request}:lang=${language === "zh-CN" ? "zh-cn" : "en"}`], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    const [families, file] = matched.split("\t");
+    const family = families?.split(",")[0].trim();
+    if (family) return { requested: request, resolved: family, directory: file ? path.dirname(file) : null };
+  } catch {
+    // CI setup installs the requested families; environments without fontconfig
+    // still get an explicit, auditable request instead of silent auto-substitution.
+  }
+  return { requested: request, resolved: request, directory: null };
+}
+
+function compileBrief(corpus, brief) {
+  const plan = corpus.materializePlan(brief);
+  const bodyFont = resolveInstalledFont(brief.language === "zh-CN" ? "Noto Sans CJK SC" : "Liberation Sans", brief.language);
+  const metricFont = resolveInstalledFont("Arial", brief.language);
+  const roles = ["title", "subtitle", "heading", "body", "caption"];
+  const typography = Object.fromEntries(roles.map((role) => [role, { fontFamily: bodyFont.resolved }]));
+  typography.metric = { fontFamily: metricFont.resolved };
+  const compiled = compileDeckPlanArtifacts(plan, { designTokens: { typography } });
+  return { plan, ...compiled, fonts: [bodyFont, metricFont] };
+}
+
+function renderBrief(corpus, brief, outputRoot) {
+  const artifactRoot = path.join(outputRoot, "artifacts", brief.id, "challenger");
+  const slides = path.join(artifactRoot, "slides");
+  fs.mkdirSync(slides, { recursive: true });
+  const { plan, ir, manifest, fonts } = compileBrief(corpus, brief);
+  const planPath = path.join(artifactRoot, "deck.plan.json");
+  const irPath = path.join(artifactRoot, "semantic-slide-ir.json");
+  const manifestPath = path.join(artifactRoot, "deck.manifest.json");
+  const pptxPath = path.join(artifactRoot, "deck.pptx");
+  const designSource = manifest.designSystem?.source;
+  const sourceDesignPath = path.resolve(root, designSource ?? "");
+  const localizedDesignPath = path.resolve(artifactRoot, designSource ?? "");
+  if (!designSource || !sourceDesignPath.startsWith(`${root}${path.sep}`) || !localizedDesignPath.startsWith(`${artifactRoot}${path.sep}`)) {
+    throw new Error(`${brief.id}: design-system source must remain a local relative path`);
+  }
+  fs.mkdirSync(path.dirname(localizedDesignPath), { recursive: true });
+  fs.copyFileSync(sourceDesignPath, localizedDesignPath);
+  writeJson(planPath, plan);
+  writeJson(irPath, ir);
+  writeJson(manifestPath, manifest);
+  execFileSync(process.execPath, [path.join(root, "scripts/render-pptx.mjs"), manifestPath, pptxPath], {
+    cwd: root, stdio: "pipe", env: process.env
+  });
+  const previewText = execFileSync(process.execPath, [
+    path.join(root, "scripts/run-python.mjs"), path.join(root, "scripts/render-preview.py"), pptxPath, slides
+  ], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      PPTX_CREATOR_FONT_DIRS: [...new Set(fonts.map((item) => item.directory).filter(Boolean))].join(path.delimiter)
+    }
+  });
+  const preview = JSON.parse(previewText);
+  if (preview.status !== "ok" || !preview.contactSheet?.path) throw new Error(`${brief.id}: LibreOffice evidence is unavailable`);
+  const proof = {
+    version: "0.1.0",
+    briefId: brief.id,
+    manifest: path.relative(artifactRoot, manifestPath),
+    pptx: path.relative(artifactRoot, pptxPath),
+    renderedPages: preview.previews?.length ?? 0,
+    contactSheet: path.relative(artifactRoot, preview.contactSheet.path),
+    typography: fonts.map(({ requested, resolved }) => ({ requested, resolved })),
+    status: "rendered-not-host-reviewed"
+  };
+  const proofPath = path.join(artifactRoot, "creative-proof.json");
+  writeJson(proofPath, proof);
+  return {
+    briefId: brief.id,
+    kind: "challenger",
+    artifactId: `${brief.id}-challenger`,
+    identityAttestation: { status: "passed", scope: "generator-identity", reviewerFacingNamesNeutral: true },
+    evidence: { pptx: pptxPath, slides, contactSheet: preview.contactSheet.path, proof: proofPath }
+  };
+}
+
+function fastContract(corpus, brief) {
+  const { plan, ir, manifest, fonts } = compileBrief(corpus, brief);
+  const validation = validateDeckPlan(plan);
+  if (!validation.valid) throw new Error(`${brief.id}: ${validation.errors.join("; ")}`);
+  const slop = scoreSlopRisk(manifest, {}, { domain: brief.domain, language: brief.language });
+  const patch = buildCreativeRepairPatch({ slides: manifest.slides.map((slide) => ({ id: slide.id, recommendedRepairs: [] })) }, 1, manifest);
+  if (patch.patches.length !== 0) throw new Error(`${brief.id}: empty repair contract must be a no-op`);
+  return {
+    id: brief.id,
+    domain: brief.domain,
+    language: brief.language,
+    planVersion: plan.version,
+    irVersion: ir.version,
+    slides: manifest.slides.length,
+    slopRisk: slop.score,
+    evidenceRecords: brief.evidence.length,
+    typography: fonts.map(({ requested, resolved }) => ({ requested, resolved })),
+    status: "passed"
+  };
+}
+
+function copyEvidence(source, target) {
+  if (!fs.existsSync(source)) throw new Error(`blind-review evidence does not exist: ${source}`);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.cpSync(source, target, { recursive: true });
+}
+
+function fileHash(source) {
+  return `sha256:${createHash("sha256").update(fs.readFileSync(source)).digest("hex")}`;
+}
+
+async function neutralizePptxMetadata(source, target) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(source));
+  for (const name of Object.keys(zip.files).filter((entry) => entry.startsWith("docProps/") && entry.endsWith(".xml"))) {
+    let xml = await zip.file(name).async("string");
+    xml = xml
+      .replace(/(<dc:creator>)[\s\S]*?(<\/dc:creator>)/gi, "$1anonymous$2")
+      .replace(/(<cp:lastModifiedBy>)[\s\S]*?(<\/cp:lastModifiedBy>)/gi, "$1anonymous$2")
+      .replace(/(<Application>)[\s\S]*?(<\/Application>)/gi, "$1Anonymous presentation review$2")
+      .replace(/(<Company>)[\s\S]*?(<\/Company>)/gi, "$1$2")
+      .replace(/(<AppVersion>)[\s\S]*?(<\/AppVersion>)/gi, (_match, open, close) => `${open}1.0${close}`)
+      .replace(/baseline|candidate|challenger|reference|generator|model/gi, "anonymous");
+    zip.file(name, xml);
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+  const publicZip = await JSZip.loadAsync(fs.readFileSync(target));
+  const metadata = await Promise.all(Object.keys(publicZip.files).filter((entry) => entry.startsWith("docProps/") && entry.endsWith(".xml")).map((entry) => publicZip.file(entry).async("string")));
+  if (IDENTITY_LEAK.test(metadata.join("\n"))) throw new Error("blinded PPTX metadata still contains a generator identity label");
+}
+
+function writeBlindProofReceipt(source, target, pairId, side, attestation) {
+  writeJson(target, {
+    version: "0.1.0",
+    pairId,
+    side,
+    sourceProofHash: fileHash(source),
+    identityAttestation: { status: attestation.status, reviewerFacingNamesNeutral: attestation.reviewerFacingNamesNeutral },
+    note: "Source proof is hash-bound privately; source-specific fields are excluded from reviewer evidence."
+  });
+}
+
+async function materializeBlindReviewAssets(bundle, artifacts, outputRoot) {
+  const artifactsById = new Map(artifacts.map((artifact) => [artifact.artifactId, artifact]));
+  const pairById = new Map(bundle.packet.pairs.map((pair) => [pair.pairId, pair]));
+  for (const key of bundle.answerKey.pairs) {
+    const pair = pairById.get(key.pairId);
+    for (const [kind, side] of [["reference", key.referenceSide], ["challenger", key.challengerSide]]) {
+      const source = artifactsById.get(key.sourceArtifacts[kind]);
+      if (!source) throw new Error(`${key.pairId}: source artifact ${key.sourceArtifacts[kind]} is missing`);
+      const destination = pair[side].evidence;
+      await neutralizePptxMetadata(source.evidence.pptx, path.join(outputRoot, destination.pptx));
+      copyEvidence(source.evidence.slides, path.join(outputRoot, destination.slides));
+      copyEvidence(source.evidence.contactSheet, path.join(outputRoot, destination.contactSheet));
+      writeBlindProofReceipt(source.evidence.proof, path.join(outputRoot, destination.proof), key.pairId, side, source.identityAttestation);
+    }
+  }
+}
+
+async function runRelease(corpus, options, startedAt) {
+  if (!options.artifacts) throw new Error("release lane requires --artifacts with 24 complete reference/challenger pairs");
+  if (!options.seed) throw new Error("release lane requires an explicit --seed");
+  const artifacts = JSON.parse(fs.readFileSync(options.artifacts, "utf8"));
+  const bundle = createBlindedReviewBundle({ corpus, artifacts, seed: options.seed });
+  await materializeBlindReviewAssets(bundle, artifacts, options.output);
+  writeJson(path.join(options.output, "blind-review-packet.json"), bundle.packet);
+  writeJson(path.join(options.output, "private/answer-key.json"), bundle.answerKey);
+  const reviews = options.reviews ? JSON.parse(fs.readFileSync(options.reviews, "utf8")) : [];
+  const preference = evaluateBlindPreference({ corpus, bundle, reviews });
+  writeJson(path.join(options.output, "blind-preference-report.json"), preference);
+  return {
+    version: "0.1.0",
+    lane: "release",
+    status: preference.status,
+    networkUsed: false,
+    llmUsed: false,
+    elapsedMs: Date.now() - startedAt,
+    timeBudgetMs: LIMITS_MS.release,
+    briefs: corpus.briefs.map(({ id, domain, language }) => ({ id, domain, language, status: "review-paired" })),
+    contracts: ["blinding", "identity-isolation", "five-reviewer-minimum", "wilson-95", "subgroup-thresholds", "five-dimension-medians"],
+    evidence: ["blind-review-packet.json", "blind-preference-report.json"],
+    privateEvidence: ["private/answer-key.json"],
+    failures: preference.failures
+  };
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const startedAt = Date.now();
+  fs.mkdirSync(options.output, { recursive: true });
+  const corpus = loadCreativeBenchmarkCorpus(root);
+  const corpusValidation = validateBenchmarkCorpus(corpus);
+  if (!corpusValidation.valid) throw new Error(corpusValidation.errors.join("; "));
+  let report;
+  if (options.lane === "release") {
+    report = await runRelease(corpus, options, startedAt);
+  } else {
+    const briefs = selectLaneBriefs(corpus, options.lane);
+    const results = briefs.map((brief) => fastContract(corpus, brief));
+    const rendered = options.lane === "fast" ? [] : briefs.map((brief) => renderBrief(corpus, brief, options.output));
+    const elapsedMs = Date.now() - startedAt;
+    report = {
+      version: "0.1.0",
+      lane: options.lane,
+      status: elapsedMs <= LIMITS_MS[options.lane] ? "passed" : "failed",
+      networkUsed: false,
+      llmUsed: false,
+      elapsedMs,
+      timeBudgetMs: LIMITS_MS[options.lane],
+      briefs: results,
+      contracts: ["schema", "compiler", "anti-slop", "repair", ...(rendered.length ? ["pptx", "libreoffice", "png", "contact-sheet", "proof"] : [])],
+      artifacts: rendered.map((artifact) => ({ briefId: artifact.briefId, kind: artifact.kind, evidence: artifact.evidence }))
+    };
+  }
+  writeJson(path.join(options.output, "benchmark-report.json"), report);
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  if (report.status !== "passed") process.exitCode = 2;
+}
+
+try {
+  await main();
+} catch (error) {
+  process.stderr.write(`${error.stack || error.message}\n`);
+  process.exitCode = 1;
+}

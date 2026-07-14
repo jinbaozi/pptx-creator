@@ -54,7 +54,13 @@
         "commandIdentity": { "$ref": "#/$defs/nonEmpty" },
         "settings": {
           "type": "object", "additionalProperties": false, "required": ["dpi", "colorMode", "timestampFree"],
-          "properties": { "dpi": { "type": "integer", "minimum": 1 }, "colorMode": { "const": "RGB" }, "timestampFree": { "const": true } }
+          "properties": {
+            "dpi": { "type": "integer", "minimum": 1 },
+            "colorMode": { "const": "RGB" },
+            "timestampFree": { "const": true },
+            "fontConfigOverride": { "type": "boolean" },
+            "fontDirectoryCount": { "type": "integer", "minimum": 0 }
+          }
         }
       }
     },
