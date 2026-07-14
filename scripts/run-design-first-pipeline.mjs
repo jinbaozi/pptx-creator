@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { compileDeckPlan, validateDeckPlan } from "./lib/deck-plan.mjs";
+import { compileDeckPlanArtifacts, validateDeckPlan } from "./lib/deck-plan.mjs";
 import { resolveDesignSystem } from "./lib/design-system-resolver.mjs";
 import { createFontMetricsCatalog } from "./lib/font-preflight.mjs";
+import { buildRunIndex, contentDerivedRunId, writeRunIndex } from "./lib/run-index.mjs";
 import { fitManifestText, materializeTextFonts } from "./lib/text-fit.mjs";
 import { invalidatePublishedOutputs, runDeckPipeline } from "./run-deck-pipeline.mjs";
 
@@ -181,7 +182,7 @@ async function main() {
     fs.mkdirSync(designOutputDir, { recursive: true });
     if (selection.resolvedSource !== path.resolve(designOutputPath)) fs.copyFileSync(selection.resolvedSource, designOutputPath);
     const design = selection.design;
-    const compiledManifest = compileDeckPlan(plan, {
+    const { ir, manifest: compiledManifest } = compileDeckPlanArtifacts(plan, {
       designSystemSource: "design-system/DESIGN.md",
       designSystemName: design.name,
       designTokens: design.tokens,
@@ -218,7 +219,20 @@ async function main() {
       beforePackage: async () => {
         const target = path.join(resolvedOutput, "deck.plan.json");
         if (path.resolve(planPath) !== path.resolve(target)) fs.copyFileSync(planPath, target);
+        fs.writeFileSync(path.join(resolvedOutput, "semantic-slide-ir.json"), `${JSON.stringify(ir, null, 2)}\n`, "utf8");
         fs.writeFileSync(localizedAssets.ownershipPath, `${JSON.stringify(localizedAssets.ownership, null, 2)}\n`, "utf8");
+        const run = await buildRunIndex(resolvedOutput, {
+          runId: contentDerivedRunId(ir),
+          mode: options.mode,
+          input: { type: "text", summary: plan.context.title }
+        });
+        await writeRunIndex(resolvedOutput, run);
+      },
+      beforePackageRollback: async () => {
+        await Promise.allSettled([
+          fs.promises.rm(path.join(resolvedOutput, "semantic-slide-ir.json"), { force: true }),
+          fs.promises.rm(path.join(resolvedOutput, "run.json"), { force: true })
+        ]);
       }
     };
     await runDeckPipeline(manifestPath, resolvedOutput, designFirstOptions);

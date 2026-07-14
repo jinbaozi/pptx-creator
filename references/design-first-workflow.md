@@ -1,17 +1,26 @@
 # Creative text workflow
 
-Text work is Creative by default and uses one coordinate-free internal intermediate: `deck.plan.json`. The host agent edits content and visual direction; deterministic code validates page roles and composition strategies, compiles native geometry into `deck.manifest.json`, renders the editable deck, renders every slide through LibreOffice, and applies the Creative visual proof gate.
+Text work is Creative by default and uses two coordinate-free authoring
+contracts: `deck.plan.json` captures host intent, and the selected canonical
+`semantic-slide-ir.json` is the normalized authoring truth. Deterministic code
+lowers that IR into the manifest render truth, renders the editable deck,
+renders every slide through LibreOffice, and applies the Creative visual proof
+gate.
+
+`deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX`
 
 ## Artifacts
 
 ```text
 deck.plan.json
+semantic-slide-ir.json
 deck.manifest.json
+run.json
 final.pptx
 quality-report.json
 quality-report.md
-output-manifest.json
 preview/index.html
+output-manifest.json
 ```
 
 The plan is version `0.2.0` with exactly six required top-level keys: `version`, `context`, `designIntent`, `story`, `assets`, and `slides`.
@@ -26,7 +35,22 @@ The current migration shell keeps eight strict native content families: `cover`,
 
 Direction candidates are optional. Use them only when material ambiguity or high risk makes a single direction unsafe; candidate count, scoring, and recommendation are host-agent judgments, never fixed deterministic outputs.
 
-Text remains manifest-first. HTML is optional only when explicitly requested or genuinely necessary for source-defined layout; it is not a creative intermediate.
+The manifest remains the renderer's sole render truth. HTML is optional only
+when explicitly requested or genuinely necessary for source-defined layout; it
+is not a Creative authoring contract.
+
+## Canonical publication
+
+`compileDeckPlanArtifacts()` compiles the selected IR and manifest once. Only
+the pre-package hook stages the exact pretty-printed IR as
+`semantic-slide-ir.json`, then writes the real `run.json` artifact index.
+`run.json.artifacts.semanticIr` points to the portable filename. Publication is
+committed only by a successful package step. If the hook partially fails or
+packaging fails, the common pipeline calls the route-provided compensating
+rollback before writing `pipeline-blocked.json`; rollback failure is best-effort
+and never replaces the primary failure. A successful run does not execute this
+rollback. Candidate evidence must never overwrite the selected canonical file,
+and the IR is never reconstructed from a fitted or repaired manifest.
 
 ## Design and asset resolution
 
@@ -36,7 +60,14 @@ Plan assets resolve relative to the plan directory unless already absolute. Remo
 
 Each slide may reference at most five visual assets and may not repeat an asset ID. Asset attention must point to a visual asset listed by that slide. One visual becomes the hero; up to four supporting visuals occupy a deterministic gapped grid inside the reserved media zone, without crossing native-content bounds. `emphasis: asset` requires at least one visual asset.
 
-Starting a creative run immediately invalidates previously published PPTX, manifest, report, review, and preview artifacts while preserving in-place plan, design, and source-asset inputs. Localized asset ownership is recorded only after normal pipeline cleanup and only for files created by the run; a later run removes those owned hashes without deleting unrelated or in-place user assets.
+Starting a creative run immediately invalidates previously published PPTX,
+canonical IR, manifest, run index, report, review, and preview artifacts while
+preserving in-place plan, design, and source-asset inputs. Localized asset
+ownership is recorded only after normal pipeline cleanup and only for files
+created by the run; a later run removes those owned hashes without deleting
+unrelated or in-place user assets. This initial stale-output invalidation is
+separate from the compensating rollback for IR/run files written by the current
+pre-package transaction.
 
 For native containers, resolved `hero-card` and `content-card` component tokens provide the baseline. Page-role, attention, and compatibility adjustments are explicit overrides, so component resolution cannot erase semantic emphasis.
 

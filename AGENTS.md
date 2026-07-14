@@ -6,10 +6,12 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 `pptx-creator` is an Agent-oriented tool that produces **mostly editable** PowerPoint files. The architecture splits work in two:
 
-- **Host agent** (you, or another LLM) does all reasoning: classifying input, picking a design system, authoring a `deck.manifest.json`, picking assets, judging QA output.
+- **Host agent** (you, or another LLM) does all reasoning: classifying input, picking a design system, authoring a Creative `deck.plan.json` or an explicit direct-route manifest, picking assets, and judging QA output.
 - **Deterministic scripts** (Node.js + Python) validate, compile, render, package, and report — they **never** call LLM APIs and never invent content.
 
-Core invariant: the **manifest is the single source of truth**. Scripts render exactly what the manifest says.
+Core invariant: Creative runs use the selected canonical Semantic Slide IR as
+their authoring truth; the manifest is the render truth for every renderer.
+Scripts render exactly what the manifest says.
 
 ## Common commands
 
@@ -48,16 +50,13 @@ The data flow has five stages. Reading order matters when debugging:
 input (text / HTML / image / PDF / mixed)
     │
     ▼
-Host agent reasoning ──► DESIGN.md selection ──► design artifacts (optional)
-    │                                                │
-    │                                                ▼
-    └────────────────────────────► deck.manifest.json
-                                          │
-                                          ▼
-                   Deterministic scripts (validate / compile / render)
-                                          │
-                                          ▼
-                              final.pptx + reports
+Host agent reasoning ──► DESIGN.md selection
+    │
+    ▼
+deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX
+                         │                         │
+                         │                         ▼
+                         └──── run.json indexes published artifacts
 ```
 
 ### 1. Inputs → design system
@@ -70,9 +69,9 @@ Built-in design systems: `business-neutral`, `warm-editorial`, `paper-minimal`, 
 
 For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and write one coordinate-free `deck.plan.json` version `0.2.0`. Its exact top-level contract is `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry semantic page roles, strict native content models, attention targets, composition intent, asset IDs, and native-first route policy. Assets require non-empty provenance `sourceRef` values; empty asset lists remain valid. Coordinates, manifest geometry, `elements`, and full-slide rasters are prohibited. Version `0.1.0` is retired and fails closed.
 
-`schemas/deck-plan.schema.json` is the only structural validator. `scripts/lib/deck-plan.mjs` adds only uniqueness, reference, required membership, and ordering checks, then compiles the current eight strict content families (`cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, `closing`) into materially distinct native geometry. Direction candidates are optional only for material ambiguity or high risk. HTML is optional only when explicitly requested or necessary; it is not a required text intermediate.
+`schemas/deck-plan.schema.json` is the only structural validator. `scripts/lib/deck-plan.mjs` adds only uniqueness, reference, required membership, and ordering checks. `compileDeckPlanArtifacts()` compiles once and returns `{ ir, manifest }` for the current eight strict content families (`cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, `closing`). The Creative pre-package hook stages the selected canonical `semantic-slide-ir.json`, but publication commits only when packaging succeeds. Hook or package failure invokes best-effort IR/run rollback before blocked state is written; a successful run does not invoke rollback, and candidate evidence never overwrites the canonical file. HTML is optional only when explicitly requested or necessary; it is not a required text intermediate.
 
-### 3. Manifest → PPTX (manifest-first)
+### 3. Manifest render truth → PPTX
 
 `references/manifest-spec.md` is the canonical contract. Required top-level: `version`, `metadata`, `designSystem`, `deck`, `assets`, and `slides`; `designSystem` requires `source` and `name`, and `deck.size` carries dimensions. Coordinates are inches. Element style values can reference DESIGN.md tokens (`{colors.primary}`, `{typography.title}`, `{components.hero-card}`).
 
@@ -82,13 +81,13 @@ The renderer is `scripts/render-pptx.mjs` using `pptxgenjs`. `scripts/lib/chart-
 
 ### 4. Reports and QA gates
 
-Every pipeline run writes to `output/`:
+Every successfully packaged pipeline run writes to `output/`:
 
 - `final.pptx` — the deliverable
 - `deck.manifest.json` — copy of the input manifest
 - `editable-report.md`, `qa-report.md`, `compatibility-report.md` — quality dimensions
 - `output-manifest.json` — packaged output index
-- (creative) `visual-review.json`
+- (creative) `semantic-slide-ir.json`, `run.json`, and `visual-review.json`
 
 Editability ladder (`references/qa-rubric.md`): Level 5 = fully native objects, Level 4 = text + main shapes editable, Level 3 = text editable, Levels 1-2 = replica/screenshot. **Never** package a single full-slide raster as "editable PPTX".
 

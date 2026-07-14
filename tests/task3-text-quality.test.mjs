@@ -265,6 +265,25 @@ describe("stable bilingual brief corpus and text output contract", () => {
     expect(maintenance).toMatch(/material ambiguity|high risk/i);
   });
 
+  it("documents canonical Semantic IR publication and real run indexing", () => {
+    const publicDocs = [
+      "SKILL.md", "AGENTS.md", "README.md", "README.en.md",
+      "references/design-first-workflow.md", "references/routes/text.md",
+      "references/manifest-spec.md", "references/semantic-slide-ir.md"
+    ];
+    for (const relative of publicDocs) {
+      const content = fs.readFileSync(relative, "utf8");
+      expect(content, relative).toContain("semantic-slide-ir.json");
+      expect(content, relative).not.toContain("semanticSlideIr");
+    }
+    const combined = publicDocs.map((relative) => fs.readFileSync(relative, "utf8")).join("\n");
+    expect(combined).toContain("deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX");
+    expect(combined).toContain("artifacts.semanticIr");
+    expect(combined).toMatch(/canonical/i);
+    expect(combined).toMatch(/candidate/i);
+    expect(fs.readFileSync("references/routes/text.md", "utf8")).toMatch(/direct[\s\S]*replica[\s\S]*(?:do not|does not|never).*Semantic IR/i);
+  });
+
   it("retires every executable/public triple-artifact entry", () => {
     for (const retired of [
       "scripts/compile-design-first.mjs", "scripts/lib/design-first-loader.mjs", "scripts/lib/manifest-compiler.mjs",
@@ -321,7 +340,7 @@ describe("stable bilingual brief corpus and text output contract", () => {
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     });
     for (const relative of [
-      "final.pptx", "deck.manifest.json", "deck.plan.json", "quality-report.json", "quality-report.md",
+      "final.pptx", "deck.manifest.json", "deck.plan.json", "semantic-slide-ir.json", "run.json", "quality-report.json", "quality-report.md",
       "creative-proof.json", "creative-proof/slides/contact-sheet.png", "output-manifest.json", "preview/index.html"
     ]) expect(fs.existsSync(path.join(output, relative)), relative).toBe(true);
     const manifest = JSON.parse(fs.readFileSync(path.join(output, "deck.manifest.json"), "utf8"));
@@ -335,7 +354,7 @@ describe("stable bilingual brief corpus and text output contract", () => {
     expect(fs.readFileSync(standaloneDesign, "utf8").length).toBeGreaterThan(100);
     expect((await parseDesignFile(standaloneDesign)).tokens).toBeTruthy();
     const outputManifest = JSON.parse(fs.readFileSync(path.join(output, "output-manifest.json"), "utf8"));
-    expect(outputManifest.files).toEqual(expect.arrayContaining(["final.pptx", "deck.manifest.json", "deck.plan.json", "design-system", "quality-report.json", "quality-report.md", "preview"]));
+    expect(outputManifest.files).toEqual(expect.arrayContaining(["final.pptx", "deck.manifest.json", "deck.plan.json", "semantic-slide-ir.json", "run.json", "design-system", "quality-report.json", "quality-report.md", "preview"]));
     const previewIndex = fs.readFileSync(path.join(output, "preview/index.html"), "utf8");
     expect(previewIndex).toContain("../creative-proof/slides/contact-sheet.png");
   }, 60000);

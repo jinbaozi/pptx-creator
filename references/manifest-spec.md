@@ -1,6 +1,23 @@
 # Manifest Spec
 
-`deck.manifest.json` is the contract between host agent reasoning and deterministic rendering scripts.
+`deck.manifest.json` is the render-truth contract consumed by deterministic
+rendering scripts. On the creative text route, the selected canonical
+`semantic-slide-ir.json` is authoring truth and is lowered deterministically to
+the manifest:
+
+```text
+deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX
+```
+
+Direct and replica routes provide the manifest without producing Semantic IR.
+The renderer never consumes Semantic IR directly. `run.json` is only an
+artifact index: creative runs point to the canonical IR through
+`artifacts.semanticIr` after successful packaging; it is not another source of
+truth. Candidate evidence,
+when a later stage produces it, must not replace the selected canonical IR.
+The creative IR/run pair is committed only after packaging succeeds; hook or
+package failure invokes best-effort compensating rollback before blocked state,
+while the successful path does not invoke rollback.
 
 The breaking `0.2.0` contract requires:
 

@@ -6,7 +6,10 @@
 
 `pptx-creator` is an agent-oriented toolkit for generating editable PPTX files. A host agent or large language model handles understanding, planning, writing, design, and optional web research. This project handles deterministic validation, conversion, rendering, packaging, and quality checks, producing `.pptx` files that remain editable in PowerPoint or WPS.
 
-Core principle: **author a structured manifest first, then render PPTX deterministically**. Package scripts do not call LLM APIs and do not invent content.
+Core principle: Creative runs use the selected canonical Semantic Slide IR as
+their authoring truth; every route uses the manifest as render truth before
+deterministic PPTX rendering. Package scripts do not call LLM APIs and do not
+invent content.
 
 ## Use Cases
 
@@ -20,8 +23,8 @@ Core principle: **author a structured manifest first, then render PPTX determini
 
 | Capability | Description |
 | --- | --- |
-| Text to PPTX | The host agent turns raw content into an outline, slide plan, copy, and `deck.manifest.json`; the pipeline renders the deck. |
-| Creative text generation | Uses the coordinate-free `deck.plan.json -> deck.manifest.json -> PPTX` flow so design judgment, narrative beats, and layout families remain reviewable before rendering. |
+| Text to PPTX | Creative text produces `deck.plan.json`, then deterministically compiles Semantic IR and a manifest; the explicit direct route may still provide a manifest. |
+| Creative text generation | Uses the coordinate-free `deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX` flow so design judgment, narrative beats, and layout families remain reviewable before rendering. |
 | Layout archetypes and compilation | Built-in layout archetypes, design system parsing, and manifest compilation turn design specs into deterministic PPTX manifests. |
 | HTML to PPTX | Supports semantic HTML, CSS-positioned HTML, DOM measurement, remote image localization, and multi-slide conversion. |
 | Image/PDF input | Provides image inspection, palette extraction, OCR, cropping, image replica analysis, layer planning, and PDF page hint helpers. |
@@ -104,18 +107,22 @@ Use this for polished business, product, technical, roadshow, research, or train
 npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --design-system dark-tech
 ```
 
-The single coordinate-free creative intermediate is `deck.plan.json`:
+A successfully packaged Creative run publishes the plan, selected canonical
+Semantic Slide IR, render manifest, and real run index:
 
 ```text
 deck.plan.json
+semantic-slide-ir.json
 deck.manifest.json
+run.json
 final.pptx
 quality-report.json
 quality-report.md
 preview/index.html
+output-manifest.json
 ```
 
-The plan records the design read, three contextual dials, audience, narrative beats, slide messages, layout families, and content/asset references. Family-specific compilers turn it into a deterministic `deck.manifest.json`. Direction candidates are optional only for material ambiguity or high risk; HTML is not a mandatory text intermediate.
+The plan records the design read, three contextual dials, audience, narrative beats, slide messages, layout families, and content/asset references. `compileDeckPlanArtifacts()` produces the selected canonical IR and manifest in one compilation; `run.json` indexes that IR through `artifacts.semanticIr`. IR/run publication commits only after packaging succeeds. If the pre-package hook or package step fails, the pipeline attempts compensating rollback before writing blocked state, without allowing a rollback error to mask the primary failure. Candidate evidence never overwrites the canonical file, and direct/replica routes do not produce Semantic IR. HTML is not a mandatory text intermediate.
 
 ## HTML, Image, and PDF Inputs
 
@@ -152,12 +159,16 @@ Host Agent
   Critic       -> review, repair patch, quality gates
         |
         v
-Creative intermediate
+Creative authoring contracts
   deck.plan.json
         |
         v
+  semantic-slide-ir.json
+  selected canonical authoring truth
+        |
+        v
 deck.manifest.json
-  version, designSystem, deck, assets, slides, elements
+  render truth: version, designSystem, deck, assets, slides, elements
         |
         v
 Deterministic scripts
@@ -180,6 +191,7 @@ Reports and QA
   accessibility-report.md
   visual-review.json
   visual-regression-report.json
+  run.json artifact index
         |
         v
 final.pptx

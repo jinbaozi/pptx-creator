@@ -68,7 +68,7 @@ describe("Task 2 single pipeline contract", () => {
     await writeFile(planPath, "{}\n", "utf8");
     await writeFile(designPath, "source design\n", "utf8");
     await writeFile(assetPath, "source asset\n", "utf8");
-    for (const name of ["final.pptx", "output-manifest.json", "deck.manifest.json", "quality-report.json", "visual-review.json"]) {
+    for (const name of ["final.pptx", "output-manifest.json", "deck.manifest.json", "semantic-slide-ir.json", "quality-report.json", "visual-review.json"]) {
       await writeFile(join(dir, name), "stale-success", "utf8");
     }
     for (const directory of ["preview", "creative-proof"]) {
@@ -79,7 +79,7 @@ describe("Task 2 single pipeline contract", () => {
     expect(typeof pipeline.invalidatePublishedOutputs).toBe("function");
     await pipeline.invalidatePublishedOutputs(dir, [planPath, designPath, assetPath]);
 
-    for (const name of ["final.pptx", "output-manifest.json", "deck.manifest.json", "quality-report.json", "visual-review.json", "preview", "creative-proof"]) {
+    for (const name of ["final.pptx", "output-manifest.json", "deck.manifest.json", "semantic-slide-ir.json", "quality-report.json", "visual-review.json", "preview", "creative-proof"]) {
       await expect(access(join(dir, name)), name).rejects.toThrow();
     }
     for (const preserved of [planPath, designPath, assetPath]) await expect(access(preserved)).resolves.toBeUndefined();
@@ -89,12 +89,12 @@ describe("Task 2 single pipeline contract", () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-stale-output-"));
     const manifest = join(dir, "invalid.manifest.json");
     await writeFile(manifest, JSON.stringify({ invalid: true }), "utf8");
-    for (const name of ["final.pptx", "output-manifest.json", "consistency-report.json", "qa-report.md"]) {
+    for (const name of ["final.pptx", "output-manifest.json", "semantic-slide-ir.json", "consistency-report.json", "qa-report.md"]) {
       await writeFile(join(dir, name), "stale-success", "utf8");
     }
 
     await expect(pipeline.runDeckPipeline(manifest, dir)).rejects.toThrow(/validate/);
-    for (const name of ["final.pptx", "output-manifest.json", "consistency-report.json", "qa-report.md"]) {
+    for (const name of ["final.pptx", "output-manifest.json", "semantic-slide-ir.json", "consistency-report.json", "qa-report.md"]) {
       await expect(access(join(dir, name))).rejects.toThrow();
     }
     await expect(access(join(dir, "pipeline-blocked.json"))).resolves.toBeUndefined();
@@ -111,7 +111,8 @@ describe("Task 2 single pipeline contract", () => {
     }
     for (const name of [
       "inputHints.json", "image-hints.json", "image-replica-analysis.json", "replica-layer-plan.json",
-      "visual-regression-report.json", "preview-diff-slide-001.json", "deck.manifest.skeleton.json"
+      "visual-regression-report.json", "preview-diff-slide-001.json", "deck.manifest.skeleton.json",
+      "semantic-slide-ir.json"
     ]) {
       await writeFile(join(dir, name), "stale-route", "utf8");
     }
@@ -135,7 +136,8 @@ describe("Task 2 single pipeline contract", () => {
     for (const stale of [
       "html-layout-report.json", "layout-measurements.json", "deck.localized-input.html", "html-preview",
       "inputHints.json", "image-hints.json", "image-replica-analysis.json", "replica-layer-plan.json",
-      "visual-regression-report.json", "preview-diff-slide-001.json", "deck.manifest.skeleton.json"
+      "visual-regression-report.json", "preview-diff-slide-001.json", "deck.manifest.skeleton.json",
+      "semantic-slide-ir.json"
     ]) {
       expect(outputManifest.files).not.toContain(stale);
       await expect(access(join(dir, stale))).rejects.toThrow();

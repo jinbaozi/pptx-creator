@@ -1,10 +1,19 @@
+import { createHash } from "node:crypto";
 import { readdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+
+export function contentDerivedRunId(value) {
+  const canonical = canonicalJson(value);
+  if (canonical === undefined) throw new TypeError("run ID input must be JSON-serializable");
+  const digest = createHash("sha256").update(canonical).digest("hex");
+  return `run-${digest.slice(0, 24)}`;
+}
 
 export async function buildRunIndex(outputDir, options) {
   const root = resolve(outputDir);
   const artifacts = {
     deckPlan: await exists(root, "deck.plan.json"),
+    semanticIr: await exists(root, "semantic-slide-ir.json"),
     manifest: await exists(root, "deck.manifest.json"),
     pptx: await exists(root, "final.pptx"),
     previews: await listFiles(root, "previews", ".png"),
@@ -21,6 +30,21 @@ export async function buildRunIndex(outputDir, options) {
     input: options.input,
     artifacts
   };
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item) ?? "null").join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = [];
+    for (const key of Object.keys(value).sort()) {
+      const encoded = canonicalJson(value[key]);
+      if (encoded !== undefined) entries.push(`${JSON.stringify(key)}:${encoded}`);
+    }
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 export async function writeRunIndex(outputDir, run) {

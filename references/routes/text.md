@@ -14,7 +14,7 @@ npm run pptx -- text <deck.plan.json|plan-directory> <output-dir> [--creative] [
 
 ## Inputs and outputs
 
-The host agent converts raw text into an internal coordinate-free `deck.plan.json` version `0.2.0`; deterministic scripts validate it against `schemas/deck-plan.schema.json`, compile it to a `0.2.0` manifest, and render an editable PPTX. Its exact top-level keys are `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry a semantic page role, strict native `contentModel`, explicit attention target, composition intent, asset IDs, and native-first route policy. Plan assets require non-empty provenance `sourceRef` values. Coordinates, manifest geometry, `elements`, and full-slide raster output are prohibited.
+The host agent converts raw text into an internal coordinate-free `deck.plan.json` version `0.2.0`; deterministic scripts validate it against `schemas/deck-plan.schema.json`, compile the selected canonical `semantic-slide-ir.json`, lower that IR to a `0.2.0` manifest, and render an editable PPTX. Its exact top-level keys are `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry a semantic page role, strict native `contentModel`, explicit attention target, composition intent, asset IDs, and native-first route policy. Plan assets require non-empty provenance `sourceRef` values. Coordinates, manifest geometry, `elements`, and full-slide raster output are prohibited.
 
 The current migration shell supports the eight native content families `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. HTML is optional only when genuinely necessary and is never a mandatory text intermediate. An authored manifest requires the explicit advanced flag `--direct`; `--creative` remains only as a deprecated compatibility alias. `deck.plan` `0.1.0` is retired and fails closed before final, manifest, or quality artifacts are written.
 
@@ -22,19 +22,26 @@ The current migration shell supports the eight native content families `cover`, 
 
 Asset `sourceRef` values resolve absolutely or relative to the plan directory. Scripts never fetch remote sources. Existing local files are copied to deterministic content-hashed paths under `output/assets/`; visual asset kinds become native image objects with declared alt text and `contain`/`cover` sizing, while chart-data and diagram-source assets remain non-visual inputs. Missing or remote sources block before `final.pptx` is published.
 
-Per slide, `assetIds` must be unique and may include at most five visual assets. Asset attention must reference a visual asset in that slide; asset emphasis requires one. The compiler uses one hero plus a bounded support grid. Reusing an output directory invalidates stale public deliverables before plan/design/asset preflight, and generated-asset ownership cleanup preserves unrelated user files.
+Per slide, `assetIds` must be unique and may include at most five visual assets. Asset attention must reference a visual asset in that slide; asset emphasis requires one. The compiler uses one hero plus a bounded support grid. Reusing an output directory invalidates stale canonical IR, run index, and other public deliverables before plan/design/asset preflight, and generated-asset ownership cleanup preserves unrelated user files. Separately, once the current pre-package hook starts writing IR/run, hook or package failure invokes best-effort compensating rollback before `pipeline-blocked.json` is written.
 
-Successful output contains `final.pptx`, `quality-report.json`, `quality-report.md`, `creative-proof.json`, rendered slide evidence with a contact sheet, and `preview/index.html`. Internal plan and manifest artifacts remain available for audit.
+Successful Creative output contains `deck.plan.json`,
+`semantic-slide-ir.json`, `deck.manifest.json`, `run.json`, `final.pptx`,
+quality/proof reports, rendered slide evidence with a contact sheet,
+`preview/index.html`, and `output-manifest.json`. The run index uses
+`artifacts.semanticIr` for the canonical IR path. This publication is committed
+only after packaging succeeds. Direct and replica routes do not produce Semantic IR.
 
 ## Blocking conditions
 
-Block on missing input/output, invalid internal artifacts, failed Creative gates, unavailable or incomplete LibreOffice slide evidence, any P0/P1 visual finding, or more than three repair attempts.
+Block on missing input/output, invalid plan, Semantic IR, manifest, or run
+artifacts, failed Creative gates, unavailable or incomplete LibreOffice slide
+evidence, any P0/P1 visual finding, or more than three repair attempts.
 
 ## Next references
 
-1. `references/manifest-spec.md`
-2. `references/design-first-workflow.md`
-3. `references/qa-rubric.md`
+1. `references/semantic-slide-ir.md`
+2. `references/manifest-spec.md`
+3. `references/design-first-workflow.md`
 
 ## Migration from 0.1.1
 

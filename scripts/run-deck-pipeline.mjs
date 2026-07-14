@@ -28,6 +28,7 @@ const PUBLISHED_OUTPUTS = Object.freeze([
   "final.pptx",
   "output-manifest.json",
   "deck.manifest.json",
+  "semantic-slide-ir.json",
   "editable-report.md",
   "qa-report.md",
   "compatibility-report.md",
@@ -80,6 +81,7 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "previews",
   "design-system",
   "deck.plan.json",
+  "semantic-slide-ir.json",
   "quality-report.json",
   "quality-report.md",
   "creative-proof.json",
@@ -735,6 +737,13 @@ async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy,
   throw error;
 }
 
+async function rollbackBeforePackage(options, context) {
+  if (typeof options.beforePackageRollback !== "function") return;
+  try {
+    await options.beforePackageRollback(context);
+  } catch {}
+}
+
 export async function publishRepairArtifact(items) {
   const token = randomUUID();
   const entries = items
@@ -1173,6 +1182,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     await writeFile(join(previewDir, "index.html"), `<!doctype html><meta charset="utf-8"><title>Replica proof</title><main><h1>Replica proof: ${replicaProof.accepted ? "PASS" : "BLOCK"}</h1><p>SSIM ${replicaProof.aggregate.fidelity.ssim?.value ?? "N/A"}; native coverage ${replicaProof.aggregate.nativeCoverage?.value ?? "N/A"}</p>${pages}</main>\n`, "utf8");
   }
   let layoutSafetyStatus;
+  let beforePackageStarted = false;
   try {
     const report = JSON.parse(await readFile(layoutSafetyPath, "utf8"));
     layoutSafetyStatus = (report?.summary?.criticalCount ?? 0) === 0 ? "passed" : "violated-with-flag";
@@ -1201,20 +1211,47 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
       { proofStatus: "passed", textFitStatus: textFitReport?.status ?? "unavailable" }
     );
     if (typeof options.beforePackage === "function") {
+      beforePackageStarted = true;
       await options.beforePackage({ route, mode, status: "passed", outputDir: resolvedOutput });
     }
   } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     steps.push({ label: "reports", ok: false });
-    await blockPipeline(resolvedManifest, resolvedOutput, steps, "reports", error instanceof Error ? error.message : String(error));
+    if (beforePackageStarted) {
+      await rollbackBeforePackage(options, {
+        route, mode, status: "blocked", outputDir: resolvedOutput, blockedBy: "reports", error
+      });
+    }
+    await blockPipeline(resolvedManifest, resolvedOutput, steps, "reports", detail);
   }
 
-  if (options.copyManifest !== false && shouldCopyManifest(resolvedManifest, resolvedOutput)) {
-    await copyFile(resolvedManifest, join(resolvedOutput, "deck.manifest.json"));
+  let packaged;
+  try {
+    if (options.copyManifest !== false && shouldCopyManifest(resolvedManifest, resolvedOutput)) {
+      await copyFile(resolvedManifest, join(resolvedOutput, "deck.manifest.json"));
+    }
+    stageGuard.enter("package");
+    packaged = await runPythonStep("package", [join(root, "scripts/package-output.py"), resolvedOutput]);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    steps.push({ label: "package", ok: false });
+    if (beforePackageStarted) {
+      await rollbackBeforePackage(options, {
+        route, mode, status: "blocked", outputDir: resolvedOutput, blockedBy: "package", error
+      });
+    }
+    await blockPipeline(resolvedManifest, resolvedOutput, steps, "package", detail);
   }
-  stageGuard.enter("package");
-  const packaged = await runPythonStep("package", [join(root, "scripts/package-output.py"), resolvedOutput]);
   steps.push(packaged);
-  if (!packaged.ok) await blockPipeline(resolvedManifest, resolvedOutput, steps, "package", packaged.stderr || packaged.stdout);
+  if (!packaged.ok) {
+    const detail = packaged.stderr || packaged.stdout;
+    if (beforePackageStarted) {
+      await rollbackBeforePackage(options, {
+        route, mode, status: "blocked", outputDir: resolvedOutput, blockedBy: "package", error: detail
+      });
+    }
+    await blockPipeline(resolvedManifest, resolvedOutput, steps, "package", detail);
+  }
 
   stageGuard.complete();
   return {

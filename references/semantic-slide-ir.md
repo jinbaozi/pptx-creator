@@ -2,8 +2,9 @@
 
 Semantic Slide IR is the coordinate-free authoring contract between a creative
 `deck.plan.json` and the editable manifest compiler. In the creative text
-route, version `0.1.0` of this IR is the single source of truth for normalized
-slide content, layout order, token references, and semantic lineage.
+route, version `0.1.0` of the selected canonical `semantic-slide-ir.json` is
+authoring truth for normalized slide content, layout order, token references,
+and semantic lineage. The lowered `deck.manifest.json` remains render truth.
 
 The compatibility facade still returns a `deck.manifest.json`:
 
@@ -12,10 +13,40 @@ const { ir, manifest } = compileDeckPlanArtifacts(plan, options);
 const compatibleManifest = compileDeckPlan(plan, options);
 ```
 
-`compileDeckPlan()` is implemented as `plan -> IR -> manifest`. The two calls
-above produce the same manifest for the same inputs. The IR is currently an
-in-memory artifact; the pipeline does not yet persist
-`semantic-slide-ir.json` or add it to the output package.
+`compileDeckPlan()` is implemented as `plan -> IR -> manifest`. The two APIs
+produce the same manifest for the same inputs, but a pipeline that needs both
+artifacts calls `compileDeckPlanArtifacts()` once and uses the returned `ir`
+and `manifest`; it does not compile twice or reconstruct IR from later
+manifest geometry.
+
+## Canonical publication and run indexing
+
+The creative route publishes the selected canonical artifact under the fixed
+name `semantic-slide-ir.json`. Its public transformation contract is:
+
+```text
+deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX
+```
+
+The design-first runner compiles once. After the PPTX and reports have been
+created successfully, its pre-package hook stages the original returned IR as
+pretty JSON with exactly one trailing newline. The same hook stages `run.json`,
+whose `artifacts.semanticIr` field points to `semantic-slide-ir.json`. The run
+ID is a content-derived SHA-256 identifier over the full canonical IR, with
+object keys sorted recursively and array order preserved. A later fitted or
+repaired manifest must never be used to reverse-engineer this artifact.
+
+At the start of a rerun, published-output invalidation removes stale canonical
+IR/run files from the previous run, including failures that happen before
+compilation. Once the current pre-package hook starts, IR/run publication is a
+separate compensating transaction: hook or package failure invokes the
+route-provided best-effort rollback before `pipeline-blocked.json` is written,
+and rollback errors do not mask the primary failure. Only package success
+commits the pair as published output; the successful path does not invoke
+rollback. Direct and replica routes do not produce Semantic IR and keep
+`artifacts.semanticIr` as `null` when they write a run index. Direction
+candidates, if a later pipeline stage introduces them, are evidence for
+selection and must never overwrite the selected canonical IR.
 
 ## Top-level contract
 
@@ -189,8 +220,9 @@ an invalid IR.
 
 ## Current boundary
 
-This version deliberately does not persist the IR, write `run.json`, generate
-or score visual concept candidates, or provide composition/block registries.
-Those are later Creative Director pipeline stages. It also preserves the eight
-existing family geometry compilers instead of introducing a generic layout
-engine, which keeps existing geometry goldens and editability behavior stable.
+This version publishes the selected canonical IR and indexes it in `run.json`.
+It deliberately does not generate, score, or persist visual concept candidates,
+and it does not provide composition/block registries. Those remain later
+Creative Director pipeline stages. It also preserves the eight existing family
+geometry compilers instead of introducing a generic layout engine, which keeps
+existing geometry goldens and editability behavior stable.

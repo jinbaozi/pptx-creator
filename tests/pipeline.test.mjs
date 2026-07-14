@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -80,6 +80,75 @@ describe("run-deck-pipeline", () => {
     const qa = await readFile(join(outputDir, "qa-report.md"), "utf8");
     expect(qa).toContain("PPTX render: passed");
     expect(qa).toMatch(/Text fit: (?:passed|failed|unavailable)/);
+  }, 60000);
+
+  it("rolls back hook-owned IR and run artifacts when beforePackage fails after writing them", async () => {
+    const manifest = join(root, "examples/text-input/deck.manifest.json");
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-before-package-hook-failure-"));
+    let hookRan = false;
+    let rollbackCalls = 0;
+
+    await expect(runDeckPipeline(manifest, outputDir, {
+      mode: "direct",
+      inputType: "text",
+      inputSource: manifest,
+      beforePackage: async ({ outputDir: hookOutputDir }) => {
+        await writeFile(join(hookOutputDir, "semantic-slide-ir.json"), "{}\n", "utf8");
+        await writeFile(join(hookOutputDir, "run.json"), "{}\n", "utf8");
+        hookRan = true;
+        throw new Error("injected before-package failure");
+      },
+      beforePackageRollback: async ({ outputDir: rollbackOutputDir, blockedBy }) => {
+        rollbackCalls += 1;
+        expect(blockedBy).toBe("reports");
+        await rm(join(rollbackOutputDir, "semantic-slide-ir.json"), { force: true });
+        await rm(join(rollbackOutputDir, "run.json"), { force: true });
+        throw new Error("injected rollback failure");
+      }
+    })).rejects.toThrow(/injected before-package failure/);
+
+    expect(hookRan).toBe(true);
+    await expect(access(join(outputDir, "semantic-slide-ir.json"))).rejects.toThrow();
+    await expect(access(join(outputDir, "run.json"))).rejects.toThrow();
+    await expect(access(join(outputDir, "output-manifest.json"))).rejects.toThrow();
+    expect(rollbackCalls).toBe(1);
+    const blocked = JSON.parse(await readFile(join(outputDir, "pipeline-blocked.json"), "utf8"));
+    expect(blocked).toMatchObject({ status: "blocked", blockedBy: "reports", detail: "injected before-package failure" });
+  }, 60000);
+
+  it("rolls back hook-owned IR and run artifacts when packaging fails", async () => {
+    const manifest = join(root, "examples/text-input/deck.manifest.json");
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-before-package-package-failure-"));
+    let hookRan = false;
+    let rollbackCalls = 0;
+
+    await expect(runDeckPipeline(manifest, outputDir, {
+      mode: "direct",
+      inputType: "text",
+      inputSource: manifest,
+      beforePackage: async ({ outputDir: hookOutputDir }) => {
+        await writeFile(join(hookOutputDir, "semantic-slide-ir.json"), "{}\n", "utf8");
+        await writeFile(join(hookOutputDir, "run.json"), "{}\n", "utf8");
+        await access(join(hookOutputDir, "consistency-report.json"));
+        await rm(join(hookOutputDir, "consistency-report.json"), { force: true });
+        hookRan = true;
+      },
+      beforePackageRollback: async ({ outputDir: rollbackOutputDir, blockedBy }) => {
+        rollbackCalls += 1;
+        expect(blockedBy).toBe("package");
+        await rm(join(rollbackOutputDir, "semantic-slide-ir.json"), { force: true });
+        await rm(join(rollbackOutputDir, "run.json"), { force: true });
+      }
+    })).rejects.toThrow(/pipeline blocked at package/);
+
+    expect(hookRan).toBe(true);
+    await expect(access(join(outputDir, "semantic-slide-ir.json"))).rejects.toThrow();
+    await expect(access(join(outputDir, "run.json"))).rejects.toThrow();
+    await expect(access(join(outputDir, "output-manifest.json"))).rejects.toThrow();
+    expect(rollbackCalls).toBe(1);
+    const blocked = JSON.parse(await readFile(join(outputDir, "pipeline-blocked.json"), "utf8"));
+    expect(blocked).toMatchObject({ status: "blocked", blockedBy: "package" });
+    expect(blocked.detail).toContain("consistency-report.json");
   }, 60000);
 
   it("emits consistency-report.json with a structurally-valid shape", async () => {

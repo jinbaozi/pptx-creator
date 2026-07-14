@@ -6,7 +6,9 @@
 
 `pptx-creator` 是一个面向 Agent 的可编辑 PPTX 生成工具包。它让大模型或宿主 Agent 负责理解、策划、写作、设计与必要的联网检索，让本项目的确定性脚本负责校验、转换、渲染、打包和质量检查，最终输出可在 PowerPoint/WPS 中继续编辑的 `.pptx` 文件。
 
-项目核心原则：**先生成结构化 manifest，再确定性渲染 PPTX**。脚本不会调用 LLM API，也不会自行编造内容。
+项目核心原则：Creative 路线以选中的 canonical Semantic Slide IR 作为
+authoring truth；所有路线都以 manifest 作为 render truth，再确定性渲染
+PPTX。脚本不会调用 LLM API，也不会自行编造内容。
 
 ## 适用场景
 
@@ -20,8 +22,8 @@
 
 | 能力 | 说明 |
 | --- | --- |
-| 文本到 PPTX | 宿主 Agent 根据原始内容生成故事线、页面结构、文案和 `deck.manifest.json`，再由 pipeline 渲染。 |
-| 创意文本生成 | 通过无坐标的 `deck.plan.json -> deck.manifest.json -> PPTX` 流程，让设计判断、叙事节拍和布局族在渲染前可审查。 |
+| 文本到 PPTX | Creative 文本先生成 `deck.plan.json`，再确定性编译为 Semantic IR 与 manifest；显式 direct 路线仍可直接提供 manifest。 |
+| 创意文本生成 | 通过无坐标的 `deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX` 流程，让设计判断、叙事节拍和布局族在渲染前可审查。 |
 | 布局原型与编译 | 内置 layout archetypes、设计系统解析和 manifest 编译器，把设计规格转换成确定性的 PPTX manifest。 |
 | HTML 到 PPTX | 支持语义 HTML、CSS 定位 HTML、DOM 测量、远程图片本地化和多页转换。 |
 | 图片/PDF 输入 | 提供图片检查、颜色提取、OCR、裁剪、图片复刻分析、图层规划、PDF 页面 hints 等辅助脚本，由 Agent 重建可编辑对象。 |
@@ -103,18 +105,22 @@ output/
 npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --design-system dark-tech
 ```
 
-唯一创意中间产物是无坐标的 `deck.plan.json`：
+成功完成打包的 Creative 路线发布 plan、选中的 canonical Semantic Slide
+IR、render manifest 和真实 run index：
 
 ```text
 deck.plan.json
+semantic-slide-ir.json
 deck.manifest.json
+run.json
 final.pptx
 quality-report.json
 quality-report.md
 preview/index.html
+output-manifest.json
 ```
 
-deck plan 记录设计判断、三项上下文旋钮、受众、叙事节拍、页面信息、布局族以及内容/素材引用，再由各布局族的真实编译器转成确定性的 `deck.manifest.json`。方向候选仅在存在实质歧义或高风险时可选；HTML 不是文本路线的必经中间层。
+deck plan 记录设计判断、三项上下文旋钮、受众、叙事节拍、页面信息、布局族以及内容/素材引用。`compileDeckPlanArtifacts()` 一次生成选中的 canonical IR 与 manifest；`run.json` 通过 `artifacts.semanticIr` 索引该 IR。IR/run 只有在打包成功后才算正式发布；pre-package hook 或打包失败时，pipeline 会先尽力回滚这两个文件，再写入 blocked 状态，且回滚错误不会掩盖主失败。候选证据不会覆盖 canonical 文件，且 direct/replica 路线不会生成 Semantic IR。HTML 不是文本路线的必经中间层。
 
 ## HTML、图片和 PDF 输入
 
@@ -153,12 +159,16 @@ Host Agent
   Critic       -> review, repair patch, quality gates
         |
         v
-Creative intermediate
+Creative authoring contracts
   deck.plan.json
         |
         v
+  semantic-slide-ir.json
+  selected canonical authoring truth
+        |
+        v
 deck.manifest.json
-  version, designSystem, deck, assets, slides, elements
+  render truth: version, designSystem, deck, assets, slides, elements
         |
         v
 Deterministic scripts
@@ -181,6 +191,7 @@ Reports and QA
   accessibility-report.md
   visual-review.json
   visual-regression-report.json
+  run.json artifact index
         |
         v
 final.pptx

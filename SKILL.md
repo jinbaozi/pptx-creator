@@ -17,14 +17,20 @@ route contract and its listed next references before acting.
 | `manifest-repair` | An existing manifest plus a bounded patch is repaired | `references/routes/manifest-repair.md` |
 
 Do not combine creative rules with replica rules. The `text` route is creative
-by default: the host agent edits the narrative and visual direction, then keeps
-`deck.plan.json` and `deck.manifest.json` as internal evidence. Direct manifest
-rendering is an explicit advanced compatibility path only. HTML is optional,
-never a mandatory text intermediate.
+by default: the host agent edits the narrative and visual direction, then after
+successful packaging keeps `deck.plan.json`, the selected canonical
+`semantic-slide-ir.json`, and `deck.manifest.json` as internal evidence.
+`run.json` indexes the real published
+artifacts. IR and run publication commits only after packaging succeeds; hook
+or package failure triggers best-effort rollback before blocked evidence is
+written. Direct manifest rendering is an explicit advanced compatibility path
+only. HTML is optional, never a mandatory text intermediate.
 
 ## Shared invariants
 
-- The manifest is the single source of truth; deterministic scripts render it.
+- For deterministic rendering, the manifest is the single source of truth
+  consumed by scripts. In Creative text runs, Semantic Slide IR is the
+  authoring truth that lowers to that render contract.
 - Never use a full-slide raster as an editable PPTX.
 - Replica routes preserve source layout, color, typography, and tone; they do
   not explore creative directions.

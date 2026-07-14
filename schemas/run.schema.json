@@ -7,7 +7,7 @@
   "required": ["runId", "mode", "status", "input", "artifacts"],
   "properties": {
     "runId": { "type": "string", "minLength": 1 },
-    "mode": { "type": "string", "enum": ["creative", "replica", "hybrid"] },
+    "mode": { "type": "string", "enum": ["creative", "direct", "replica", "hybrid"] },
     "status": { "type": "string", "minLength": 1 },
     "input": {
       "type": "object",
@@ -19,12 +19,16 @@
     },
     "artifacts": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["deckPlan", "semanticIr", "manifest", "pptx", "previews", "reviews", "consistencyReport", "sources", "assetRegistry"],
       "properties": {
         "deckPlan": { "type": ["string", "null"] },
+        "semanticIr": { "type": ["string", "null"] },
         "manifest": { "type": ["string", "null"] },
         "pptx": { "type": ["string", "null"] },
         "previews": { "type": "array", "items": { "type": "string" } },
         "reviews": { "type": "array", "items": { "type": "string" } },
+        "consistencyReport": { "type": ["string", "null"] },
         "sources": { "type": ["string", "null"] },
         "assetRegistry": { "type": ["string", "null"] }
       }

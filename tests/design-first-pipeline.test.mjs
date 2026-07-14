@@ -5,6 +5,8 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
+import * as runIndex from "../scripts/lib/run-index.mjs";
+import { validateJsonSchema } from "../scripts/lib/schema-utils.mjs";
 
 describe("creative deck-plan pipeline", () => {
   it("preserves the creative plan when input and output directories are the same", () => {
@@ -22,7 +24,8 @@ describe("creative deck-plan pipeline", () => {
 
   it("compiles, renders, and writes quality evidence for a deck plan", () => {
     const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-design-first-pipeline-"));
-    execFileSync("node", [
+    const secondOutputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-design-first-pipeline-repeat-"));
+    const args = [
       "scripts/run-design-first-pipeline.mjs",
       "examples/text-input/creative/deck.plan.json",
       outputDir,
@@ -30,9 +33,12 @@ describe("creative deck-plan pipeline", () => {
       "design-systems/product-roadshow/DESIGN.md",
       "--mode",
       "creative"
-    ], { stdio: "pipe" });
+    ];
+    execFileSync("node", args, { stdio: "pipe" });
 
     expect(fs.existsSync(path.join(outputDir, "deck.manifest.json"))).toBe(true);
+    expect(fs.existsSync(path.join(outputDir, "semantic-slide-ir.json"))).toBe(true);
+    expect(fs.existsSync(path.join(outputDir, "run.json"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "final.pptx"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "visual-review.json"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "quality-report.json"))).toBe(true);
@@ -40,10 +46,46 @@ describe("creative deck-plan pipeline", () => {
     const review = JSON.parse(fs.readFileSync(path.join(outputDir, "visual-review.json"), "utf8"));
     expect(review.deckScore).toBeGreaterThan(0);
     const outputManifest = JSON.parse(fs.readFileSync(path.join(outputDir, "output-manifest.json"), "utf8"));
-    expect(outputManifest.files).toContain("deck.plan.json");
+    expect(outputManifest.files).toEqual(expect.arrayContaining([
+      "deck.plan.json", "semantic-slide-ir.json", "run.json"
+    ]));
     const manifest = JSON.parse(fs.readFileSync(path.join(outputDir, "deck.manifest.json"), "utf8"));
     expect(manifest.designSystem).toMatchObject({ source: "design-system/DESIGN.md", name: "Product Roadshow" });
-  });
+
+    const irText = fs.readFileSync(path.join(outputDir, "semantic-slide-ir.json"), "utf8");
+    const ir = JSON.parse(irText);
+    expect(irText).toBe(`${JSON.stringify(ir, null, 2)}\n`);
+    const irSchema = JSON.parse(fs.readFileSync("schemas/semantic-slide-ir.schema.json", "utf8"));
+    expect(validateJsonSchema(ir, irSchema)).toEqual({ valid: true, errors: [] });
+
+    const run = JSON.parse(fs.readFileSync(path.join(outputDir, "run.json"), "utf8"));
+    const runSchema = JSON.parse(fs.readFileSync("schemas/run.schema.json", "utf8"));
+    expect(run).toMatchObject({
+      runId: runIndex.contentDerivedRunId(ir),
+      mode: "creative",
+      status: "ready-for-review",
+      input: { type: "text", summary: "From Brief to Editable Deck" },
+      artifacts: {
+        deckPlan: "deck.plan.json",
+        semanticIr: "semantic-slide-ir.json",
+        manifest: "deck.manifest.json",
+        pptx: "final.pptx",
+        consistencyReport: "consistency-report.json"
+      }
+    });
+    expect(validateJsonSchema(run, runSchema)).toEqual({ valid: true, errors: [] });
+    for (const artifact of Object.values(run.artifacts).flatMap((value) => Array.isArray(value) ? value : [value]).filter(Boolean)) {
+      expect(path.isAbsolute(artifact), artifact).toBe(false);
+      expect(artifact, artifact).not.toContain("\\");
+    }
+
+    const repeatArgs = [...args];
+    repeatArgs[2] = secondOutputDir;
+    execFileSync("node", repeatArgs, { stdio: "pipe" });
+    const repeatedRun = JSON.parse(fs.readFileSync(path.join(secondOutputDir, "run.json"), "utf8"));
+    expect(repeatedRun.runId).toBe(run.runId);
+    expect(fs.readFileSync(path.join(secondOutputDir, "semantic-slide-ir.json"), "utf8")).toBe(irText);
+  }, 120000);
 
   it("forwards a public built-in design selection and records portable provenance", () => {
     const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-public-design-"));
@@ -96,6 +138,7 @@ describe("creative deck-plan pipeline", () => {
     });
 
     const manifest = JSON.parse(fs.readFileSync(path.join(outputDir, "deck.manifest.json"), "utf8"));
+    const semanticIr = JSON.parse(fs.readFileSync(path.join(outputDir, "semantic-slide-ir.json"), "utf8"));
     expect(manifest.assets[0]).toMatchObject({
       id: "asset-hero",
       kind: "photo",
@@ -104,6 +147,7 @@ describe("creative deck-plan pipeline", () => {
       provenance: { origin: "project", sourceRef: "hero.png", license: "project-owned" }
     });
     expect(fs.existsSync(path.join(outputDir, manifest.assets[0].src))).toBe(true);
+    expect(semanticIr.assets[0].src).toBe(manifest.assets[0].src);
     expect(manifest.slides[0].elements).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "image", assetId: "asset-hero", src: manifest.assets[0].src, sizing: { type: "cover" } })
     ]));
@@ -415,7 +459,7 @@ describe("creative deck-plan pipeline", () => {
       "final.pptx", "output-manifest.json", "deck.manifest.json", "editable-report.md", "qa-report.md",
       "compatibility-report.md", "consistency-report.json", "consistency-report.md", "layout-safety-report.json",
       "text-fit-report.json", "quality-report.json", "quality-report.md", "creative-proof.json", "visual-review.json",
-      "run.json", "pipeline-blocked.json"
+      "semantic-slide-ir.json", "run.json", "pipeline-blocked.json"
     ];
     for (const name of staleFiles) fs.writeFileSync(path.join(outputDir, name), "stale-success", "utf8");
     for (const directory of ["preview", "creative-proof"]) {
