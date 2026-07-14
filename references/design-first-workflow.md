@@ -1,11 +1,20 @@
-# Creative text workflow
+# Creative Director Pipeline: Creative text workflow
 
 Text work is Creative by default and uses two coordinate-free authoring
-contracts: `deck.plan.json` captures host intent, and the selected canonical
+contracts: `deck.plan.json` captures host intent as authoring contract, and the selected canonical
 `semantic-slide-ir.json` is the normalized authoring truth. Deterministic code
 lowers that IR into the manifest render truth, renders the editable deck,
 renders every slide through LibreOffice, and applies the Creative visual proof
 gate.
+
+Load focused contracts progressively: intent in
+`references/creative-intent.md`, conditional direction probes in
+`references/creative-direction-probes.md`, canonical IR in
+`references/semantic-slide-ir.md`, mandatory proof in
+`references/creative-visual-proof.md`, safe refinement in
+`references/creative-refinement.md`, release acceptance in
+`references/creative-benchmark.md`, and pinned external adaptations in
+`references/external-design-provenance.md`.
 
 Final acceptance is a resumable Host boundary. A deterministic pass writes
 Creative Proof 0.2 evidence and blocks at `host-final-visual-review`; it does
@@ -40,7 +49,7 @@ preview/index.html
 output-manifest.json
 ```
 
-The plan is version `0.2.0` with exactly six required top-level keys: `version`, `context`, `designIntent`, `story`, `assets`, and `slides`.
+The authoring input is deck.plan.json version `0.2.0` with exactly six required top-level keys: `version`, `context`, `designIntent`, `story`, `assets`, and `slides`.
 
 - `context` records title, language, structured audience and environment, decision goal, tone, duration, memory anchors, brand references, requested quality profile, required office suites, editability floor, asset intensity, and visual ambition. LibreOffice must be present and required.
 - `designIntent` records the design read; typography, palette, material, imagery, composition direction and `visibleGrid`; contextual composition/density/energy dials; and source/brand locks.
@@ -48,7 +57,7 @@ The plan is version `0.2.0` with exactly six required top-level keys: `version`,
 - `assets` records localized asset intent and provenance. Every asset has a non-empty `provenance.sourceRef` and one closed `provenance.rights` object; `sourceUrl` is optional HTTP(S)-only provenance. `origin: generated` additionally requires non-empty model and prompt-summary evidence, while non-generated assets must not claim generation evidence. Empty asset lists remain valid.
 - Every slide records `pageRole`, one message, a strict `contentModel`, an explicit `attentionTarget`, `compositionIntent`, `assetIds`, and a `routePolicy` whose preferred route is `native`, whose allowed routes include `native`, and whose `fullSlideRaster` is always `false`. The host may explicitly add `compositionIntent.blockId` from the built-in composition registry; it is the only public block-selection knob.
 
-The current migration shell keeps eight strict native content families: `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. It is coordinate-free at every depth: coordinates, manifest geometry, and `elements` are invalid. `schemas/deck-plan.schema.json` is the structural validator; runtime checks add provenance/generation cross-field rules, ID uniqueness, reference resolution, required route/suite membership, and composition ordering. Version `0.1.0` is retired and cannot compile.
+The current migration shell keeps eight strict native content families: `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. It is coordinate-free at every depth: coordinates, manifest geometry, and `elements` are invalid. `schemas/deck-plan.schema.json` is the structural validator; runtime checks add provenance/generation cross-field rules, ID uniqueness, reference resolution, required route/suite membership, and composition ordering.
 
 Direction probes are conditional and always Host-authored. Standard plans stay
 on the compile-once path; flagship plans always require a bounded direction
@@ -131,3 +140,7 @@ For native containers, resolved `hero-card` and `content-card` component tokens 
 Creative output currently passes only when deck score is at least 80, every slide is at least 70, slop risk is at most 20, P0/P1 findings are zero, deterministic text-fit evidence passes, and editability is at least Level 4. The plan's requested L4 or L5 `context.editabilityFloor` is preserved in the compiled manifest and design-intent provenance for the later quality-profile task; it does not yet raise this gate above Level 4. The proof must include a real LibreOffice render of every page and a complete contact sheet. Contextual checks come from the design read and dials. Explicit user brand and source locks override generic heuristics. Font compatibility is reported from real font preflight data, and visible background grids must match `metadata.designIntent.visibleGrid`.
 
 Replica routes do not run this taste gate and must preserve source fidelity.
+
+Release claims additionally require the blind preference acceptance in
+`references/creative-benchmark.md`. A deterministic pass, a successful render,
+or synthetic ratings do not prove release quality.

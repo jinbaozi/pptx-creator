@@ -17,7 +17,8 @@ route contract and its listed next references before acting.
 | `manifest-repair` | An existing manifest plus a bounded patch is repaired | `references/routes/manifest-repair.md` |
 
 Do not combine creative rules with replica rules. The `text` route is creative
-by default: the host agent edits the narrative and visual direction, then after
+by default and runs one Creative Director Pipeline: the host agent edits the
+narrative and visual direction, then after
 successful packaging keeps `deck.plan.json`, the selected canonical
 `semantic-slide-ir.json`, validated `assets/asset-registry.json` 0.2, and
 `deck.manifest.json` as evidence. `run.json` indexes the real published
@@ -45,6 +46,8 @@ output manifest.
 A rejecting final review follows `references/creative-refinement.md`: emit a
 dry-run evidence plan, wait for one protected Host-approved operation, then
 render and review again. Creative repair/refinement shares a three-delta cap.
+Release-level preference evidence follows `references/creative-benchmark.md`;
+deterministic or synthetic success alone does not prove release quality.
 
 ## Shared invariants
 

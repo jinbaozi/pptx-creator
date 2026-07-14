@@ -74,6 +74,65 @@ describe("universal Agent Skill packaging", () => {
     expect(workflow).toMatch(/Replica routes/i);
   });
 
+  it("publishes one progressive Creative Director host contract", async () => {
+    const paths = [
+      "SKILL.md",
+      "references/routes/text.md",
+      "references/design-first-workflow.md",
+      "references/creative-intent.md",
+      "references/creative-direction-probes.md",
+      "references/semantic-slide-ir.md",
+      "references/creative-visual-proof.md",
+      "references/creative-refinement.md",
+      "references/creative-benchmark.md"
+    ];
+    const documents = await Promise.all(paths.map(read));
+    const combined = documents.join("\n");
+    expect(combined).toMatch(/Creative Director Pipeline/i);
+    expect(combined).toMatch(/deck\.plan\.json[^\n]*(?:authoring truth|authoring contract)/i);
+    expect(combined).toMatch(/Semantic Slide IR[^\n]*authoring truth/i);
+    expect(combined).toMatch(/manifest[^\n]*render truth/i);
+    expect(combined).toContain("deck.plan.json version `0.2.0`");
+    expect(combined).toMatch(/conditional[^\n]*(?:direction|candidate)/i);
+    expect(combined).toMatch(/mandatory Host[^\n]*(?:visual|screenshot) review/i);
+    expect(combined).toMatch(/native-first/i);
+    expect(combined).toMatch(/safe refinement/i);
+    expect(combined).toMatch(/24 briefs/i);
+    expect(combined).toMatch(/Wilson 95% lower bound > 50%/i);
+    expect(combined).not.toMatch(/deck\.plan(?:\.json)?[^\n]*0\.1\.0/i);
+    expect(combined).not.toMatch(/always (?:generate|create|render)[^\n]*\b[234]\b[^\n]*candidates?/i);
+  });
+
+  it("pins external design provenance without claiming runtime integration or effect", async () => {
+    const provenance = await read("references/external-design-provenance.md");
+    const pins = {
+      "leonxlnx/taste-skill": "b17742737e796305d829b3ad39eda3add0d79060",
+      "pbakaus/impeccable": "f2049c2b76383b444bf30cd6184f7d49a6c580d1",
+      "jinbaozi/Visual-Proof-Gate": "9742d87b8d6441d1b344ebc9de16548656e60b3e",
+      "Trystan-SA/claude-design-system-prompt": "3c3ddb07d7aa3fef051d83608596470c95cfd8fe"
+    };
+    for (const [repository, commit] of Object.entries(pins)) {
+      expect(provenance).toContain(repository);
+      expect(provenance).toContain(commit);
+      expect(provenance).toContain(`https://github.com/${repository}/tree/${commit}`);
+    }
+    expect(provenance).toMatch(/adapted protocols/i);
+    expect(provenance).toMatch(/not runtime (?:dependencies|integrations)/i);
+    expect(provenance).toMatch(/do not independently prove/i);
+  });
+
+  it("ships a completion audit that leaves absent human blind review open", async () => {
+    const audit = await read("references/creative-director-completion-audit.md");
+    expect(audit).toMatch(/global constraints/i);
+    expect(audit).toMatch(/schemas\/deck-plan\.schema\.json/);
+    expect(audit).toMatch(/scripts\/lib\/semantic-slide-ir\.mjs/);
+    expect(audit).toMatch(/\.github\/workflows\/ci\.yml/);
+    expect(audit).toMatch(/24 briefs x at least five reviewers/i);
+    expect(audit).toMatch(/missing/i);
+    expect(audit).toMatch(/goal remains active/i);
+    expect(audit).toMatch(/release quality is unproven/i);
+  });
+
   it("keeps bilingual project documentation aligned with the skill layout", async () => {
     const readme = await read("README.md");
     const englishReadme = await read("README.en.md");

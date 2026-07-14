@@ -284,6 +284,10 @@ describe("stable bilingual brief corpus and text output contract", () => {
       expect(maintenance).toMatch(new RegExp(`${dimension}.*4/5`, "i"));
     }
     expect(maintenance).toMatch(/material ambiguity|high risk/i);
+    const workflow = fs.readFileSync("references/design-first-workflow.md", "utf8");
+    expect(workflow).toContain("references/creative-intent.md");
+    expect(workflow).toContain("references/creative-benchmark.md");
+    expect(workflow).toContain("references/external-design-provenance.md");
   });
 
   it("documents canonical Semantic IR publication and real run indexing", () => {

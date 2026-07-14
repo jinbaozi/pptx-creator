@@ -16,7 +16,7 @@ npm run pptx -- text <deck.plan.json|plan-directory> <output-dir> [--creative] [
 
 The host agent follows `references/design-first-workflow.md` to convert raw text into an internal coordinate-free `deck.plan.json` version `0.2.0`; deterministic scripts validate it against `schemas/deck-plan.schema.json`, compile the selected canonical `semantic-slide-ir.json`, lower that IR to a `0.2.0` manifest, and render an editable PPTX. Its exact top-level keys are `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry a semantic page role, strict native `contentModel`, explicit attention target, composition intent, asset IDs, and native-first route policy. The host may add one optional `compositionIntent.blockId`; scripts validate and lower that explicit choice but never rank or invent it. Plan assets require non-empty `provenance.sourceRef`, one closed `provenance.rights` authority, optional HTTP(S) `sourceUrl`, and generation evidence only when `origin` is `generated`. Coordinates, manifest geometry, `elements`, and full-slide raster output are prohibited.
 
-The current migration shell supports the eight native content families `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. HTML is optional only when genuinely necessary and is never a mandatory text intermediate. An authored manifest requires the explicit advanced flag `--direct`; `--creative` remains only as a deprecated compatibility alias. `deck.plan` `0.1.0` is retired and fails closed before final, manifest, or quality artifacts are written.
+The current migration shell supports the eight native content families `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. HTML is optional only when genuinely necessary and is never a mandatory text intermediate. An authored manifest requires the explicit advanced flag `--direct`; `--creative` remains only as a deprecated compatibility alias.
 
 `--design-system` is available only on the creative text route. It accepts an existing local `DESIGN.md`, a directory containing one, or a built-in design-system name. Explicit paths win over names. With no option, resolution checks repository-root `DESIGN.md`, then input-adjacent `DESIGN.md`, then `design-systems/business-neutral/DESIGN.md`. The selected file is parsed before compilation, its declared name and tokens drive native element styling, and a portable copy is packaged as `design-system/DESIGN.md`. URL-like and unknown values fail closed.
 
@@ -70,14 +70,15 @@ routes do not produce Semantic IR.
 Block on missing input/output, a symlink output root, invalid plan, Semantic IR,
 manifest, public registry, or run artifacts, provenance/locality/hash drift,
 failed Creative gates, unavailable or incomplete LibreOffice slide evidence,
-any P0/P1 visual finding, or more than three repair attempts.
+any P0/P1 visual finding, more than three repair attempts, or an unproven
+release benchmark when release quality is being claimed.
 Perfect deterministic evidence without a completed final Host screenshot
 review also blocks.
 
 ## Next references
 
-1. `references/semantic-slide-ir.md`
-2. `references/creative-direction-probes.md`
+1. `references/creative-intent.md`
+2. `references/semantic-slide-ir.md`
 3. `references/creative-visual-proof.md`
 
 ## Migration from 0.1.1

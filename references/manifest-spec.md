@@ -19,6 +19,12 @@ The creative IR/run pair is committed only after packaging succeeds; hook or
 package failure invokes best-effort compensating rollback before blocked state,
 while the successful path does not invoke rollback.
 
+Within the Creative Director Pipeline, the Host authors coordinate-free intent
+and native-first semantic content; only deterministic lowering writes manifest
+geometry. See `references/creative-intent.md` and
+`references/semantic-slide-ir.md`. Direct and replica authors may provide a
+manifest explicitly, but that does not change its renderer-facing role.
+
 The breaking `0.2.0` contract requires:
 
 - `version: "0.2.0"`
