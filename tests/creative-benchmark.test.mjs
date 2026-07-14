@@ -9,9 +9,11 @@ import { compileDeckPlanArtifacts, validateDeckPlan } from "../scripts/lib/deck-
 import { validateJsonSchema } from "../scripts/lib/schema-utils.mjs";
 import {
   BENCHMARK_THRESHOLDS,
+  buildBlindReviewHtml,
   createBlindedReviewBundle,
   evaluateBlindPreference,
   loadCreativeBenchmarkCorpus,
+  portableArtifactManifest,
   selectLaneBriefs,
   validateBenchmarkCorpus,
   validateBlindReviewRecord,
@@ -120,6 +122,47 @@ describe("creative benchmark corpus", () => {
 });
 
 describe("blind preference protocol", () => {
+  it("publishes portable challenger evidence and an offline reviewer handoff", () => {
+    const outputRoot = path.join(os.tmpdir(), "creative-portable-output");
+    const artifacts = artifactsFor(corpus.briefs.slice(0, 1)).filter((artifact) => artifact.kind === "challenger").map((artifact) => ({
+      ...artifact,
+      evidence: Object.fromEntries(Object.entries(artifact.evidence).map(([key, value]) => [key, path.join(outputRoot, value)]))
+    }));
+    const portable = portableArtifactManifest(artifacts, outputRoot);
+    expect(portable).toHaveLength(1);
+    expect(portable[0]).toMatchObject({
+      briefId: corpus.briefs[0].id,
+      kind: "challenger",
+      artifactId: `${corpus.briefs[0].id}-challenger`,
+      identityAttestation: { status: "passed", scope: "generator-identity", reviewerFacingNamesNeutral: true }
+    });
+    expect(Object.values(portable[0].evidence).every((value) => !path.isAbsolute(value))).toBe(true);
+
+    const realRoot = fs.mkdtempSync(path.join(os.tmpdir(), "creative-portable-real-"));
+    const aliasRoot = `${realRoot}-alias`;
+    fs.symlinkSync(realRoot, aliasRoot, process.platform === "win32" ? "junction" : "dir");
+    fs.mkdirSync(path.join(realRoot, "slides"));
+    for (const target of ["deck.pptx", "contact-sheet.png", "creative-proof.json"]) fs.writeFileSync(path.join(realRoot, target), target);
+    const aliasPortable = portableArtifactManifest([{ ...artifacts[0], evidence: {
+      pptx: path.join(realRoot, "deck.pptx"), slides: path.join(realRoot, "slides"),
+      contactSheet: path.join(realRoot, "contact-sheet.png"), proof: path.join(realRoot, "creative-proof.json")
+    } }], aliasRoot);
+    expect(aliasPortable[0].evidence.pptx).toBe("deck.pptx");
+
+    const bundle = createBlindedReviewBundle({ corpus, artifacts: artifactsFor(), seed: "offline-review-handoff" });
+    expect(bundle.packet.pairs[0].reviewContext).toEqual({
+      brief: corpus.briefs[0].brief,
+      intent: corpus.briefs[0].input.intent,
+      audience: corpus.briefs[0].input.audience
+    });
+    const html = buildBlindReviewHtml(bundle.packet);
+    expect(html).toContain(bundle.packet.packetHash);
+    expect(bundle.packet.pairs.every((pair) => html.includes(pair.pairId))).toBe(true);
+    expect(html).toContain(corpus.briefs[0].brief);
+    expect(html).toContain("review-records.json");
+    expect(html).not.toMatch(/baseline|candidate|challenger|reference|generator|model/i);
+  });
+
   it("randomizes opaque sides and keeps the answer key outside the reviewer packet", () => {
     const first = createBlindedReviewBundle({ corpus, artifacts: artifactsFor(), seed: "release-2026-07" });
     const second = createBlindedReviewBundle({ corpus, artifacts: artifactsFor(), seed: "release-2026-07" });
@@ -188,7 +231,7 @@ describe("benchmark command contract", () => {
     expect(report.contracts).toEqual(expect.arrayContaining(["schema", "compiler", "anti-slop", "repair"]));
   }, 310_000);
 
-  it("materializes a metadata-neutral release packet and evaluates synthetic protocol fixtures", async () => {
+  it("prepares an offline handoff before evaluating separate reviewer files", async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "creative-release-contract-"));
     const source = path.join(workspace, "source");
     fs.mkdirSync(path.join(source, "slides"), { recursive: true });
@@ -205,32 +248,74 @@ describe("benchmark command contract", () => {
     fs.copyFileSync(png, path.join(source, "slides/slide-1.png"));
     fs.copyFileSync(png, path.join(source, "contact-sheet.png"));
     fs.writeFileSync(path.join(source, "creative-proof.json"), JSON.stringify({ generator: "candidate-engine", status: "passed" }), "utf8");
+    const alternate = path.join(workspace, "alternate");
+    fs.mkdirSync(path.join(alternate, "slides"), { recursive: true });
+    const alternateManifest = structuredClone(manifest);
+    const alternateText = alternateManifest.slides[0].elements.find((element) => element.type === "text");
+    alternateText.text = `${alternateText.text} — alternate fixture`;
+    const alternateManifestPath = path.join(alternate, "deck.manifest.json");
+    const alternateDesignPath = path.join(alternate, alternateManifest.designSystem.source);
+    fs.mkdirSync(path.dirname(alternateDesignPath), { recursive: true });
+    fs.copyFileSync(path.join(root, alternateManifest.designSystem.source), alternateDesignPath);
+    fs.writeFileSync(alternateManifestPath, JSON.stringify(alternateManifest), "utf8");
+    const alternatePptxPath = path.join(alternate, "deck.pptx");
+    execFileSync(process.execPath, [path.join(root, "scripts/render-pptx.mjs"), alternateManifestPath, alternatePptxPath], { cwd: root, stdio: "pipe" });
+    const alternatePng = path.join(root, "examples/image-input/replica-golden.png");
+    fs.copyFileSync(alternatePng, path.join(alternate, "slides/slide-1.png"));
+    fs.copyFileSync(alternatePng, path.join(alternate, "contact-sheet.png"));
+    fs.writeFileSync(path.join(alternate, "creative-proof.json"), JSON.stringify({ generator: "alternate-engine", status: "passed" }), "utf8");
     const artifacts = artifactsFor().map((artifact) => ({
       ...artifact,
+      ...(artifact.kind === "challenger" ? { artifactId: `${artifact.briefId}-alternate` } : {}),
       evidence: {
-        pptx: pptxPath,
-        slides: path.join(source, "slides"),
-        contactSheet: path.join(source, "contact-sheet.png"),
-        proof: path.join(source, "creative-proof.json")
+        pptx: artifact.kind === "challenger" ? alternatePptxPath : pptxPath,
+        slides: path.join(artifact.kind === "challenger" ? alternate : source, "slides"),
+        contactSheet: path.join(artifact.kind === "challenger" ? alternate : source, "contact-sheet.png"),
+        proof: path.join(artifact.kind === "challenger" ? alternate : source, "creative-proof.json")
       }
     }));
     const seed = "synthetic-contract-only";
     const bundle = createBlindedReviewBundle({ corpus, artifacts, seed });
-    const artifactsPath = path.join(workspace, "artifacts.json");
-    const reviewsPath = path.join(workspace, "reviews.json");
-    fs.writeFileSync(artifactsPath, JSON.stringify(artifacts), "utf8");
-    fs.writeFileSync(reviewsPath, JSON.stringify(passingReviews(bundle)), "utf8");
-    const output = path.join(workspace, "output");
+    const portable = artifacts.map((artifact) => ({
+      ...artifact,
+      evidence: Object.fromEntries(Object.entries(artifact.evidence).map(([key, value]) => [key, path.relative(workspace, value)]))
+    }));
+    const leftArtifactsPath = path.join(workspace, "left-artifacts.json");
+    const rightArtifactsPath = path.join(workspace, "right-artifacts.json");
+    fs.writeFileSync(leftArtifactsPath, JSON.stringify(portable.filter((artifact) => artifact.kind === "reference")), "utf8");
+    fs.writeFileSync(rightArtifactsPath, JSON.stringify(portable.filter((artifact) => artifact.kind === "challenger")), "utf8");
+    const prepareOutput = path.join(workspace, "prepare-output");
     execFileSync(process.execPath, [
-      path.join(root, "scripts/run-creative-benchmark.mjs"), "--lane", "release", "--output", output,
-      "--artifacts", artifactsPath, "--reviews", reviewsPath, "--seed", seed
+      path.join(root, "scripts/run-creative-benchmark.mjs"), "--lane", "release", "--output", prepareOutput,
+      "--artifacts", leftArtifactsPath, "--artifacts", rightArtifactsPath, "--seed", seed, "--prepare-review"
     ], { cwd: root, stdio: "pipe", timeout: 60_000 });
+    const prepareReport = JSON.parse(fs.readFileSync(path.join(prepareOutput, "benchmark-report.json"), "utf8"));
+    expect(prepareReport.status).toBe("awaiting-human-review");
+    const preparedPacket = JSON.parse(fs.readFileSync(path.join(prepareOutput, "blind-review-packet.json"), "utf8"));
+    expect(preparedPacket.packetHash).toBe(bundle.packet.packetHash);
+    const reviewerHtml = fs.readFileSync(path.join(prepareOutput, "reviewer/index.html"), "utf8");
+    expect(reviewerHtml).toContain(bundle.packet.pairs[0].pairId);
+    expect(reviewerHtml).not.toMatch(/baseline|candidate|challenger|reference|generator|model/i);
+
+    const reviewPaths = Array.from({ length: 5 }, (_, index) => {
+      const target = path.join(workspace, `reviewer-${index + 1}.json`);
+      fs.writeFileSync(target, JSON.stringify(passingReviews(bundle).filter((review) => review.reviewerId === `reviewer-${index + 1}`)), "utf8");
+      return target;
+    });
+    const output = path.join(workspace, "evaluate-output");
+    const evaluationArgs = [
+      path.join(root, "scripts/run-creative-benchmark.mjs"), "--lane", "release", "--output", output,
+      "--artifacts", leftArtifactsPath, "--artifacts", rightArtifactsPath, "--seed", seed
+    ];
+    for (const reviewPath of reviewPaths) evaluationArgs.push("--reviews", reviewPath);
+    execFileSync(process.execPath, evaluationArgs, { cwd: root, stdio: "pipe", timeout: 60_000 });
     const report = JSON.parse(fs.readFileSync(path.join(output, "benchmark-report.json"), "utf8"));
     expect(report.status).toBe("passed");
     expect(report.evidence).not.toContain("private/answer-key.json");
     expect(fs.existsSync(path.join(output, "private/answer-key.json"))).toBe(true);
-    const publicText = fs.readFileSync(path.join(output, "blind-review-packet.json"), "utf8").toLowerCase();
-    expect(publicText).not.toMatch(/baseline|candidate|challenger|reference|generator|model/);
+    const publicPacketText = fs.readFileSync(path.join(output, "blind-review-packet.json"), "utf8");
+    expect(publicPacketText).not.toMatch(/baseline|candidate|challenger|reference|generator|model/i);
+    expect(JSON.parse(publicPacketText).packetHash).toBe(preparedPacket.packetHash);
     const firstPair = bundle.packet.pairs[0];
     const publicPptx = path.join(output, firstPair.left.evidence.pptx);
     const publicZip = await JSZip.loadAsync(fs.readFileSync(publicPptx));

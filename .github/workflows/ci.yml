@@ -19,9 +19,9 @@ on:
         required: false
         default: examples/creative-benchmark/release-artifacts.json
       review_file:
-        description: Blinded review records path in the checked-out revision
+        description: Blinded review records path; leave empty to prepare the offline reviewer handoff
         required: false
-        default: examples/creative-benchmark/reviews.json
+        default: ""
       blind_seed:
         description: Explicit release blinding seed
         required: false
@@ -152,6 +152,7 @@ jobs:
             output/creative-benchmark-render/**/*.pptx
             output/creative-benchmark-render/**/*.png
             output/creative-benchmark-render/**/creative-proof.json
+            output/creative-benchmark-render/challenger-artifacts.json
             output/creative-benchmark-render/benchmark-report.json
 
   creative-nightly:
@@ -180,6 +181,7 @@ jobs:
             output/creative-benchmark-nightly/**/*.pptx
             output/creative-benchmark-nightly/**/*.png
             output/creative-benchmark-nightly/**/creative-proof.json
+            output/creative-benchmark-nightly/challenger-artifacts.json
             output/creative-benchmark-nightly/benchmark-report.json
 
   creative-manual-fast-or-render:
@@ -220,7 +222,16 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Prepare blinded reviewer handoff
+        if: inputs.review_file == ''
+        run: >-
+          npm run benchmark:creative -- --lane release
+          --output output/creative-benchmark-release
+          --artifacts "${{ inputs.artifact_manifest }}"
+          --seed "${{ inputs.blind_seed }}"
+          --prepare-review
       - name: Evaluate blinded release preference
+        if: inputs.review_file != ''
         run: >-
           npm run benchmark:creative -- --lane release
           --output output/creative-benchmark-release
@@ -238,4 +249,6 @@ jobs:
             output/creative-benchmark-release/blind-review-packet.json
             output/creative-benchmark-release/blind-preference-report.json
             output/creative-benchmark-release/benchmark-report.json
+            output/creative-benchmark-release/reviewer/index.html
+            output/creative-benchmark-release/reviewer/README.md
             !output/creative-benchmark-release/private/**

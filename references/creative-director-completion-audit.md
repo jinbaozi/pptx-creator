@@ -28,7 +28,7 @@ the required human blind review.
 | Mandatory final Host visual proof | implemented | Creative Proof schemas, full-deck resume tests, `references/creative-visual-proof.md` |
 | Evidence-led safe refinement | implemented | `scripts/lib/creative-refinement.mjs`, refinement schemas/tests, `references/creative-refinement.md` |
 | Contextual anti-slop calibration | implemented for paired fixtures | `scripts/lib/slop-risk.mjs`, `tests/fixtures/slop-rules/paired-cases.json`, `tests/slop-risk.test.mjs` |
-| Cross-domain benchmark machinery | implemented | `examples/creative-benchmark/corpus.json`, `scripts/lib/blind-preference.mjs`, `scripts/run-creative-benchmark.mjs`, `.github/workflows/ci.yml` |
+| Cross-domain benchmark machinery | implemented | corpus, portable challenger manifest, two-stage offline reviewer handoff, repeated review ingestion, statistics, `.github/workflows/ci.yml` |
 | Public progressive contract | implemented | `SKILL.md`, route/workflow references, documentation contract tests |
 
 ## Verification boundary
@@ -39,20 +39,36 @@ identity neutralization, subgroup statistics, and CI lane wiring. Release
 acceptance additionally requires 24 briefs x at least five reviewers using
 real reference/challenger evidence.
 
-That human review evidence is missing. Therefore the goal remains active and
-release quality is unproven. Passing unit, browser, Python, visual, render-lane,
-or synthetic-review checks may establish implementation correctness, but none
-may change the release status to proven.
+The frozen reference-artifact set is now reproducibly generated from exact
+revision `a0cb5ef926d7e594e41464594885a9fd3dfbe024`, and a materially distinct
+24-pair anonymous reviewer packet has been prepared from the frozen reference
+and current challenger artifacts. The packet status is `awaiting-human-review`;
+its public packet hash is
+`sha256:027af8fe1c143e8e2ac6f44f8ca022f912b9ae15e8313c3fc08761ced5c9daeb`.
+The reviewer-facing files passed the identity-leak audit and the private answer
+key remains outside the distributable review directory.
+
+Independent human review evidence is still missing. Therefore the goal remains active
+and release quality is unproven. Passing unit, browser, Python, visual,
+render-lane, artifact-preparation, or synthetic-review checks may establish
+implementation correctness, but none may change the release status to proven.
 
 ## Final implementation verification
 
-The Task 12 completion run passed the following local suites:
+The Task 13 operational-review completion run passed the following local
+suites:
 
-- focused documentation and text-contract tests: 33/33;
-- JavaScript unit suite: 972 passed, 44 skipped;
+- focused blind-review workflow tests: 11/11;
+- related benchmark, documentation, route, and text-contract tests: 87/87;
+- JavaScript unit suite: 973 passed, 44 skipped;
 - browser, HTML, and replica golden suite: 132/132;
 - visual regression suite: 2/2; and
 - Python suite: 70/70.
+
+The current challenger nightly lane rendered 24/24 briefs in 25.272 seconds.
+The frozen-reference renderer produced 24/24 briefs from the pinned revision in
+22.061 seconds. Release preparation then verified distinct PPTX and contact-sheet
+hashes for every pair before producing the offline reviewer handoff.
 
 The browser suite used the isolated Python 3.12 image environment declared by
 the repository so Pillow, pytesseract, Tesseract, LibreOffice, and Chromium

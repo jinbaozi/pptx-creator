@@ -20,6 +20,98 @@ export const BENCHMARK_THRESHOLDS = Object.freeze({
   medianRating: 4
 });
 
+const ARTIFACT_EVIDENCE_KEYS = Object.freeze(["pptx", "slides", "contactSheet", "proof"]);
+
+export function portableArtifactManifest(artifacts, outputRoot) {
+  const canonicalPath = (value) => {
+    try { return fs.realpathSync.native(path.resolve(value)); }
+    catch { return path.resolve(value); }
+  };
+  const root = canonicalPath(outputRoot);
+  return (artifacts ?? []).map((artifact) => {
+    const evidence = {};
+    for (const key of ARTIFACT_EVIDENCE_KEYS) {
+      const source = artifact?.evidence?.[key];
+      if (typeof source !== "string" || !source.trim()) throw new Error(`${artifact?.briefId ?? "artifact"}: missing ${key} evidence`);
+      const absolute = canonicalPath(source);
+      const relative = path.relative(root, absolute);
+      if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        throw new Error(`${artifact?.briefId ?? "artifact"}: ${key} evidence must be below the benchmark output root`);
+      }
+      evidence[key] = relative.split(path.sep).join("/");
+    }
+    return {
+      briefId: artifact.briefId,
+      kind: artifact.kind,
+      artifactId: artifact.artifactId,
+      identityAttestation: structuredClone(artifact.identityAttestation),
+      ...(artifact.provenance ? { provenance: structuredClone(artifact.provenance) } : {}),
+      evidence
+    };
+  });
+}
+
+function htmlEscape(value) {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+export function buildBlindReviewHtml(packet) {
+  if (!packet?.packetHash || !Array.isArray(packet?.pairs) || packet.pairs.length === 0) throw new Error("a bound blind packet is required");
+  const pairMarkup = packet.pairs.map((pair, index) => {
+    const side = (name) => {
+      const evidence = pair[name]?.evidence ?? {};
+      const ratings = DIMENSIONS.map((dimension) => `
+        <label>${htmlEscape(dimension)}
+          <select required data-rating="${htmlEscape(name)}" data-dimension="${htmlEscape(dimension)}">
+            <option value="">-</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+          </select>
+        </label>`).join("");
+      return `<article class="side">
+        <h3>${name === "left" ? "Left" : "Right"}</h3>
+        <a href="../${htmlEscape(evidence.pptx)}">Open editable deck</a>
+        <a href="../${htmlEscape(evidence.slides)}">Open full-size slides</a>
+        <img src="../${htmlEscape(evidence.contactSheet)}" alt="${name === "left" ? "Left" : "Right"} contact sheet">
+        <fieldset><legend>Independent ratings</legend>${ratings}</fieldset>
+      </article>`;
+    };
+    return `<section class="pair" data-pair-id="${htmlEscape(pair.pairId)}">
+      <header><span>Pair ${index + 1} of ${packet.pairs.length}</span><span>${htmlEscape(pair.domain)} · ${htmlEscape(pair.language)}</span></header>
+      <p class="context"><strong>${htmlEscape(pair.reviewContext?.brief ?? "")}</strong><br>
+        Intent: ${htmlEscape(pair.reviewContext?.intent ?? "")} · Audience: ${htmlEscape(pair.reviewContext?.audience ?? "")}</p>
+      <div class="sides">${side("left")}${side("right")}</div>
+      <fieldset class="choice"><legend>Which deck is stronger overall?</legend>
+        <label><input required type="radio" name="choice-${htmlEscape(pair.pairId)}" value="left">Left</label>
+        <label><input required type="radio" name="choice-${htmlEscape(pair.pairId)}" value="right">Right</label>
+        <label><input required type="radio" name="choice-${htmlEscape(pair.pairId)}" value="tie">Tie</label>
+      </fieldset>
+    </section>`;
+  }).join("\n");
+  const packetHash = htmlEscape(packet.packetHash);
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blind deck review</title><style>
+body{font:15px/1.45 system-ui,sans-serif;margin:0;background:#f4f6f8;color:#17202a}main{max-width:1180px;margin:auto;padding:28px}h1{margin:0 0 8px}.note{color:#52606d}.pair{background:white;border:1px solid #d9e1e8;border-radius:14px;margin:24px 0;padding:20px}.pair>header{display:flex;justify-content:space-between;font-weight:700}.context{background:#f4f6f8;border-radius:8px;padding:10px 12px}.sides{display:grid;grid-template-columns:1fr 1fr;gap:18px}.side{min-width:0}.side>a{display:inline-block;margin:0 12px 10px 0}.side img{display:block;width:100%;border:1px solid #ccd5dd}.side fieldset{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}.side label{display:grid;gap:4px;font-size:12px}.choice{display:flex;gap:22px;margin-top:18px}.actions{position:sticky;bottom:0;background:#17202a;color:white;padding:14px;border-radius:12px;display:flex;align-items:center;gap:12px}.actions input{padding:8px;min-width:220px}.actions button{padding:9px 16px;font-weight:700}@media(max-width:800px){.sides{grid-template-columns:1fr}.side fieldset{grid-template-columns:repeat(2,1fr)}}
+</style></head><body><main>
+<h1>Blind deck review</h1><p class="note">Inspect both full-size slide sets before choosing. Rate each side independently. Packet <code>${packetHash}</code>.</p>
+<form id="review-form">${pairMarkup}<div class="actions"><label>Opaque reviewer ID <input id="reviewer-id" required autocomplete="off"></label><button type="submit">Export review-records.json</button><span id="status"></span></div></form>
+</main><script>
+const dimensions=${JSON.stringify(DIMENSIONS)};
+const packetHash=${JSON.stringify(packet.packetHash)};
+document.getElementById("review-form").addEventListener("submit",event=>{
+  event.preventDefault();const reviewerId=document.getElementById("reviewer-id").value.trim();const status=document.getElementById("status");
+  if(!reviewerId){status.textContent="Use a neutral opaque reviewer ID.";return;}
+  const submittedAt=new Date().toISOString();const records=[];
+  for(const section of document.querySelectorAll(".pair")){
+    const pairId=section.dataset.pairId;const selected=section.querySelector("input[type=radio]:checked")?.value;if(!selected){status.textContent="Complete every overall choice.";return;}
+    const ratings={left:{},right:{}};
+    for(const side of ["left","right"])for(const dimension of dimensions){const input=section.querySelector('[data-rating="'+side+'"][data-dimension="'+dimension+'"]');const value=Number(input.value);if(!Number.isInteger(value)||value<1||value>5){status.textContent="Complete every 1-5 rating.";return;}ratings[side][dimension]=value;}
+    records.push({version:"0.1.0",pairId,reviewerId,selected,ratings,submittedAt});
+  }
+  const blob=new Blob([JSON.stringify(records,null,2)+"\\n"],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="review-records.json";link.click();URL.revokeObjectURL(url);status.textContent="Exported "+records.length+" records for "+packetHash.slice(0,18)+"…";
+});
+</script></body></html>\n`;
+}
+
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === "object") {
@@ -161,6 +253,11 @@ export function createBlindedReviewBundle({ corpus, artifacts, seed }) {
       briefId: brief.id,
       domain: brief.domain,
       language: brief.language,
+      reviewContext: {
+        brief: brief.brief,
+        intent: brief.input.intent,
+        audience: brief.input.audience
+      },
       left: publicSide("left", challengerSide === "left" ? challenger : reference),
       right: publicSide("right", challengerSide === "right" ? challenger : reference)
     });

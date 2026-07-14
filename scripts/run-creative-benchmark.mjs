@@ -9,9 +9,11 @@ import { compileDeckPlanArtifacts, validateDeckPlan } from "./lib/deck-plan.mjs"
 import { scoreSlopRisk } from "./lib/slop-risk.mjs";
 import { buildCreativeRepairPatch } from "./lib/creative-repair.mjs";
 import {
+  buildBlindReviewHtml,
   createBlindedReviewBundle,
   evaluateBlindPreference,
   loadCreativeBenchmarkCorpus,
+  portableArtifactManifest,
   selectLaneBriefs,
   validateBenchmarkCorpus
 } from "./lib/blind-preference.mjs";
@@ -21,25 +23,51 @@ const LIMITS_MS = Object.freeze({ fast: 5 * 60_000, render: 10 * 60_000, nightly
 const IDENTITY_LEAK = /baseline|candidate|challenger|reference|generator|model/i;
 
 function parseArgs(argv) {
-  const options = { lane: null, output: path.join(root, "output/creative-benchmark") };
+  const options = { lane: null, output: path.join(root, "output/creative-benchmark"), artifacts: [], reviews: [], prepareReview: false };
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
     if (key === "--lane") options.lane = argv[++index];
     else if (key === "--output") options.output = path.resolve(argv[++index]);
-    else if (key === "--artifacts") options.artifacts = path.resolve(argv[++index]);
-    else if (key === "--reviews") options.reviews = path.resolve(argv[++index]);
+    else if (key === "--artifacts") options.artifacts.push(path.resolve(argv[++index]));
+    else if (key === "--reviews") options.reviews.push(path.resolve(argv[++index]));
     else if (key === "--seed") options.seed = argv[++index];
+    else if (key === "--prepare-review") options.prepareReview = true;
     else throw new Error(`unknown argument: ${key}`);
   }
   if (!new Set(["fast", "render", "nightly", "release"]).has(options.lane)) {
-    throw new Error("usage: run-creative-benchmark.mjs --lane fast|render|nightly|release [--output DIR]");
+    throw new Error("usage: run-creative-benchmark.mjs --lane fast|render|nightly|release [--output DIR] [--artifacts JSON ... --seed VALUE (--prepare-review | --reviews JSON ...)]");
   }
+  if (options.lane !== "release" && (options.artifacts.length || options.reviews.length || options.prepareReview || options.seed)) {
+    throw new Error("--artifacts, --reviews, --seed, and --prepare-review are release-lane options");
+  }
+  if (options.prepareReview && options.reviews.length) throw new Error("--prepare-review and --reviews are mutually exclusive");
   return options;
 }
 
 function writeJson(target, value) {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function readList(source, label) {
+  const parsed = JSON.parse(fs.readFileSync(source, "utf8"));
+  const records = Array.isArray(parsed) ? parsed : parsed?.[label];
+  if (!Array.isArray(records)) throw new Error(`${source}: expected an array or an object with ${label}`);
+  return records;
+}
+
+function loadArtifactManifests(sources) {
+  return sources.flatMap((source) => readList(source, "artifacts").map((artifact) => ({
+    ...artifact,
+    evidence: Object.fromEntries(Object.entries(artifact.evidence ?? {}).map(([key, value]) => [
+      key,
+      path.isAbsolute(value) ? value : path.resolve(path.dirname(source), value)
+    ]))
+  })));
+}
+
+function loadReviewFiles(sources) {
+  return sources.flatMap((source) => readList(source, "reviews"));
 }
 
 function resolveInstalledFont(request, language) {
@@ -156,6 +184,20 @@ function fileHash(source) {
   return `sha256:${createHash("sha256").update(fs.readFileSync(source)).digest("hex")}`;
 }
 
+function assertDistinctPairEvidence(corpus, artifacts) {
+  for (const brief of corpus.briefs) {
+    const entries = artifacts.filter((artifact) => artifact.briefId === brief.id);
+    const reference = entries.find((artifact) => artifact.kind === "reference");
+    const challenger = entries.find((artifact) => artifact.kind === "challenger");
+    if (!reference || !challenger) continue;
+    for (const key of ["pptx", "contactSheet"]) {
+      if (fileHash(reference.evidence[key]) === fileHash(challenger.evidence[key])) {
+        throw new Error(`${brief.id}: left/right source ${key} evidence must be materially distinct`);
+      }
+    }
+  }
+}
+
 async function neutralizePptxMetadata(source, target) {
   const zip = await JSZip.loadAsync(fs.readFileSync(source));
   for (const name of Object.keys(zip.files).filter((entry) => entry.startsWith("docProps/") && entry.endsWith(".xml"))) {
@@ -205,29 +247,35 @@ async function materializeBlindReviewAssets(bundle, artifacts, outputRoot) {
 }
 
 async function runRelease(corpus, options, startedAt) {
-  if (!options.artifacts) throw new Error("release lane requires --artifacts with 24 complete reference/challenger pairs");
+  if (!options.artifacts.length) throw new Error("release lane requires --artifacts with 24 complete reference/challenger pairs");
   if (!options.seed) throw new Error("release lane requires an explicit --seed");
-  const artifacts = JSON.parse(fs.readFileSync(options.artifacts, "utf8"));
+  if (!options.prepareReview && !options.reviews.length) throw new Error("release evaluation requires --reviews; use --prepare-review to create the blinded reviewer handoff first");
+  const artifacts = loadArtifactManifests(options.artifacts);
+  assertDistinctPairEvidence(corpus, artifacts);
   const bundle = createBlindedReviewBundle({ corpus, artifacts, seed: options.seed });
   await materializeBlindReviewAssets(bundle, artifacts, options.output);
   writeJson(path.join(options.output, "blind-review-packet.json"), bundle.packet);
   writeJson(path.join(options.output, "private/answer-key.json"), bundle.answerKey);
-  const reviews = options.reviews ? JSON.parse(fs.readFileSync(options.reviews, "utf8")) : [];
+  const reviewerRoot = path.join(options.output, "reviewer");
+  fs.mkdirSync(reviewerRoot, { recursive: true });
+  fs.writeFileSync(path.join(reviewerRoot, "index.html"), buildBlindReviewHtml(bundle.packet), "utf8");
+  fs.writeFileSync(path.join(reviewerRoot, "README.md"), "# Blind deck review\n\nOpen `index.html`, inspect every full-size slide set, complete all independent ratings, and export `review-records.json`. Use a different neutral opaque reviewer ID for each reviewer. Do not distribute the sibling `private/` directory.\n", "utf8");
+  const reviews = options.prepareReview ? [] : loadReviewFiles(options.reviews);
   const preference = evaluateBlindPreference({ corpus, bundle, reviews });
   writeJson(path.join(options.output, "blind-preference-report.json"), preference);
   return {
     version: "0.1.0",
     lane: "release",
-    status: preference.status,
+    status: options.prepareReview ? "awaiting-human-review" : preference.status,
     networkUsed: false,
     llmUsed: false,
     elapsedMs: Date.now() - startedAt,
     timeBudgetMs: LIMITS_MS.release,
     briefs: corpus.briefs.map(({ id, domain, language }) => ({ id, domain, language, status: "review-paired" })),
     contracts: ["blinding", "identity-isolation", "five-reviewer-minimum", "wilson-95", "subgroup-thresholds", "five-dimension-medians"],
-    evidence: ["blind-review-packet.json", "blind-preference-report.json"],
+    evidence: ["blind-review-packet.json", "blind-preference-report.json", "reviewer/index.html", "reviewer/README.md"],
     privateEvidence: ["private/answer-key.json"],
-    failures: preference.failures
+    failures: options.prepareReview ? ["human-reviews-pending"] : preference.failures
   };
 }
 
@@ -245,6 +293,8 @@ async function main() {
     const briefs = selectLaneBriefs(corpus, options.lane);
     const results = briefs.map((brief) => fastContract(corpus, brief));
     const rendered = options.lane === "fast" ? [] : briefs.map((brief) => renderBrief(corpus, brief, options.output));
+    const portableArtifacts = rendered.length ? portableArtifactManifest(rendered, options.output) : [];
+    if (portableArtifacts.length) writeJson(path.join(options.output, "challenger-artifacts.json"), portableArtifacts);
     const elapsedMs = Date.now() - startedAt;
     report = {
       version: "0.1.0",
@@ -256,12 +306,13 @@ async function main() {
       timeBudgetMs: LIMITS_MS[options.lane],
       briefs: results,
       contracts: ["schema", "compiler", "anti-slop", "repair", ...(rendered.length ? ["pptx", "libreoffice", "png", "contact-sheet", "proof"] : [])],
-      artifacts: rendered.map((artifact) => ({ briefId: artifact.briefId, kind: artifact.kind, evidence: artifact.evidence }))
+      artifacts: portableArtifacts,
+      evidence: portableArtifacts.length ? ["challenger-artifacts.json"] : []
     };
   }
   writeJson(path.join(options.output, "benchmark-report.json"), report);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  if (report.status !== "passed") process.exitCode = 2;
+  if (!new Set(["passed", "awaiting-human-review"]).has(report.status)) process.exitCode = 2;
 }
 
 try {

@@ -16,6 +16,18 @@ hierarchy, spacing, density, consistency, and originality. See
 the private answer key only after collection, then reports challenger medians,
 overall Wilson 95% lower bound, and domain/language subgroups.
 
-`npm run benchmark:creative -- --lane release` writes the public review packet
-under the output root and the answer key under `private/`. Never distribute or
-upload that private directory with the reviewer packet.
+`npm run benchmark:creative -- --lane nightly` renders all current decks and
+writes a portable `challenger-artifacts.json`. Pair it with a genuine frozen
+reference manifest; never duplicate the current artifacts onto both sides.
+The internal `scripts/render-creative-benchmark-reference.mjs` helper can render
+a revision-bound repository checkout into `reference-artifacts.json`; it fails
+if the checkout HEAD does not equal the requested full commit.
+
+Release has two resumable stages. First run `--lane release` with a fixed seed,
+one or more repeated `--artifacts`, and `--prepare-review`. It writes the public
+packet, anonymized decks/screenshots, and an offline `reviewer/index.html`, plus
+the answer key under `private/`. Never distribute or upload that private
+directory. After each reviewer exports a separate `review-records.json`, rerun
+with the identical seed/artifacts and pass the files through repeated
+`--reviews` options. Packet drift, duplicate identities, or missing coverage
+fails closed.
