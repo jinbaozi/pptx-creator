@@ -59,6 +59,11 @@ describe("Task 1 public CLI", () => {
       script: "run-route-pipeline.mjs",
       args: ["text", "creative", "artifacts", "out", "--design-system", "dark-tech"]
     });
+    expect(buildInvocation(["text", "artifacts", "out", "--creative-directions", "directions.json", "--host-review", "review.json"])).toMatchObject({
+      route: "text",
+      script: "run-route-pipeline.mjs",
+      args: ["text", "creative", "artifacts", "out", "--creative-directions", "directions.json", "--host-review", "review.json"]
+    });
     expect(buildInvocation(["text", "deck.json", "out", "--direct"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "direct", "deck.json", "out"] });
     expect(buildInvocation(["html", "input.html", "out"])).toMatchObject({
       route: "html-replica",
@@ -76,6 +81,7 @@ describe("Task 1 public CLI", () => {
     expect(help.stdout).toContain("pptx <text|html|image|pdf|manifest>");
     expect(help.stdout).toContain("--direct");
     expect(help.stdout).toContain("--design-system <path-or-name>");
+    expect(help.stdout).toContain("--creative-directions <json>");
 
     await expect(execFileAsync(process.execPath, [cli, "unknown"], { cwd: root })).rejects.toMatchObject({ code: 1 });
     await expect(execFileAsync(process.execPath, [cli, "html", "input.html"], { cwd: root })).rejects.toMatchObject({ code: 1 });
@@ -85,6 +91,8 @@ describe("Task 1 public CLI", () => {
       .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/requires a value|expected/i) });
     await expect(execFileAsync(process.execPath, [cli, "text", "deck.json", "out", "--direct", "--design-system", "dark-tech"], { cwd: root }))
       .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/creative|direct/i) });
+    await expect(execFileAsync(process.execPath, [cli, "text", "deck.json", "out", "--host-review", "review.json"], { cwd: root }))
+      .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/requires --creative-directions/i) });
   });
 
   it("forwards the creative design-system option through the second routing hop", async () => {
@@ -97,6 +105,13 @@ describe("Task 1 public CLI", () => {
       options: { designSystem: "dark-tech", allowRemoteAssets: false }
     });
     expect(() => buildRouteInvocation(["text", "creative", "deck.plan.json", "out", "--design-system"])).toThrow(/requires a value/i);
+    expect(buildRouteInvocation(["text", "creative", "deck.plan.json", "out", "--creative-directions", "directions.json", "--host-review", "review.json"])).toEqual({
+      route: "text",
+      mode: "creative",
+      input: "deck.plan.json",
+      outputDir: "out",
+      options: { designSystem: null, allowRemoteAssets: false, creativeDirections: "directions.json", hostReview: "review.json" }
+    });
   });
 });
 

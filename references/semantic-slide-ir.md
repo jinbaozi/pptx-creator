@@ -49,9 +49,12 @@ invokes route-provided best-effort reverse rollback before
 `pipeline-blocked.json` is written, and rollback errors do not mask the primary
 failure. Only package success commits the set; the successful path does not
 invoke rollback. Direct and replica routes do not produce Semantic IR and keep
-`artifacts.semanticIr` as `null` when they write a run index. Direction
-candidates, if a later pipeline stage introduces them, are evidence for
-selection and must never overwrite the selected canonical IR.
+`artifacts.semanticIr` as `null` when they write a run index. Run-scoped
+direction candidates are selection evidence only and never overwrite the
+selected canonical IR. Each candidate is first compiled as a full IR, while
+its probe PPTX is produced by filtering the resulting manifest to the shared
+adaptive semantic slide IDs. The selected direction is compiled again as the
+one full canonical IR after hash-bound Host blind review.
 
 ## Top-level contract
 
@@ -253,11 +256,14 @@ invalid IR.
 ## Current boundary
 
 This version publishes the selected canonical IR together with a public asset
-registry and indexes all four canonical evidence paths in `run.json`. The manifest remains the sole render
-truth; the registry is provenance, locality, hash, usage, and final-deck-use
-audit evidence. It provides an explicitly host-selected fifteen-block
-composition registry but does not generate, rank, score, or persist visual
-concept candidates. A block is a bounded post-family topology transform, not a
-replacement generic renderer. The eight existing family geometry compilers
-remain the default and stay byte/geometry compatible when no
-`compositionIntent.blockId` is present.
+registry and indexes all four canonical evidence paths in `run.json`. The
+manifest remains the sole render truth; the registry is provenance, locality,
+hash, usage, and final-deck-use audit evidence. It provides an explicitly
+Host-selected fifteen-block composition registry and a conditional two-stage
+probe protocol. The latter validates and persists Host-authored directions but
+does not generate directions or rank concepts: anonymous rendered pairwise
+preference is primary, and deterministic scores are diagnostic only. Candidate
+IR is temporary/run-scoped; the winner alone becomes canonical. A block is a
+bounded post-family topology transform, not a replacement generic renderer.
+The eight existing family geometry compilers remain the default and stay
+byte/geometry compatible when no `compositionIntent.blockId` is present.

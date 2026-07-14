@@ -20,7 +20,7 @@
     "artifacts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["deckPlan", "semanticIr", "manifest", "pptx", "previews", "reviews", "consistencyReport", "sources", "assetRegistry"],
+      "required": ["deckPlan", "semanticIr", "manifest", "pptx", "previews", "reviews", "consistencyReport", "sources", "assetRegistry", "creativeCandidates", "creativeSelection", "blindPacket"],
       "properties": {
         "deckPlan": { "type": ["string", "null"] },
         "semanticIr": { "type": ["string", "null"] },
@@ -30,9 +30,21 @@
         "reviews": { "type": "array", "items": { "type": "string" } },
         "consistencyReport": { "type": ["string", "null"] },
         "sources": { "type": ["string", "null"] },
-        "assetRegistry": { "type": ["string", "null"] }
+        "assetRegistry": { "type": ["string", "null"] },
+        "creativeCandidates": { "type": ["string", "null"] },
+        "creativeSelection": { "type": ["string", "null"] },
+        "blindPacket": { "type": ["string", "null"] }
       }
     },
-    "metadata": { "type": "object" }
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["explorationId", "blindPacketHash", "selectedCandidateId"],
+      "properties": {
+        "explorationId": { "type": "string", "pattern": "^explore-[a-f0-9]{24}$" },
+        "blindPacketHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "selectedCandidateId": { "type": "string", "minLength": 1 }
+      }
+    }
   }
 }

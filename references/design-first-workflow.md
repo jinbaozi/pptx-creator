@@ -34,7 +34,13 @@ The plan is version `0.2.0` with exactly six required top-level keys: `version`,
 
 The current migration shell keeps eight strict native content families: `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. It is coordinate-free at every depth: coordinates, manifest geometry, and `elements` are invalid. `schemas/deck-plan.schema.json` is the structural validator; runtime checks add provenance/generation cross-field rules, ID uniqueness, reference resolution, required route/suite membership, and composition ordering. Version `0.1.0` is retired and cannot compile.
 
-Direction candidates are optional. Use them only when material ambiguity or high risk makes a single direction unsafe; candidate count, scoring, and recommendation are host-agent judgments, never fixed deterministic outputs.
+Direction probes are conditional and always Host-authored. Standard plans stay
+on the compile-once path; flagship plans always require a bounded direction
+request; premium plans explore only at two or more frozen material-risk
+signals. The Host supplies two through the profile cap, inspects real anonymous
+rendered probes, and records complete pairwise preference before reveal.
+Deterministic diagnostics cannot select or overturn the winner. See
+`references/creative-direction-probes.md` for the two-stage resume protocol.
 
 Composition blocks are also host-selected, never ranked or inferred by scripts.
 The Creative runner loads the closed built-in registry once and passes it only
@@ -72,8 +78,14 @@ remain valid. Publication is committed only by a successful package step. If
 the hook partially fails or packaging fails, the common pipeline invokes
 best-effort reverse rollback before writing `pipeline-blocked.json`; rollback
 failure never replaces the primary failure. A successful run does not execute
-this rollback. Candidate evidence must never overwrite the selected canonical
-IR, and the IR is never reconstructed from fitted or repaired geometry.
+this rollback. Candidate evidence never overwrites the selected canonical IR,
+and the IR is never reconstructed from fitted or repaired geometry. In an
+explored run, `creative-candidates.json` and `creative-selection.json` join the
+same pre-package transaction before plan, IR, registry, and run publication.
+`run.json` binds them to the anonymized packet through a separate
+content-derived `explorationId`; its `runId` remains derived only from the
+selected full canonical IR. Failed packaging rolls candidate and reveal data
+back together with the canonical evidence.
 
 ## Design and asset resolution
 

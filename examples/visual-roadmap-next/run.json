@@ -15,6 +15,9 @@
     "reviews": [],
     "consistencyReport": null,
     "sources": "sources.json",
-    "assetRegistry": "assets/asset-registry.json"
+    "assetRegistry": "assets/asset-registry.json",
+    "creativeCandidates": null,
+    "creativeSelection": null,
+    "blindPacket": null
   }
 }

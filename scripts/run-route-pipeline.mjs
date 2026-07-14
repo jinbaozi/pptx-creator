@@ -27,7 +27,9 @@ export async function runRoutePipeline(route, mode, input, outputDir, options = 
       outputDir,
       "--mode",
       "creative",
-      ...(options.designSystem ? ["--design-system", options.designSystem] : [])
+      ...(options.designSystem ? ["--design-system", options.designSystem] : []),
+      ...(options.creativeDirections ? ["--creative-directions", options.creativeDirections] : []),
+      ...(options.hostReview ? ["--host-review", options.hostReview] : [])
     ]);
     if (code !== 0) throw new Error(`creative text pipeline failed with exit ${code}`);
     return { route, mode, outputDir: resolve(outputDir), status: "passed" };
@@ -51,6 +53,8 @@ export function buildRouteInvocation(argv) {
   }
   let allowRemoteAssets = false;
   let designSystem = null;
+  let creativeDirections = null;
+  let hostReview = null;
   for (let index = 0; index < flags.length; index += 1) {
     const flag = flags[index];
     if (flag === "--allow-remote-assets") allowRemoteAssets = true;
@@ -60,15 +64,35 @@ export function buildRouteInvocation(argv) {
       if (!value || value.startsWith("--")) throw new Error("--design-system requires a value");
       designSystem = value;
       index += 1;
+    } else if (flag === "--creative-directions" || flag === "--host-review") {
+      const value = flags[index + 1];
+      if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value`);
+      if (flag === "--creative-directions") {
+        if (creativeDirections !== null) throw new Error("--creative-directions may be provided only once");
+        creativeDirections = value;
+      } else {
+        if (hostReview !== null) throw new Error("--host-review may be provided only once");
+        hostReview = value;
+      }
+      index += 1;
     } else throw new Error(`unknown option: ${flag}`);
   }
   if (designSystem && (route !== "text" || mode !== "creative")) {
     throw new Error("--design-system is available only for creative text mode");
   }
+  if ((creativeDirections || hostReview) && (route !== "text" || mode !== "creative")) {
+    throw new Error("creative direction options are available only for creative text mode");
+  }
+  if (hostReview && !creativeDirections) throw new Error("--host-review requires --creative-directions");
   if (allowRemoteAssets && (route !== "html" || mode !== "replica")) {
     throw new Error("--allow-remote-assets is available only for HTML replica mode");
   }
-  return { route, mode, input, outputDir, options: { designSystem, allowRemoteAssets } };
+  return { route, mode, input, outputDir, options: {
+    designSystem,
+    allowRemoteAssets,
+    ...(creativeDirections ? { creativeDirections } : {}),
+    ...(hostReview ? { hostReview } : {})
+  } };
 }
 
 export async function run(argv = process.argv.slice(2)) {

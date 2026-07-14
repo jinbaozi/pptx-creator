@@ -8,7 +8,7 @@ const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const HELP = `Usage: pptx <text|html|image|pdf|manifest> ...
 
 Routes:
-  text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>]
+  text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] [--creative-directions <json>] [--host-review <json>]
   text <deck.manifest.json> <output-dir> --direct
   html <input.html> <output-dir> [--allow-remote-assets]
   image <input.png> <output-dir>
@@ -27,6 +27,8 @@ export function buildInvocation(argv) {
     let creative = false;
     let direct = false;
     let designSystem = null;
+    let creativeDirections = null;
+    let hostReview = null;
     const positional = [];
     for (let index = 0; index < rest.length; index += 1) {
       const argument = rest[index];
@@ -38,16 +40,31 @@ export function buildInvocation(argv) {
         if (!value || value.startsWith("--")) throw new Error("text: --design-system requires a value");
         designSystem = value;
         index += 1;
+      } else if (argument === "--creative-directions" || argument === "--host-review") {
+        const key = argument === "--creative-directions" ? "creativeDirections" : "hostReview";
+        if ((key === "creativeDirections" ? creativeDirections : hostReview) !== null) throw new Error(`text: ${argument} may be provided only once`);
+        const value = rest[index + 1];
+        if (!value || value.startsWith("--")) throw new Error(`text: ${argument} requires a value`);
+        if (key === "creativeDirections") creativeDirections = value;
+        else hostReview = value;
+        index += 1;
       } else if (argument.startsWith("--")) throw new Error(`text: unknown option ${argument}`);
       else positional.push(argument);
     }
     if (creative && direct) throw new Error("text: --creative and --direct are mutually exclusive");
     if (direct && designSystem) throw new Error("text: --design-system is available only for creative mode, not --direct");
+    if (direct && (creativeDirections || hostReview)) throw new Error("text: creative direction options are unavailable in --direct mode");
+    if (hostReview && !creativeDirections) throw new Error("text: --host-review requires --creative-directions");
     requireCount("text", positional, 2, "<deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] or <deck.manifest.json> <output-dir> --direct");
     return {
       route: "text",
       script: "run-route-pipeline.mjs",
-      args: ["text", direct ? "direct" : "creative", ...positional, ...(designSystem ? ["--design-system", designSystem] : [])],
+      args: [
+        "text", direct ? "direct" : "creative", ...positional,
+        ...(designSystem ? ["--design-system", designSystem] : []),
+        ...(creativeDirections ? ["--creative-directions", creativeDirections] : []),
+        ...(hostReview ? ["--host-review", hostReview] : [])
+      ],
       ...(creative ? { warning: "--creative is deprecated because text generation is creative by default" } : {})
     };
   }

@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pptx-creator.local/creative-candidates.schema.json",
+  "title": "Creative Candidate Set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "explorationId", "baseIrHash", "probeSlideIds", "probeContentHash", "trigger", "blindPacketHash", "differenceEvidence", "candidates", "candidateSetHash"],
+  "properties": {
+    "version": { "const": "0.1.0" },
+    "explorationId": { "$ref": "#/$defs/explorationId" },
+    "baseIrHash": { "$ref": "#/$defs/hash" },
+    "probeSlideIds": { "$ref": "#/$defs/probeSlideIds" },
+    "probeContentHash": { "$ref": "#/$defs/hash" },
+    "trigger": { "$ref": "#/$defs/trigger" },
+    "blindPacketHash": { "$ref": "#/$defs/hash" },
+    "differenceEvidence": { "$ref": "#/$defs/differenceEvidence" },
+    "candidates": { "type": "array", "minItems": 2, "maxItems": 4, "items": { "$ref": "#/$defs/candidate" } },
+    "candidateSetHash": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "explorationId": { "type": "string", "pattern": "^explore-[a-f0-9]{24}$" },
+    "nonEmpty": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "localPath": { "type": "string", "minLength": 1, "not": { "pattern": "^(?:[a-zA-Z][a-zA-Z0-9+.-]*:|/|\\\\|.*(?:^|/)\\.\\.(?:/|$))" } },
+    "axis": { "enum": ["layout-topology", "hierarchy", "typography", "density", "color-material", "asset-strategy", "diagram-strategy", "deck-rhythm"] },
+    "axes": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/axis" } },
+    "probeSlideIds": { "type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": { "type": "string", "pattern": "^slide-" } },
+    "signals": {
+      "type": "object", "additionalProperties": false,
+      "required": ["visualAmbition", "compositionVariance", "brand", "assetIntensity", "complexSlides"],
+      "properties": {
+        "visualAmbition": { "type": "boolean" }, "compositionVariance": { "type": "boolean" },
+        "brand": { "type": "boolean" }, "assetIntensity": { "type": "boolean" }, "complexSlides": { "type": "boolean" }
+      }
+    },
+    "trigger": {
+      "type": "object", "additionalProperties": false,
+      "required": ["explore", "reasons", "signals", "maxCandidates"],
+      "properties": {
+        "explore": { "const": true },
+        "reasons": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" } },
+        "signals": { "$ref": "#/$defs/signals" },
+        "maxCandidates": { "type": "integer", "enum": [3, 4] }
+      }
+    },
+    "dial": { "type": "number", "minimum": 0, "maximum": 100 },
+    "projection": {
+      "type": "object", "additionalProperties": false, "required": ["designSystem"],
+      "properties": {
+        "designSystem": { "$ref": "#/$defs/nonEmpty" },
+        "route": { "const": "native" },
+        "dials": {
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "compositionVariance": { "$ref": "#/$defs/dial" }, "visualDensity": { "$ref": "#/$defs/dial" }, "visualEnergy": { "$ref": "#/$defs/dial" } }
+        },
+        "slides": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["slideId", "blockId"],
+            "properties": { "slideId": { "type": "string", "pattern": "^slide-" }, "blockId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } }
+          }
+        }
+      }
+    },
+    "direction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "label", "rationale", "declaredAxes", "projection"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "label": { "$ref": "#/$defs/nonEmpty" },
+        "rationale": { "$ref": "#/$defs/nonEmpty" }, "declaredAxes": { "allOf": [{ "$ref": "#/$defs/axes" }, { "minItems": 2 }] },
+        "projection": { "$ref": "#/$defs/projection" }
+      }
+    },
+    "observed": {
+      "type": "object", "additionalProperties": false,
+      "required": ["layout-topology", "hierarchy", "typography", "density", "color-material", "asset-strategy", "diagram-strategy", "deck-rhythm"],
+      "properties": {
+        "layout-topology": { "$ref": "#/$defs/hash" }, "hierarchy": { "$ref": "#/$defs/hash" },
+        "typography": { "$ref": "#/$defs/hash" }, "density": { "$ref": "#/$defs/hash" },
+        "color-material": { "$ref": "#/$defs/hash" }, "asset-strategy": { "$ref": "#/$defs/hash" },
+        "diagram-strategy": { "$ref": "#/$defs/hash" }, "deck-rhythm": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "diagnosticDimensions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["narrative", "hierarchy", "composition-whitespace", "typography", "color-material", "deck-rhythm", "consistency", "asset-specificity", "data-diagram-readability", "brand-distinctiveness"],
+      "properties": {
+        "narrative": { "type": "number" }, "hierarchy": { "type": "number" }, "composition-whitespace": { "type": "number" },
+        "typography": { "type": "number" }, "color-material": { "type": "number" }, "deck-rhythm": { "type": "number" },
+        "consistency": { "type": "number" }, "asset-specificity": { "type": "number" },
+        "data-diagram-readability": { "type": "number" }, "brand-distinctiveness": { "type": "number" }
+      }
+    },
+    "diagnostic": {
+      "type": "object", "additionalProperties": false, "required": ["weights", "dimensions", "weightedScore", "slopRisk"],
+      "properties": {
+        "weights": { "$ref": "#/$defs/diagnosticDimensions" }, "dimensions": { "$ref": "#/$defs/diagnosticDimensions" },
+        "weightedScore": { "type": "number", "minimum": 0, "maximum": 100 }, "slopRisk": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "artifacts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["blindScreenshots", "probeManifestHash", "probePptxHash", "screenshotHashes"],
+      "properties": {
+        "blindScreenshots": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/localPath" } },
+        "probeManifestHash": { "$ref": "#/$defs/hash" }, "probePptxHash": { "$ref": "#/$defs/hash" },
+        "screenshotHashes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hash" } }
+      }
+    },
+    "differencePair": {
+      "type": "object", "additionalProperties": false, "required": ["left", "right", "axes"],
+      "properties": { "left": { "$ref": "#/$defs/nonEmpty" }, "right": { "$ref": "#/$defs/nonEmpty" }, "axes": { "allOf": [{ "$ref": "#/$defs/axes" }, { "minItems": 2 }] } }
+    },
+    "differenceEvidence": {
+      "type": "object", "additionalProperties": false, "required": ["pairs", "spannedAxes"],
+      "properties": { "pairs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/differencePair" } }, "spannedAxes": { "$ref": "#/$defs/axes" } }
+    },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "label", "rationale", "direction", "declaredAxes", "observed", "baseIrHash", "fullIrHash", "probeContentHash", "artifacts", "diagnostic", "editabilityLevel", "route", "status"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "label": { "$ref": "#/$defs/nonEmpty" }, "rationale": { "$ref": "#/$defs/nonEmpty" },
+        "direction": { "$ref": "#/$defs/direction" }, "declaredAxes": { "allOf": [{ "$ref": "#/$defs/axes" }, { "minItems": 2 }] },
+        "observed": { "$ref": "#/$defs/observed" }, "baseIrHash": { "$ref": "#/$defs/hash" }, "fullIrHash": { "$ref": "#/$defs/hash" },
+        "probeContentHash": { "$ref": "#/$defs/hash" }, "artifacts": { "$ref": "#/$defs/artifacts" }, "diagnostic": { "$ref": "#/$defs/diagnostic" },
+        "editabilityLevel": { "type": "integer", "minimum": 4, "maximum": 5 }, "route": { "const": "native" }, "status": { "const": "available" }
+      }
+    }
+  }
+}

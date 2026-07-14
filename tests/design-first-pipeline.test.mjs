@@ -11,12 +11,233 @@ import {
   buildCanonicalAssetRegistry,
   createCreativeAuthoringTransaction
 } from "../scripts/run-design-first-pipeline.mjs";
+import { contentHash, planContentHash } from "../scripts/lib/creative-candidates.mjs";
 
 function writeEmptyFinalManifest(outputDir) {
   fs.writeFileSync(path.join(outputDir, "deck.manifest.json"), "{\"assets\":[],\"slides\":[]}\n", "utf8");
 }
 
 describe("creative deck-plan pipeline", () => {
+  it("blocks an eligible flagship plan before compilation when Host directions are missing", () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-directions-required-input-"));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-directions-required-output-"));
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    plan.context.qualityProfile = "flagship";
+    const planPath = path.join(inputDir, "deck.plan.json");
+    fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+
+    expect(() => execFileSync("node", ["scripts/run-design-first-pipeline.mjs", planPath, outputDir], { stdio: "pipe" }))
+      .toThrow(/creative[- ]directions|host[- ]direction|direction[- ]request/i);
+    const blocked = JSON.parse(fs.readFileSync(path.join(outputDir, "pipeline-blocked.json"), "utf8"));
+    expect(blocked.blockedBy).toBe("creative-direction-request");
+    for (const name of ["deck.manifest.json", "semantic-slide-ir.json", "run.json", "final.pptx", "creative-candidates.json", "creative-selection.json"]) {
+      expect(fs.existsSync(path.join(outputDir, name)), name).toBe(false);
+    }
+  });
+
+  it("fails closed when an ineligible standard plan is supplied a direction request", () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-directions-ineligible-input-"));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-directions-ineligible-output-"));
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    plan.context.qualityProfile = "standard";
+    const planPath = path.join(inputDir, "deck.plan.json");
+    const requestPath = path.join(inputDir, "creative-directions.json");
+    fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+    fs.writeFileSync(requestPath, `${JSON.stringify({
+      version: "0.1.0",
+      planHash: planContentHash(plan),
+      directions: [
+        { id: "direction-a", label: "A", rationale: "A materially different topology", declaredAxes: ["layout-topology", "hierarchy"], projection: { designSystem: "business-neutral", slides: [{ slideId: "slide-cover", blockId: "editorial-poster" }] } },
+        { id: "direction-b", label: "B", rationale: "A materially different editorial system", declaredAxes: ["typography", "density"], projection: { designSystem: "warm-editorial", slides: [{ slideId: "slide-cover", blockId: "minimal-statement" }] } }
+      ]
+    }, null, 2)}\n`);
+
+    expect(() => execFileSync("node", ["scripts/run-design-first-pipeline.mjs", planPath, outputDir, "--creative-directions", requestPath], { stdio: "pipe" }))
+      .toThrow(/not eligible|standard|direction/i);
+    expect(fs.existsSync(path.join(outputDir, "creative-direction-blind"))).toBe(false);
+  });
+
+  it("runs the real two-stage blind protocol and makes only the Host-selected direction canonical", () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-blind-stage-input-"));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-blind-stage-output-"));
+    const plan = JSON.parse(fs.readFileSync("examples/text-input/creative/deck.plan.json", "utf8"));
+    plan.context.qualityProfile = "flagship";
+    const planPath = path.join(inputDir, "deck.plan.json");
+    const requestPath = path.join(inputDir, "creative-directions.json");
+    const directions = {
+      version: "0.1.0",
+      planHash: planContentHash(plan),
+      directions: [
+        {
+          id: "direction-a", label: "Editorial proof", rationale: "Poster hierarchy and stronger opening rhythm",
+          declaredAxes: ["layout-topology", "hierarchy"],
+          projection: { designSystem: "business-neutral", dials: { compositionVariance: 76 } }
+        },
+        {
+          id: "direction-b", label: "Warm minimal", rationale: "Warmer typography and lower-density statement rhythm",
+          declaredAxes: ["typography", "density", "color-material"],
+          projection: { designSystem: "warm-editorial", dials: { visualDensity: 34 }, slides: [{ slideId: "slide-cover", blockId: "minimal-statement" }] }
+        }
+      ]
+    };
+    fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+    fs.writeFileSync(requestPath, `${JSON.stringify(directions, null, 2)}\n`);
+    const sourcePlanBytes = fs.readFileSync(planPath);
+    const directionBytes = fs.readFileSync(requestPath);
+
+    expect(() => execFileSync("node", [
+      "scripts/run-design-first-pipeline.mjs", planPath, outputDir,
+      "--creative-directions", requestPath
+    ], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    })).toThrow(/host[- ]visual[- ]review|blind probe packet/i);
+
+    const packetPath = path.join(outputDir, "creative-direction-blind", "blind-packet.json");
+    const packet = JSON.parse(fs.readFileSync(packetPath, "utf8"));
+    expect(packet.blindIds).toHaveLength(2);
+    expect(packet.probeSlideIds.length).toBeGreaterThanOrEqual(1);
+    expect(packet.probeSlideIds.length).toBeLessThanOrEqual(3);
+    expect(packet.requiredPairs).toHaveLength(1);
+    const packetText = fs.readFileSync(packetPath, "utf8");
+    expect(packetText).not.toMatch(/Editorial proof|Warm minimal|"direction-(?:a|b)"|business-neutral|warm-editorial|reveal|weightedScore|slopRisk/);
+    for (const candidate of packet.candidates) {
+      for (const screenshot of candidate.screenshots) {
+        const screenshotPath = path.join(outputDir, ...screenshot.path.split("/"));
+        const actual = `sha256:${createHash("sha256").update(fs.readFileSync(screenshotPath)).digest("hex")}`;
+        expect(actual).toBe(screenshot.hash);
+      }
+    }
+    const blocked = JSON.parse(fs.readFileSync(path.join(outputDir, "pipeline-blocked.json"), "utf8"));
+    expect(blocked).toMatchObject({ blockedBy: "host-visual-review", packetHash: packet.packetHash });
+    for (const name of ["deck.manifest.json", "semantic-slide-ir.json", "run.json", "final.pptx", "creative-candidates.json", "creative-selection.json"]) {
+      expect(fs.existsSync(path.join(outputDir, name)), name).toBe(false);
+    }
+
+    const reviewPath = path.join(inputDir, "creative-host-review.json");
+    const pairReviews = packet.requiredPairs.map(([left, right]) => {
+      const leftHash = packet.candidates.find((entry) => entry.blindId === left).screenshots[0].hash;
+      const rightHash = packet.candidates.find((entry) => entry.blindId === right).screenshots[0].hash;
+      return {
+        left,
+        right,
+        leftScreenshotHash: leftHash,
+        rightScreenshotHash: rightHash,
+        preference: "left",
+        reason: "The left probe establishes clearer hierarchy, spacing, and narrative rhythm."
+      };
+    });
+    const hostReview = {
+      version: "0.1.0",
+      explorationId: packet.explorationId,
+      packetHash: packet.packetHash,
+      available: true,
+      pairs: pairReviews
+    };
+    fs.writeFileSync(reviewPath, `${JSON.stringify(hostReview, null, 2)}\n`);
+    const packetBytes = fs.readFileSync(packetPath);
+
+    execFileSync("node", [
+      "scripts/run-design-first-pipeline.mjs", planPath, outputDir,
+      "--creative-directions", requestPath,
+      "--host-review", reviewPath
+    ], {
+      stdio: "pipe",
+      env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+    });
+
+    expect(fs.readFileSync(packetPath)).toEqual(packetBytes);
+    expect(fs.readFileSync(planPath)).toEqual(sourcePlanBytes);
+    expect(fs.readFileSync(requestPath)).toEqual(directionBytes);
+    expect(fs.readFileSync(reviewPath, "utf8")).toBe(`${JSON.stringify(hostReview, null, 2)}\n`);
+    for (const name of ["final.pptx", "deck.plan.json", "semantic-slide-ir.json", "deck.manifest.json", "assets/asset-registry.json", "creative-candidates.json", "creative-selection.json", "run.json"]) {
+      expect(fs.existsSync(path.join(outputDir, name)), name).toBe(true);
+    }
+    const candidateSet = JSON.parse(fs.readFileSync(path.join(outputDir, "creative-candidates.json"), "utf8"));
+    const selection = JSON.parse(fs.readFileSync(path.join(outputDir, "creative-selection.json"), "utf8"));
+    expect(candidateSet.candidates).toHaveLength(2);
+    expect(new Set(candidateSet.candidates.map((entry) => entry.probeContentHash)).size).toBe(1);
+    expect(selection).toMatchObject({
+      packetHash: packet.packetHash,
+      selectedBlindId: packet.requiredPairs[0][0],
+      acceptance: { status: "selected", primaryBasis: "host-blind-pairwise" }
+    });
+    expect(selection.selectedCandidateId).toBe(selection.reveal[selection.selectedBlindId]);
+    const canonicalPlan = JSON.parse(fs.readFileSync(path.join(outputDir, "deck.plan.json"), "utf8"));
+    const selectedDirection = directions.directions.find((entry) => entry.id === selection.selectedCandidateId);
+    expect(canonicalPlan.designIntent.dials).toMatchObject(selectedDirection.projection.dials ?? {});
+    for (const slideOverride of selectedDirection.projection.slides ?? []) {
+      expect(canonicalPlan.slides.find((slide) => slide.id === slideOverride.slideId).compositionIntent.blockId).toBe(slideOverride.blockId);
+    }
+    const run = JSON.parse(fs.readFileSync(path.join(outputDir, "run.json"), "utf8"));
+    expect(run.artifacts).toMatchObject({
+      creativeCandidates: "creative-candidates.json",
+      creativeSelection: "creative-selection.json",
+      blindPacket: "creative-direction-blind/blind-packet.json"
+    });
+    expect(run.metadata).toMatchObject({
+      explorationId: packet.explorationId,
+      blindPacketHash: packet.packetHash,
+      selectedCandidateId: selection.selectedCandidateId
+    });
+    expect(validateJsonSchema(run, JSON.parse(fs.readFileSync("schemas/run.schema.json", "utf8")))).toEqual({ valid: true, errors: [] });
+    expect(fs.readdirSync(outputDir).some((name) => name.startsWith(".creative-blind-stage-"))).toBe(false);
+
+    const outputManifestPath = path.join(outputDir, "output-manifest.json");
+    const packageArgs = ["scripts/run-python.mjs", "scripts/package-output.py", outputDir];
+    const expectPackageRejection = (pattern) => {
+      fs.rmSync(outputManifestPath, { force: true });
+      expect(() => execFileSync("node", packageArgs, {
+        stdio: "pipe",
+        env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
+      })).toThrow(pattern);
+      expect(fs.existsSync(outputManifestPath)).toBe(false);
+    };
+
+    const candidatePath = path.join(outputDir, "creative-candidates.json");
+    const candidateBytes = fs.readFileSync(candidatePath);
+    const selectionPath = path.join(outputDir, "creative-selection.json");
+    const selectionBytes = fs.readFileSync(selectionPath);
+    const forgedCandidates = structuredClone(candidateSet);
+    forgedCandidates.candidates[0].label = "forged after selection";
+    fs.writeFileSync(candidatePath, `${JSON.stringify(forgedCandidates, null, 2)}\n`);
+    expectPackageRejection(/candidate set hash mismatch/i);
+    fs.writeFileSync(candidatePath, candidateBytes);
+
+    const staleCandidates = structuredClone(candidateSet);
+    staleCandidates.blindPacketHash = `sha256:${"0".repeat(64)}`;
+    delete staleCandidates.candidateSetHash;
+    staleCandidates.candidateSetHash = contentHash(staleCandidates);
+    const staleSelection = structuredClone(selection);
+    staleSelection.candidateSetHash = staleCandidates.candidateSetHash;
+    fs.writeFileSync(candidatePath, `${JSON.stringify(staleCandidates, null, 2)}\n`);
+    fs.writeFileSync(selectionPath, `${JSON.stringify(staleSelection, null, 2)}\n`);
+    expectPackageRejection(/candidate set blindPacketHash is stale/i);
+    fs.writeFileSync(candidatePath, candidateBytes);
+    fs.writeFileSync(selectionPath, selectionBytes);
+
+    const screenshotPath = path.join(outputDir, ...packet.candidates[0].screenshots[0].path.split("/"));
+    const screenshotBytes = fs.readFileSync(screenshotPath);
+    fs.appendFileSync(screenshotPath, "tamper");
+    expectPackageRejection(/screenshot hash mismatch/i);
+    fs.writeFileSync(screenshotPath, screenshotBytes);
+
+    const forgedSelection = structuredClone(selection);
+    forgedSelection.pairwise[0].preference = forgedSelection.pairwise[0].preference === "left" ? "right" : "left";
+    forgedSelection.hostReview.pairs = structuredClone(forgedSelection.pairwise);
+    fs.writeFileSync(selectionPath, `${JSON.stringify(forgedSelection, null, 2)}\n`);
+    expectPackageRejection(/winner does not match Host pairwise review/i);
+    fs.writeFileSync(selectionPath, selectionBytes);
+
+    const runPath = path.join(outputDir, "run.json");
+    const runBytes = fs.readFileSync(runPath);
+    const forgedRun = structuredClone(run);
+    forgedRun.metadata.selectedCandidateId = "forged-winner";
+    fs.writeFileSync(runPath, `${JSON.stringify(forgedRun, null, 2)}\n`);
+    expectPackageRejection(/selectedCandidateId is stale/i);
+    fs.writeFileSync(runPath, runBytes);
+  }, 120000);
+
   it("preserves the creative plan when input and output directories are the same", () => {
     const dir = fs.mkdtempSync(path.join("/private/tmp", "pptx-design-first-in-place-"));
     fs.copyFileSync(path.join("examples/text-input/creative/deck.plan.json"), path.join(dir, "deck.plan.json"));
@@ -82,9 +303,15 @@ describe("creative deck-plan pipeline", () => {
         assetRegistry: "assets/asset-registry.json",
         manifest: "deck.manifest.json",
         pptx: "final.pptx",
-        consistencyReport: "consistency-report.json"
+        consistencyReport: "consistency-report.json",
+        creativeCandidates: null,
+        creativeSelection: null,
+        blindPacket: null
       }
     });
+    for (const name of ["creative-candidates.json", "creative-selection.json", "creative-direction-blind"]) {
+      expect(fs.existsSync(path.join(outputDir, name)), name).toBe(false);
+    }
     expect(validateJsonSchema(run, runSchema)).toEqual({ valid: true, errors: [] });
     for (const artifact of Object.values(run.artifacts).flatMap((value) => Array.isArray(value) ? value : [value]).filter(Boolean)) {
       expect(path.isAbsolute(artifact), artifact).toBe(false);
@@ -1477,6 +1704,68 @@ describe("creative deck-plan pipeline", () => {
     for (const relative of ["deck.plan.json", "semantic-slide-ir.json", "assets/asset-registry.json", "run.json"]) {
       expect(fs.existsSync(path.join(outputDir, relative)), relative).toBe(false);
     }
+  });
+
+  it("publishes candidate and selection evidence inside the canonical transaction and rolls reveal data back", async () => {
+    const inputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-direction-transaction-input-"));
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-direction-transaction-output-"));
+    const planPath = path.join(inputDir, "deck.plan.json");
+    const plan = { version: "0.2.0", context: { title: "Selected direction" } };
+    const ir = { version: "0.1.0", source: { kind: "deck-plan", version: "0.2.0" } };
+    fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+    writeEmptyFinalManifest(outputDir);
+    fs.mkdirSync(path.join(outputDir, "creative-direction-blind"));
+    fs.writeFileSync(path.join(outputDir, "creative-direction-blind", "blind-packet.json"), "{}\n");
+    const events = [];
+    const transaction = createCreativeAuthoringTransaction({
+      outputDir,
+      planPath,
+      plan,
+      ir,
+      localizedAssets: { records: [] },
+      mode: "creative",
+      publicArtifacts: [
+        { relativePath: "creative-candidates.json", bytes: "{\"set\":true}\n" },
+        { relativePath: "creative-selection.json", bytes: "{\"selected\":true}\n" }
+      ],
+      runMetadata: {
+        explorationId: "explore-0123456789abcdef01234567",
+        blindPacketHash: `sha256:${"a".repeat(64)}`,
+        selectedCandidateId: "direction-a"
+      },
+      afterPublish: (relativePath) => events.push(`write:${relativePath}`),
+      afterRollback: (relativePath) => events.push(`remove:${relativePath}`)
+    });
+    await transaction.beforePackage();
+    expect(events).toEqual([
+      "write:creative-candidates.json",
+      "write:creative-selection.json",
+      "write:deck.plan.json",
+      "write:semantic-slide-ir.json",
+      "write:assets/asset-registry.json",
+      "write:run.json"
+    ]);
+    const run = JSON.parse(fs.readFileSync(path.join(outputDir, "run.json"), "utf8"));
+    expect(run.artifacts).toMatchObject({
+      creativeCandidates: "creative-candidates.json",
+      creativeSelection: "creative-selection.json",
+      blindPacket: "creative-direction-blind/blind-packet.json"
+    });
+    expect(run.metadata).toEqual({
+      explorationId: "explore-0123456789abcdef01234567",
+      blindPacketHash: `sha256:${"a".repeat(64)}`,
+      selectedCandidateId: "direction-a"
+    });
+    await transaction.beforePackageRollback();
+    expect(events.slice(6)).toEqual([
+      "remove:run.json",
+      "remove:assets/asset-registry.json",
+      "remove:semantic-slide-ir.json",
+      "remove:deck.plan.json",
+      "remove:creative-selection.json",
+      "remove:creative-candidates.json"
+    ]);
+    expect(fs.existsSync(path.join(outputDir, "creative-direction-blind", "blind-packet.json"))).toBe(true);
   });
 
   it.each([

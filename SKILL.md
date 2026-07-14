@@ -31,6 +31,11 @@ only. HTML is optional, never a mandatory text intermediate.
 An optional `compositionIntent.blockId` is a host-authored Creative choice;
 deterministic scripts validate and snapshot it but never rank or infer blocks.
 Without that field, the existing family geometry is unchanged.
+High-risk text plans may enter the conditional two-stage direction protocol in
+`references/creative-direction-probes.md`: the host authors bounded
+coordinate-free candidates, inspects anonymous rendered evidence, and records
+complete pairwise preference. Scripts never invent a candidate or select from
+diagnostic scores.
 
 ## Shared invariants
 

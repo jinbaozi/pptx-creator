@@ -3,6 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
+import { tmpdir } from "node:os";
 import { compileDeckPlanArtifacts, validateDeckPlan } from "./lib/deck-plan.mjs";
 import { loadCompositionBlockRegistry } from "./lib/composition-blocks.mjs";
 import { resolveDesignSystem } from "./lib/design-system-resolver.mjs";
@@ -18,6 +19,19 @@ import {
 } from "./lib/registry.mjs";
 import { buildRunIndex, contentDerivedRunId } from "./lib/run-index.mjs";
 import { fitManifestText, materializeTextFonts } from "./lib/text-fit.mjs";
+import {
+  applyCreativeDirection,
+  buildCreativeCandidateSet,
+  contentHashBytes,
+  filterProbeManifest,
+  prepareBlindExploration,
+  recordBlindSelection,
+  shouldExploreDirections,
+  validateCandidateSetDocument,
+  validateCreativeDirectionRequest,
+  validateCreativeSelectionDocument,
+  validateHostReview
+} from "./lib/creative-candidates.mjs";
 import { invalidatePublishedOutputs, runDeckPipeline } from "./run-deck-pipeline.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -43,9 +57,39 @@ function parseArgs(argv) {
       options.mode = value;
       i += 1;
       if (options.mode !== "creative") throw new Error("deck.plan pipeline supports creative mode only");
+    } else if (rest[i] === "--creative-directions") {
+      if (options.creativeDirections) throw new Error("--creative-directions may be provided only once");
+      const value = rest[i + 1];
+      if (!value || value.startsWith("--")) throw new Error("--creative-directions requires a local JSON path");
+      options.creativeDirections = value;
+      i += 1;
+    } else if (rest[i] === "--host-review") {
+      if (options.hostReview) throw new Error("--host-review may be provided only once");
+      const value = rest[i + 1];
+      if (!value || value.startsWith("--")) throw new Error("--host-review requires a local JSON path");
+      options.hostReview = value;
+      i += 1;
     } else throw new Error(`unknown option: ${rest[i]}`);
   }
   return { inputDir, outputDir, options };
+}
+
+async function publishCreativeBlocked(outputDir, blockedBy, detail, extra = {}) {
+  const summary = {
+    status: "blocked",
+    blockedBy,
+    detail,
+    ...structuredClone(extra)
+  };
+  await atomicPublishCreativeBytes(
+    outputDir,
+    path.join(outputDir, "pipeline-blocked.json"),
+    Buffer.from(`${JSON.stringify(summary, null, 2)}\n`, "utf8")
+  );
+  const error = new Error(`creative pipeline blocked at ${blockedBy}: ${detail}`);
+  error.summary = summary;
+  error.preserveLocalizedAssets = blockedBy === "host-visual-review";
+  throw error;
 }
 
 function localizedAssetName(asset, bytes, sourcePath) {
@@ -260,6 +304,246 @@ function localizePlanAssets(plan, planPath, outputDir) {
 function cleanupLocalizedPlanAssets(localizedAssets) {
   for (const targetPath of localizedAssets.createdTargets) fs.rmSync(targetPath, { force: true });
   fs.rmSync(localizedAssets.ownershipPath, { force: true });
+}
+
+function readLocalJsonSidecar(sidecarPath, label) {
+  const resolved = path.resolve(sidecarPath);
+  assertNoSymlinkBelowTrustedAnchor(resolved, { allowMissing: false });
+  const entry = fs.lstatSync(resolved);
+  if (!entry.isFile() || entry.isSymbolicLink()) throw new Error(`${label} must be a real local JSON file: ${resolved}`);
+  try { return JSON.parse(fs.readFileSync(resolved, "utf8")); } catch (error) {
+    throw new Error(`${label} is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function lockedDesignSystemReference(selection) {
+  const builtInRoot = path.join(projectRoot, "design-systems");
+  const relativeBuiltIn = path.relative(builtInRoot, selection.resolvedSource).split(path.sep);
+  if (relativeBuiltIn.length === 2 && relativeBuiltIn[1] === "DESIGN.md" && !relativeBuiltIn[0].startsWith("..")) {
+    return relativeBuiltIn[0];
+  }
+  const relativeProject = path.relative(projectRoot, selection.resolvedSource).split(path.sep);
+  if (relativeProject.length > 0 && !relativeProject.some((segment) => !segment || segment === "." || segment === "..")) {
+    return relativeProject.join("/");
+  }
+  const request = selection.request;
+  if (typeof request === "string" && request.length > 0 && !path.isAbsolute(request)
+    && !request.includes("\\") && !remoteReference.test(request)
+    && !request.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+    return request;
+  }
+  throw new Error("locked design system is not expressible as a built-in or safe project-relative direction reference");
+}
+
+async function compileFittedCreativePlan({ plan, selection, localizedAssets, fontCatalog }) {
+  const design = selection.design;
+  const { ir, manifest: compiledManifest } = compileDeckPlanArtifacts(plan, {
+    designSystemSource: "design-system/DESIGN.md",
+    designSystemName: design.name,
+    designTokens: design.tokens,
+    designSystemSelection: { request: selection.request, resolvedSource: selection.resolvedSource },
+    assetSourceById: localizedAssets.sourceById,
+    compositionBlockRegistry
+  });
+  const materializedFonts = materializeTextFonts(compiledManifest, design.tokens, fontCatalog);
+  const fitted = await fitManifestText(materializedFonts.manifest, {
+    designTokens: design.tokens,
+    fontCatalog,
+    ...(fontCatalog.source === "unavailable"
+      ? { source: "unavailable", reason: "fontkit could not open any installed font faces" }
+      : {})
+  });
+  if (fitted.unresolved.length > 0 || fitted.report.status !== "passed") {
+    throw new Error(`creative text fit unresolved: ${fitted.unresolved.map((item) => `${item.slideId}/${item.elementId}:${item.status}`).join(", ")}`);
+  }
+  return { plan, selection, design, ir, manifest: fitted.manifest, textFit: fitted.report };
+}
+
+function stageLocalizedAssets(stageRoot, localizedAssets) {
+  const staged = [];
+  for (const record of localizedAssets.records) {
+    const target = path.join(stageRoot, ...record.relativePath.split("/"));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, record.bytes, { flag: "wx" });
+    staged.push(target);
+  }
+  return staged;
+}
+
+async function materializeCreativeProbeCandidate({
+  direction,
+  projectedPlan,
+  probeSlideIds,
+  planPath,
+  localizedAssets,
+  fontCatalog
+}) {
+  const selection = await resolveDesignSystem({
+    request: direction.projection.designSystem,
+    inputPath: planPath,
+    projectRoot
+  });
+  const compiled = await compileFittedCreativePlan({ plan: projectedPlan, selection, localizedAssets, fontCatalog });
+  const probeManifest = filterProbeManifest(compiled.manifest, probeSlideIds);
+  const stageRoot = fs.mkdtempSync(path.join(tmpdir(), "pptx-creative-probe-"));
+  try {
+    const designPath = path.join(stageRoot, "design-system", "DESIGN.md");
+    fs.mkdirSync(path.dirname(designPath), { recursive: true });
+    fs.copyFileSync(selection.resolvedSource, designPath);
+    const stagedAssets = stageLocalizedAssets(stageRoot, localizedAssets);
+    const manifestPath = path.join(stageRoot, "deck.manifest.json");
+    fs.writeFileSync(manifestPath, `${JSON.stringify(probeManifest, null, 2)}\n`, "utf8");
+    await runDeckPipeline(manifestPath, stageRoot, {
+      inputType: "text",
+      inputSource: planPath,
+      copyManifest: false,
+      mode: "creative",
+      strictLayoutSafety: true,
+      maxRepairAttempts: 0,
+      protectedInputs: [manifestPath, designPath, ...stagedAssets]
+    });
+    const publishedProbe = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (!isDeepStrictEqual(publishedProbe, probeManifest)) {
+      throw new Error(`candidate ${direction.id} probe manifest changed during proof; Host must author a new direction instead of auto-repair`);
+    }
+    const proof = JSON.parse(fs.readFileSync(path.join(stageRoot, "creative-proof.json"), "utf8"));
+    const quality = JSON.parse(fs.readFileSync(path.join(stageRoot, "quality-report.json"), "utf8"));
+    const review = JSON.parse(fs.readFileSync(path.join(stageRoot, "visual-review.json"), "utf8"));
+    const renderReport = JSON.parse(fs.readFileSync(path.join(stageRoot, "creative-proof", "render-report.json"), "utf8"));
+    const contactSheetPath = path.join(stageRoot, "creative-proof", "slides", "contact-sheet.png");
+    return {
+      ir: compiled.ir,
+      manifest: compiled.manifest,
+      probeManifest,
+      designSystemName: compiled.design.name,
+      proof,
+      quality,
+      review,
+      renderingEnvironment: {
+        renderer: "libreoffice",
+        status: renderReport.status,
+        contactSheet: {
+          width: renderReport.contactSheet?.width,
+          height: renderReport.contactSheet?.height,
+          slideCount: renderReport.contactSheet?.slideCount
+        }
+      },
+      probePptxBytes: fs.readFileSync(path.join(stageRoot, "final.pptx")),
+      screenshots: [{ bytes: fs.readFileSync(contactSheetPath) }]
+    };
+  } finally {
+    fs.rmSync(stageRoot, { recursive: true, force: true });
+  }
+}
+
+async function publishBlindExploration(outputDir, exploration) {
+  const packet = exploration.packet;
+  const stageRoot = fs.mkdtempSync(path.join(outputDir, ".creative-blind-stage-"));
+  const targetRoot = path.join(outputDir, "creative-direction-blind");
+  try {
+    for (const publicCandidate of packet.candidates) {
+      const candidateId = packet._privateReveal[publicCandidate.blindId];
+      const bytes = exploration.screenshotBytesByCandidate.get(candidateId) ?? [];
+      if (bytes.length !== publicCandidate.screenshots.length) {
+        throw new Error(`blind screenshot evidence count mismatch for ${publicCandidate.blindId}`);
+      }
+      for (let index = 0; index < bytes.length; index += 1) {
+        const screenshot = publicCandidate.screenshots[index];
+        if (contentHashBytes(bytes[index]) !== screenshot.hash) {
+          throw new Error(`blind screenshot hash mismatch for ${publicCandidate.blindId}`);
+        }
+        const relativeInsideBlind = screenshot.path.split("/").slice(1);
+        const stageTarget = path.join(stageRoot, ...relativeInsideBlind);
+        fs.mkdirSync(path.dirname(stageTarget), { recursive: true });
+        fs.writeFileSync(stageTarget, bytes[index], { flag: "wx" });
+      }
+    }
+    fs.writeFileSync(
+      path.join(stageRoot, "blind-packet.json"),
+      `${JSON.stringify(packet, null, 2)}\n`,
+      { encoding: "utf8", flag: "wx" }
+    );
+    assertSafeCreativePublicationTarget(outputDir, targetRoot);
+    if (fs.existsSync(targetRoot)) throw new Error("blind packet target already exists after stale invalidation");
+    fs.renameSync(stageRoot, targetRoot);
+    assertSafeCreativePublicationTarget(outputDir, targetRoot);
+  } catch (error) {
+    fs.rmSync(stageRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function diagnosticEvidenceByBlind(exploration) {
+  return Object.fromEntries(exploration.packet.blindIds.map((blindId) => {
+    const candidateId = exploration.packet._privateReveal[blindId];
+    const candidate = exploration.candidates.find((entry) => entry.id === candidateId);
+    return [blindId, structuredClone(candidate.diagnostic)];
+  }));
+}
+
+async function runFinalCreativePlan({
+  sourcePlan,
+  canonicalPlan,
+  planPath,
+  outputDir,
+  selection,
+  localizedAssets,
+  mode,
+  protectedInputs = [],
+  publicArtifacts = [],
+  runMetadata = null,
+  fontCatalog = null
+}) {
+  const designOutputDir = path.join(outputDir, "design-system");
+  const designOutputPath = path.join(designOutputDir, "DESIGN.md");
+  if (selection.resolvedSource !== path.resolve(designOutputPath)) {
+    await atomicPublishCreativeBytes(outputDir, designOutputPath, fs.readFileSync(selection.resolvedSource));
+  } else {
+    assertSafeCreativePublicationTarget(outputDir, designOutputPath);
+  }
+  const compiled = await compileFittedCreativePlan({
+    plan: canonicalPlan,
+    selection,
+    localizedAssets,
+    fontCatalog: fontCatalog ?? await createFontMetricsCatalog()
+  });
+  const manifestPath = path.join(outputDir, "deck.manifest.json");
+  await atomicPublishCreativeBytes(
+    outputDir,
+    manifestPath,
+    Buffer.from(`${JSON.stringify(compiled.manifest, null, 2)}\n`, "utf8")
+  );
+  const authoringTransaction = createCreativeAuthoringTransaction({
+    outputDir,
+    planPath,
+    plan: canonicalPlan,
+    sourcePlan,
+    ir: compiled.ir,
+    localizedAssets,
+    mode,
+    ownershipPath: localizedAssets.ownershipPath,
+    ownership: localizedAssets.ownership,
+    publicArtifacts,
+    runMetadata
+  });
+  await runDeckPipeline(manifestPath, outputDir, {
+    inputType: "text",
+    inputSource: planPath,
+    copyManifest: false,
+    mode,
+    strictLayoutSafety: true,
+    protectedInputs: [
+      planPath,
+      designOutputPath,
+      selection.resolvedSource,
+      ...localizedAssets.protectedPaths,
+      ...protectedInputs
+    ],
+    beforePackage: authoringTransaction.beforePackage,
+    beforePackageCommit: authoringTransaction.beforePackageCommit,
+    beforePackageRollback: authoringTransaction.beforePackageRollback
+  });
+  return compiled;
 }
 
 function snapshotLocalizedAssetEvidence(localizedAssets) {
@@ -518,11 +802,14 @@ export function createCreativeAuthoringTransaction({
   outputDir,
   planPath,
   plan,
+  sourcePlan: validatedSourcePlan = plan,
   ir,
   localizedAssets,
   mode = "creative",
   ownershipPath = null,
   ownership = null,
+  publicArtifacts = [],
+  runMetadata = null,
   afterPublish = null,
   afterRollback = null
 }) {
@@ -532,14 +819,14 @@ export function createCreativeAuthoringTransaction({
   }
   const resolvedPlanPath = path.resolve(planPath);
   let sourcePlanBytes;
-  let sourcePlan;
+  let sourcePlanFromDisk;
   try {
     sourcePlanBytes = fs.readFileSync(resolvedPlanPath);
-    sourcePlan = JSON.parse(sourcePlanBytes.toString("utf8"));
+    sourcePlanFromDisk = JSON.parse(sourcePlanBytes.toString("utf8"));
   } catch (error) {
     throw new Error(`creative source plan cannot be snapshotted: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!isDeepStrictEqual(sourcePlan, plan)) {
+  if (!isDeepStrictEqual(sourcePlanFromDisk, validatedSourcePlan)) {
     throw new Error("creative source plan does not match the supplied validated snapshot");
   }
   const planSnapshot = structuredClone(plan);
@@ -548,6 +835,24 @@ export function createCreativeAuthoringTransaction({
   const ownershipSnapshot = ownership ? structuredClone(ownership) : null;
   const canonicalPlanBytes = Buffer.from(`${JSON.stringify(planSnapshot, null, 2)}\n`, "utf8");
   const canonicalIrBytes = Buffer.from(`${JSON.stringify(irSnapshot, null, 2)}\n`, "utf8");
+  const publicArtifactSnapshots = publicArtifacts.map((artifact) => {
+    if (!artifact || typeof artifact.relativePath !== "string" || artifact.relativePath.length === 0
+      || path.isAbsolute(artifact.relativePath) || artifact.relativePath.includes("\\")
+      || artifact.relativePath.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+      throw new Error(`creative transaction public artifact path is unsafe: ${String(artifact?.relativePath)}`);
+    }
+    if (["deck.plan.json", "semantic-slide-ir.json", "assets/asset-registry.json", "run.json"].includes(artifact.relativePath)) {
+      throw new Error(`creative transaction public artifact collides with a canonical path: ${artifact.relativePath}`);
+    }
+    return {
+      relativePath: artifact.relativePath,
+      bytes: Buffer.isBuffer(artifact.bytes) ? Buffer.from(artifact.bytes) : Buffer.from(String(artifact.bytes ?? ""), "utf8")
+    };
+  });
+  if (new Set(publicArtifactSnapshots.map((entry) => entry.relativePath)).size !== publicArtifactSnapshots.length) {
+    throw new Error("creative transaction public artifact paths must be unique");
+  }
+  const runMetadataSnapshot = runMetadata ? structuredClone(runMetadata) : null;
   const published = [];
 
   const publishBytes = async (relativePath, bytes, {
@@ -591,6 +896,14 @@ export function createCreativeAuthoringTransaction({
         throw new Error(`creative run artifact pointer ${key} must equal ${value}`);
       }
     }
+    const optionalExpected = {
+      creativeCandidates: publicArtifactSnapshots.some((entry) => entry.relativePath === "creative-candidates.json") ? "creative-candidates.json" : null,
+      creativeSelection: publicArtifactSnapshots.some((entry) => entry.relativePath === "creative-selection.json") ? "creative-selection.json" : null,
+      blindPacket: runMetadataSnapshot?.explorationId ? "creative-direction-blind/blind-packet.json" : null
+    };
+    for (const [key, value] of Object.entries(optionalExpected)) {
+      if (run?.artifacts?.[key] !== value) throw new Error(`creative run artifact pointer ${key} must equal ${String(value)}`);
+    }
     if (run?.mode !== "creative") {
       throw new Error("creative run mode must remain exactly creative");
     }
@@ -599,6 +912,9 @@ export function createCreativeAuthoringTransaction({
     }
     if (run.runId !== contentDerivedRunId(irSnapshot)) {
       throw new Error("creative run ID does not match the immutable semantic IR snapshot");
+    }
+    if (runMetadataSnapshot && !isDeepStrictEqual(run.metadata, runMetadataSnapshot)) {
+      throw new Error("creative run metadata does not match the immutable exploration snapshot");
     }
   };
 
@@ -629,6 +945,12 @@ export function createCreativeAuthoringTransaction({
     const expectedRegistryBytes = Buffer.from(canonicalAssetRegistryText(expectedRegistry), "utf8");
     if (!registryBytes.equals(expectedRegistryBytes)) {
       throw new Error("published asset registry does not match final manifest and localized byte evidence");
+    }
+    for (const artifact of publicArtifactSnapshots) {
+      const publishedBytes = await readRegularPublishedArtifact(artifact.relativePath);
+      if (!publishedBytes.equals(artifact.bytes)) {
+        throw new Error(`published ${artifact.relativePath} does not match the immutable transaction snapshot`);
+      }
     }
     for (const asset of expectedRegistry.assets) {
       const localTarget = path.resolve(outputRoot, asset.localPath);
@@ -667,6 +989,9 @@ export function createCreativeAuthoringTransaction({
       finalManifest,
       irSnapshot
     );
+    for (const artifact of publicArtifactSnapshots) {
+      await publishBytes(artifact.relativePath, artifact.bytes);
+    }
     const targetPlan = path.join(outputRoot, "deck.plan.json");
     await publishBytes("deck.plan.json", canonicalPlanBytes, resolvedPlanPath === path.resolve(targetPlan)
       ? { removable: false, rollbackBytes: sourcePlanBytes }
@@ -681,7 +1006,8 @@ export function createCreativeAuthoringTransaction({
     const run = await buildRunIndex(outputRoot, {
       runId: contentDerivedRunId(irSnapshot),
       mode,
-      input: { type: "text", summary: planSnapshot?.context?.title ?? "Creative deck plan" }
+      input: { type: "text", summary: planSnapshot?.context?.title ?? "Creative deck plan" },
+      ...(runMetadataSnapshot ? { metadata: runMetadataSnapshot } : {})
     });
     assertRunPointers(run);
     await publishBytes("run.json", `${JSON.stringify(run, null, 2)}\n`);
@@ -718,7 +1044,20 @@ async function main() {
   const explicitDesignInput = options.designSystem && fs.existsSync(path.resolve(options.designSystem))
     ? path.resolve(options.designSystem)
     : null;
-  await invalidatePublishedOutputs(resolvedOutput, [resolvedInput, ...(explicitDesignInput ? [explicitDesignInput] : [])]);
+  const directionInput = options.creativeDirections ? path.resolve(options.creativeDirections) : null;
+  const hostReviewInput = options.hostReview ? path.resolve(options.hostReview) : null;
+  const publicBlindRoot = path.join(resolvedOutput, "creative-direction-blind");
+  for (const [label, candidate] of [["creative direction request", directionInput], ["Host review", hostReviewInput]]) {
+    if (candidate && (candidate === publicBlindRoot || candidate.startsWith(`${publicBlindRoot}${path.sep}`))) {
+      throw new Error(`${label} must remain outside the public blind packet directory`);
+    }
+  }
+  await invalidatePublishedOutputs(resolvedOutput, [
+    resolvedInput,
+    ...(explicitDesignInput ? [explicitDesignInput] : []),
+    ...(directionInput ? [directionInput] : []),
+    ...(hostReviewInput ? [hostReviewInput] : [])
+  ]);
   const planPath = fs.statSync(resolvedInput).isDirectory() ? path.join(resolvedInput, "deck.plan.json") : resolvedInput;
   const reservedManifestPath = path.join(resolvedOutput, "deck.manifest.json");
   if (path.resolve(planPath) === path.resolve(reservedManifestPath)) {
@@ -727,75 +1066,197 @@ async function main() {
   const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
   const validation = validateDeckPlan(plan);
   if (!validation.valid) throw new Error(`deck.plan invalid: ${validation.errors.join("; ")}`);
+  const explorationTrigger = shouldExploreDirections(plan);
+  if (hostReviewInput && !directionInput) {
+    await publishCreativeBlocked(
+      resolvedOutput,
+      "creative-direction-request",
+      "--host-review requires the same --creative-directions input used to build the blind packet",
+      { trigger: explorationTrigger }
+    );
+  }
+  if (!explorationTrigger.explore && directionInput) {
+    await publishCreativeBlocked(
+      resolvedOutput,
+      "creative-direction-eligibility",
+      `Host directions were supplied but ${plan.context.qualityProfile} plan is not eligible for exploration`,
+      { trigger: explorationTrigger }
+    );
+  }
+  if (explorationTrigger.explore && !directionInput) {
+    await publishCreativeBlocked(
+      resolvedOutput,
+      "creative-direction-request",
+      `eligible ${plan.context.qualityProfile} plan requires --creative-directions with two to ${explorationTrigger.maxCandidates} Host-authored directions`,
+      { trigger: explorationTrigger }
+    );
+  }
+  const directionRequest = directionInput ? readLocalJsonSidecar(directionInput, "creative direction request") : null;
+  if (directionRequest) {
+    const requestValidation = validateCreativeDirectionRequest(directionRequest, {
+      plan,
+      maxCandidates: explorationTrigger.maxCandidates
+    });
+    if (!requestValidation.valid) {
+      await publishCreativeBlocked(
+        resolvedOutput,
+        "creative-direction-request",
+        requestValidation.errors.join("; "),
+        { trigger: explorationTrigger }
+      );
+    }
+  }
   const selection = await resolveDesignSystem({ request: options.designSystem, inputPath: planPath, projectRoot });
+  if (directionRequest && (plan.designIntent.locks.sourceLocked || plan.designIntent.locks.brandLocked)) {
+    let lockedDesignSystem;
+    try {
+      lockedDesignSystem = lockedDesignSystemReference(selection);
+    } catch (error) {
+      await publishCreativeBlocked(
+        resolvedOutput,
+        "creative-direction-request",
+        error instanceof Error ? error.message : String(error),
+        { trigger: explorationTrigger }
+      );
+    }
+    const lockedValidation = validateCreativeDirectionRequest(directionRequest, {
+      plan,
+      maxCandidates: explorationTrigger.maxCandidates,
+      lockedDesignSystem
+    });
+    if (!lockedValidation.valid) {
+      await publishCreativeBlocked(
+        resolvedOutput,
+        "creative-direction-request",
+        lockedValidation.errors.join("; "),
+        { trigger: explorationTrigger }
+      );
+    }
+  }
   const localizedAssets = localizePlanAssets(plan, planPath, resolvedOutput);
   try {
-    const designOutputDir = path.join(resolvedOutput, "design-system");
-    const designOutputPath = path.join(designOutputDir, "DESIGN.md");
-    if (selection.resolvedSource !== path.resolve(designOutputPath)) {
-      await atomicPublishCreativeBytes(resolvedOutput, designOutputPath, fs.readFileSync(selection.resolvedSource));
-    } else {
-      assertSafeCreativePublicationTarget(resolvedOutput, designOutputPath);
+    const fontCatalog = await createFontMetricsCatalog();
+    if (!explorationTrigger.explore) {
+      await runFinalCreativePlan({
+        sourcePlan: plan,
+        canonicalPlan: plan,
+        planPath,
+        outputDir: resolvedOutput,
+        selection,
+        localizedAssets,
+        mode: options.mode,
+        fontCatalog
+      });
+      console.log(`Creative text pipeline complete: ${path.join(resolvedOutput, "final.pptx")}`);
+      return;
     }
-    const design = selection.design;
-    const { ir, manifest: compiledManifest } = compileDeckPlanArtifacts(plan, {
+
+    const { ir: baseIr } = compileDeckPlanArtifacts(plan, {
       designSystemSource: "design-system/DESIGN.md",
-      designSystemName: design.name,
-      designTokens: design.tokens,
+      designSystemName: selection.design.name,
+      designTokens: selection.design.tokens,
       designSystemSelection: { request: selection.request, resolvedSource: selection.resolvedSource },
       assetSourceById: localizedAssets.sourceById,
       compositionBlockRegistry
     });
-    const fontCatalog = await createFontMetricsCatalog();
-    const materializedFonts = materializeTextFonts(compiledManifest, design.tokens, fontCatalog);
-    const fitted = await fitManifestText(materializedFonts.manifest, {
-      designTokens: design.tokens,
-      fontCatalog,
-      ...(fontCatalog.source === "unavailable"
-        ? { source: "unavailable", reason: "fontkit could not open any installed font faces" }
-        : {})
+    const exploration = await prepareBlindExploration({
+      plan,
+      baseIr,
+      request: directionRequest,
+      trigger: explorationTrigger,
+      materializeCandidate: (context) => materializeCreativeProbeCandidate({
+        ...context,
+        planPath,
+        localizedAssets,
+        fontCatalog
+      })
     });
-    if (fitted.unresolved.length > 0 || fitted.report.status !== "passed") {
-      throw new Error(`creative text fit unresolved: ${fitted.unresolved.map((item) => `${item.slideId}/${item.elementId}:${item.status}`).join(", ")}`);
-    }
-    const manifest = fitted.manifest;
-    const manifestPath = path.join(resolvedOutput, "deck.manifest.json");
+    await publishBlindExploration(resolvedOutput, exploration);
     await atomicPublishCreativeBytes(
       resolvedOutput,
-      manifestPath,
-      Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8")
+      localizedAssets.ownershipPath,
+      Buffer.from(`${JSON.stringify(localizedAssets.ownership, null, 2)}\n`, "utf8")
     );
-    const authoringTransaction = createCreativeAuthoringTransaction({
-      outputDir: resolvedOutput,
+    if (!hostReviewInput) {
+      try {
+        await publishCreativeBlocked(
+          resolvedOutput,
+          "host-visual-review",
+          "blind probe packet is ready; inspect every required pair and rerun with --host-review",
+          {
+            explorationId: exploration.explorationId,
+            packetHash: exploration.packet.packetHash,
+            blindPacket: "creative-direction-blind/blind-packet.json",
+            requiredPairs: exploration.packet.requiredPairs
+          }
+        );
+      } catch (error) {
+        if (!error?.summary) fs.rmSync(publicBlindRoot, { recursive: true, force: true });
+        throw error;
+      }
+    }
+    const hostReview = readLocalJsonSidecar(hostReviewInput, "creative Host review");
+    const reviewValidation = validateHostReview(exploration.packet, hostReview);
+    if (!reviewValidation.valid) {
+      try {
+        await publishCreativeBlocked(
+          resolvedOutput,
+          "host-visual-review",
+          reviewValidation.errors.join("; "),
+          {
+            explorationId: exploration.explorationId,
+            packetHash: exploration.packet.packetHash,
+            blindPacket: "creative-direction-blind/blind-packet.json"
+          }
+        );
+      } catch (error) {
+        if (!error?.summary) fs.rmSync(publicBlindRoot, { recursive: true, force: true });
+        throw error;
+      }
+    }
+    const candidates = buildCreativeCandidateSet(exploration);
+    const creativeSelection = recordBlindSelection({
+      packet: exploration.packet,
+      review: hostReview,
+      candidateSet: candidates,
+      evidenceReview: diagnosticEvidenceByBlind(exploration)
+    });
+    const selectionValidation = validateCreativeSelectionDocument(creativeSelection, {
+      candidateSet: candidates,
+      packet: exploration.packet
+    });
+    if (!selectionValidation.valid) throw new Error(`creative selection invalid: ${selectionValidation.errors.join("; ")}`);
+    const winnerDirection = directionRequest.directions.find((entry) => entry.id === creativeSelection.selectedCandidateId);
+    if (!winnerDirection) throw new Error("selected creative direction is missing from the Host request");
+    const winnerPlan = applyCreativeDirection(plan, winnerDirection);
+    const winnerSelection = await resolveDesignSystem({
+      request: winnerDirection.projection.designSystem,
+      inputPath: planPath,
+      projectRoot
+    });
+    await runFinalCreativePlan({
+      sourcePlan: plan,
+      canonicalPlan: winnerPlan,
       planPath,
-      plan,
-      ir,
+      outputDir: resolvedOutput,
+      selection: winnerSelection,
       localizedAssets,
       mode: options.mode,
-      ownershipPath: localizedAssets.ownershipPath,
-      ownership: localizedAssets.ownership
-    });
-
-    const designFirstOptions = {
-      inputType: "text",
-      inputSource: planPath,
-      copyManifest: false,
-      mode: options.mode,
-      strictLayoutSafety: true,
-      protectedInputs: [
-        planPath,
-        designOutputPath,
-        selection.resolvedSource,
-        ...localizedAssets.protectedPaths
+      fontCatalog,
+      protectedInputs: [directionInput, hostReviewInput, publicBlindRoot],
+      publicArtifacts: [
+        { relativePath: "creative-candidates.json", bytes: Buffer.from(`${JSON.stringify(candidates, null, 2)}\n`, "utf8") },
+        { relativePath: "creative-selection.json", bytes: Buffer.from(`${JSON.stringify(creativeSelection, null, 2)}\n`, "utf8") }
       ],
-      beforePackage: authoringTransaction.beforePackage,
-      beforePackageCommit: authoringTransaction.beforePackageCommit,
-      beforePackageRollback: authoringTransaction.beforePackageRollback
-    };
-    await runDeckPipeline(manifestPath, resolvedOutput, designFirstOptions);
+      runMetadata: {
+        explorationId: exploration.explorationId,
+        blindPacketHash: exploration.packet.packetHash,
+        selectedCandidateId: creativeSelection.selectedCandidateId
+      }
+    });
     console.log(`Creative text pipeline complete: ${path.join(resolvedOutput, "final.pptx")}`);
   } catch (error) {
-    cleanupLocalizedPlanAssets(localizedAssets);
+    if (error?.preserveLocalizedAssets !== true) cleanupLocalizedPlanAssets(localizedAssets);
     throw error;
   }
 }

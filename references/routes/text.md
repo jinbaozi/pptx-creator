@@ -10,7 +10,7 @@ Do not select when HTML, an image, or a PDF defines the visual layout, or when a
 
 ## Public command
 
-npm run pptx -- text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>]
+npm run pptx -- text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] [--creative-directions <json>] [--host-review <json>]
 
 ## Inputs and outputs
 
@@ -19,6 +19,18 @@ The host agent converts raw text into an internal coordinate-free `deck.plan.jso
 The current migration shell supports the eight native content families `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. HTML is optional only when genuinely necessary and is never a mandatory text intermediate. An authored manifest requires the explicit advanced flag `--direct`; `--creative` remains only as a deprecated compatibility alias. `deck.plan` `0.1.0` is retired and fails closed before final, manifest, or quality artifacts are written.
 
 `--design-system` is available only on the creative text route. It accepts an existing local `DESIGN.md`, a directory containing one, or a built-in design-system name. Explicit paths win over names. With no option, resolution checks repository-root `DESIGN.md`, then input-adjacent `DESIGN.md`, then `design-systems/business-neutral/DESIGN.md`. The selected file is parsed before compilation, its declared name and tokens drive native element styling, and a portable copy is packaged as `design-system/DESIGN.md`. URL-like and unknown values fail closed.
+
+Conditional Host-authored direction probes use the same command with
+`--creative-directions`. Standard plans never explore, flagship plans always
+require two to four directions, and premium plans require two to three only
+when at least two documented material-risk signals are active. Stage 1 renders
+at most three adaptive slides per candidate, atomically publishes anonymous
+screenshots plus a hash-bound packet, and blocks for actual Host visual review.
+Resume with the same direction request and `--host-review`; the runner
+regenerates the identical packet, accepts complete pairwise preference only,
+then recompiles and fully proves the one selected canonical direction. See
+`references/creative-direction-probes.md` for the closed sidecar contracts,
+trigger matrix, blind-review rules, and rollback behavior.
 
 Asset `sourceRef` values resolve absolutely or relative to the plan directory. Scripts never fetch remote sources. Existing local files are copied to deterministic content-addressed paths under `output/assets/`; runtime paths must be normalized POSIX paths strictly below `assets/`, and publication re-reads the localized files to verify the complete SHA-256 digest. Plan, IR, and final manifest must preserve the same canonical asset contract. Native images must carry the same asset ID, same-slide membership, source, alt text, focal point, crop policy, and effective `contain`/`cover` sizing. Creative cropped assets and image backgrounds fail closed until the renderer can preserve those semantics. Missing, remote, anonymous, off-slide, or drifted sources block before public evidence is committed.
 
@@ -46,7 +58,7 @@ any P0/P1 visual finding, or more than three repair attempts.
 ## Next references
 
 1. `references/semantic-slide-ir.md`
-2. `references/composition-blocks.md`
+2. `references/creative-direction-probes.md`
 3. `references/design-first-workflow.md`
 
 ## Migration from 0.1.1

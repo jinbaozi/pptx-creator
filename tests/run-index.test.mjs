@@ -26,6 +26,10 @@ describe("run index generation", () => {
     await writeFile(join(dir, "deck.manifest.json"), "{}");
     await writeFile(join(dir, "deck.plan.json"), "{}");
     await writeFile(join(dir, "semantic-slide-ir.json"), "{}");
+    await writeFile(join(dir, "creative-candidates.json"), "{}");
+    await writeFile(join(dir, "creative-selection.json"), "{}");
+    await mkdir(join(dir, "creative-direction-blind"), { recursive: true });
+    await writeFile(join(dir, "creative-direction-blind", "blind-packet.json"), "{}");
     await writeFile(join(dir, "final.pptx"), "");
     await writeFile(join(dir, "consistency-report.json"), "{}");
     await mkdir(join(dir, "previews"), { recursive: true });
@@ -41,6 +45,9 @@ describe("run index generation", () => {
     expect(run.artifacts.deckPlan).toBe("deck.plan.json");
     expect(run.artifacts.semanticIr).toBe("semantic-slide-ir.json");
     expect(run.artifacts.consistencyReport).toBe("consistency-report.json");
+    expect(run.artifacts.creativeCandidates).toBe("creative-candidates.json");
+    expect(run.artifacts.creativeSelection).toBe("creative-selection.json");
+    expect(run.artifacts.blindPacket).toBe("creative-direction-blind/blind-packet.json");
     expect(run.artifacts.previews).toEqual(["previews/slide-001.png"]);
     expect(run.status).toBe("ready-for-review");
     expect(run).not.toHaveProperty("directions");
@@ -49,7 +56,7 @@ describe("run index generation", () => {
     expect(validateJsonSchema(run, schema)).toEqual({ valid: true, errors: [] });
     expect(Object.keys(run.artifacts)).toEqual([
       "deckPlan", "semanticIr", "manifest", "pptx", "previews", "reviews",
-      "consistencyReport", "sources", "assetRegistry"
+      "consistencyReport", "sources", "assetRegistry", "creativeCandidates", "creativeSelection", "blindPacket"
     ]);
   });
 
@@ -64,6 +71,9 @@ describe("run index generation", () => {
 
     expect(run.artifacts.semanticIr).toBeNull();
     expect(run.artifacts.consistencyReport).toBeNull();
+    expect(run.artifacts.creativeCandidates).toBeNull();
+    expect(run.artifacts.creativeSelection).toBeNull();
+    expect(run.artifacts.blindPacket).toBeNull();
     expect(validateJsonSchema(run, schema)).toEqual({ valid: true, errors: [] });
 
     const withUnknownArtifact = structuredClone(run);

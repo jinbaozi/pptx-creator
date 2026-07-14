@@ -20,7 +20,10 @@ export async function buildRunIndex(outputDir, options) {
     reviews: await listReviewFiles(root),
     consistencyReport: await exists(root, "consistency-report.json"),
     sources: await exists(root, "sources.json"),
-    assetRegistry: await exists(root, join("assets", "asset-registry.json"))
+    assetRegistry: await exists(root, join("assets", "asset-registry.json")),
+    creativeCandidates: await exists(root, "creative-candidates.json"),
+    creativeSelection: await exists(root, "creative-selection.json"),
+    blindPacket: await exists(root, join("creative-direction-blind", "blind-packet.json"))
   };
 
   return {
@@ -28,7 +31,8 @@ export async function buildRunIndex(outputDir, options) {
     mode: options.mode,
     status: artifacts.pptx ? "ready-for-review" : "in-progress",
     input: options.input,
-    artifacts
+    artifacts,
+    ...(options.metadata ? { metadata: structuredClone(options.metadata) } : {})
   };
 }
 
