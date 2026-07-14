@@ -54,9 +54,10 @@ Host agent reasoning ──► DESIGN.md selection
     │
     ▼
 deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX
-                         │                         │
-                         │                         ▼
-                         └──── run.json indexes published artifacts
+       │                 │                         │
+       └──── localized assets ──► assets/asset-registry.json
+                                   │
+                                   └──── run.json indexes published artifacts
 ```
 
 ### 1. Inputs → design system
@@ -67,9 +68,9 @@ Built-in design systems: `business-neutral`, `warm-editorial`, `paper-minimal`, 
 
 ### 2. Creative text pipeline
 
-For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and write one coordinate-free `deck.plan.json` version `0.2.0`. Its exact top-level contract is `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry semantic page roles, strict native content models, attention targets, composition intent, asset IDs, and native-first route policy. The host may explicitly select one built-in topology with `compositionIntent.blockId`; scripts never rank or infer that choice, and no selection preserves the existing family geometry. Assets require non-empty provenance `sourceRef` values; empty asset lists remain valid. Coordinates, manifest geometry, `elements`, and full-slide rasters are prohibited. Version `0.1.0` is retired and fails closed.
+For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and write one coordinate-free `deck.plan.json` version `0.2.0`. Its exact top-level contract is `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry semantic page roles, strict native content models, attention targets, composition intent, asset IDs, and native-first route policy. The host may explicitly select one built-in topology with `compositionIntent.blockId`; scripts never rank or infer that choice, and no selection preserves the existing family geometry. Assets require a non-empty `provenance.sourceRef`, one closed `provenance.rights` authority, optional HTTP(S) `sourceUrl`, and generated-model evidence when `origin` is `generated`; empty asset lists remain valid. Coordinates, manifest geometry, `elements`, and full-slide rasters are prohibited. Version `0.1.0` is retired and fails closed.
 
-`schemas/deck-plan.schema.json` is the only structural validator. `scripts/lib/deck-plan.mjs` adds only uniqueness, reference, required membership, and ordering checks. `compileDeckPlanArtifacts()` compiles once and returns `{ ir, manifest }` for the current eight strict content families (`cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, `closing`). Explicit blocks come from the closed fifteen-file `composition-blocks/` registry and are snapshotted into IR before a bounded post-family native geometry transform. The Creative pre-package hook stages the selected canonical `semantic-slide-ir.json`, but publication commits only when packaging succeeds. Hook or package failure invokes best-effort IR/run rollback before blocked state is written; a successful run does not invoke rollback, and candidate evidence never overwrites the canonical file. HTML is optional only when explicitly requested or necessary; it is not a required text intermediate.
+`schemas/deck-plan.schema.json` is the structural validator; runtime checks add cross-field generation/rights, uniqueness, reference, required membership, and ordering rules. `compileDeckPlanArtifacts()` compiles once and returns `{ ir, manifest }` for the current eight strict content families (`cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, `closing`). Explicit blocks come from the closed fifteen-file `composition-blocks/` registry and are snapshotted into IR before a bounded post-family native geometry transform. Runtime `src` values must be normalized POSIX paths below `assets/`; remote URLs are provenance only. The Creative pre-package transaction stages `deck.plan.json`, the selected canonical `semantic-slide-ir.json`, validated `assets/asset-registry.json` 0.2, then `run.json`; publication commits only when packaging succeeds. Hook or package failure invokes best-effort reverse rollback before blocked state is written. The private `.pptx-generated-assets.json` ownership file is not the public audit registry. HTML is optional only when explicitly requested or necessary; it is not a required text intermediate.
 
 ### 3. Manifest render truth → PPTX
 
@@ -87,7 +88,7 @@ Every successfully packaged pipeline run writes to `output/`:
 - `deck.manifest.json` — copy of the input manifest
 - `editable-report.md`, `qa-report.md`, `compatibility-report.md` — quality dimensions
 - `output-manifest.json` — packaged output index
-- (creative) `semantic-slide-ir.json`, `run.json`, and `visual-review.json`
+- (creative) `deck.plan.json`, `semantic-slide-ir.json`, `assets/asset-registry.json`, `run.json`, and `visual-review.json`
 
 Editability ladder (`references/qa-rubric.md`): Level 5 = fully native objects, Level 4 = text + main shapes editable, Level 3 = text editable, Levels 1-2 = replica/screenshot. **Never** package a single full-slide raster as "editable PPTX".
 

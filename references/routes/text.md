@@ -14,28 +14,34 @@ npm run pptx -- text <deck.plan.json|plan-directory> <output-dir> [--creative] [
 
 ## Inputs and outputs
 
-The host agent converts raw text into an internal coordinate-free `deck.plan.json` version `0.2.0`; deterministic scripts validate it against `schemas/deck-plan.schema.json`, compile the selected canonical `semantic-slide-ir.json`, lower that IR to a `0.2.0` manifest, and render an editable PPTX. Its exact top-level keys are `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry a semantic page role, strict native `contentModel`, explicit attention target, composition intent, asset IDs, and native-first route policy. The host may add one optional `compositionIntent.blockId`; scripts validate and lower that explicit choice but never rank or invent it. Plan assets require non-empty provenance `sourceRef` values. Coordinates, manifest geometry, `elements`, and full-slide raster output are prohibited.
+The host agent converts raw text into an internal coordinate-free `deck.plan.json` version `0.2.0`; deterministic scripts validate it against `schemas/deck-plan.schema.json`, compile the selected canonical `semantic-slide-ir.json`, lower that IR to a `0.2.0` manifest, and render an editable PPTX. Its exact top-level keys are `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry a semantic page role, strict native `contentModel`, explicit attention target, composition intent, asset IDs, and native-first route policy. The host may add one optional `compositionIntent.blockId`; scripts validate and lower that explicit choice but never rank or invent it. Plan assets require non-empty `provenance.sourceRef`, one closed `provenance.rights` authority, optional HTTP(S) `sourceUrl`, and generation evidence only when `origin` is `generated`. Coordinates, manifest geometry, `elements`, and full-slide raster output are prohibited.
 
 The current migration shell supports the eight native content families `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. HTML is optional only when genuinely necessary and is never a mandatory text intermediate. An authored manifest requires the explicit advanced flag `--direct`; `--creative` remains only as a deprecated compatibility alias. `deck.plan` `0.1.0` is retired and fails closed before final, manifest, or quality artifacts are written.
 
 `--design-system` is available only on the creative text route. It accepts an existing local `DESIGN.md`, a directory containing one, or a built-in design-system name. Explicit paths win over names. With no option, resolution checks repository-root `DESIGN.md`, then input-adjacent `DESIGN.md`, then `design-systems/business-neutral/DESIGN.md`. The selected file is parsed before compilation, its declared name and tokens drive native element styling, and a portable copy is packaged as `design-system/DESIGN.md`. URL-like and unknown values fail closed.
 
-Asset `sourceRef` values resolve absolutely or relative to the plan directory. Scripts never fetch remote sources. Existing local files are copied to deterministic content-hashed paths under `output/assets/`; visual asset kinds become native image objects with declared alt text and `contain`/`cover` sizing, while chart-data and diagram-source assets remain non-visual inputs. Missing or remote sources block before `final.pptx` is published.
+Asset `sourceRef` values resolve absolutely or relative to the plan directory. Scripts never fetch remote sources. Existing local files are copied to deterministic content-addressed paths under `output/assets/`; runtime paths must be normalized POSIX paths strictly below `assets/`, and publication re-reads the localized files to verify the complete SHA-256 digest. Plan, IR, and final manifest must preserve the same canonical asset contract. Native images must carry the same asset ID, same-slide membership, source, alt text, focal point, crop policy, and effective `contain`/`cover` sizing. Creative cropped assets and image backgrounds fail closed until the renderer can preserve those semantics. Missing, remote, anonymous, off-slide, or drifted sources block before public evidence is committed.
 
-Per slide, `assetIds` must be unique and may include at most five visual assets. Asset attention must reference a visual asset in that slide; asset emphasis requires one. The compiler uses one hero plus a bounded support grid. Reusing an output directory invalidates stale canonical IR, run index, and other public deliverables before plan/design/asset preflight, and generated-asset ownership cleanup preserves unrelated user files. Separately, once the current pre-package hook starts writing IR/run, hook or package failure invokes best-effort compensating rollback before `pipeline-blocked.json` is written.
+Per slide, `assetIds` must be unique and may include at most five visual assets. Asset attention must reference a visual asset in that slide; asset emphasis requires one. The compiler uses one hero plus a bounded support grid. Reusing an output directory invalidates stale canonical IR, public asset registry, run index, and other public deliverables before plan/design/asset preflight. Private generated-asset ownership cleanup accepts only verified direct content-addressed regular files and preserves unrelated user files and the normal `assets/` directory. Output-root and nested-assets symlinks are rejected or left untouched, never followed.
+
+The pre-package transaction uses immutable snapshots of the validated plan, selected IR, and localized evidence. It reads the final `deck.manifest.json` render truth, rebuilds `assets/asset-registry.json` version `0.2.0` from final same-slide use and actual target bytes, then stages plan, IR, registry, and `run.json` in that order. Hook or package exception/non-OK status invokes best-effort reverse rollback before `pipeline-blocked.json` is written. The public registry is audit evidence; the manifest remains the renderer's sole render truth.
 
 Successful Creative output contains `deck.plan.json`,
-`semantic-slide-ir.json`, `deck.manifest.json`, `run.json`, `final.pptx`,
+`semantic-slide-ir.json`, `deck.manifest.json`, `assets/asset-registry.json`,
+`run.json`, `final.pptx`,
 quality/proof reports, rendered slide evidence with a contact sheet,
 `preview/index.html`, and `output-manifest.json`. The run index uses
-`artifacts.semanticIr` for the canonical IR path. This publication is committed
-only after packaging succeeds. Direct and replica routes do not produce Semantic IR.
+`artifacts.semanticIr` and `artifacts.assetRegistry` for the portable evidence
+paths. The nested public registry is included in `output-manifest.json`. This
+publication is committed only after packaging succeeds. Direct and replica
+routes do not produce Semantic IR.
 
 ## Blocking conditions
 
-Block on missing input/output, invalid plan, Semantic IR, manifest, or run
-artifacts, failed Creative gates, unavailable or incomplete LibreOffice slide
-evidence, any P0/P1 visual finding, or more than three repair attempts.
+Block on missing input/output, a symlink output root, invalid plan, Semantic IR,
+manifest, public registry, or run artifacts, provenance/locality/hash drift,
+failed Creative gates, unavailable or incomplete LibreOffice slide evidence,
+any P0/P1 visual finding, or more than three repair attempts.
 
 ## Next references
 

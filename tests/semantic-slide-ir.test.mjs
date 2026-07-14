@@ -68,8 +68,9 @@ function visualAsset(id = "asset-hero") {
     provenance: {
       origin: "project",
       sourceRef: `source/${id}.png`,
-      license: "project-owned",
-      contentHash: `sha256:${id}`
+      sourceUrl: `https://example.com/provenance/${id}`,
+      rights: { status: "allowed", license: "project-owned" },
+      contentHash: `sha256:${"a".repeat(64)}`
     },
     focalPoint: "top-right",
     cropPolicy: "cover",
@@ -659,5 +660,63 @@ describe("Semantic Slide IR 0.1.0", () => {
     const nonmember = structuredClone(ir);
     nonmember.slides[0].assetRefs = [];
     expect(validateSemanticDeckIr(nonmember, { design }).errors.join("; ")).toMatch(/attention|asset|member/i);
+  });
+
+  it("preserves canonical provenance while rejecting remote runtime sources before render", () => {
+    const plan = planWithAsset();
+    const local = options({ assetSourceById: { "asset-hero": "assets/asset-hero-local.png" } });
+    const ir = compileDeckPlanToIr(plan, local);
+    expect(ir.assets[0]).toMatchObject({
+      id: "asset-hero",
+      src: "assets/asset-hero-local.png",
+      provenance: {
+        origin: "project",
+        sourceRef: "source/asset-hero.png",
+        sourceUrl: "https://example.com/provenance/asset-hero",
+        rights: { status: "allowed", license: "project-owned" },
+        contentHash: `sha256:${"a".repeat(64)}`
+      },
+      role: "hero evidence",
+      focalPoint: "top-right",
+      cropPolicy: "cover",
+      altText: "Team reviewing the evidence",
+      fallback: { strategy: "placeholder", description: "Use a native placeholder" }
+    });
+    const manifest = compileSemanticDeckIr(ir, { design });
+    expect(manifest.assets[0]).toMatchObject({
+      src: "assets/asset-hero-local.png",
+      provenance: ir.assets[0].provenance
+    });
+    expect(manifest.slides[0].elements.find((element) => element.assetId === "asset-hero").src)
+      .toBe("assets/asset-hero-local.png");
+
+    for (const unsafe of [
+      "https://example.com/hero.png",
+      "//example.com/hero.png",
+      "/tmp/hero.png",
+      "assets/../hero.png",
+      "assets\\hero.png",
+      "data:image/png;base64,AAAA",
+      "file:///tmp/hero.png",
+      "C:/assets/hero.png",
+      "assets/%2e%2e/hero.png",
+      "assets／hero.png"
+    ]) {
+      expect(() => compileDeckPlanToIr(plan, options({ assetSourceById: { "asset-hero": unsafe } })), unsafe)
+        .toThrow(/asset.*runtime|local.*path|unsafe/i);
+    }
+
+    const forged = structuredClone(ir);
+    forged.assets[0].src = "https://example.com/forged.png";
+    expectSemanticInvalid(forged, /asset.*src|runtime|local.*path|unsafe/i);
+
+    const missingAsset = structuredClone(ir);
+    missingAsset.assets = [];
+    expectSemanticInvalid(missingAsset, /asset|unknown|authority|member/i);
+
+    const forgedNodeSource = structuredClone(ir);
+    const media = forgedNodeSource.slides[0].nodes.find((entry) => entry.kind === "media");
+    media.payload.src = "assets/forged.png";
+    expectSemanticInvalid(forgedNodeSource, /unexpected|authority|payload/i);
   });
 });

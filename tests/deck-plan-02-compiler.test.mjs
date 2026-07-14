@@ -44,7 +44,7 @@ function visualAsset(id, kind = "photo") {
     kind,
     role: `${id} evidence`,
     description: `${id} localized evidence`,
-    provenance: { origin: "project", sourceRef: `source/${id}.png`, license: "project-owned" },
+    provenance: { origin: "project", sourceRef: `source/${id}.png`, rights: { status: "allowed", license: "project-owned" } },
     focalPoint: "center",
     cropPolicy: "cover",
     altText: `${id} evidence image`,
@@ -207,7 +207,12 @@ describe("deck.plan 0.2 semantic compiler", () => {
       kind: "photo",
       role: "hero evidence",
       description: "A localized evidence image",
-      provenance: { origin: "project", sourceRef: "source/hero.png", license: "project-owned", contentHash: "sha256:test" },
+      provenance: {
+        origin: "project",
+        sourceRef: "source/hero.png",
+        rights: { status: "allowed", license: "project-owned" },
+        contentHash: `sha256:${"a".repeat(64)}`
+      },
       focalPoint: "top-right",
       cropPolicy: "cover",
       altText: "Team reviewing the evidence",

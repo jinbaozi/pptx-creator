@@ -167,15 +167,36 @@
         "provided": { "type": "boolean" }
       }
     },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "license"],
+      "properties": {
+        "status": { "enum": ["allowed", "allowed-with-attribution", "user-provided", "public-domain", "unknown"] },
+        "license": { "$ref": "#/$defs/nonEmptyString" },
+        "attribution": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "promptSummary"],
+      "properties": {
+        "model": { "$ref": "#/$defs/nonEmptyString" },
+        "promptSummary": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["origin", "sourceRef"],
+      "required": ["origin", "sourceRef", "rights"],
       "properties": {
         "origin": { "enum": ["user", "project", "web", "generated"] },
         "sourceRef": { "$ref": "#/$defs/nonEmptyString" },
-        "license": { "$ref": "#/$defs/nonEmptyString" },
-        "contentHash": { "$ref": "#/$defs/nonEmptyString" }
+        "sourceUrl": { "$ref": "#/$defs/nonEmptyString" },
+        "rights": { "$ref": "#/$defs/rights" },
+        "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "generation": { "$ref": "#/$defs/generation" }
       }
     },
     "fallback": {

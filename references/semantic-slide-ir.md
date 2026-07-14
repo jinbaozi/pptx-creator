@@ -28,22 +28,27 @@ name `semantic-slide-ir.json`. Its public transformation contract is:
 deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX
 ```
 
-The design-first runner compiles once. After the PPTX and reports have been
-created successfully, its pre-package hook stages the original returned IR as
-pretty JSON with exactly one trailing newline. The same hook stages `run.json`,
-whose `artifacts.semanticIr` field points to `semantic-slide-ir.json`. The run
-ID is a content-derived SHA-256 identifier over the full canonical IR, with
-object keys sorted recursively and array order preserved. A later fitted or
-repaired manifest must never be used to reverse-engineer this artifact.
+The design-first runner compiles once and snapshots the selected returned IR.
+After the PPTX and reports have been created successfully, its pre-package
+transaction reads the final manifest render truth, verifies it against the
+snapshotted plan and IR, re-hashes localized target bytes, and builds the public
+`assets/asset-registry.json` version `0.2.0`. It then stages canonical plan
+bytes, the original selected IR as pretty JSON with exactly one trailing
+newline, the registry, and `run.json`. The run index points to all four
+canonical plan, IR, manifest, and registry evidence paths. Its ID
+remains a content-derived SHA-256 identifier over the
+full canonical IR, with object keys sorted recursively and array order
+preserved. A fitted or repaired manifest may determine final asset-use evidence
+but must never be used to reverse-engineer the IR.
 
 At the start of a rerun, published-output invalidation removes stale canonical
-IR/run files from the previous run, including failures that happen before
-compilation. Once the current pre-package hook starts, IR/run publication is a
-separate compensating transaction: hook or package failure invokes the
-route-provided best-effort rollback before `pipeline-blocked.json` is written,
-and rollback errors do not mask the primary failure. Only package success
-commits the pair as published output; the successful path does not invoke
-rollback. Direct and replica routes do not produce Semantic IR and keep
+IR, public registry, and run files from the previous run, including failures
+that happen before compilation. Current publication is one compensating
+transaction over plan, IR, public registry, and run. Hook or package failure
+invokes route-provided best-effort reverse rollback before
+`pipeline-blocked.json` is written, and rollback errors do not mask the primary
+failure. Only package success commits the set; the successful path does not
+invoke rollback. Direct and replica routes do not produce Semantic IR and keep
 `artifacts.semanticIr` as `null` when they write a run index. Direction
 candidates, if a later pipeline stage introduces them, are evidence for
 selection and must never overwrite the selected canonical IR.
@@ -76,9 +81,14 @@ unknown properties fail validation.
 ```
 
 `context`, `designIntent`, `story`, and asset provenance keep the strict deck
-plan 0.2 contracts. Each IR asset additionally contains a portable `src`.
-`compileDeckPlanToIr()` resolves that source from `assetSourceById` when
-provided, otherwise from `provenance.sourceRef`; it never rewrites provenance.
+plan 0.2 contracts. Asset provenance has one closed `rights` authority;
+generated origins require model and prompt-summary evidence, while other
+origins reject generation evidence. Each IR asset additionally contains a
+portable `src`. `compileDeckPlanToIr()` resolves that source from
+`assetSourceById` when provided, otherwise from `provenance.sourceRef`; it never
+rewrites provenance. The resolved runtime source must be a normalized POSIX path
+strictly below `assets/`. URLs, absolute paths, traversal, backslashes, encoded
+separators, and Unicode separator variants fail closed.
 
 `designSystem.selection.provided` distinguishes compatibility history that
 cannot be inferred from the other two values:
@@ -231,17 +241,23 @@ canonicalTokenSnapshotHash(tokens)       // stable sha256 token fingerprint
 ```
 
 Validation combines JSON Schema enforcement with semantic checks for ID and
-reference integrity, family authority, derived-node authority, route and asset
-membership, token resolution, layout ownership, connector topology, canonical
-composition identity, and trusted requested-to-resolved compatibility replay.
-Callers must treat any error as a hard preflight failure; no manifest is emitted
-from an invalid IR.
+reference integrity, provenance/generation consistency, safe runtime locality,
+family authority, derived-node authority, route and same-slide asset membership,
+token resolution, layout ownership, connector topology, canonical composition
+identity, and trusted requested-to-resolved compatibility replay. Publication
+additionally requires exact ordered plan/IR/manifest slide and asset identity,
+canonical asset-field equality, and final localized byte hashes. Callers must
+treat any error as a hard preflight failure; no manifest is emitted from an
+invalid IR.
 
 ## Current boundary
 
-This version publishes the selected canonical IR and indexes it in `run.json`.
-It provides an explicitly host-selected fifteen-block composition registry but
-does not generate, rank, score, or persist visual concept candidates. A block
-is a bounded post-family topology transform, not a replacement generic
-renderer. The eight existing family geometry compilers remain the default and
-stay byte/geometry compatible when no `compositionIntent.blockId` is present.
+This version publishes the selected canonical IR together with a public asset
+registry and indexes all four canonical evidence paths in `run.json`. The manifest remains the sole render
+truth; the registry is provenance, locality, hash, usage, and final-deck-use
+audit evidence. It provides an explicitly host-selected fifteen-block
+composition registry but does not generate, rank, score, or persist visual
+concept candidates. A block is a bounded post-family topology transform, not a
+replacement generic renderer. The eight existing family geometry compilers
+remain the default and stay byte/geometry compatible when no
+`compositionIntent.blockId` is present.

@@ -15,6 +15,7 @@ gate.
 deck.plan.json
 semantic-slide-ir.json
 deck.manifest.json
+assets/asset-registry.json
 run.json
 final.pptx
 quality-report.json
@@ -28,10 +29,10 @@ The plan is version `0.2.0` with exactly six required top-level keys: `version`,
 - `context` records title, language, structured audience and environment, decision goal, tone, duration, memory anchors, brand references, requested quality profile, required office suites, editability floor, asset intensity, and visual ambition. LibreOffice must be present and required.
 - `designIntent` records the design read; typography, palette, material, imagery, composition direction and `visibleGrid`; contextual composition/density/energy dials; and source/brand locks.
 - `story` records narrative beats, ordered sections with slide references, and the decision path.
-- `assets` records localized asset intent and provenance. Every asset has a non-empty `provenance.sourceRef`; empty asset lists remain valid.
+- `assets` records localized asset intent and provenance. Every asset has a non-empty `provenance.sourceRef` and one closed `provenance.rights` object; `sourceUrl` is optional HTTP(S)-only provenance. `origin: generated` additionally requires non-empty model and prompt-summary evidence, while non-generated assets must not claim generation evidence. Empty asset lists remain valid.
 - Every slide records `pageRole`, one message, a strict `contentModel`, an explicit `attentionTarget`, `compositionIntent`, `assetIds`, and a `routePolicy` whose preferred route is `native`, whose allowed routes include `native`, and whose `fullSlideRaster` is always `false`. The host may explicitly add `compositionIntent.blockId` from the built-in composition registry; it is the only public block-selection knob.
 
-The current migration shell keeps eight strict native content families: `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. It is coordinate-free at every depth: coordinates, manifest geometry, and `elements` are invalid. `schemas/deck-plan.schema.json` is the only structural validator; runtime checks add only ID uniqueness, reference resolution, required route/suite membership, and composition ordering. Version `0.1.0` is retired and cannot compile.
+The current migration shell keeps eight strict native content families: `cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, and `closing`. It is coordinate-free at every depth: coordinates, manifest geometry, and `elements` are invalid. `schemas/deck-plan.schema.json` is the structural validator; runtime checks add provenance/generation cross-field rules, ID uniqueness, reference resolution, required route/suite membership, and composition ordering. Version `0.1.0` is retired and cannot compile.
 
 Direction candidates are optional. Use them only when material ambiguity or high risk makes a single direction unsafe; candidate count, scoring, and recommendation are host-agent judgments, never fixed deterministic outputs.
 
@@ -55,33 +56,45 @@ is not a Creative authoring contract.
 
 ## Canonical publication
 
-`compileDeckPlanArtifacts()` compiles the selected IR and manifest once. Only
-the pre-package hook stages the exact pretty-printed IR as
-`semantic-slide-ir.json`, then writes the real `run.json` artifact index.
-`run.json.artifacts.semanticIr` points to the portable filename. Publication is
-committed only by a successful package step. If the hook partially fails or
-packaging fails, the common pipeline calls the route-provided compensating
-rollback before writing `pipeline-blocked.json`; rollback failure is best-effort
-and never replaces the primary failure. A successful run does not execute this
-rollback. Candidate evidence must never overwrite the selected canonical file,
-and the IR is never reconstructed from a fitted or repaired manifest.
+`compileDeckPlanArtifacts()` compiles the selected IR and manifest once. The
+Creative transaction snapshots the already-validated plan, selected IR, and
+localized byte evidence before packaging; caller or source-file mutation cannot
+change those snapshots. Immediately before packaging, it reads the final
+`deck.manifest.json` render truth, verifies exact ordered slide/asset membership
+and canonical asset metadata across plan, IR, and manifest, re-reads every
+localized target, and builds `assets/asset-registry.json` version `0.2.0` from
+that final evidence. It then stages canonical `deck.plan.json`,
+`semantic-slide-ir.json`, the public registry, and finally `run.json`.
+
+`run.json.artifacts.semanticIr` and `run.json.artifacts.assetRegistry` point to
+portable filenames. Empty asset lists publish deterministic registry bytes and
+remain valid. Publication is committed only by a successful package step. If
+the hook partially fails or packaging fails, the common pipeline invokes
+best-effort reverse rollback before writing `pipeline-blocked.json`; rollback
+failure never replaces the primary failure. A successful run does not execute
+this rollback. Candidate evidence must never overwrite the selected canonical
+IR, and the IR is never reconstructed from fitted or repaired geometry.
 
 ## Design and asset resolution
 
 The public creative route accepts `--design-system <path-or-name>`. Existing local files or directories resolve before built-in names. Without an option, the deterministic order is repository-root `DESIGN.md`, input-adjacent `DESIGN.md`, then built-in `business-neutral`. The selected file is parsed exactly once before compilation; its name is derived from frontmatter, resolved tokens are materialized into native element styling, and the packaged manifest keeps the portable source `design-system/DESIGN.md`. Selection provenance records the original request and resolved local file under `metadata.designIntent.designSystemSelection`.
 
-Plan assets resolve relative to the plan directory unless already absolute. Remote or missing sources block before rendering. Local files are copied to deterministic content-hashed paths under `output/assets/`, the full asset contract remains in `manifest.assets`, and referenced visual assets become native image objects. `alt` is the canonical accessibility field used by deterministic analysis and PPT rendering; the authored `altText` remains as provenance. Non-visual data assets never become fake images.
+Plan assets resolve relative to the plan directory unless already absolute. Remote or missing sources block before rendering. Local files are copied to deterministic content-addressed paths under `output/assets/`; runtime `src` values must be normalized POSIX paths strictly below `assets/` and may never be URLs, absolute paths, traversal, backslash paths, or encoded separator variants. The complete SHA-256 digest is verified from the localized bytes. The full asset contract remains identical across plan, IR, and `manifest.assets`, and referenced visual assets become native image objects. Image `alt`/`altText`, focal point, crop policy, and effective `contain`/`cover` sizing must agree with that contract. Creative cropped-asset or image-background routes fail closed because the current renderer cannot preserve the same crop semantics. Non-visual data assets never become fake images.
+
+The public `assets/asset-registry.json` is audit evidence, not render truth. In plan order, each record carries canonical source, rights, optional generation evidence, verified local path and full byte hash, same-slide usage, and `finalDeckUse`. `embedded` requires a same-slide tracked native image; `recreated-locally` is limited to same-slide `chart-data -> chart` or `diagram-source -> diagram` references; otherwise the value is `not-embedded`. The private `.pptx-generated-assets.json` is only a cleanup-ownership sidecar and cannot substitute for the public registry.
 
 Each slide may reference at most five visual assets and may not repeat an asset ID. Asset attention must point to a visual asset listed by that slide. One visual becomes the hero; up to four supporting visuals occupy a deterministic gapped grid inside the reserved media zone, without crossing native-content bounds. `emphasis: asset` requires at least one visual asset.
 
 Starting a creative run immediately invalidates previously published PPTX,
-canonical IR, manifest, run index, report, review, and preview artifacts while
-preserving in-place plan, design, and source-asset inputs. Localized asset
-ownership is recorded only after normal pipeline cleanup and only for files
-created by the run; a later run removes those owned hashes without deleting
-unrelated or in-place user assets. This initial stale-output invalidation is
-separate from the compensating rollback for IR/run files written by the current
-pre-package transaction.
+canonical IR, public asset registry, manifest, run index, report, review, and
+preview artifacts while preserving in-place plan, design, source-asset inputs,
+and an ordinary empty `assets/` directory. Localized ownership is accepted only
+from the exact private owner/version contract and only for direct, regular,
+non-symlink content-addressed files whose bytes match the filename hash; forged,
+nested, traversal, and symlink entries cannot authorize deletion. Design-first,
+the common runner, and packaging reject a symlink output root, and nested assets
+symlinks are never followed. Initial stale invalidation remains separate from
+reverse rollback of the current pre-package evidence transaction.
 
 For native containers, resolved `hero-card` and `content-card` component tokens provide the baseline. Page-role, attention, and compatibility adjustments are explicit overrides, so component resolution cannot erase semantic emphasis.
 

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { validateJsonSchema } from "./schema-utils.mjs";
 import { resolveSemanticConnectors } from "./connector-resolver.mjs";
+import { assertSafeAssetRuntimePath } from "./registry.mjs";
 
 const W = 13.333;
 const H = 7.5;
@@ -404,8 +405,10 @@ function applySemanticIntent(elements, slide, plan, slideIndex, tokens) {
 }
 
 function assetSource(options, asset) {
-  if (options.assetSourceById instanceof Map) return options.assetSourceById.get(asset.id) ?? asset.provenance.sourceRef;
-  return options.assetSourceById?.[asset.id] ?? asset.provenance.sourceRef;
+  const source = options.assetSourceById instanceof Map
+    ? options.assetSourceById.get(asset.id) ?? asset.provenance.sourceRef
+    : options.assetSourceById?.[asset.id] ?? asset.provenance.sourceRef;
+  return assertSafeAssetRuntimePath(source, `asset ${asset.id} runtime source`);
 }
 
 const MEDIA_ZONE = Object.freeze({ x: 8.25, y: 0.75, w: 4.38, h: 6 });
@@ -592,6 +595,26 @@ function validateSemanticRules(plan) {
   const assetIds = new Set(plan.assets.map((asset) => asset.id));
   const assetsById = new Map(plan.assets.map((asset) => [asset.id, asset]));
   const suites = new Set();
+
+  for (const asset of plan.assets) {
+    const provenance = asset.provenance;
+    if (provenance.rights.status === "allowed-with-attribution"
+      && (typeof provenance.rights.attribution !== "string" || provenance.rights.attribution.trim() === "")) {
+      errors.push(`asset ${asset.id} rights attribution is required for allowed-with-attribution`);
+    }
+    if (provenance.origin === "generated") {
+      if (!provenance.generation
+        || typeof provenance.generation.model !== "string" || provenance.generation.model.trim() === ""
+        || typeof provenance.generation.promptSummary !== "string" || provenance.generation.promptSummary.trim() === "") {
+        errors.push(`asset ${asset.id} generated provenance requires generation model and promptSummary`);
+      }
+    } else if (provenance.generation !== undefined) {
+      errors.push(`asset ${asset.id} non-generated provenance must not include generation`);
+    }
+    if (provenance.sourceUrl !== undefined && !/^https?:\/\/\S+$/i.test(provenance.sourceUrl)) {
+      errors.push(`asset ${asset.id} provenance sourceUrl must be an http(s) URL`);
+    }
+  }
 
   for (const target of plan.context.targetSuites) {
     if (suites.has(target.suite)) errors.push(`context.targetSuites suite "${target.suite}" must be unique`);

@@ -19,11 +19,14 @@ route contract and its listed next references before acting.
 Do not combine creative rules with replica rules. The `text` route is creative
 by default: the host agent edits the narrative and visual direction, then after
 successful packaging keeps `deck.plan.json`, the selected canonical
-`semantic-slide-ir.json`, and `deck.manifest.json` as internal evidence.
-`run.json` indexes the real published
-artifacts. IR and run publication commits only after packaging succeeds; hook
-or package failure triggers best-effort rollback before blocked evidence is
-written. Direct manifest rendering is an explicit advanced compatibility path
+`semantic-slide-ir.json`, validated `assets/asset-registry.json` 0.2, and
+`deck.manifest.json` as evidence. `run.json` indexes the real published
+artifacts. The Creative evidence transaction writes plan, IR, public registry,
+then run; publication commits only after packaging succeeds, and hook or
+package failure triggers best-effort reverse rollback before blocked evidence
+is written. The public registry records provenance and verified localized
+bytes; `.pptx-generated-assets.json` is a separate private cleanup sidecar.
+Direct manifest rendering is an explicit advanced compatibility path
 only. HTML is optional, never a mandatory text intermediate.
 An optional `compositionIntent.blockId` is a host-authored Creative choice;
 deterministic scripts validate and snapshot it but never rank or infer blocks.
@@ -40,8 +43,10 @@ Without that field, the existing family geometry is unchanged.
 - Creative exploration belongs only to the text route.
 - Automatic repair is bounded to at most three attempts, then it must block and
   ask for user direction.
-- Localize remote assets before validation; scripts never search the web or call
-  an LLM.
+- Localize remote assets before deterministic compilation; scripts never search
+  the web or call an LLM. `provenance.rights` is the sole rights authority.
+  Runtime asset paths are normalized POSIX paths below `assets/`; remote
+  HTTP(S) URLs may remain only as provenance.
 - Report editability gaps honestly and preserve unrelated files.
 
 ## Public entry point

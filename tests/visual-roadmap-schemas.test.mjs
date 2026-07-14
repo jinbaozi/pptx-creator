@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { validateJsonSchema } from "../scripts/lib/schema-utils.mjs";
+import { validateAssetRegistry } from "../scripts/lib/registry.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 
@@ -41,5 +42,7 @@ describe("visual roadmap next schemas", () => {
     const assets = await loadJson("examples/visual-roadmap-next/assets/asset-registry.json");
     expect(validateJsonSchema(sources, sourceSchema).valid).toBe(true);
     expect(validateJsonSchema(assets, assetSchema).valid).toBe(true);
+    expect(assets.version).toBe("0.2.0");
+    expect(validateAssetRegistry(assets)).toEqual({ valid: true, issues: [] });
   });
 });

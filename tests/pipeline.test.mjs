@@ -116,7 +116,7 @@ describe("run-deck-pipeline", () => {
     expect(blocked).toMatchObject({ status: "blocked", blockedBy: "reports", detail: "injected before-package failure" });
   }, 60000);
 
-  it("rolls back hook-owned IR and run artifacts when packaging fails", async () => {
+  it("rolls back hook-owned Creative evidence when packaging fails", async () => {
     const manifest = join(root, "examples/text-input/deck.manifest.json");
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-before-package-package-failure-"));
     let hookRan = false;
@@ -127,8 +127,19 @@ describe("run-deck-pipeline", () => {
       inputType: "text",
       inputSource: manifest,
       beforePackage: async ({ outputDir: hookOutputDir }) => {
+        await mkdir(join(hookOutputDir, "assets"), { recursive: true });
+        await writeFile(join(hookOutputDir, "deck.plan.json"), "{}\n", "utf8");
         await writeFile(join(hookOutputDir, "semantic-slide-ir.json"), "{}\n", "utf8");
-        await writeFile(join(hookOutputDir, "run.json"), "{}\n", "utf8");
+        await writeFile(join(hookOutputDir, "assets", "asset-registry.json"), '{"version":"0.2.0","assets":[]}\n', "utf8");
+        await writeFile(join(hookOutputDir, "run.json"), `${JSON.stringify({
+          mode: "creative",
+          artifacts: {
+            deckPlan: "deck.plan.json",
+            semanticIr: "semantic-slide-ir.json",
+            manifest: "deck.manifest.json",
+            assetRegistry: "assets/asset-registry.json"
+          }
+        })}\n`, "utf8");
         await access(join(hookOutputDir, "consistency-report.json"));
         await rm(join(hookOutputDir, "consistency-report.json"), { force: true });
         hookRan = true;
@@ -136,13 +147,17 @@ describe("run-deck-pipeline", () => {
       beforePackageRollback: async ({ outputDir: rollbackOutputDir, blockedBy }) => {
         rollbackCalls += 1;
         expect(blockedBy).toBe("package");
+        await rm(join(rollbackOutputDir, "deck.plan.json"), { force: true });
         await rm(join(rollbackOutputDir, "semantic-slide-ir.json"), { force: true });
+        await rm(join(rollbackOutputDir, "assets", "asset-registry.json"), { force: true });
         await rm(join(rollbackOutputDir, "run.json"), { force: true });
       }
     })).rejects.toThrow(/pipeline blocked at package/);
 
     expect(hookRan).toBe(true);
+    await expect(access(join(outputDir, "deck.plan.json"))).rejects.toThrow();
     await expect(access(join(outputDir, "semantic-slide-ir.json"))).rejects.toThrow();
+    await expect(access(join(outputDir, "assets", "asset-registry.json"))).rejects.toThrow();
     await expect(access(join(outputDir, "run.json"))).rejects.toThrow();
     await expect(access(join(outputDir, "output-manifest.json"))).rejects.toThrow();
     expect(rollbackCalls).toBe(1);

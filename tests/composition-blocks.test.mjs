@@ -116,8 +116,8 @@ function photoAsset(id) {
     provenance: {
       origin: "project",
       sourceRef: `source/${id}.png`,
-      license: "project-owned",
-      contentHash: `sha256:${id}`
+      rights: { status: "allowed", license: "project-owned" },
+      contentHash: `sha256:${"a".repeat(64)}`
     },
     focalPoint: "top-right",
     cropPolicy: "cover",
@@ -876,7 +876,10 @@ describe("explicit Semantic IR composition integration", () => {
     plan.slides[0].attentionTarget = { kind: "asset", ref: asset.id };
     plan.slides[0].compositionIntent.emphasis = "asset";
     plan.slides[0].compositionIntent.blockId = blockId;
-    const ir = compileDeckPlanToIr(plan, options(business, { compositionBlockRegistry: registry }));
+    const ir = compileDeckPlanToIr(plan, options(business, {
+      compositionBlockRegistry: registry,
+      assetSourceById: { [asset.id]: `assets/${asset.id}.png` }
+    }));
     expect(ir.slides[0].compositionBlock.fallbackApplied, blockId).toBe(false);
 
     const forged = structuredClone(ir);
@@ -934,7 +937,9 @@ describe("explicit Semantic IR composition integration", () => {
     plan.slides[0].assetIds = assets.map((asset) => asset.id);
     plan.slides[0].attentionTarget = { kind: "asset", ref: assets[0].id };
     plan.slides[0].compositionIntent.emphasis = "asset";
-    const forged = compileDeckPlanToIr(plan, options(business));
+    const forged = compileDeckPlanToIr(plan, options(business, {
+      assetSourceById: Object.fromEntries(assets.map((asset) => [asset.id, `assets/${asset.id}.png`]))
+    }));
     const block = registry.get(blockId);
     forged.slides[0].compositionIntent.blockId = blockId;
     forged.slides[0].compositionBlock = {

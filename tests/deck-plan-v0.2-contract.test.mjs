@@ -61,8 +61,9 @@ function validPlanV02() {
         provenance: {
           origin: "project",
           sourceRef: "assets/hero.png",
-          license: "project-owned",
-          contentHash: "sha256:abc123"
+          sourceUrl: "https://example.com/project/hero",
+          rights: { status: "allowed", license: "project-owned" },
+          contentHash: `sha256:${"a".repeat(64)}`
         },
         focalPoint: "center",
         cropPolicy: "cover",
@@ -215,6 +216,49 @@ describe("deck.plan 0.2 canonical contract", () => {
     }
   });
 
+  it("uses one closed rights authority and enforces generated provenance", () => {
+    const schema = JSON.parse(fs.readFileSync("schemas/deck-plan.schema.json", "utf8"));
+    const complete = validPlanV02();
+    expect(validateJsonSchema(complete, schema)).toEqual({ valid: true, errors: [] });
+
+    const oldLicense = validPlanV02();
+    oldLicense.assets[0].provenance.license = "competing-authority";
+    expect(validateDeckPlan(oldLicense).valid).toBe(false);
+
+    const missingAttribution = validPlanV02();
+    missingAttribution.assets[0].provenance.rights = {
+      status: "allowed-with-attribution",
+      license: "CC BY 4.0"
+    };
+    expect(errorsFor(missingAttribution)).toMatch(/attribution/i);
+
+    const generated = validPlanV02();
+    generated.assets[0].provenance = {
+      origin: "generated",
+      sourceRef: "assets/generated-hero.png",
+      rights: { status: "allowed", license: "Provider output terms" },
+      generation: { model: "image-model-2", promptSummary: "Editorial infrastructure illustration" }
+    };
+    expect(validateDeckPlan(generated)).toEqual({ valid: true, errors: [] });
+
+    const missingGeneration = structuredClone(generated);
+    delete missingGeneration.assets[0].provenance.generation;
+    expect(errorsFor(missingGeneration)).toMatch(/generation/i);
+
+    for (const field of ["model", "promptSummary"]) {
+      const blankGeneration = structuredClone(generated);
+      blankGeneration.assets[0].provenance.generation[field] = "   ";
+      expect(errorsFor(blankGeneration), field).toMatch(/string|pattern|generation/i);
+    }
+
+    const inventedGeneration = validPlanV02();
+    inventedGeneration.assets[0].provenance.generation = {
+      model: "image-model-2",
+      promptSummary: "Invented provenance"
+    };
+    expect(errorsFor(inventedGeneration)).toMatch(/generation/i);
+  });
+
   it("enforces native routing, required LibreOffice, and composition ordering", () => {
     const noNative = validPlanV02();
     noNative.slides[0].routePolicy.allowed = ["html-assisted"];
@@ -266,8 +310,9 @@ describe("deck.plan 0.2 compilation provenance", () => {
         provenance: {
           origin: "project",
           sourceRef: "assets/hero.png",
-          license: "project-owned",
-          contentHash: "sha256:abc123"
+          sourceUrl: "https://example.com/project/hero",
+          rights: { status: "allowed", license: "project-owned" },
+          contentHash: `sha256:${"a".repeat(64)}`
         },
         focalPoint: "center",
         cropPolicy: "cover",
@@ -276,8 +321,9 @@ describe("deck.plan 0.2 compilation provenance", () => {
         src: "assets/hero.png",
         origin: "project",
         sourceRef: "assets/hero.png",
-        license: "project-owned",
-        contentHash: "sha256:abc123"
+        sourceUrl: "https://example.com/project/hero",
+        rights: { status: "allowed", license: "project-owned" },
+        contentHash: `sha256:${"a".repeat(64)}`
       }
     ]);
 

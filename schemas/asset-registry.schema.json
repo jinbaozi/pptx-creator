@@ -1,51 +1,120 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://pptx-creator.local/asset-registry.schema.json",
-  "title": "Asset Registry",
+  "title": "Canonical Asset Registry 0.2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["assets"],
+  "required": ["version", "assets"],
   "properties": {
-    "createdAt": { "type": "string" },
+    "version": { "const": "0.2.0" },
     "assets": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["id", "kind", "usage", "finalDeckUse"],
-        "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "kind": { "type": "string", "minLength": 1 },
-          "sourceUrl": { "type": "string" },
-          "localPath": { "type": "string" },
-          "usedInSlides": {
-            "type": "array",
-            "items": { "type": "string", "minLength": 1 }
-          },
-          "license": {
-            "type": "object",
-            "required": ["status"],
-            "properties": {
-              "status": { "type": "string", "minLength": 1 },
-              "label": { "type": "string" },
-              "attribution": { "type": "string" }
-            }
-          },
-          "usage": {
-            "type": "string",
-            "enum": [
-              "fact-source",
-              "visual-reference",
-              "embedded-asset",
-              "font-reference",
-              "icon-source",
-              "replica-source"
-            ]
-          },
-          "finalDeckUse": { "type": "string", "minLength": 1 }
-        }
+      "items": { "$ref": "#/$defs/asset" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "pattern": "\\S"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "sourceRef"],
+      "properties": {
+        "origin": { "enum": ["user", "project", "web", "generated"] },
+        "sourceRef": { "$ref": "#/$defs/nonEmptyString" },
+        "sourceUrl": { "$ref": "#/$defs/nonEmptyString" }
       }
     },
-    "metadata": { "type": "object" }
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "license"],
+      "properties": {
+        "status": {
+          "enum": ["allowed", "allowed-with-attribution", "user-provided", "public-domain", "unknown"]
+        },
+        "license": { "$ref": "#/$defs/nonEmptyString" },
+        "attribution": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "description"],
+      "properties": {
+        "strategy": { "enum": ["omit", "placeholder", "native-diagram", "text"] },
+        "description": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "promptSummary"],
+      "properties": {
+        "model": { "$ref": "#/$defs/nonEmptyString" },
+        "promptSummary": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "source",
+        "localPath",
+        "contentHash",
+        "rights",
+        "altText",
+        "role",
+        "focalPoint",
+        "cropPolicy",
+        "fallback",
+        "usedInSlides",
+        "finalDeckUse"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "kind": {
+          "enum": ["photo", "illustration", "icon", "logo", "chart-data", "diagram-source", "texture"]
+        },
+        "source": { "$ref": "#/$defs/source" },
+        "localPath": { "$ref": "#/$defs/nonEmptyString" },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "rights": { "$ref": "#/$defs/rights" },
+        "altText": { "$ref": "#/$defs/nonEmptyString" },
+        "role": { "$ref": "#/$defs/nonEmptyString" },
+        "focalPoint": {
+          "enum": ["center", "top", "right", "bottom", "left", "top-left", "top-right", "bottom-left", "bottom-right"]
+        },
+        "cropPolicy": { "enum": ["contain", "cover", "smart-crop", "none"] },
+        "fallback": { "$ref": "#/$defs/fallback" },
+        "usedInSlides": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "finalDeckUse": { "enum": ["embedded", "not-embedded", "recreated-locally"] },
+        "generation": { "$ref": "#/$defs/generation" }
+      },
+      "if": {
+        "required": ["finalDeckUse"],
+        "properties": {
+          "finalDeckUse": { "enum": ["embedded", "recreated-locally"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "usedInSlides": { "minItems": 1 }
+        }
+      }
+    }
   }
 }

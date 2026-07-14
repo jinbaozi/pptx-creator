@@ -1,32 +1,56 @@
 {
-  "createdAt": "2026-06-08T10:00:00+08:00",
+  "version": "0.2.0",
   "assets": [
     {
       "id": "asset-001",
-      "kind": "image",
-      "sourceUrl": "https://example.com/reference.png",
+      "kind": "photo",
+      "source": {
+        "origin": "web",
+        "sourceRef": "reference-image",
+        "sourceUrl": "https://example.com/reference.png"
+      },
       "localPath": "assets/reference.png",
-      "usedInSlides": ["slide-003"],
-      "license": {
+      "contentHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "rights": {
         "status": "allowed-with-attribution",
-        "label": "CC BY 4.0",
+        "license": "CC BY 4.0",
         "attribution": "Example Author"
       },
-      "usage": "visual-reference",
+      "altText": "Reference image for the visual roadmap",
+      "role": "visual reference",
+      "focalPoint": "center",
+      "cropPolicy": "contain",
+      "fallback": {
+        "strategy": "placeholder",
+        "description": "Use a native visual placeholder"
+      },
+      "usedInSlides": ["slide-003"],
       "finalDeckUse": "not-embedded"
     },
     {
       "id": "asset-002",
       "kind": "icon",
-      "sourceUrl": "https://example.com/icons/compiler.svg",
-      "localPath": "assets/icons/compiler.svg",
-      "usedInSlides": ["slide-002", "slide-004"],
-      "license": {
-        "status": "allowed",
-        "label": "MIT"
+      "source": {
+        "origin": "web",
+        "sourceRef": "compiler-icon",
+        "sourceUrl": "https://example.com/icons/compiler.svg"
       },
-      "usage": "icon-source",
-      "finalDeckUse": "recreated-locally"
+      "localPath": "assets/icons/compiler.svg",
+      "contentHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "rights": {
+        "status": "allowed",
+        "license": "MIT"
+      },
+      "altText": "Compiler icon",
+      "role": "supporting icon",
+      "focalPoint": "center",
+      "cropPolicy": "contain",
+      "fallback": {
+        "strategy": "native-diagram",
+        "description": "Use a native compiler node"
+      },
+      "usedInSlides": ["slide-002", "slide-004"],
+      "finalDeckUse": "not-embedded"
     }
   ]
 }

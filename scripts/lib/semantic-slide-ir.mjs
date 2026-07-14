@@ -13,6 +13,7 @@ import {
   validateCompositionTopology
 } from "./composition-blocks.mjs";
 import { validateJsonSchema } from "./schema-utils.mjs";
+import { assertSafeAssetRuntimePath, isSafeAssetRuntimePath } from "./registry.mjs";
 
 const SCHEMA = JSON.parse(readFileSync(new URL("../../schemas/semantic-slide-ir.schema.json", import.meta.url), "utf8"));
 const VISUAL_KINDS = new Set(["photo", "illustration", "icon", "logo", "texture"]);
@@ -271,12 +272,15 @@ export function compileDeckPlanToIr(plan, options = {}) {
       },
       tokenSnapshotHash: canonicalTokenSnapshotHash(design.tokens)
     },
-    assets: plan.assets.map((asset) => ({
-      ...structuredClone(asset),
-      src: options.assetSourceById instanceof Map
+    assets: plan.assets.map((asset) => {
+      const source = options.assetSourceById instanceof Map
         ? (options.assetSourceById.get(asset.id) ?? asset.provenance.sourceRef)
-        : (options.assetSourceById?.[asset.id] ?? asset.provenance.sourceRef)
-    })),
+        : (options.assetSourceById?.[asset.id] ?? asset.provenance.sourceRef);
+      return {
+        ...structuredClone(asset),
+        src: assertSafeAssetRuntimePath(source, `asset ${asset.id} runtime source`)
+      };
+    }),
     slides: plan.slides.map((slide) => {
       const base = familyNodes(slide);
       const derived = derivedNodes(plan, slide, plan.assets);
@@ -599,7 +603,25 @@ export function validateSemanticDeckIr(ir, { design } = {}) {
   for (const asset of ir?.assets ?? []) {
     if (assets.has(asset.id)) errors.push(`duplicate asset id ${asset.id}`);
     assets.set(asset.id, asset);
-    if (typeof asset.src !== "string" || asset.src.length === 0) errors.push(`asset ${asset.id} missing portable src`);
+    if (!isSafeAssetRuntimePath(asset.src)) {
+      errors.push(`asset ${asset.id} src is not a safe local runtime path below assets/`);
+    }
+    if (asset.provenance?.sourceUrl !== undefined && !/^https?:\/\/\S+$/i.test(asset.provenance.sourceUrl)) {
+      errors.push(`asset ${asset.id} provenance sourceUrl must be an http(s) URL`);
+    }
+    if (asset.provenance?.rights?.status === "allowed-with-attribution"
+      && (typeof asset.provenance.rights.attribution !== "string" || asset.provenance.rights.attribution.trim() === "")) {
+      errors.push(`asset ${asset.id} rights attribution is required for allowed-with-attribution`);
+    }
+    if (asset.provenance?.origin === "generated") {
+      if (!asset.provenance.generation
+        || typeof asset.provenance.generation.model !== "string" || asset.provenance.generation.model.trim() === ""
+        || typeof asset.provenance.generation.promptSummary !== "string" || asset.provenance.generation.promptSummary.trim() === "") {
+        errors.push(`asset ${asset.id} generated provenance requires generation model and promptSummary`);
+      }
+    } else if (asset.provenance?.generation !== undefined) {
+      errors.push(`asset ${asset.id} non-generated provenance must not include generation`);
+    }
   }
   const slideIds = (ir?.slides ?? []).map((slide) => slide.id);
   for (const id of duplicates(slideIds)) errors.push(`duplicate slide id ${id}`);

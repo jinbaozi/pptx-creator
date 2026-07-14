@@ -12,7 +12,7 @@ describe("visual roadmap pipeline metadata", () => {
     await mkdir(join(dir, "assets"), { recursive: true });
     await writeFile(join(dir, "deck.manifest.json"), "{}");
     await writeFile(join(dir, "sources.json"), JSON.stringify({ createdAt: "2026-06-08T10:00:00+08:00", items: [] }));
-    await writeFile(join(dir, "assets", "asset-registry.json"), JSON.stringify({ assets: [] }));
+    await writeFile(join(dir, "assets", "asset-registry.json"), JSON.stringify({ version: "0.2.0", assets: [] }));
 
     const sources = JSON.parse(await readFile(join(dir, "sources.json"), "utf8"));
     const assets = JSON.parse(await readFile(join(dir, "assets", "asset-registry.json"), "utf8"));

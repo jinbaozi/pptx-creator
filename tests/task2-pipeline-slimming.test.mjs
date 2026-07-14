@@ -1,8 +1,9 @@
-import { access, chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { access, chmod, lstat, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
@@ -85,6 +86,221 @@ describe("Task 2 single pipeline contract", () => {
     for (const preserved of [planPath, designPath, assetPath]) await expect(access(preserved)).resolves.toBeUndefined();
   });
 
+  it.each([
+    ["published invalidation", pipeline.invalidatePublishedOutputs],
+    ["consumable cleanup", pipeline.clearConsumableOutputs]
+  ])("does not follow an assets symlink during %s", async (_label, cleanup) => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-assets-symlink-output-"));
+    const victimDir = await mkdtemp(join(tmpdir(), "pptx-assets-symlink-victim-"));
+    const victimRegistry = join(victimDir, "asset-registry.json");
+    await writeFile(victimRegistry, "USER-OWNED\n", "utf8");
+    await symlink(victimDir, join(outputDir, "assets"), "dir");
+
+    await cleanup(outputDir);
+
+    expect(await readFile(victimRegistry, "utf8")).toBe("USER-OWNED\n");
+    expect((await lstat(join(outputDir, "assets"))).isSymbolicLink()).toBe(true);
+  });
+
+  it("preserves an ordinary empty assets directory during consumable cleanup", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-empty-assets-output-"));
+    await mkdir(join(outputDir, "assets"));
+    await pipeline.clearConsumableOutputs(outputDir);
+    const entry = await lstat(join(outputDir, "assets"));
+    expect(entry.isDirectory()).toBe(true);
+    expect(entry.isSymbolicLink()).toBe(false);
+  });
+
+  it.each([
+    ["published invalidation", pipeline.invalidatePublishedOutputs],
+    ["consumable cleanup", pipeline.clearConsumableOutputs]
+  ])("does not follow an output-root symlink during %s", async (_label, cleanup) => {
+    const linkParent = await mkdtemp(join(tmpdir(), "pptx-root-symlink-parent-"));
+    const victimDir = await mkdtemp(join(tmpdir(), "pptx-root-symlink-victim-"));
+    const outputLink = join(linkParent, "output");
+    const victim = join(victimDir, "final.pptx");
+    await writeFile(victim, "USER-OWNED\n", "utf8");
+    await symlink(victimDir, outputLink, "dir");
+
+    await cleanup(outputLink);
+
+    expect(await readFile(victim, "utf8")).toBe("USER-OWNED\n");
+    expect((await lstat(outputLink)).isSymbolicLink()).toBe(true);
+  });
+
+  it.each([
+    ["published invalidation", pipeline.invalidatePublishedOutputs],
+    ["consumable cleanup", pipeline.clearConsumableOutputs]
+  ])("does not follow an output ancestor symlink during exported %s", async (_label, cleanup) => {
+    const anchor = await mkdtemp(join(tmpdir(), "pptx-cleanup-ancestor-anchor-"));
+    const victimParent = await mkdtemp(join(tmpdir(), "pptx-cleanup-ancestor-victim-"));
+    const outputDir = join(victimParent, "output");
+    const alias = join(anchor, "alias-parent");
+    const victim = join(outputDir, "final.pptx");
+    await mkdir(outputDir);
+    await writeFile(victim, "USER-OWNED\n", "utf8");
+    await symlink(victimParent, alias, "dir");
+
+    await cleanup(join(alias, "output"));
+
+    expect(await readFile(victim, "utf8")).toBe("USER-OWNED\n");
+    expect((await lstat(alias)).isSymbolicLink()).toBe(true);
+  });
+
+  it("fails the pipeline before writing when output root is a symlink", async () => {
+    const linkParent = await mkdtemp(join(tmpdir(), "pptx-run-root-symlink-parent-"));
+    const victimDir = await mkdtemp(join(tmpdir(), "pptx-run-root-symlink-victim-"));
+    const inputDir = await mkdtemp(join(tmpdir(), "pptx-run-root-symlink-input-"));
+    const outputLink = join(linkParent, "output");
+    const manifestPath = join(inputDir, "invalid.manifest.json");
+    const marker = join(victimDir, "user-owned.txt");
+    await writeFile(manifestPath, "{\"invalid\":true}\n", "utf8");
+    await writeFile(marker, "USER-OWNED\n", "utf8");
+    await symlink(victimDir, outputLink, "dir");
+
+    await expect(pipeline.runDeckPipeline(manifestPath, outputLink))
+      .rejects.toThrow(/output.*real directory|symbolic link/i);
+    expect(await readFile(marker, "utf8")).toBe("USER-OWNED\n");
+    await expect(access(join(victimDir, "pipeline-blocked.json"))).rejects.toThrow();
+    expect((await lstat(outputLink)).isSymbolicLink()).toBe(true);
+  });
+
+  it("fails the pipeline when a user-controlled ancestor below the temp anchor is a symlink", async () => {
+    const anchor = await mkdtemp(join(tmpdir(), "pptx-run-ancestor-anchor-"));
+    const victimParent = await mkdtemp(join(tmpdir(), "pptx-run-ancestor-victim-"));
+    const inputDir = await mkdtemp(join(tmpdir(), "pptx-run-ancestor-input-"));
+    const outputDir = join(victimParent, "output");
+    const alias = join(anchor, "alias-parent");
+    const manifestPath = join(inputDir, "invalid.manifest.json");
+    await mkdir(outputDir);
+    await symlink(victimParent, alias, "dir");
+    await writeFile(manifestPath, "{\"invalid\":true}\n", "utf8");
+
+    await expect(pipeline.runDeckPipeline(manifestPath, join(alias, "output")))
+      .rejects.toThrow(/traverse a symbolic link|symlink/i);
+    await expect(access(join(outputDir, "pipeline-blocked.json"))).rejects.toThrow();
+  });
+
+  it("publishes blocked state without following a replacement leaf symlink", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-blocked-link-output-"));
+    const victimDir = await mkdtemp(join(tmpdir(), "pptx-blocked-link-victim-"));
+    const victim = join(victimDir, "victim.txt");
+    const blockedPath = join(outputDir, "pipeline-blocked.json");
+    await writeFile(victim, "USER-OWNED\n", "utf8");
+
+    await expect(pipeline.runDeckPipeline(
+      join(root, "examples/text-input/deck.manifest.json"),
+      outputDir,
+      {
+        beforePackage: async () => {
+          await symlink(victim, blockedPath, "file");
+          throw new Error("forced before-package failure");
+        }
+      }
+    )).rejects.toThrow(/pipeline blocked at reports.*forced before-package failure/i);
+
+    expect(await readFile(victim, "utf8")).toBe("USER-OWNED\n");
+    const blockedEntry = await lstat(blockedPath);
+    expect(blockedEntry.isFile()).toBe(true);
+    expect(blockedEntry.isSymbolicLink()).toBe(false);
+  }, 60000);
+
+  it("does not let an untrusted private sidecar authorize user-asset deletion", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-private-sidecar-owner-"));
+    await mkdir(join(outputDir, "assets"));
+    const bytes = Buffer.from("user-owned matching hash bytes", "utf8");
+    const digest = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+    const userAsset = join(outputDir, "assets", `user-owned-${digest}.png`);
+    await writeFile(userAsset, bytes);
+    await writeFile(join(outputDir, ".pptx-generated-assets.json"), JSON.stringify({
+      version: "0.1.0",
+      owner: "attacker",
+      files: [`assets/user-owned-${digest}.png`]
+    }));
+
+    await pipeline.clearConsumableOutputs(outputDir);
+
+    expect(await readFile(userAsset)).toEqual(bytes);
+  });
+
+  it("ignores forged hashes, traversal, nested paths, and symlink entries in the private sidecar", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-private-sidecar-forged-"));
+    const outsideDir = await mkdtemp(join(tmpdir(), "pptx-private-sidecar-outside-"));
+    await mkdir(join(outputDir, "assets"));
+    await mkdir(join(outputDir, "assets", "nested"));
+    const forged = join(outputDir, "assets", "forged-000000000000.png");
+    const nested = join(outputDir, "assets", "nested", "nested-000000000000.png");
+    const outside = join(outsideDir, "outside-000000000000.png");
+    const symlinkTarget = join(outsideDir, "symlink-target.png");
+    const linked = join(outputDir, "assets", "linked-000000000000.png");
+    await writeFile(forged, "forged", "utf8");
+    await writeFile(nested, "nested", "utf8");
+    await writeFile(outside, "outside", "utf8");
+    await writeFile(symlinkTarget, "symlink target", "utf8");
+    await symlink(symlinkTarget, linked, "file");
+    await writeFile(join(outputDir, ".pptx-generated-assets.json"), JSON.stringify({
+      version: "0.1.0",
+      owner: "creative-deck-plan-assets",
+      files: [
+        "assets/forged-000000000000.png",
+        "assets/nested/nested-000000000000.png",
+        "../outside-000000000000.png",
+        "assets/linked-000000000000.png"
+      ]
+    }));
+
+    await pipeline.clearConsumableOutputs(outputDir);
+
+    for (const candidate of [forged, nested, outside, symlinkTarget, linked]) {
+      await expect(lstat(candidate), candidate).resolves.toBeDefined();
+    }
+  });
+
+  it("cleans a verified HTML run directory without deleting unrelated user assets", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-html-owned-cleanup-"));
+    const runName = ".pptx-run-123e4567-e89b-42d3-a456-426614174000";
+    const runDir = join(outputDir, "assets", runName);
+    const generated = join(runDir, "remote-source-001.png");
+    const userAsset = join(outputDir, "assets", "user-owned.png");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(generated, "generated", "utf8");
+    await writeFile(userAsset, "USER-OWNED", "utf8");
+    await writeFile(join(outputDir, ".pptx-generated-assets.json"), JSON.stringify({
+      version: "0.1.0",
+      files: [`assets/${runName}`],
+      plannedFiles: [`assets/${runName}/remote-source-001.png`]
+    }));
+
+    await pipeline.clearConsumableOutputs(outputDir);
+
+    await expect(access(runDir)).rejects.toThrow();
+    expect(await readFile(userAsset, "utf8")).toBe("USER-OWNED");
+    expect((await lstat(join(outputDir, "assets"))).isDirectory()).toBe(true);
+  });
+
+  it("cleans verified nested image-replica files without deleting unrelated user assets", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-image-owned-cleanup-"));
+    const generatedRelative = "assets/crops/generated.png";
+    const generated = join(outputDir, generatedRelative);
+    const userAsset = join(outputDir, "assets", "user-owned.png");
+    const bytes = Buffer.from("generated replica crop", "utf8");
+    await mkdir(join(outputDir, "assets", "crops"), { recursive: true });
+    await writeFile(generated, bytes);
+    await writeFile(userAsset, "USER-OWNED", "utf8");
+    await writeFile(join(outputDir, ".pptx-generated-assets.json"), JSON.stringify({
+      version: "0.1.0",
+      owner: "image-replica-compiler",
+      files: [generatedRelative],
+      digests: { [generatedRelative]: createHash("sha256").update(bytes).digest("hex") }
+    }));
+
+    await pipeline.clearConsumableOutputs(outputDir);
+
+    await expect(access(generated)).rejects.toThrow();
+    expect(await readFile(userAsset, "utf8")).toBe("USER-OWNED");
+    expect((await lstat(join(outputDir, "assets"))).isDirectory()).toBe(true);
+  });
+
   it("removes stale consumable outputs before a failing run", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-stale-output-"));
     const manifest = join(dir, "invalid.manifest.json");
@@ -119,12 +335,16 @@ describe("Task 2 single pipeline contract", () => {
     await mkdir(join(dir, "html-preview"));
     await writeFile(join(dir, "html-preview", "slide-001.png"), "stale-preview", "utf8");
     await mkdir(join(dir, "assets"));
-    await writeFile(join(dir, "assets", "remote-source-001.png"), "stale-generated", "utf8");
+    const staleGenerated = Buffer.from("stale-generated", "utf8");
+    const staleDigest = createHash("sha256").update(staleGenerated).digest("hex").slice(0, 12);
+    const staleGeneratedName = `remote-source-${staleDigest}.png`;
+    await writeFile(join(dir, "assets", staleGeneratedName), staleGenerated);
     await writeFile(join(dir, "assets", "remote-source-user.png"), "keep-prefix", "utf8");
     await writeFile(join(dir, "assets", "user-owned.png"), "keep", "utf8");
     await writeFile(join(dir, ".pptx-generated-assets.json"), JSON.stringify({
       version: "0.1.0",
-      files: ["assets/remote-source-001.png"]
+      owner: "creative-deck-plan-assets",
+      files: [`assets/${staleGeneratedName}`]
     }), "utf8");
 
     const summary = await pipeline.runDeckPipeline(manifestPath, dir);
@@ -142,7 +362,7 @@ describe("Task 2 single pipeline contract", () => {
       expect(outputManifest.files).not.toContain(stale);
       await expect(access(join(dir, stale))).rejects.toThrow();
     }
-    await expect(access(join(dir, "assets", "remote-source-001.png"))).rejects.toThrow();
+    await expect(access(join(dir, "assets", staleGeneratedName))).rejects.toThrow();
     await expect(access(join(dir, "assets", "remote-source-user.png"))).resolves.toBeUndefined();
     await expect(access(join(dir, "assets", "user-owned.png"))).resolves.toBeUndefined();
     expect(outputManifest.files).not.toContain(".pptx-generated-assets.json");
@@ -315,6 +535,175 @@ describe("Task 2 packaging ownership", () => {
     const second = await readFile(join(dir, "output-manifest.json"), "utf8");
     expect(second).toBe(first);
     expect(JSON.parse(second).files).not.toContain("output-manifest.json");
+  });
+
+  it.each([
+    "deck.plan.json",
+    "semantic-slide-ir.json",
+    "deck.manifest.json",
+    "assets/asset-registry.json"
+  ])("rejects Creative package publication when required evidence %s is missing", async (missingArtifact) => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-package-creative-evidence-"));
+    await mkdir(join(dir, "assets"));
+    for (const name of [
+      "final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md",
+      "consistency-report.json", "consistency-report.md"
+    ]) await writeFile(join(dir, name), name, "utf8");
+    const evidence = new Map([
+      ["deck.plan.json", "{}\n"],
+      ["semantic-slide-ir.json", "{}\n"],
+      ["deck.manifest.json", "{}\n"],
+      ["assets/asset-registry.json", '{"version":"0.2.0","assets":[]}\n']
+    ]);
+    for (const [relative, content] of evidence) {
+      if (relative !== missingArtifact) await writeFile(join(dir, relative), content, "utf8");
+    }
+    await writeFile(join(dir, "run.json"), `${JSON.stringify({
+      mode: "creative",
+      artifacts: {
+        deckPlan: "deck.plan.json",
+        semanticIr: "semantic-slide-ir.json",
+        manifest: "deck.manifest.json",
+        assetRegistry: "assets/asset-registry.json"
+      }
+    })}\n`, "utf8");
+
+    await expect(execFileAsync(
+      process.env.PPTX_CREATOR_PYTHON || "python3",
+      [join(root, "scripts/package-output.py"), dir],
+      { cwd: root }
+    )).rejects.toMatchObject({ stderr: expect.stringMatching(/missing creative artifact|real regular file/i) });
+    await expect(access(join(dir, "output-manifest.json"))).rejects.toThrow();
+  });
+
+  it.each([
+    ["run.json is missing", null],
+    ["run mode is downgraded", "direct"]
+  ])("rejects Creative package publication when %s", async (_label, runMode) => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-package-creative-run-"));
+    await mkdir(join(dir, "assets"));
+    for (const name of [
+      "final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md",
+      "consistency-report.json", "consistency-report.md"
+    ]) await writeFile(join(dir, name), name, "utf8");
+    await writeFile(join(dir, "deck.plan.json"), "{}\n", "utf8");
+    await writeFile(join(dir, "semantic-slide-ir.json"), "{}\n", "utf8");
+    await writeFile(join(dir, "deck.manifest.json"), "{}\n", "utf8");
+    await writeFile(join(dir, "assets", "asset-registry.json"), '{"version":"0.2.0","assets":[]}\n', "utf8");
+    if (runMode !== null) {
+      await writeFile(join(dir, "run.json"), `${JSON.stringify({
+        mode: runMode,
+        artifacts: {
+          deckPlan: "deck.plan.json",
+          semanticIr: "semantic-slide-ir.json",
+          manifest: "deck.manifest.json",
+          assetRegistry: "assets/asset-registry.json"
+        }
+      })}\n`, "utf8");
+    }
+
+    await expect(execFileAsync(
+      process.env.PPTX_CREATOR_PYTHON || "python3",
+      [join(root, "scripts/package-output.py"), dir],
+      { cwd: root }
+    )).rejects.toMatchObject({ stderr: expect.stringMatching(/creative.*run|run.*creative/i) });
+    await expect(access(join(dir, "output-manifest.json"))).rejects.toThrow();
+  });
+
+  it("rejects a Creative package when current localized bytes do not match the public registry hash", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-package-creative-hash-"));
+    await mkdir(join(dir, "assets"));
+    for (const name of [
+      "final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md",
+      "consistency-report.json", "consistency-report.md"
+    ]) await writeFile(join(dir, name), name, "utf8");
+    await writeFile(join(dir, "deck.plan.json"), "{}\n", "utf8");
+    await writeFile(join(dir, "semantic-slide-ir.json"), "{}\n", "utf8");
+    await writeFile(join(dir, "deck.manifest.json"), "{}\n", "utf8");
+    await writeFile(join(dir, "assets", "asset-photo.png"), "current localized bytes", "utf8");
+    await writeFile(join(dir, "assets", "asset-registry.json"), `${JSON.stringify({
+      version: "0.2.0",
+      assets: [{
+        id: "asset-photo",
+        localPath: "assets/asset-photo.png",
+        contentHash: `sha256:${"0".repeat(64)}`
+      }]
+    })}\n`, "utf8");
+    await writeFile(join(dir, "run.json"), `${JSON.stringify({
+      mode: "creative",
+      artifacts: {
+        deckPlan: "deck.plan.json",
+        semanticIr: "semantic-slide-ir.json",
+        manifest: "deck.manifest.json",
+        assetRegistry: "assets/asset-registry.json"
+      }
+    })}\n`, "utf8");
+
+    await expect(execFileAsync(
+      process.env.PPTX_CREATOR_PYTHON || "python3",
+      [join(root, "scripts/package-output.py"), dir],
+      { cwd: root }
+    )).rejects.toMatchObject({ stderr: expect.stringMatching(/creative asset content hash mismatch/i) });
+    await expect(access(join(dir, "output-manifest.json"))).rejects.toThrow();
+  });
+
+  it("fails package publication without following an output-root symlink", async () => {
+    const linkParent = await mkdtemp(join(tmpdir(), "pptx-package-root-link-parent-"));
+    const victimDir = await mkdtemp(join(tmpdir(), "pptx-package-root-link-victim-"));
+    const outputLink = join(linkParent, "output");
+    for (const name of [
+      "final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md",
+      "consistency-report.json", "consistency-report.md"
+    ]) await writeFile(join(victimDir, name), name, "utf8");
+    await symlink(victimDir, outputLink, "dir");
+
+    await expect(execFileAsync(
+      process.env.PPTX_CREATOR_PYTHON || "python3",
+      [join(root, "scripts/package-output.py"), outputLink],
+      { cwd: root }
+    )).rejects.toMatchObject({ stderr: expect.stringMatching(/output.*real directory|symbolic link/i) });
+    await expect(access(join(victimDir, "output-manifest.json"))).rejects.toThrow();
+    expect((await lstat(outputLink)).isSymbolicLink()).toBe(true);
+  });
+
+  it("fails package publication through a symlink ancestor below the trusted temp anchor", async () => {
+    const anchor = await mkdtemp(join(tmpdir(), "pptx-package-ancestor-anchor-"));
+    const victimParent = await mkdtemp(join(tmpdir(), "pptx-package-ancestor-victim-"));
+    const outputDir = join(victimParent, "output");
+    const alias = join(anchor, "alias-parent");
+    await mkdir(outputDir);
+    for (const name of [
+      "final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md",
+      "consistency-report.json", "consistency-report.md"
+    ]) await writeFile(join(outputDir, name), name, "utf8");
+    await symlink(victimParent, alias, "dir");
+
+    await expect(execFileAsync(
+      process.env.PPTX_CREATOR_PYTHON || "python3",
+      [join(root, "scripts/package-output.py"), join(alias, "output")],
+      { cwd: root }
+    )).rejects.toMatchObject({ stderr: expect.stringMatching(/traverse a symbolic link|symlink/i) });
+    await expect(access(join(outputDir, "output-manifest.json"))).rejects.toThrow();
+  });
+
+  it("does not index an asset registry through an assets symlink", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-package-assets-link-"));
+    const victimDir = await mkdtemp(join(tmpdir(), "pptx-package-assets-victim-"));
+    for (const name of [
+      "final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md",
+      "consistency-report.json", "consistency-report.md"
+    ]) await writeFile(join(dir, name), name, "utf8");
+    await writeFile(join(victimDir, "asset-registry.json"), "USER-OWNED\n", "utf8");
+    await symlink(victimDir, join(dir, "assets"), "dir");
+
+    await execFileAsync(
+      process.env.PPTX_CREATOR_PYTHON || "python3",
+      [join(root, "scripts/package-output.py"), dir],
+      { cwd: root }
+    );
+    const outputManifest = JSON.parse(await readFile(join(dir, "output-manifest.json"), "utf8"));
+    expect(outputManifest.files).not.toContain("assets/asset-registry.json");
+    expect(await readFile(join(victimDir, "asset-registry.json"), "utf8")).toBe("USER-OWNED\n");
   });
 
   it("keeps reports out of the renderer and removes wrapper package/review writes", async () => {

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
-import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { constants, realpathSync } from "node:fs";
+import { copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,10 @@ import { verifyReplicaEvidence } from "./lib/replica-evidence.mjs";
 import { validateJsonSchema } from "./lib/schema-utils.mjs";
 import { reviewManifest } from "./lib/visual-critic.mjs";
 import { buildTextFitReport } from "./lib/text-fit.mjs";
+import {
+  assertNoSymlinkBelowTrustedAnchor,
+  verifiedRouteOwnedAssetPaths
+} from "./lib/registry.mjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -29,6 +33,7 @@ const PUBLISHED_OUTPUTS = Object.freeze([
   "output-manifest.json",
   "deck.manifest.json",
   "semantic-slide-ir.json",
+  "assets/asset-registry.json",
   "editable-report.md",
   "qa-report.md",
   "compatibility-report.md",
@@ -82,6 +87,7 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "design-system",
   "deck.plan.json",
   "semantic-slide-ir.json",
+  "assets/asset-registry.json",
   "quality-report.json",
   "quality-report.md",
   "creative-proof.json",
@@ -104,7 +110,26 @@ export function escapePreviewHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-async function removeOwnedPath(candidate, protectedSet) {
+async function hasSymlinkAncestor(candidate, outputRoot) {
+  const parent = dirname(candidate);
+  const relativeParent = relative(outputRoot, parent);
+  if (relativeParent === "" || relativeParent === ".") return false;
+  if (relativeParent === ".." || relativeParent.startsWith(`..${sep}`)) return true;
+  let cursor = outputRoot;
+  for (const segment of relativeParent.split(sep)) {
+    cursor = resolve(cursor, segment);
+    try {
+      if ((await lstat(cursor)).isSymbolicLink()) return true;
+    } catch (error) {
+      if (error?.code === "ENOENT") return false;
+      throw error;
+    }
+  }
+  return false;
+}
+
+async function removeOwnedPath(candidate, protectedSet, outputRoot) {
+  if (await hasSymlinkAncestor(candidate, outputRoot)) return;
   if (protectedSet.has(candidate)) return;
   const prefix = `${candidate}${sep}`;
   const hasProtectedDescendant = [...protectedSet].some((path) => path.startsWith(prefix));
@@ -114,11 +139,16 @@ async function removeOwnedPath(candidate, protectedSet) {
   }
   let entries;
   try { entries = await readdir(candidate, { withFileTypes: true }); } catch { return; }
-  await Promise.all(entries.map((entry) => removeOwnedPath(resolve(candidate, entry.name), protectedSet)));
+  await Promise.all(entries.map((entry) => removeOwnedPath(resolve(candidate, entry.name), protectedSet, outputRoot)));
 }
 
 export async function invalidatePublishedOutputs(outputDir, protectedPaths = []) {
   const outputRoot = resolve(outputDir);
+  try { assertNoSymlinkBelowTrustedAnchor(outputRoot, { allowMissing: false }); } catch { return; }
+  try {
+    const rootEntry = await lstat(outputRoot);
+    if (!rootEntry.isDirectory() || rootEntry.isSymbolicLink()) return;
+  } catch { return; }
   const protectedSet = new Set(protectedPaths.map((candidate) => resolve(candidate)));
   let dynamicOutputs = [];
   try {
@@ -130,20 +160,22 @@ export async function invalidatePublishedOutputs(outputDir, protectedPaths = [])
     ...PUBLISHED_OUTPUTS.map((name) => resolve(outputRoot, name)),
     ...dynamicOutputs
   ];
-  await Promise.all([...new Set(candidates)].map((candidate) => removeOwnedPath(candidate, protectedSet)));
+  await Promise.all([...new Set(candidates)].map((candidate) => removeOwnedPath(candidate, protectedSet, outputRoot)));
 }
 
 export async function clearConsumableOutputs(outputDir, protectedPaths = []) {
   const outputRoot = resolve(outputDir);
+  try { assertNoSymlinkBelowTrustedAnchor(outputRoot, { allowMissing: false }); } catch { return; }
+  try {
+    const rootEntry = await lstat(outputRoot);
+    if (!rootEntry.isDirectory() || rootEntry.isSymbolicLink()) return;
+  } catch { return; }
   const protectedSet = new Set(protectedPaths.map((path) => resolve(path)));
   const ownershipPath = resolve(outputRoot, ".pptx-generated-assets.json");
   let ownedAssets = [];
   try {
     const registry = JSON.parse(await readFile(ownershipPath, "utf8"));
-    ownedAssets = (registry.files ?? [])
-      .filter((path) => typeof path === "string")
-      .map((path) => resolve(outputRoot, path))
-      .filter((path) => path.startsWith(`${outputRoot}${sep}`));
+    ownedAssets = verifiedRouteOwnedAssetPaths(outputRoot, registry, [...protectedSet]);
   } catch {}
   let dynamicOutputs = [];
   try {
@@ -157,9 +189,67 @@ export async function clearConsumableOutputs(outputDir, protectedPaths = []) {
     ...dynamicOutputs,
     ownershipPath
   ];
-  await Promise.all([...new Set(candidates)].map((candidate) => removeOwnedPath(candidate, protectedSet)));
-  const assetsDir = resolve(outputRoot, "assets");
-  try { if ((await readdir(assetsDir)).length === 0) await rm(assetsDir, { force: true, recursive: true }); } catch {}
+  await Promise.all([...new Set(candidates)].map((candidate) => removeOwnedPath(candidate, protectedSet, outputRoot)));
+}
+
+async function assertRealPipelineOutputDirectory(outputDir) {
+  const outputRoot = resolve(outputDir);
+  assertNoSymlinkBelowTrustedAnchor(outputRoot, { allowMissing: true });
+  await mkdir(outputRoot, { recursive: true });
+  assertNoSymlinkBelowTrustedAnchor(outputRoot, { allowMissing: false });
+  const entry = await lstat(outputRoot);
+  if (!entry.isDirectory() || entry.isSymbolicLink()) {
+    throw new Error(`pipeline output must be a real directory, not a symbolic link: ${outputRoot}`);
+  }
+  return outputRoot;
+}
+
+async function atomicWritePipelineArtifact(outputDir, targetPath, bytes) {
+  const outputRoot = await assertRealPipelineOutputDirectory(outputDir);
+  const target = resolve(targetPath);
+  if (target === outputRoot || !target.startsWith(`${outputRoot}${sep}`)) {
+    throw new Error(`pipeline artifact target escapes output directory: ${target}`);
+  }
+  const parent = dirname(target);
+  assertNoSymlinkBelowTrustedAnchor(parent, { allowMissing: false });
+  const stageDir = await mkdtemp(join(parent, `.pipeline-stage-${process.pid}-`));
+  const stageFile = join(stageDir, "artifact");
+  let renamed = false;
+  try {
+    assertNoSymlinkBelowTrustedAnchor(stageDir, { allowMissing: false });
+    const handle = await open(
+      stageFile,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0),
+      0o600
+    );
+    try { await handle.writeFile(bytes); } finally { await handle.close(); }
+    const stageEntry = await lstat(stageFile);
+    if (!stageEntry.isFile() || stageEntry.isSymbolicLink()) {
+      throw new Error(`pipeline stage artifact must be a real regular file: ${stageFile}`);
+    }
+    await assertRealPipelineOutputDirectory(outputRoot);
+    assertNoSymlinkBelowTrustedAnchor(parent, { allowMissing: false });
+    await rename(stageFile, target);
+    renamed = true;
+    await assertRealPipelineOutputDirectory(outputRoot);
+    assertNoSymlinkBelowTrustedAnchor(parent, { allowMissing: false });
+    const targetEntry = await lstat(target);
+    if (!targetEntry.isFile() || targetEntry.isSymbolicLink()) {
+      throw new Error(`pipeline artifact target must be a real regular file: ${target}`);
+    }
+    await rmdir(stageDir);
+  } catch (error) {
+    if (renamed) {
+      try {
+        assertNoSymlinkBelowTrustedAnchor(parent, { allowMissing: false });
+        const targetEntry = await lstat(target);
+        if (targetEntry.isFile() || targetEntry.isSymbolicLink()) await unlink(target);
+      } catch {}
+    }
+    await unlink(stageFile).catch(() => {});
+    await rmdir(stageDir).catch(() => {});
+    throw error;
+  }
 }
 
 export function shouldCopyManifest(manifestPath, outputDir) {
@@ -731,7 +821,11 @@ async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy,
     blockedBy,
     ...(detail ? { detail } : {})
   };
-  await writeFile(join(resolvedOutput, "pipeline-blocked.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  await atomicWritePipelineArtifact(
+    resolvedOutput,
+    join(resolvedOutput, "pipeline-blocked.json"),
+    Buffer.from(`${JSON.stringify(summary, null, 2)}\n`, "utf8")
+  );
   const error = new Error(`pipeline blocked at ${blockedBy}${detail ? `: ${detail}` : ""}`);
   error.summary = summary;
   throw error;
@@ -797,8 +891,7 @@ export async function publishRepairArtifact(items) {
 export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const resolvedInput = resolve(manifestPath);
   let resolvedManifest = resolvedInput;
-  const resolvedOutput = resolve(outputDir);
-  await mkdir(resolvedOutput, { recursive: true });
+  const resolvedOutput = await assertRealPipelineOutputDirectory(outputDir);
   await clearConsumableOutputs(resolvedOutput, [resolvedInput, ...(options.protectedInputs ?? [])]);
   await rm(join(resolvedOutput, "pipeline-blocked.json"), { force: true });
 
@@ -1229,6 +1322,9 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   try {
     if (options.copyManifest !== false && shouldCopyManifest(resolvedManifest, resolvedOutput)) {
       await copyFile(resolvedManifest, join(resolvedOutput, "deck.manifest.json"));
+    }
+    if (typeof options.beforePackageCommit === "function") {
+      await options.beforePackageCommit({ route, mode, status: "passed", outputDir: resolvedOutput });
     }
     stageGuard.enter("package");
     packaged = await runPythonStep("package", [join(root, "scripts/package-output.py"), resolvedOutput]);
