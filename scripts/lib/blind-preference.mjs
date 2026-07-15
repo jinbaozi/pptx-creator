@@ -21,6 +21,22 @@ export const BENCHMARK_THRESHOLDS = Object.freeze({
 });
 
 const ARTIFACT_EVIDENCE_KEYS = Object.freeze(["pptx", "slides", "contactSheet", "proof"]);
+const DIMENSION_LABELS = Object.freeze({
+  hierarchy: "信息层级",
+  spacing: "间距与布局",
+  density: "信息密度",
+  consistency: "视觉一致性",
+  originality: "原创性"
+});
+const DOMAIN_LABELS = Object.freeze({
+  executive: "高管汇报",
+  technical: "技术架构",
+  "product-launch": "产品发布",
+  "data-review": "数据复盘",
+  "public-sector": "公共事务",
+  "editorial-education": "编辑与教育"
+});
+const LANGUAGE_LABELS = Object.freeze({ "zh-CN": "中文", "en-US": "英文" });
 
 export function portableArtifactManifest(artifacts, outputRoot) {
   const canonicalPath = (value) => {
@@ -61,53 +77,55 @@ export function buildBlindReviewHtml(packet) {
     const side = (name) => {
       const evidence = pair[name]?.evidence ?? {};
       const ratings = DIMENSIONS.map((dimension) => `
-        <label>${htmlEscape(dimension)}
+        <label>${htmlEscape(DIMENSION_LABELS[dimension] ?? dimension)}
           <select required data-rating="${htmlEscape(name)}" data-dimension="${htmlEscape(dimension)}">
-            <option value="">-</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+            <option value="">请选择</option><option value="1">1 · 较差</option><option value="2">2</option><option value="3">3 · 一般</option><option value="4">4</option><option value="5">5 · 优秀</option>
           </select>
         </label>`).join("");
       return `<article class="side">
-        <h3>${name === "left" ? "Left" : "Right"}</h3>
-        <a href="../${htmlEscape(evidence.pptx)}">Open editable deck</a>
-        <a href="../${htmlEscape(evidence.slides)}">Open full-size slides</a>
-        <img src="../${htmlEscape(evidence.contactSheet)}" alt="${name === "left" ? "Left" : "Right"} contact sheet">
-        <fieldset><legend>Independent ratings</legend>${ratings}</fieldset>
+        <h3>${name === "left" ? "左侧方案" : "右侧方案"}</h3>
+        <a href="../${htmlEscape(evidence.pptx)}">打开可编辑 PPTX</a>
+        <a href="../${htmlEscape(evidence.slides)}">查看高清单页</a>
+        <img src="../${htmlEscape(evidence.contactSheet)}" alt="${name === "left" ? "左侧" : "右侧"}方案缩略图">
+        <fieldset><legend>分别为这一侧评分</legend>${ratings}</fieldset>
       </article>`;
     };
     return `<section class="pair" data-pair-id="${htmlEscape(pair.pairId)}">
-      <header><span>Pair ${index + 1} of ${packet.pairs.length}</span><span>${htmlEscape(pair.domain)} · ${htmlEscape(pair.language)}</span></header>
-      <p class="context"><strong>${htmlEscape(pair.reviewContext?.brief ?? "")}</strong><br>
-        Intent: ${htmlEscape(pair.reviewContext?.intent ?? "")} · Audience: ${htmlEscape(pair.reviewContext?.audience ?? "")}</p>
+      <header><span>第 ${index + 1} 组，共 ${packet.pairs.length} 组</span><span>${htmlEscape(DOMAIN_LABELS[pair.domain] ?? pair.domain)} · ${htmlEscape(LANGUAGE_LABELS[pair.language] ?? pair.language)}</span></header>
+      <div class="context"><strong>任务：${htmlEscape(pair.reviewContext?.brief ?? "")}</strong><br>
+        目标：${htmlEscape(pair.reviewContext?.intent ?? "")} · 受众：${htmlEscape(pair.reviewContext?.audience ?? "")}</div>
       <div class="sides">${side("left")}${side("right")}</div>
-      <fieldset class="choice"><legend>Which deck is stronger overall?</legend>
-        <label><input required type="radio" name="choice-${htmlEscape(pair.pairId)}" value="left">Left</label>
-        <label><input required type="radio" name="choice-${htmlEscape(pair.pairId)}" value="right">Right</label>
-        <label><input required type="radio" name="choice-${htmlEscape(pair.pairId)}" value="tie">Tie</label>
+      <fieldset class="choice"><legend>综合来看，哪一份 PPTX 更好？</legend>
+        <label><input required type="radio" name="choice-${htmlEscape(pair.pairId)}" value="left">左侧更好</label>
+        <label><input required type="radio" name="choice-${htmlEscape(pair.pairId)}" value="right">右侧更好</label>
+        <label><input required type="radio" name="choice-${htmlEscape(pair.pairId)}" value="tie">两者相当</label>
       </fieldset>
     </section>`;
   }).join("\n");
   const packetHash = htmlEscape(packet.packetHash);
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Blind deck review</title><style>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PPTX 匿名对比评审</title><style>
 body{font:15px/1.45 system-ui,sans-serif;margin:0;background:#f4f6f8;color:#17202a}main{max-width:1180px;margin:auto;padding:28px}h1{margin:0 0 8px}.note{color:#52606d}.pair{background:white;border:1px solid #d9e1e8;border-radius:14px;margin:24px 0;padding:20px}.pair>header{display:flex;justify-content:space-between;font-weight:700}.context{background:#f4f6f8;border-radius:8px;padding:10px 12px}.sides{display:grid;grid-template-columns:1fr 1fr;gap:18px}.side{min-width:0}.side>a{display:inline-block;margin:0 12px 10px 0}.side img{display:block;width:100%;border:1px solid #ccd5dd}.side fieldset{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}.side label{display:grid;gap:4px;font-size:12px}.choice{display:flex;gap:22px;margin-top:18px}.actions{position:sticky;bottom:0;background:#17202a;color:white;padding:14px;border-radius:12px;display:flex;align-items:center;gap:12px}.actions input{padding:8px;min-width:220px}.actions button{padding:9px 16px;font-weight:700}@media(max-width:800px){.sides{grid-template-columns:1fr}.side fieldset{grid-template-columns:repeat(2,1fr)}}
 </style></head><body><main>
-<h1>Blind deck review</h1><p class="note">Inspect both full-size slide sets before choosing. Rate each side independently. Packet <code>${packetHash}</code>.</p>
-<form id="review-form">${pairMarkup}<div class="actions"><label>Opaque reviewer ID <input id="reviewer-id" required autocomplete="off"></label><button type="submit">Export review-records.json</button><span id="status"></span></div></form>
+<h1>PPTX 匿名对比评审</h1>
+<p class="note">请先查看左右两侧的完整单页，再判断哪份整体更好；五项指标需要分别评价左右两侧。请勿猜测制作来源。评分标准：1=较差，3=一般，5=优秀。</p>
+<p class="note">评审包编号：<code>${packetHash}</code></p>
+<form id="review-form">${pairMarkup}<div class="actions"><label>匿名评审者编号 <input id="reviewer-id" required autocomplete="off" placeholder="例如 R01"></label><button type="submit">导出评审结果</button><span id="status"></span></div></form>
 </main><script>
 const dimensions=${JSON.stringify(DIMENSIONS)};
 const packetHash=${JSON.stringify(packet.packetHash)};
 document.getElementById("review-form").addEventListener("submit",event=>{
   event.preventDefault();const reviewerId=document.getElementById("reviewer-id").value.trim();const status=document.getElementById("status");
-  if(!reviewerId){status.textContent="Use a neutral opaque reviewer ID.";return;}
+  if(!reviewerId){status.textContent="请输入匿名评审者编号，例如 R01。";return;}
   const submittedAt=new Date().toISOString();const records=[];
   for(const section of document.querySelectorAll(".pair")){
-    const pairId=section.dataset.pairId;const selected=section.querySelector("input[type=radio]:checked")?.value;if(!selected){status.textContent="Complete every overall choice.";return;}
+    const pairId=section.dataset.pairId;const selected=section.querySelector("input[type=radio]:checked")?.value;if(!selected){status.textContent="请完成每一组的综合选择。";return;}
     const ratings={left:{},right:{}};
-    for(const side of ["left","right"])for(const dimension of dimensions){const input=section.querySelector('[data-rating="'+side+'"][data-dimension="'+dimension+'"]');const value=Number(input.value);if(!Number.isInteger(value)||value<1||value>5){status.textContent="Complete every 1-5 rating.";return;}ratings[side][dimension]=value;}
+    for(const side of ["left","right"])for(const dimension of dimensions){const input=section.querySelector('[data-rating="'+side+'"][data-dimension="'+dimension+'"]');const value=Number(input.value);if(!Number.isInteger(value)||value<1||value>5){status.textContent="请完成左右两侧全部五项 1–5 分评分。";return;}ratings[side][dimension]=value;}
     records.push({version:"0.1.0",pairId,reviewerId,selected,ratings,submittedAt});
   }
-  const blob=new Blob([JSON.stringify(records,null,2)+"\\n"],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="review-records.json";link.click();URL.revokeObjectURL(url);status.textContent="Exported "+records.length+" records for "+packetHash.slice(0,18)+"…";
+  const blob=new Blob([JSON.stringify(records,null,2)+"\\n"],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="review-records.json";link.click();URL.revokeObjectURL(url);status.textContent="已导出 "+records.length+" 组评审结果（评审包 "+packetHash.slice(0,18)+"…）";
 });
 </script></body></html>\n`;
 }

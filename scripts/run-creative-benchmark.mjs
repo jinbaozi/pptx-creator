@@ -259,7 +259,7 @@ async function runRelease(corpus, options, startedAt) {
   const reviewerRoot = path.join(options.output, "reviewer");
   fs.mkdirSync(reviewerRoot, { recursive: true });
   fs.writeFileSync(path.join(reviewerRoot, "index.html"), buildBlindReviewHtml(bundle.packet), "utf8");
-  fs.writeFileSync(path.join(reviewerRoot, "README.md"), "# Blind deck review\n\nOpen `index.html`, inspect every full-size slide set, complete all independent ratings, and export `review-records.json`. Use a different neutral opaque reviewer ID for each reviewer. Do not distribute the sibling `private/` directory.\n", "utf8");
+  fs.writeFileSync(path.join(reviewerRoot, "README.md"), "# PPTX 匿名对比评审\n\n1. 使用浏览器打开 `index.html`。\n2. 查看每组左右两侧的完整单页和可编辑 PPTX。\n3. 分别完成左右两侧的五项评分，再选择综合更好的一侧。\n4. 输入匿名评审者编号（例如 `R01`），导出 `review-records.json`。\n\n每位评审者必须使用不同编号并独立完成全部 24 组。不要分发相邻的 `private/` 目录，也不要讨论或猜测左右两侧的制作来源。\n", "utf8");
   const reviews = options.prepareReview ? [] : loadReviewFiles(options.reviews);
   const preference = evaluateBlindPreference({ corpus, bundle, reviews });
   writeJson(path.join(options.output, "blind-preference-report.json"), preference);

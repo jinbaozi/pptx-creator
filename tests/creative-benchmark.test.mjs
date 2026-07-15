@@ -159,6 +159,10 @@ describe("blind preference protocol", () => {
     expect(html).toContain(bundle.packet.packetHash);
     expect(bundle.packet.pairs.every((pair) => html.includes(pair.pairId))).toBe(true);
     expect(html).toContain(corpus.briefs[0].brief);
+    expect(html).toContain('<html lang="zh-CN">');
+    expect(html).toContain("PPTX 匿名对比评审");
+    expect(html).toContain("信息层级");
+    expect(html).toContain("导出评审结果");
     expect(html).toContain("review-records.json");
     expect(html).not.toMatch(/baseline|candidate|challenger|reference|generator|model/i);
   });
