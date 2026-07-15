@@ -1,53 +1,51 @@
 # Creative Director Pipeline: Creative text workflow
 
-Text work is Creative by default and uses two coordinate-free authoring
-contracts: `deck.plan.json` captures host intent as authoring contract, and the selected canonical
-`semantic-slide-ir.json` is the normalized authoring truth. Deterministic code
-lowers that IR into the manifest render truth, renders the editable deck,
-renders every slide through LibreOffice, and applies the Creative visual proof
-gate.
+Text work is Creative and HTML-first by default. The Host Agent completes
+narrative and Creative Direction, authors a full 1280x720 `deck.html`, inspects
+real browser screenshots, repairs the HTML, and freezes the accepted result.
+Deterministic code then measures that HTML, compiles it to a native-object
+manifest, renders the PPTX, compares the PPTX pages with the frozen HTML source,
+and packages only accepted output.
 
 Load focused contracts progressively: intent in
-`references/creative-intent.md`, conditional direction probes in
-`references/creative-direction-probes.md`, canonical IR in
-`references/semantic-slide-ir.md`, mandatory proof in
-`references/creative-visual-proof.md`, safe refinement in
-`references/creative-refinement.md`, release acceptance in
+`references/creative-intent.md`, HTML authoring and connector semantics in
+`references/text-html-authoring.md`, HTML measurement in
+`references/html-measurement.md`, release acceptance in
 `references/creative-benchmark.md`, and pinned external adaptations in
 `references/external-design-provenance.md`.
 
-Final acceptance is a resumable Host boundary. A deterministic pass writes
-Creative Proof 0.2 evidence and blocks at `host-final-visual-review`; it does
-not publish a deliverable PPTX or successful run. After inspecting every
-full-size PNG, resume with `--host-final-review <creative-final-review.json>`.
-See `references/creative-visual-proof.md` for the closed review, hash binding,
-acceptance, and publication contract.
+Final acceptance has two visual boundaries: Host acceptance of the full HTML
+deck before it is frozen, then inspection of every rendered PPTX page after
+source-fidelity proof. Deterministic success alone cannot accept the deck.
 
-A completed rejection enters the separate evidence-led protocol in
-`references/creative-refinement.md`. The pipeline emits a dry-run plan, waits
-for one protected Host-approved `--refinement-state`, invalidates the old
-review after applying it, and requires a new screenshot-bound final review.
-Creative repair and refinement share one maximum of three applied deltas.
+A rejection returns to the earliest responsible layer: narrative or creative
+issues return to HTML authoring; HTML geometry issues return to bounded HTML
+repair; compilation drift returns to bounded manifest geometry repair. Each
+automatic repair loop is capped at three attempts.
 
-`deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX`
+`text -> Creative Direction -> deck.html -> repaired HTML -> deck.manifest.json -> PPTX`
 
 ## Artifacts
 
 ```text
-deck.plan.json
-semantic-slide-ir.json
+deck.source.html
+deck.repaired.html
+html-repair-report.json
+html-layout-report.json
+layout-measurements.json
 deck.manifest.json
-assets/asset-registry.json
-run.json
 final.pptx
-host-visual-review.json
-creative-proof.json
-creative-proof/
-quality-report.json
-quality-report.md
-preview/index.html
+replica-evidence.json
+editable-report.md
+qa-report.md
 output-manifest.json
 ```
+
+## Native compatibility route
+
+The remainder of this document describes the explicit `--native` compatibility
+compiler. It is preserved for existing `deck.plan.json` integrations but is no
+longer the default text generation path.
 
 The authoring input is deck.plan.json version `0.2.0` with exactly six required top-level keys: `version`, `context`, `designIntent`, `story`, `assets`, and `slides`.
 
@@ -81,9 +79,9 @@ the smaller IR topology-hash contract. Custom non-built-in IDs remain explicit
 extension points. See `references/composition-blocks.md` for the exact grammar,
 fallback, hashing, fixture, and native lowering contract.
 
-The manifest remains the renderer's sole render truth. HTML is optional only
-when explicitly requested or genuinely necessary for source-defined layout; it
-is not a Creative authoring contract.
+The manifest remains the renderer's sole render truth. In `--native` mode only,
+Semantic Slide IR is the authoring truth; default text generation instead uses
+the frozen repaired HTML as its visual source.
 
 ## Canonical publication
 

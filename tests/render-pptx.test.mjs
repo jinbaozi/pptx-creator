@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { analyzeAccessibility } from "../scripts/analyze-accessibility.mjs";
+import { primaryFontFamily } from "../scripts/render-pptx.mjs";
 
 const execFileAsync = promisify(execFile);
 const node = process.execPath;
@@ -20,6 +21,13 @@ async function slideXml(pptxPath) {
 }
 
 describe("render-pptx", () => {
+  it("reduces CSS font stacks to one valid PowerPoint font face", () => {
+    expect(primaryFontFamily('Arial, "PingFang SC", sans-serif')).toBe("Arial");
+    expect(primaryFontFamily('"PingFang SC", sans-serif')).toBe("PingFang SC");
+    expect(primaryFontFamily('Arial, "PingFang SC", sans-serif', "Arial", "中文")).toBe("PingFang SC");
+    expect(primaryFontFamily("system-ui, sans-serif", "Aptos")).toBe("Aptos");
+  });
+
   it("renders lineHeight ratios as PowerPoint line-spacing multiples", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-line-height-"));
     const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));

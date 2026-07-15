@@ -74,7 +74,7 @@ describe("universal Agent Skill packaging", () => {
     expect(workflow).toMatch(/Replica routes/i);
   });
 
-  it("publishes one progressive Creative Director host contract", async () => {
+  it("publishes one progressive HTML-first contract with explicit native compatibility", async () => {
     const paths = [
       "SKILL.md",
       "references/routes/text.md",
@@ -89,7 +89,9 @@ describe("universal Agent Skill packaging", () => {
     const documents = await Promise.all(paths.map(read));
     const combined = documents.join("\n");
     expect(combined).toMatch(/Creative Director Pipeline/i);
-    expect(combined).toMatch(/deck\.plan\.json[^\n]*(?:authoring truth|authoring contract)/i);
+    expect(combined).toMatch(/HTML-first/i);
+    expect(combined).toMatch(/deck\.repaired\.html/i);
+    expect(combined).toMatch(/deck\.plan\.json[^\n]*(?:compatibility|--native)/i);
     expect(combined).toMatch(/Semantic Slide IR[^\n]*authoring truth/i);
     expect(combined).toMatch(/manifest[^\n]*render truth/i);
     expect(combined).toContain("deck.plan.json version `0.2.0`");

@@ -1,4 +1,8 @@
-# Creative Director Pipeline completion audit
+# Native Creative Director Pipeline completion audit
+
+This historical audit covers the explicit `--native` Semantic Slide IR
+compatibility route. It is not the release gate for the default HTML-first text
+route.
 
 This audit distinguishes implementation completion from release-quality proof.
 Its evidence is repository-local and reproducible; it does not substitute for

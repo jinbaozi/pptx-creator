@@ -46,12 +46,25 @@ function localImagePath(baseDir, src) {
   return resolve(baseDir, src);
 }
 
+export function primaryFontFamily(value, fallback = "Arial", text = "") {
+  const candidates = String(value ?? "")
+    .match(/(?:"[^"]+"|'[^']+'|[^,])+/g)
+    ?.map((entry) => entry.trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean) ?? [];
+  const concrete = candidates.filter((entry) => !/^(?:serif|sans-serif|monospace|system-ui|cursive|fantasy)$/i.test(entry));
+  if (/\p{Script=Han}/u.test(String(text))) {
+    const cjk = concrete.find((entry) => /PingFang|Microsoft YaHei|Noto Sans CJK|Source Han|Hiragino|Heiti|Songti|SimHei|SimSun|WenQuanYi/i.test(entry));
+    if (cjk) return cjk;
+  }
+  return concrete[0] ?? fallback;
+}
+
 function textOptions(element, design, language) {
   const style = resolveValue(element.style ?? {}, design.tokens);
   const typography = style.typography ?? {};
   const fontWeight = style.fontWeight ?? typography.fontWeight ?? 400;
   const options = {
-    fontFace: style.fontFamily ?? typography.fontFamily ?? design.tokens.typography.body.fontFamily,
+    fontFace: primaryFontFamily(style.fontFamily ?? typography.fontFamily ?? design.tokens.typography.body.fontFamily, "Arial", element.text),
     fontSize: style.fontSize ?? typography.fontSize ?? design.tokens.typography.body.fontSize,
     lang: language,
     bold: Boolean(fontWeight >= 700 || style.bold),

@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 LIB = ROOT / "scripts" / "lib"
@@ -82,6 +83,17 @@ class PreviewCoreTest(unittest.TestCase):
             text = config.read_text(encoding="utf-8")
             self.assertIn("fonts &amp; cjk", text)
             self.assertIn(str(second), text)
+
+    def test_macos_defaults_expose_system_font_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {}
+            with patch("preview_core.platform.system", return_value="Darwin"), patch.object(Path, "is_dir", return_value=True):
+                settings = _configure_font_environment(root / "profile", env)
+            self.assertEqual(settings, {"fontConfigOverride": True, "fontDirectoryCount": 4})
+            text = Path(env["FONTCONFIG_FILE"]).read_text(encoding="utf-8")
+            self.assertIn("/System/Library/Fonts", text)
+            self.assertIn("/Library/Fonts", text)
 
     def test_render_preview_smoke_pptx_optional(self):
         if not SMOKE_PPTX.exists():

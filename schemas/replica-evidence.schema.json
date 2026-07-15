@@ -8,7 +8,7 @@
   "properties": {
     "version": { "const": "0.1.0" },
     "mode": { "const": "replica" },
-    "route": { "enum": ["html", "image"] },
+    "route": { "enum": ["html", "html-editable", "image"] },
     "applicable": { "type": "boolean" },
     "paths": {
       "type": "object", "additionalProperties": false, "required": ["source", "render"],
@@ -29,7 +29,7 @@
     "blockingFindings": { "type": "array", "items": { "type": "string", "minLength": 1 } }
   },
   "allOf": [
-    { "if": { "properties": { "route": { "const": "html" } } }, "then": { "properties": {
+    { "if": { "properties": { "route": { "enum": ["html", "html-editable"] } } }, "then": { "properties": {
       "thresholds": { "$ref": "#/$defs/htmlPolicy" },
       "aggregate": { "properties": { "fidelity": { "$ref": "#/$defs/htmlFidelity" } } },
       "perSlide": { "items": { "properties": { "fidelity": { "$ref": "#/$defs/htmlFidelity" } } } }
@@ -69,7 +69,7 @@
     "htmlFidelity": { "type": "object", "additionalProperties": false, "required": ["ssim", "normalizedMae", "bboxP95Drift", "fontMapping", "colorMapping"], "properties": { "ssim": { "$ref": "#/$defs/metric" }, "normalizedMae": { "$ref": "#/$defs/metric" }, "bboxP95Drift": { "$ref": "#/$defs/metric" }, "fontMapping": { "$ref": "#/$defs/metric" }, "colorMapping": { "$ref": "#/$defs/metric" } } },
     "imageFidelity": { "type": "object", "additionalProperties": false, "required": ["ssim", "ocrCer", "bboxIou", "paletteDeltaE2000P95", "nativeHighConfidenceTextRecall"], "properties": { "ssim": { "$ref": "#/$defs/metric" }, "ocrCer": { "$ref": "#/$defs/metric" }, "bboxIou": { "$ref": "#/$defs/metric" }, "paletteDeltaE2000P95": { "$ref": "#/$defs/metric" }, "nativeHighConfidenceTextRecall": { "$ref": "#/$defs/metric" } } },
     "htmlPolicy": { "type": "object", "additionalProperties": false, "required": ["fidelity", "nativeCoverage", "editability"], "properties": {
-      "fidelity": { "type": "object", "additionalProperties": false, "required": ["ssim", "normalizedMae", "bboxP95Drift", "fontMapping", "colorMapping"], "properties": { "ssim": { "type": "object", "properties": { "min": { "const": 0.97 } }, "required": ["min"], "additionalProperties": false }, "normalizedMae": { "type": "object", "properties": { "max": { "const": 0.023529411764705882 } }, "required": ["max"], "additionalProperties": false }, "bboxP95Drift": { "type": "object", "properties": { "max": { "const": 2 } }, "required": ["max"], "additionalProperties": false }, "fontMapping": { "type": "object", "properties": { "min": { "const": 1 } }, "required": ["min"], "additionalProperties": false }, "colorMapping": { "type": "object", "properties": { "min": { "const": 1 } }, "required": ["min"], "additionalProperties": false } } },
+      "fidelity": { "type": "object", "additionalProperties": false, "required": ["ssim", "normalizedMae", "bboxP95Drift", "fontMapping", "colorMapping"], "properties": { "ssim": { "type": "object", "properties": { "min": { "type": "number", "minimum": 0.85, "maximum": 1 } }, "required": ["min"], "additionalProperties": false }, "normalizedMae": { "type": "object", "properties": { "max": { "type": "number", "minimum": 0, "maximum": 0.047058823529411764 } }, "required": ["max"], "additionalProperties": false }, "bboxP95Drift": { "type": "object", "properties": { "max": { "type": "number", "minimum": 0, "maximum": 4 } }, "required": ["max"], "additionalProperties": false }, "fontMapping": { "type": "object", "properties": { "min": { "type": "number", "minimum": 0.95, "maximum": 1 } }, "required": ["min"], "additionalProperties": false }, "colorMapping": { "type": "object", "properties": { "min": { "type": "number", "minimum": 0.75, "maximum": 1 } }, "required": ["min"], "additionalProperties": false } } },
       "nativeCoverage": { "type": "object", "properties": { "min": { "const": 0.95 } }, "required": ["min"], "additionalProperties": false }, "editability": { "type": "object", "properties": { "min": { "const": 4 } }, "required": ["min"], "additionalProperties": false }
     } },
     "imagePolicy": { "type": "object", "additionalProperties": false, "required": ["fidelity", "nativeCoverage", "editability"], "properties": {

@@ -1,10 +1,11 @@
 # Creative intent and contextual taste
 
 This is the first focused contract in the Creative Director Pipeline. The Host
-turns source text into the `deck.plan.json` authoring contract; deterministic
-scripts validate and lower it but never invent a narrative, visual thesis,
-asset, or claim. The exact authoring version is deck.plan.json version `0.2.0`,
-and the plan remains coordinate-free.
+turns source text into a communication task, narrative, Creative Direction, and
+complete local `deck.html`; deterministic scripts validate and lower the frozen
+HTML but never invent a narrative, visual thesis, asset, or claim. The former
+coordinate-free `deck.plan.json` version `0.2.0` contract remains available only
+through explicit `--native` compatibility mode.
 
 ## Host-owned intent
 
@@ -39,13 +40,21 @@ slide. Prefer contrast in scale, pacing, composition, and information density
 over repeated card grids. Preserve source-defined claims and use explicit
 evidence records instead of plausible-sounding filler.
 
-## Native-first boundary
+## Editable HTML-first boundary
 
-Each slide declares semantic content, attention, composition intent, assets,
-and a native-first route policy. Coordinates, manifest geometry, arbitrary
-`elements`, remote runtime assets, and full-slide rasters are prohibited in the
-plan. The selected Semantic Slide IR is authoring truth after normalization;
-the manifest is render truth. See `references/semantic-slide-ir.md`.
+Default text work expresses composition in 1280x720 HTML/CSS and declares
+module connectors with source, target, anchors, route, and a target-facing end
+marker. After browser proof and bounded repair, the repaired HTML is the frozen
+visual source; the generated manifest is render truth. Text, shapes, tables,
+charts, and connectors must remain native PowerPoint objects. Remote runtime
+assets and full-slide rasters are prohibited.
+
+In explicit `--native` mode, each slide instead declares semantic content,
+attention, composition intent, assets, and a native-first route policy in
+`deck.plan.json`. Coordinates, manifest geometry, arbitrary `elements`, remote
+runtime assets, and full-slide rasters are prohibited in the plan. The selected
+Semantic Slide IR is authoring truth after normalization; the manifest is
+render truth. See `references/semantic-slide-ir.md`.
 
 Conditional direction probes, mandatory Host visual review, safe refinement,
 and release benchmarking are separate later boundaries. The upstream ideas

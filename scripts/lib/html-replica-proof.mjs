@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { runPython } from "./python-utils.mjs";
 import { measureHtmlReplicaEvidence, replicaThresholds } from "./replica-evidence.mjs";
 
-export async function renderAndMeasureHtmlReplica({ root, outputDir, sourcePaths, sourceArtifactPath, manifest, measurements, coverage, buildBaseEvidence, pptxPath=join(outputDir,"final.pptx"), renderDir=join(outputDir,"evidence","render"), retryCount=0 }) {
+export async function renderAndMeasureHtmlReplica({ root, outputDir, sourcePaths, sourceArtifactPath, manifest, measurements, coverage, buildBaseEvidence, policyRoute="html", pptxPath=join(outputDir,"final.pptx"), renderDir=join(outputDir,"evidence","render"), retryCount=0 }) {
   await mkdir(renderDir, { recursive: true });
   const renderReport = JSON.parse((await runPython([join(root, "scripts/render-preview.py"), pptxPath, renderDir], { cwd: root })).stdout);
   if (renderReport.status !== "ok" || renderReport.previews?.length !== sourcePaths.length) {
@@ -13,9 +13,10 @@ export async function renderAndMeasureHtmlReplica({ root, outputDir, sourcePaths
   const base = await buildBaseEvidence({ renderPath: renderDir, retryCount });
   const raw = {
     ...base,
+    route: policyRoute,
     paths: { source: { status: "available", path: sourceArtifactPath }, render: { status: "available", path: renderDir } },
     capabilities: { ...base.capabilities, sourceRenderComparison: true },
-    thresholds: replicaThresholds("html"),
+    thresholds: replicaThresholds(policyRoute),
     retry: { status: "available", attempts: Array.from({length:retryCount},(_,index)=>({iteration:index+1,outcome:"measured"})) },
     perSlide: base.perSlide.map((page, index) => ({
       ...page, slideIndex: index,

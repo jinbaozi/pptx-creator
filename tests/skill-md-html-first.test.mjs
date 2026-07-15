@@ -17,10 +17,11 @@ describe("SKILL.md exclusive router", () => {
     expect(skill).toContain("`references/routes/html-replica.md`");
   });
 
-  it("isolates creative and replica rules", async () => {
+  it("freezes creative HTML before strict replica conversion", async () => {
     const skill = await read("SKILL.md");
-    expect(skill).toContain("Do not combine creative rules with replica rules");
-    expect(skill).toContain("Creative exploration belongs only to the text route");
+    expect(skill).toContain("HTML-first by default");
+    expect(skill).toMatch(/freezes the repaired\s+HTML as the visual source/);
+    expect(skill).toContain("explicit `--native` compatibility mode");
   });
 
   it("exposes only the unified public CLI", async () => {

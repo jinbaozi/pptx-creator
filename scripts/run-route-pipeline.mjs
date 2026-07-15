@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { runDeckPipeline } from "./run-deck-pipeline.mjs";
 import { runHtmlPipeline } from "./run-html-pipeline.mjs";
 import { runImagePipeline } from "./run-image-pipeline.mjs";
+import { runTextHtmlPipeline } from "./run-text-html-pipeline.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -18,9 +19,10 @@ function runInternal(script, args) {
 
 export async function runRoutePipeline(route, mode, input, outputDir, options = {}) {
   if (!route || !mode || !input || !outputDir) {
-    throw new Error("usage: run-route-pipeline.mjs <text|html|image|pdf> <direct|creative|replica> <input> <output-dir>");
+    throw new Error("usage: run-route-pipeline.mjs <text|html|image|pdf> <html-first|direct|creative|replica> <input> <output-dir>");
   }
   if (route === "text" && mode === "direct") return runDeckPipeline(input, outputDir, { mode: "direct" });
+  if (route === "text" && mode === "html-first") return runTextHtmlPipeline(input, outputDir, options);
   if (route === "text" && mode === "creative") {
     const code = await runInternal("run-design-first-pipeline.mjs", [
       input,
@@ -51,7 +53,7 @@ export async function runRoutePipeline(route, mode, input, outputDir, options = 
 export function buildRouteInvocation(argv) {
   const [route, mode, input, outputDir, ...flags] = argv;
   if (!route || !mode || !input || !outputDir) {
-    throw new Error("usage: run-route-pipeline.mjs <text|html|image|pdf> <direct|creative|replica> <input> <output-dir>");
+    throw new Error("usage: run-route-pipeline.mjs <text|html|image|pdf> <html-first|direct|creative|replica> <input> <output-dir>");
   }
   let allowRemoteAssets = false;
   let designSystem = null;
@@ -87,8 +89,8 @@ export function buildRouteInvocation(argv) {
       index += 1;
     } else throw new Error(`unknown option: ${flag}`);
   }
-  if (designSystem && (route !== "text" || mode !== "creative")) {
-    throw new Error("--design-system is available only for creative text mode");
+  if (designSystem && (route !== "text" || !["creative", "html-first"].includes(mode))) {
+    throw new Error("--design-system is available only for text creative or HTML-first mode");
   }
   if ((creativeDirections || hostReview || hostFinalReview || refinementState) && (route !== "text" || mode !== "creative")) {
     throw new Error("creative review options are available only for creative text mode");

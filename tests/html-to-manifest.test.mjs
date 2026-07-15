@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { preflightLayout } from "../scripts/lib/check-layout-safety.mjs";
-import { convertHtmlToManifest, layoutCards } from "../scripts/lib/html-to-manifest-core.mjs";
+import { convertHtmlToManifest, cssGradientAngleToPowerPoint, layoutCards } from "../scripts/lib/html-to-manifest-core.mjs";
 import { writeManifestFromHtml } from "../scripts/html-to-manifest.mjs";
 import { parseDesignFile } from "../scripts/parse-design-md.mjs";
 
@@ -24,6 +24,13 @@ async function slideXml(pptxPath) {
 }
 
 describe("html-to-manifest", () => {
+  it("maps CSS linear-gradient angles into PowerPoint coordinates", () => {
+    expect(cssGradientAngleToPowerPoint(90)).toBe(0);
+    expect(cssGradientAngleToPowerPoint(0)).toBe(270);
+    expect(cssGradientAngleToPowerPoint(180)).toBe(90);
+    expect(cssGradientAngleToPowerPoint(450)).toBe(0);
+  });
+
   it("maps semantic dashboard HTML to a tokenized manifest", async () => {
     const html = await readFile(sampleHtml, "utf8");
     const manifest = convertHtmlToManifest(html);

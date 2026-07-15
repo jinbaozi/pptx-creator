@@ -8,7 +8,8 @@ const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const HELP = `Usage: pptx <text|html|image|pdf|manifest> ...
 
 Routes:
-  text <deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] [--creative-directions <json>] [--host-review <json>] [--host-final-review <json>] [--refinement-state <json>]
+  text <deck.html|plan-directory|deck.plan.json> <output-dir> [--creative] [--design-system <path-or-name>]
+  text <deck.plan.json|plan-directory> <output-dir> --native [--creative-directions <json>] [--host-review <json>] [--host-final-review <json>] [--refinement-state <json>]
   text <deck.manifest.json> <output-dir> --direct
   html <input.html> <output-dir> [--allow-remote-assets]
   image <input.png> <output-dir>
@@ -26,6 +27,7 @@ export function buildInvocation(argv) {
   if (command === "text") {
     let creative = false;
     let direct = false;
+    let native = false;
     let designSystem = null;
     let creativeDirections = null;
     let hostReview = null;
@@ -36,6 +38,7 @@ export function buildInvocation(argv) {
       const argument = rest[index];
       if (argument === "--creative") creative = true;
       else if (argument === "--direct") direct = true;
+      else if (argument === "--native") native = true;
       else if (argument === "--design-system") {
         if (designSystem !== null) throw new Error("text: --design-system may be provided only once");
         const value = rest[index + 1];
@@ -57,22 +60,24 @@ export function buildInvocation(argv) {
       else positional.push(argument);
     }
     if (creative && direct) throw new Error("text: --creative and --direct are mutually exclusive");
+    if (native && direct) throw new Error("text: --native and --direct are mutually exclusive");
     if (direct && designSystem) throw new Error("text: --design-system is available only for creative mode, not --direct");
     if (direct && (creativeDirections || hostReview || hostFinalReview || refinementState)) throw new Error("text: creative review options are unavailable in --direct mode");
+    if (!native && (creativeDirections || hostReview || hostFinalReview || refinementState)) throw new Error("text: Creative Proof sidecars require the explicit --native compatibility route");
     if (hostReview && !creativeDirections) throw new Error("text: --host-review requires --creative-directions");
-    requireCount("text", positional, 2, "<deck.plan.json|plan-directory> <output-dir> [--creative] [--design-system <path-or-name>] or <deck.manifest.json> <output-dir> --direct");
+    requireCount("text", positional, 2, "<deck.html|plan-directory|deck.plan.json> <output-dir> [--design-system <path-or-name>] or <deck.plan.json> <output-dir> --native or <deck.manifest.json> <output-dir> --direct");
     return {
       route: "text",
       script: "run-route-pipeline.mjs",
       args: [
-        "text", direct ? "direct" : "creative", ...positional,
+        "text", direct ? "direct" : native ? "creative" : "html-first", ...positional,
         ...(designSystem ? ["--design-system", designSystem] : []),
         ...(creativeDirections ? ["--creative-directions", creativeDirections] : []),
         ...(hostReview ? ["--host-review", hostReview] : []),
         ...(hostFinalReview ? ["--host-final-review", hostFinalReview] : []),
         ...(refinementState ? ["--refinement-state", refinementState] : [])
       ],
-      ...(creative ? { warning: "--creative is deprecated because text generation is creative by default" } : {})
+      ...(creative ? { warning: "--creative is deprecated because HTML-first text generation is creative by default" } : {})
     };
   }
 

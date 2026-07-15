@@ -6,7 +6,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 `pptx-creator` is an Agent-oriented tool that produces **mostly editable** PowerPoint files. The architecture splits work in two:
 
-- **Host agent** (you, or another LLM) does all reasoning: classifying input, picking a design system, authoring a Creative `deck.plan.json` or an explicit direct-route manifest, picking assets, and judging QA output.
+- **Host agent** (you, or another LLM) does all reasoning: classifying input, defining Creative Direction, authoring and visually accepting a Creative `deck.html` (or explicitly choosing a compatibility route), picking assets, and judging QA output.
 - **Deterministic scripts** (Node.js + Python) validate, compile, render, package, and report — they **never** call LLM APIs and never invent content.
 
 Core invariant: Creative runs use the selected canonical Semantic Slide IR as
@@ -32,7 +32,7 @@ npm run test:py                        # python unittest in tests/
 npm run pptx -- text examples/text-input/deck.manifest.json output
 
 # Creative text end-to-end
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative
+npm run pptx -- text examples/design-first/compiler-roadshow-html/deck.html output/creative
 
 # Replica routes (image/PDF block until a fidelity-proof compiler exists)
 npm run pptx -- html input.html output/html
@@ -53,7 +53,7 @@ input (text / HTML / image / PDF / mixed)
 Host agent reasoning ──► DESIGN.md selection
     │
     ▼
-deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX
+text -> Creative Direction -> deck.html -> repaired HTML -> deck.manifest.json -> PPTX
        │                 │                         │
        └──── localized assets ──► assets/asset-registry.json
                                    │
@@ -68,9 +68,9 @@ Built-in design systems: `business-neutral`, `warm-editorial`, `paper-minimal`, 
 
 ### 2. Creative text pipeline
 
-For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and write one coordinate-free `deck.plan.json` version `0.2.0`. Its exact top-level contract is `version`, `context`, `designIntent`, `story`, `assets`, and `slides`. Slides carry semantic page roles, strict native content models, attention targets, composition intent, asset IDs, and native-first route policy. The host may explicitly select one built-in topology with `compositionIntent.blockId`; scripts never rank or infer that choice, and no selection preserves the existing family geometry. Assets require a non-empty `provenance.sourceRef`, one closed `provenance.rights` authority, optional HTTP(S) `sourceUrl`, and generated-model evidence when `origin` is `generated`; empty asset lists remain valid. Coordinates, manifest geometry, `elements`, and full-slide rasters are prohibited. Version `0.1.0` is retired and fails closed.
+For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and `references/text-html-authoring.md`. The Host first defines narrative and Creative Direction, then authors a complete 1280x720 `deck.html`, visually audits and repairs it, and freezes the repaired HTML. Deterministic scripts measure the DOM, compile it to native PowerPoint objects, prove source-to-PPTX fidelity, and package only accepted output. Full-slide rasters are prohibited. The previous coordinate-free `deck.plan.json` 0.2.0 and Semantic Slide IR compiler remains available only with the explicit `--native` compatibility flag.
 
-`schemas/deck-plan.schema.json` is the structural validator; runtime checks add cross-field generation/rights, uniqueness, reference, required membership, and ordering rules. `compileDeckPlanArtifacts()` compiles once and returns `{ ir, manifest }` for the current eight strict content families (`cover`, `architecture`, `comparison`, `process`, `dashboard`, `quote`, `matrix`, `closing`). Explicit blocks come from the closed fifteen-file `composition-blocks/` registry and are snapshotted into IR before a bounded post-family native geometry transform. Runtime `src` values must be normalized POSIX paths below `assets/`; remote URLs are provenance only. The Creative pre-package transaction stages `deck.plan.json`, the selected canonical `semantic-slide-ir.json`, validated `assets/asset-registry.json` 0.2, then `run.json`; publication commits only when packaging succeeds. Hook or package failure invokes best-effort reverse rollback before blocked state is written. The private `.pptx-generated-assets.json` ownership file is not the public audit registry. HTML is optional only when explicitly requested or necessary; it is not a required text intermediate.
+Default HTML-first output preserves `deck.source.html`, `deck.repaired.html`, HTML layout/repair reports, layout measurements, the compiled manifest, replica evidence, and editability/QA reports. The previous deck-plan schema, eight content families, composition blocks, and Creative pre-package transaction apply only to `--native` compatibility runs. Runtime `src` values remain normalized POSIX paths below `assets/`; remote URLs are provenance only. The private `.pptx-generated-assets.json` ownership file remains separate from public audit evidence.
 
 ### 3. Manifest render truth → PPTX
 
@@ -88,7 +88,8 @@ Every successfully packaged pipeline run writes to `output/`:
 - `deck.manifest.json` — copy of the input manifest
 - `editable-report.md`, `qa-report.md`, `compatibility-report.md` — quality dimensions
 - `output-manifest.json` — packaged output index
-- (creative) `deck.plan.json`, `semantic-slide-ir.json`, `assets/asset-registry.json`, `run.json`, and `visual-review.json`
+- (default text) `deck.source.html`, `deck.repaired.html`, `html-repair-report.json`, `replica-evidence.json`, and `visual-review.json`
+- (`--native` compatibility) `deck.plan.json`, `semantic-slide-ir.json`, `assets/asset-registry.json`, and `run.json`
 
 Editability ladder (`references/qa-rubric.md`): Level 5 = fully native objects, Level 4 = text + main shapes editable, Level 3 = text editable, Levels 1-2 = replica/screenshot. **Never** package a single full-slide raster as "editable PPTX".
 

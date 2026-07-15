@@ -161,7 +161,9 @@ export async function auditHtmlPage(page, options = {}) {
       ".card",
       "h1", "h2", "h3", "p", "li", "table", "img",
       "svg [data-connector]",
-      "svg [data-source-id][data-target-id]"
+      "svg [data-source-id][data-target-id]",
+      "svg line[marker-end]", "svg path[marker-end]", "svg polyline[marker-end]",
+      "svg line[marker-start]", "svg path[marker-start]", "svg polyline[marker-start]"
     ].join(",");
     const slides = [...document.querySelectorAll(slideSelector)];
     if (slides.length === 0) slides.push(document.body);
@@ -196,7 +198,10 @@ export async function auditHtmlPage(page, options = {}) {
       return /decoration|background|ornament|accent-rule/i.test(role) || node.getAttribute("aria-hidden") === "true";
     };
     const isConnector = (node) => node.hasAttribute("data-connector")
-      || (node.hasAttribute("data-source-id") && node.hasAttribute("data-target-id"));
+      || node.hasAttribute("marker-end")
+      || node.hasAttribute("marker-start")
+      || node.hasAttribute("data-source-id")
+      || node.hasAttribute("data-target-id");
     const rectIntersection = (a, b) => {
       const left = Math.max(a.left, b.left);
       const top = Math.max(a.top, b.top);
@@ -226,6 +231,28 @@ export async function auditHtmlPage(page, options = {}) {
       if (!matrix) return null;
       const screen = new DOMPoint(local.x, local.y).matrixTransform(matrix);
       return { x: screen.x, y: screen.y, length };
+    };
+    const segmentIntersectsInterior = (start, end, rect, inset = 4) => {
+      const left = rect.left + inset;
+      const right = rect.right - inset;
+      const top = rect.top + inset;
+      const bottom = rect.bottom - inset;
+      if (!(right > left && bottom > top)) return false;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      let tMin = 0;
+      let tMax = 1;
+      for (const [p, q] of [[-dx, start.x - left], [dx, right - start.x], [-dy, start.y - top], [dy, bottom - start.y]]) {
+        if (Math.abs(p) < Number.EPSILON) {
+          if (q < 0) return false;
+          continue;
+        }
+        const ratio = q / p;
+        if (p < 0) tMin = Math.max(tMin, ratio);
+        else tMax = Math.min(tMax, ratio);
+        if (tMin > tMax) return false;
+      }
+      return tMax > 1e-6 && tMin < 1 - 1e-6;
     };
     const pushCheck = (slideId, node, kind, message, extra = {}) => {
       const slide = node.closest(slideSelector) || document.body;
@@ -342,7 +369,11 @@ export async function auditHtmlPage(page, options = {}) {
         }
       }
 
-      const connectors = [...slide.querySelectorAll("[data-connector], [data-source-id][data-target-id]")];
+      const connectors = [...slide.querySelectorAll([
+        "[data-connector]", "[data-source-id]", "[data-target-id]",
+        "svg line[marker-end]", "svg path[marker-end]", "svg polyline[marker-end]",
+        "svg line[marker-start]", "svg path[marker-start]", "svg polyline[marker-start]"
+      ].join(","))];
       for (const connector of connectors) {
         if (!connector.hasAttribute("data-pptx-audit-id")) {
           connector.setAttribute("data-pptx-audit-id", `${slideId}-connector-${connectors.indexOf(connector) + 1}`);
@@ -354,8 +385,8 @@ export async function auditHtmlPage(page, options = {}) {
             suggestion: { operation: "addConnectorManifestMetadata" }
           });
         }
-        const source = sourceId ? document.querySelector(`[data-pptx-id="${cssEscape(sourceId)}"],#${cssEscape(sourceId)}`) : null;
-        const target = targetId ? document.querySelector(`[data-pptx-id="${cssEscape(targetId)}"],#${cssEscape(targetId)}`) : null;
+        const source = sourceId ? slide.querySelector(`[data-pptx-id="${cssEscape(sourceId)}"],#${cssEscape(sourceId)}`) : null;
+        const target = targetId ? slide.querySelector(`[data-pptx-id="${cssEscape(targetId)}"],#${cssEscape(targetId)}`) : null;
         if (!(connector instanceof SVGGeometryElement)) {
           pushCheck(slideId, connector, "connector-unsupported", `Connector ${semanticId(connector)} must be an SVG line, polyline, or simple path.`);
           continue;
@@ -389,6 +420,26 @@ export async function auditHtmlPage(page, options = {}) {
           pushCheck(slideId, connector, "connector-direction", `Connector ${semanticId(connector)} arrowhead points away from target ${targetId}.`, {
             suggestion: { operation: "orientTowardTarget", sourceId, targetId }
           });
+        }
+        const route = connector.getAttribute("data-connector-route") || "straight";
+        if (route === "orthogonal" && connector.tagName.toLowerCase() === "line" && Math.abs(end.x - start.x) > 2 && Math.abs(end.y - start.y) > 2) {
+          pushCheck(slideId, connector, "connector-route-invalid", `Connector ${semanticId(connector)} declares an orthogonal route but renders as one diagonal segment.`, {
+            suggestion: { operation: "routeConnectorOrthogonally", sourceId, targetId }
+          });
+        }
+        if (route !== "orthogonal") {
+          const obstruction = candidates.find((candidate) => candidate !== connector
+            && candidate !== source
+            && candidate !== target
+            && !isConnector(candidate)
+            && !isDecoration(candidate)
+            && segmentIntersectsInterior(start, end, candidate.getBoundingClientRect()));
+          if (obstruction) {
+            pushCheck(slideId, connector, "connector-obstructed", `Connector ${semanticId(connector)} crosses unrelated module ${semanticId(obstruction)}.`, {
+              relatedNode: obstruction,
+              suggestion: { operation: "rerouteConnector", sourceId, targetId, aroundId: semanticId(obstruction) }
+            });
+          }
         }
       }
     });

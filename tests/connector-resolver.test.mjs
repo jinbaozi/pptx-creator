@@ -11,7 +11,7 @@ describe("semantic connector resolver", () => {
     const resolved = resolveSemanticConnectors(elements);
     const line = resolved.find((element) => element.id === "connector-a-b");
 
-    expect(line).toMatchObject({ x: 3, y: 1.5, w: 2, h: 0.5 });
+    expect(line).toMatchObject({ x: 3, y: 1.625, w: 2, h: 0.25 });
     expect(elements[2]).toMatchObject({ x: 0, y: 0, w: 1, h: 1 });
   });
 

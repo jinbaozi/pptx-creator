@@ -1,4 +1,9 @@
-# Creative direction probes
+# Creative direction probes (`--native` compatibility)
+
+This deterministic probe protocol is retained for the explicit Semantic Slide
+IR route. Default flagship HTML-first work explores materially different
+directions in the Host and compares representative multi-page browser renders
+before the selected full deck is frozen.
 
 Creative direction exploration is a conditional, two-stage extension of the
 normal text route. The Host authors every direction and judges anonymized
@@ -61,7 +66,7 @@ closed. A source- or brand-locked plan must keep its resolved design system.
 Run the normal public command:
 
 ```bash
-npm run pptx -- text deck.plan.json output \
+npm run pptx -- text deck.plan.json output --native \
   --creative-directions creative-directions.json
 ```
 
@@ -131,7 +136,7 @@ the Host choice.
 Resume with the same plan and direction request:
 
 ```bash
-npm run pptx -- text deck.plan.json output \
+npm run pptx -- text deck.plan.json output --native \
   --creative-directions creative-directions.json \
   --host-review creative-host-review.json
 ```

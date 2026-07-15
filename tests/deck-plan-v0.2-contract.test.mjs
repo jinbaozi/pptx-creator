@@ -158,7 +158,7 @@ describe("deck.plan 0.2 canonical contract", () => {
 
   it("makes the public creative CLI fail closed for the retired plan", () => {
     const outputDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pptx-plan-legacy-")), "output");
-    const result = spawnSync(process.execPath, ["scripts/pptx.mjs", "text", legacyFixture, outputDir], {
+    const result = spawnSync(process.execPath, ["scripts/pptx.mjs", "text", legacyFixture, outputDir, "--native"], {
       cwd: process.cwd(),
       encoding: "utf8"
     });

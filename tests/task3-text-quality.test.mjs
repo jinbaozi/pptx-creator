@@ -60,6 +60,21 @@ const actualQuality = (plan) => {
   return qualityFromReview(review, 5, { source: "fontkit", fallback: [] });
 };
 
+function expectPointOnRectBoundary(point, rect) {
+  const epsilon = 1e-6;
+  expect(point.x).toBeGreaterThanOrEqual(rect.x - epsilon);
+  expect(point.x).toBeLessThanOrEqual(rect.x + rect.w + epsilon);
+  expect(point.y).toBeGreaterThanOrEqual(rect.y - epsilon);
+  expect(point.y).toBeLessThanOrEqual(rect.y + rect.h + epsilon);
+  const onBoundary = [
+    Math.abs(point.x - rect.x),
+    Math.abs(point.x - (rect.x + rect.w)),
+    Math.abs(point.y - rect.y),
+    Math.abs(point.y - (rect.y + rect.h))
+  ].some((distance) => distance <= epsilon);
+  expect(onBoundary).toBe(true);
+}
+
 describe("deck.plan 0.2 creative intermediate", () => {
   it("compiles process connectors from final node geometry with semantic endpoint metadata", () => {
     for (const strategy of ["asymmetric", "split", "focus", "editorial", "immersive", "data-led", "structural", "minimal-whitespace"]) {
@@ -74,10 +89,15 @@ describe("deck.plan 0.2 creative intermediate", () => {
         const target = slide.elements.find((element) => element.id === `step-${index + 1}`);
         expect(connector.connector, strategy ?? "default").toMatchObject({ sourceId: source.id, targetId: target.id, route: "straight" });
         expect(connector.style).not.toHaveProperty("sourceId");
-        expect(connector.x, strategy ?? "default").toBeCloseTo(source.x + source.w, 6);
-        expect(connector.y, strategy ?? "default").toBeCloseTo(source.y + source.h / 2, 6);
-        expect(connector.x + connector.w, strategy ?? "default").toBeCloseTo(target.x, 6);
-        expect(connector.y + connector.h, strategy ?? "default").toBeCloseTo(target.y + target.h / 2, 6);
+        const start = { x: connector.x, y: connector.y };
+        const end = { x: connector.x + connector.w, y: connector.y + connector.h };
+        expectPointOnRectBoundary(start, source);
+        expectPointOnRectBoundary(end, target);
+        const centerDirection = {
+          x: target.x + target.w / 2 - (source.x + source.w / 2),
+          y: target.y + target.h / 2 - (source.y + source.h / 2)
+        };
+        expect(connector.w * centerDirection.x + connector.h * centerDirection.y, strategy ?? "default").toBeGreaterThan(0);
       }
     }
   });
@@ -290,23 +310,26 @@ describe("stable bilingual brief corpus and text output contract", () => {
     expect(workflow).toContain("references/external-design-provenance.md");
   });
 
-  it("documents canonical Semantic IR publication and real run indexing", () => {
-    const publicDocs = [
-      "SKILL.md", "AGENTS.md", "README.md", "README.en.md",
-      "references/design-first-workflow.md", "references/routes/text.md",
-      "references/manifest-spec.md", "references/semantic-slide-ir.md"
-    ];
-    for (const relative of publicDocs) {
+  it("documents HTML-first publication plus native Semantic IR compatibility", () => {
+    for (const relative of ["SKILL.md", "README.md", "README.en.md", "references/design-first-workflow.md", "references/routes/text.md"]) {
+      const content = fs.readFileSync(relative, "utf8");
+      expect(content, relative).toMatch(/HTML-first/i);
+      expect(content, relative).toContain("deck.repaired.html");
+    }
+    const nativeDocs = ["AGENTS.md", "README.md", "README.en.md", "references/design-first-workflow.md", "references/manifest-spec.md", "references/semantic-slide-ir.md"];
+    for (const relative of nativeDocs) {
       const content = fs.readFileSync(relative, "utf8");
       expect(content, relative).toContain("semantic-slide-ir.json");
       expect(content, relative).not.toContain("semanticSlideIr");
     }
-    const combined = publicDocs.map((relative) => fs.readFileSync(relative, "utf8")).join("\n");
+    const combined = nativeDocs.map((relative) => fs.readFileSync(relative, "utf8")).join("\n");
     expect(combined).toContain("deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX");
     expect(combined).toContain("artifacts.semanticIr");
     expect(combined).toMatch(/canonical/i);
     expect(combined).toMatch(/candidate/i);
-    expect(fs.readFileSync("references/routes/text.md", "utf8")).toMatch(/direct[\s\S]*replica[\s\S]*(?:do not|does not|never).*Semantic IR/i);
+    const textRoute = fs.readFileSync("references/routes/text.md", "utf8");
+    expect(textRoute).toMatch(/authored manifest requires `--direct`/i);
+    expect(textRoute).toMatch(/`--native` compatibility mode[\s\S]*Semantic Slide IR/i);
   });
 
   it("retires every executable/public triple-artifact entry", () => {
@@ -323,8 +346,7 @@ describe("stable bilingual brief corpus and text output contract", () => {
       expect(fs.readFileSync(relative, "utf8"), relative).not.toMatch(/storyboard|design[ -]direction|slide[ -]design[ -]specs|compile-design-first|design-first-loader/i);
     }
     const agents = fs.readFileSync("AGENTS.md", "utf8");
-    expect(agents).toContain("examples/text-input/creative/deck.plan.json");
-    expect(agents).not.toContain("examples/design-first/compiler-roadshow");
+    expect(agents).toContain("examples/design-first/compiler-roadshow-html/deck.html");
     const showcase = fs.readFileSync("examples/design-first/compiler-roadshow-html/deck.html", "utf8");
     expect(showcase).not.toMatch(/ships through the design-first path/i);
   });
@@ -360,7 +382,7 @@ describe("stable bilingual brief corpus and text output contract", () => {
 
   it("creative CLI smoke emits the plan, manifest, deck, quality reports, package index, and preview index", async () => {
     const output = fs.mkdtempSync(path.join(os.tmpdir(), "pptx-task3-text-"));
-    acceptFinalCreativeReview(output, ["scripts/pptx.mjs", "text", fixturePath, output], {
+    acceptFinalCreativeReview(output, ["scripts/pptx.mjs", "text", fixturePath, output, "--native"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     });

@@ -695,6 +695,7 @@ describe("explicit Semantic IR composition integration", () => {
         "text",
         inputPath,
         outputPath,
+        "--native",
         "--design-system",
         "business-neutral"
       ], { cwd: root, encoding: "utf8", stdio: "pipe" })).toThrow(/unknown composition block unknown-block/i);

@@ -59,6 +59,7 @@ const PUBLISHED_OUTPUTS = Object.freeze([
   "visual-regression-report.json",
   "visual-review.json",
   "html-pipeline-summary.json",
+  "text-html-pipeline-summary.json",
   "html-preview",
   "preview",
   "previews",
@@ -108,6 +109,7 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "visual-regression-report.json",
   "visual-review.json",
   "html-pipeline-summary.json",
+  "text-html-pipeline-summary.json",
   "run.json",
   ".pptx-generated-assets.json.tmp"
 ]);

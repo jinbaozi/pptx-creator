@@ -61,7 +61,9 @@ describe("HTML layout contracts", () => {
     const line = manifest.slides[0].elements.find((element) => element.id === "flow");
     expect(line).toMatchObject({
       type: "line",
-      style: { sourceId: "source", targetId: "target", endArrowType: "triangle", color: "#123456", width: 2 }
+      role: "connector",
+      connector: { sourceId: "source", targetId: "target", sourceAnchor: "auto", targetAnchor: "auto", route: "straight" },
+      style: { endArrowType: "triangle", color: "#123456", width: 2 }
     });
   });
 

@@ -52,21 +52,21 @@ describe("Task 1 progressive-disclosure router", () => {
 describe("Task 1 public CLI", () => {
   it("selects real existing-script invocations for every route", async () => {
     const { buildInvocation } = await import("../scripts/pptx.mjs");
-    expect(buildInvocation(["text", "artifacts", "out"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "creative", "artifacts", "out"] });
-    expect(buildInvocation(["text", "artifacts", "out", "--creative"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "creative", "artifacts", "out"], warning: expect.stringMatching(/deprecated/) });
+    expect(buildInvocation(["text", "artifacts", "out"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "html-first", "artifacts", "out"] });
+    expect(buildInvocation(["text", "artifacts", "out", "--creative"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "html-first", "artifacts", "out"], warning: expect.stringMatching(/deprecated/) });
     expect(buildInvocation(["text", "artifacts", "out", "--design-system", "dark-tech"])).toMatchObject({
       route: "text",
       script: "run-route-pipeline.mjs",
-      args: ["text", "creative", "artifacts", "out", "--design-system", "dark-tech"]
+      args: ["text", "html-first", "artifacts", "out", "--design-system", "dark-tech"]
     });
-    expect(buildInvocation(["text", "artifacts", "out", "--creative-directions", "directions.json", "--host-review", "review.json"])).toMatchObject({
+    expect(buildInvocation(["text", "artifacts", "out", "--native", "--creative-directions", "directions.json", "--host-review", "review.json"])).toMatchObject({
       route: "text",
       script: "run-route-pipeline.mjs",
       args: ["text", "creative", "artifacts", "out", "--creative-directions", "directions.json", "--host-review", "review.json"]
     });
-    expect(buildInvocation(["text", "artifacts", "out", "--host-final-review", "final-review.json"]).args)
+    expect(buildInvocation(["text", "artifacts", "out", "--native", "--host-final-review", "final-review.json"]).args)
       .toEqual(["text", "creative", "artifacts", "out", "--host-final-review", "final-review.json"]);
-    expect(buildInvocation(["text", "artifacts", "out", "--refinement-state", "state.json"]).args)
+    expect(buildInvocation(["text", "artifacts", "out", "--native", "--refinement-state", "state.json"]).args)
       .toEqual(["text", "creative", "artifacts", "out", "--refinement-state", "state.json"]);
     expect(buildInvocation(["text", "deck.json", "out", "--direct"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "direct", "deck.json", "out"] });
     expect(buildInvocation(["html", "input.html", "out"])).toMatchObject({
@@ -96,11 +96,18 @@ describe("Task 1 public CLI", () => {
     await expect(execFileAsync(process.execPath, [cli, "text", "deck.json", "out", "--direct", "--design-system", "dark-tech"], { cwd: root }))
       .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/creative|direct/i) });
     await expect(execFileAsync(process.execPath, [cli, "text", "deck.json", "out", "--host-review", "review.json"], { cwd: root }))
-      .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/requires --creative-directions/i) });
+      .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/--native.*route/i) });
   });
 
   it("forwards the creative design-system option through the second routing hop", async () => {
     const { buildRouteInvocation } = await import("../scripts/run-route-pipeline.mjs");
+    expect(buildRouteInvocation(["text", "html-first", "deck.html", "out", "--design-system", "dark-tech"])).toEqual({
+      route: "text",
+      mode: "html-first",
+      input: "deck.html",
+      outputDir: "out",
+      options: { designSystem: "dark-tech", allowRemoteAssets: false }
+    });
     expect(buildRouteInvocation(["text", "creative", "deck.plan.json", "out", "--design-system", "dark-tech"])).toEqual({
       route: "text",
       mode: "creative",

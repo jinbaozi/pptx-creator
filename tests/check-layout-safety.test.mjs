@@ -355,6 +355,65 @@ describe("check-layout-safety", () => {
       expect(issue?.suggestion).toMatchObject({ x: 2, y: 2, w: 0, h: 1 });
       expect(result.summary.blocked).toBe(true);
     });
+
+    it("blocks arrow-like lines that omit module semantics", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "line", id: "flow-arrow", x: 1, y: 1, w: 2, h: 0, style: { endArrowType: "triangle" } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: "connector-detached", target: "flow-arrow", severity: "critical" })
+      ]));
+    });
+
+    it("blocks a semantic connector without a target-facing end marker", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "source", x: 1, y: 1, w: 2, h: 1, shape: "rect" },
+          { type: "shape", id: "target", x: 5, y: 1, w: 2, h: 1, shape: "rect" },
+          { type: "line", role: "connector", id: "flow", x: 3, y: 1.5, w: 2, h: 0, connector: { sourceId: "source", targetId: "target", sourceAnchor: "auto", targetAnchor: "auto", route: "straight" }, style: {} }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((check) => check.type === "connector-marker-missing")?.severity).toBe("critical");
+    });
+
+    it("blocks a straight connector that crosses an unrelated module", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "source", x: 1, y: 1, w: 1, h: 1, shape: "rect" },
+          { type: "shape", id: "obstacle", x: 3, y: 1, w: 1, h: 1, shape: "rect" },
+          { type: "shape", id: "target", x: 5, y: 1, w: 1, h: 1, shape: "rect" },
+          { type: "line", role: "connector", id: "flow", x: 2, y: 1.5, w: 3, h: 0, connector: { sourceId: "source", targetId: "target", sourceAnchor: "auto", targetAnchor: "auto", route: "straight" }, style: { endArrowType: "triangle" } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((check) => check.type === "connector-obstructed")).toMatchObject({
+        severity: "critical", target: "flow", relatedTarget: "obstacle"
+      });
+    });
+
+    it("uses ray-intersection anchors for diagonal module connections", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "source", x: 0.5, y: 0.5, w: 2, h: 2, shape: "rect" },
+          { type: "shape", id: "target", x: 4.5, y: 3.5, w: 2, h: 2, shape: "rect" },
+          { type: "line", role: "connector", id: "diagonal", x: 2.5, y: 2.25, w: 2, h: 1.5, connector: { sourceId: "source", targetId: "target", sourceAnchor: "auto", targetAnchor: "auto", route: "straight" }, style: { endArrowType: "triangle" } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((check) => check.type.startsWith("connector-"))).toBeUndefined();
+    });
   });
 
   describe("decorative grid policy", () => {

@@ -57,7 +57,14 @@
 
 import { expandChartElement } from "./chart-renderer.mjs";
 import { expandDiagramElement } from "./diagram-compiler.mjs";
-import { boundaryAnchor, connectorMetadata, pointTouchesBoundary } from "./connector-resolver.mjs";
+import {
+  boundaryAnchor,
+  connectorDirectionDot,
+  connectorMetadata,
+  pointDistance,
+  pointTouchesBoundary,
+  segmentIntersectsRectInterior
+} from "./connector-resolver.mjs";
 
 const TOLERANCE_IN = 0.005;
 const OVERLAP_AREA_THRESHOLD = 0.05; // 5% of smaller element area
@@ -504,14 +511,20 @@ function checkCardSpacing(slide, tokens) {
 
 function checkConnectors(slide) {
   const elements = Array.isArray(slide.elements) ? slide.elements : [];
-  const byId = new Map(elements.filter((el) => el?.id).map((el) => [el.id, el]));
+  const byId = new Map(elements.filter((el) => el?.id && el.type !== "line").map((el) => [el.id, el]));
   const issues = [];
   for (const line of elements.filter((el) => el?.type === "line")) {
     const connector = connectorMetadata(line);
     const sourceId = connector?.sourceId;
     const targetId = connector?.targetId;
+    const role = String(line.role ?? "").toLowerCase();
+    const id = String(line.id ?? "").toLowerCase();
+    const hasArrow = Boolean(line.style?.beginArrowType || line.style?.endArrowType);
+    const connectorLike = role === "connector"
+      || /connector|arrow|flow|link/.test(id)
+      || hasArrow;
     if (!sourceId && !targetId) {
-      if (line.role === "connector" || /connector/i.test(line.id ?? "")) {
+      if (connectorLike && !["axis", "divider", "decorative"].includes(role)) {
         issues.push({
           severity: "high",
           type: "connector-detached",
@@ -525,11 +538,13 @@ function checkConnectors(slide) {
     const target = byId.get(targetId);
     const start = { x: num(line.x), y: num(line.y) };
     const end = { x: num(line.x) + num(line.w), y: num(line.y) + num(line.h) };
-    if (!source || !target || !pointTouchesBoundary(start, source) || !pointTouchesBoundary(end, target)) {
+    const expectedStart = source && target ? boundaryAnchor(source, target, connector?.sourceAnchor ?? "auto") : null;
+    const expectedEnd = source && target ? boundaryAnchor(target, source, connector?.targetAnchor ?? "auto") : null;
+    const sourceAttached = source && pointTouchesBoundary(start, source) && (!expectedStart || pointDistance(start, expectedStart) <= 0.08);
+    const targetAttached = target && pointTouchesBoundary(end, target) && (!expectedEnd || pointDistance(end, expectedEnd) <= 0.08);
+    if (!source || !target || sourceId === targetId || !sourceAttached || !targetAttached) {
       let suggestion;
-      if (source && target) {
-        const expectedStart = boundaryAnchor(source, target, connector?.sourceAnchor ?? "auto");
-        const expectedEnd = boundaryAnchor(target, source, connector?.targetAnchor ?? "auto");
+      if (source && target && sourceId !== targetId) {
         suggestion = {
           x: expectedStart.x,
           y: expectedStart.y,
@@ -540,11 +555,58 @@ function checkConnectors(slide) {
       issues.push({
         severity: "high",
         type: "connector-detached",
-        message: `Connector ${line.id} does not terminate on ${sourceId ?? "source"} and ${targetId ?? "target"}.`,
+        message: sourceId === targetId
+          ? `Connector ${line.id} must connect two distinct modules.`
+          : `Connector ${line.id} does not terminate on the declared anchors of ${sourceId ?? "source"} and ${targetId ?? "target"}.`,
         target: line.id,
         relatedTarget: !source ? sourceId : targetId,
         ...(suggestion ? { suggestion } : {})
       });
+      continue;
+    }
+
+    if (!line.style?.endArrowType) {
+      issues.push({
+        severity: "high",
+        type: "connector-marker-missing",
+        message: `Connector ${line.id} must use an end arrow marker aimed at ${targetId}.`,
+        target: line.id,
+        relatedTarget: targetId
+      });
+    }
+    if ((line.style?.beginArrowType && !line.style?.endArrowType) || connectorDirectionDot(start, end, target) <= 0) {
+      issues.push({
+        severity: "high",
+        type: "connector-direction",
+        message: `Connector ${line.id} points away from target module ${targetId}.`,
+        target: line.id,
+        relatedTarget: targetId
+      });
+    }
+    if (connector?.route === "orthogonal" && Math.abs(num(line.w)) > 0.02 && Math.abs(num(line.h)) > 0.02) {
+      issues.push({
+        severity: "high",
+        type: "connector-route-invalid",
+        message: `Connector ${line.id} declares an orthogonal route but is represented by one diagonal segment.`,
+        target: line.id
+      });
+    }
+    if (connector?.route !== "orthogonal") {
+      const obstruction = elements.find((element) => element?.id
+        && element.type !== "line"
+        && element.id !== sourceId
+        && element.id !== targetId
+        && !isDecoration(element)
+        && segmentIntersectsRectInterior(start, end, element));
+      if (obstruction) {
+        issues.push({
+          severity: "high",
+          type: "connector-obstructed",
+          message: `Connector ${line.id} crosses unrelated module ${obstruction.id}; reroute it or move the module.`,
+          target: line.id,
+          relatedTarget: obstruction.id
+        });
+      }
     }
   }
   return issues;
@@ -702,6 +764,9 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
     for (const issue of checkTextOverflow(slide, tokens)) {
       checks.push({ ...issue, severity: "warning" });
     }
+    for (const issue of checkConnectors(slide)) {
+      checks.push({ ...issue, severity: issue.severity === "high" ? "critical" : "warning" });
+    }
     return checks;
   }
 
@@ -842,6 +907,10 @@ const KIND_MAP = Object.freeze({
   "text-overflow": "text-overflow",
   "card-spacing-tight": "card-spacing-tight",
   "connector-detached": "connector-detached",
+  "connector-direction": "connector-direction",
+  "connector-marker-missing": "connector-marker-missing",
+  "connector-obstructed": "connector-obstructed",
+  "connector-route-invalid": "connector-route-invalid",
   "decorative-grid": "decorative-grid",
   "contrast-fail": "contrast-fail",
   "letter-spacing-too-tight": "letter-spacing-too-tight"

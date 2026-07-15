@@ -4,6 +4,7 @@ import { imageSize } from "image-size";
 import { parse } from "node-html-parser";
 import { buildMeasurementLookup, getMeasurementBox, mergeMeasurementsIntoManifest, roundInches } from "./html-measurement-core.mjs";
 import { buildTokenLookup, exactTokenRef, resolveTokens } from "./color-tokens.mjs";
+import { resolveSemanticConnectors } from "./connector-resolver.mjs";
 import * as archetypeResolver from "./archetype-resolver.mjs";
 
 export { mergeMeasurementsIntoManifest };
@@ -351,21 +352,32 @@ function lineStyleFromNode(node) {
     width: Number.isFinite(strokeWidth) && strokeWidth > 0 ? strokeWidth : 1.5,
     ...(dash && dash !== "none" ? { dash: "dash" } : {}),
     ...(markerStart && markerStart !== "none" ? { beginArrowType: "triangle" } : {}),
-    ...(markerEnd && markerEnd !== "none" ? { endArrowType: "triangle" } : {}),
-    ...(node.getAttribute?.("data-source-id") ? { sourceId: node.getAttribute("data-source-id") } : {}),
-    ...(node.getAttribute?.("data-target-id") ? { targetId: node.getAttribute("data-target-id") } : {})
+    ...(markerEnd && markerEnd !== "none" ? { endArrowType: "triangle" } : {})
   };
 }
 
 function lineElement(id, box, preserveHeight = false, node = null) {
+  const sourceId = node?.getAttribute?.("data-source-id");
+  const targetId = node?.getAttribute?.("data-target-id");
+  const isConnector = Boolean(sourceId || targetId || node?.getAttribute?.("data-connector") !== undefined);
   return {
     type: "line",
     id,
+    ...(isConnector ? { role: "connector" } : {}),
     x: box.x,
     y: box.y,
     w: box.w,
     h: preserveHeight ? box.h : 0.02,
-    style: lineStyleFromNode(node)
+    style: lineStyleFromNode(node),
+    ...(sourceId || targetId ? {
+      connector: {
+        sourceId: sourceId ?? "",
+        targetId: targetId ?? "",
+        sourceAnchor: node?.getAttribute?.("data-source-anchor") ?? "auto",
+        targetAnchor: node?.getAttribute?.("data-target-anchor") ?? "auto",
+        route: node?.getAttribute?.("data-connector-route") ?? "straight"
+      }
+    } : {})
   };
 }
 
@@ -987,9 +999,18 @@ function parseCssLinearGradient(value) {
   if (!stops) return null;
   return {
     type: "linear",
-    angle,
+    angle: cssGradientAngleToPowerPoint(angle),
     stops
   };
+}
+
+// CSS angles use 0deg for bottom-to-top and 90deg for left-to-right.
+// DrawingML uses 0deg for left-to-right, so preserve the rendered direction
+// by rotating the CSS angle into PowerPoint's coordinate system.
+export function cssGradientAngleToPowerPoint(angle) {
+  const numeric = Number(angle);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.round((((numeric - 90) % 360) + 360) % 360 * 100) / 100;
 }
 
 function parseCssGradientStops(stopParts) {
@@ -1309,7 +1330,7 @@ function replicaPaintLayerElements(id, measurement) {
         ? backgroundImages
         : backgroundImages.length > 0
           ? [...backgroundImages, shape]
-          : [shape];
+          : hasVisibleShape ? [shape] : [];
     return outline ? [...base, outline] : base;
   }
   shape.style.borderWidth = 0;
@@ -1323,6 +1344,9 @@ function replicaPaintLayerElements(id, measurement) {
 function replicaTextElement(id, measurement) {
   const style = cssStyle(measurement);
   const bullet = replicaTextBullet(style);
+  const lineHeight = Number.isFinite(Number(style.lineHeight)) && Number(style.fontSize) > 0
+    ? Number((Number(style.lineHeight) / Number(style.fontSize)).toFixed(4))
+    : undefined;
   const element = {
     type: "text",
     id,
@@ -1339,7 +1363,7 @@ function replicaTextElement(id, measurement) {
       valign: replicaTextValign(style),
       textDirection: replicaTextDirection(style),
       rtl: replicaTextRtl(style),
-      lineHeight: style.lineHeight,
+      lineHeight,
       firstLineIndent: replicaTextIndent(style),
       textStroke: replicaTextStroke(style),
       charSpacing: style.letterSpacing,
@@ -2033,7 +2057,11 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
       continue;
     }
     const box = measuredBox(measurement);
-    if (![box.x, box.y, box.w, box.h].every((value) => Number.isFinite(value)) || box.w <= 0 || box.h <= 0) {
+    const kind = measurement.kind;
+    const hasValidSpan = kind === "line"
+      ? Math.abs(box.w) > 0 || Math.abs(box.h) > 0
+      : box.w > 0 && box.h > 0;
+    if (![box.x, box.y, box.w, box.h].every((value) => Number.isFinite(value)) || !hasValidSpan) {
       droppedElements.push({
         elementId: measurement.id,
         kind: measurement.kind,
@@ -2041,7 +2069,6 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
       });
       continue;
     }
-    const kind = measurement.kind;
     const style = cssStyle(measurement);
 
     const unsupportedEffect = replicaUnsupportedEffect(measurement, style);
@@ -2103,10 +2130,14 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
         });
       }
     } else if (kind === "line") {
-      const line = lineElement(measurement.id, box, true);
+      const lineNode = findNodeByMeasurementId(slideNode, measurement.id);
+      const line = lineElement(measurement.id, box, true, lineNode);
       line.style = {
-        color: style.borderColor ?? style.backgroundColor ?? style.color ?? "{colors.border}",
-        width: Number(style.borderWidth ?? 0) > 0 ? Math.max(0.25, Number(style.borderWidth) * 0.75) : 1
+        ...line.style,
+        color: line.style?.color ?? style.borderColor ?? style.backgroundColor ?? style.color ?? "{colors.border}",
+        width: Number(line.style?.width ?? 0) > 0
+          ? Number(line.style.width)
+          : Number(style.borderWidth ?? 0) > 0 ? Math.max(0.25, Number(style.borderWidth) * 0.75) : 1
       };
       addLayer(measurement, measurementIndex, line);
       coveredMeasurementIds.add(measurement.id);
@@ -2695,6 +2726,9 @@ export function convertHtmlToManifest(html, options = {}) {
 
   if (options.measurements) {
     mergeMeasurementsIntoManifest(manifest, options.measurements);
+  }
+  for (const slide of manifest.slides) {
+    slide.elements = resolveSemanticConnectors(slide.elements);
   }
 
   const inputHints = buildInputHints(sourceSlides, options.measurements, options);

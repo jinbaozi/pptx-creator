@@ -81,10 +81,10 @@ packages; image uses `pip install -r requirements-image.txt`; pdf uses
 `pip install -r requirements-pdf.txt`. The HTML browser dependency is provided
 by Node/Playwright.
 
-Run the built-in text example:
+Run the built-in HTML-first text example:
 
 ```bash
-npm run pptx -- text examples/text-input/deck.manifest.json output
+npm run pptx -- text examples/text-input/html-first/deck.html output
 ```
 
 Successful output:
@@ -92,19 +92,34 @@ Successful output:
 ```text
 output/
   final.pptx
+  deck.source.html
+  deck.repaired.html
   deck.manifest.json
+  replica-evidence.json
   editable-report.md
   qa-report.md
   compatibility-report.md
   output-manifest.json
 ```
 
-## Creative Deck Plan Workflow
+## Default Creative HTML-first Workflow
 
 Use this for polished business, product, technical, roadshow, research, or training decks:
 
 ```bash
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --design-system dark-tech
+npm run pptx -- text examples/text-input/html-first/deck.html output/creative
+```
+
+The Host first defines the narrative and Creative Direction, authors and
+visually verifies 1280x720 HTML, then the deterministic compiler recreates the
+accepted source as native PowerPoint objects and validates semantic module
+connectors plus source-to-PPTX fidelity.
+
+The former `deck.plan.json` workflow is retained only as explicit `--native`
+compatibility mode:
+
+```bash
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/native --native
 ```
 
 A successfully packaged Creative run publishes the plan, selected canonical
@@ -122,7 +137,7 @@ preview/index.html
 output-manifest.json
 ```
 
-The plan records the design read, three contextual dials, audience, narrative beats, slide messages, layout families, and content/asset references. `compileDeckPlanArtifacts()` produces the selected canonical IR and manifest in one compilation; `run.json` indexes that IR through `artifacts.semanticIr`. IR/run publication commits only after packaging succeeds. If the pre-package hook or package step fails, the pipeline attempts compensating rollback before writing blocked state, without allowing a rollback error to mask the primary failure. Candidate evidence never overwrites the canonical file, and direct/replica routes do not produce Semantic IR. HTML is not a mandatory text intermediate.
+In `--native` mode, the plan records the design read, three contextual dials, audience, narrative beats, slide messages, layout families, and content/asset references. `compileDeckPlanArtifacts()` produces the selected canonical IR and manifest in one compilation; `run.json` indexes that IR through `artifacts.semanticIr`. IR/run publication commits only after packaging succeeds. If the pre-package hook or package step fails, the pipeline attempts compensating rollback before writing blocked state, without allowing a rollback error to mask the primary failure. Candidate evidence never overwrites the canonical file, and direct/replica routes do not produce Semantic IR.
 
 ## HTML, Image, and PDF Inputs
 

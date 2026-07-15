@@ -79,10 +79,10 @@ npm run setup -- core
 `pip install -r requirements-image.txt`；pdf 使用
 `pip install -r requirements-pdf.txt`。HTML 浏览器依赖由 Node/Playwright 提供。
 
-运行内置文本示例：
+运行内置 HTML-first 文本示例：
 
 ```bash
-npm run pptx -- text examples/text-input/deck.manifest.json output
+npm run pptx -- text examples/text-input/html-first/deck.html output
 ```
 
 成功后输出：
@@ -90,7 +90,10 @@ npm run pptx -- text examples/text-input/deck.manifest.json output
 ```text
 output/
   final.pptx
+  deck.source.html
+  deck.repaired.html
   deck.manifest.json
+  replica-evidence.json
   editable-report.md
   qa-report.md
   compatibility-report.md
@@ -99,18 +102,25 @@ output/
 
 ## 默认文字生成高品味 PPTX
 
+默认路线由 Host Agent 先完成叙事与 Creative Direction，再绘制并验证
+1280x720 HTML；确定性编译器将已接受的 HTML 复刻为主要元素可编辑的
+PPTX，并校验模块连线和源图与 PPTX 的视觉一致性。
+
 适合从文本生成更精美、更有变化的商务或技术 PPT：
 
 ```bash
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --design-system dark-tech
+npm run pptx -- text examples/text-input/html-first/deck.html output/creative
 ```
+
+下述 `deck.plan.json`、方向盲选与 Host 最终复核协议是保留的原生兼容
+路线，必须显式添加 `--native`：
 
 首次运行会在确定性证据通过后停在 `host-final-visual-review`，只发布逐页
 PNG、contact sheet、候选 PPTX 与哈希绑定的复核包。Host 实际检查每张
 完整截图并填写 `creative-final-review.json` 后，再恢复运行：
 
 ```bash
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative \
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --native \
   --design-system dark-tech \
   --host-final-review /absolute/path/creative-final-review.json
 ```
@@ -125,7 +135,7 @@ npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative
 失效，并消耗共享的最多 3 次 Creative 修复/精炼预算：
 
 ```bash
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative \
+npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --native \
   --design-system dark-tech \
   --refinement-state /absolute/path/creative-refinement-state.json
 ```

@@ -16,48 +16,35 @@ route contract and its listed next references before acting.
 | `pdf-replica` | PDF pages are the visual source | `references/routes/pdf-replica.md` |
 | `manifest-repair` | An existing manifest plus a bounded patch is repaired | `references/routes/manifest-repair.md` |
 
-Do not combine creative rules with replica rules. The `text` route is creative
-by default and runs one Creative Director Pipeline: the host agent edits the
-narrative and visual direction, then after
-successful packaging keeps `deck.plan.json`, the selected canonical
-`semantic-slide-ir.json`, validated `assets/asset-registry.json` 0.2, and
-`deck.manifest.json` as evidence. `run.json` indexes the real published
-artifacts. The Creative evidence transaction writes plan, IR, public registry,
-then run; publication commits only after packaging succeeds, and hook or
-package failure triggers best-effort reverse rollback before blocked evidence
-is written. The public registry records provenance and verified localized
-bytes; `.pptx-generated-assets.json` is a separate private cleanup sidecar.
-Direct manifest rendering is an explicit advanced compatibility path
-only. HTML is optional, never a mandatory text intermediate.
-An optional `compositionIntent.blockId` is a host-authored Creative choice;
-deterministic scripts validate and snapshot it but never rank or infer blocks.
-Without that field, the existing family geometry is unchanged.
-High-risk text plans may enter the conditional two-stage direction protocol in
-`references/creative-direction-probes.md`: the host authors bounded
-coordinate-free candidates, inspects anonymous rendered evidence, and records
-complete pairwise preference. Scripts never invent a candidate or select from
-diagnostic scores.
-Every full Creative deck then enters the separate final-review resume protocol
-in `references/creative-visual-proof.md`. Deterministic evidence alone is never
-accepted: the host must inspect every full-size rendered slide and provide a
-packet-bound `--host-final-review` sidecar. Until then the pipeline exposes only
-candidate evidence and withholds the top-level PPTX, successful run index, and
-output manifest.
-A rejecting final review follows `references/creative-refinement.md`: emit a
-dry-run evidence plan, wait for one protected Host-approved operation, then
-render and review again. Creative repair/refinement shares a three-delta cap.
-Release-level preference evidence follows `references/creative-benchmark.md`;
-deterministic or synthetic success alone does not prove release quality.
+The `text` route is Creative Director-led and HTML-first by default. Before any
+PPT coordinates exist, the host defines the communication task, narrative,
+visual concept, typography, palette, composition rules, image strategy,
+editability target, and connector semantics. It then authors a complete local
+`deck.html`, visually proves and repairs that 1280x720 HTML, freezes the repaired
+HTML as the visual source (`deck.repaired.html`), and runs the strict
+HTML-to-native-PPTX replica
+compiler. The final deck must preserve native text, shapes, tables, charts, and
+semantic connectors; a full-slide screenshot is forbidden.
+
+The former `deck.plan.json -> Semantic Slide IR` compiler remains available
+only through explicit `--native` compatibility mode. Direct manifest rendering
+still requires `--direct`. Neither compatibility path is the default.
+The `--native` route retains its composition-block, direction-probe, Creative
+Proof, resumable final-review, refinement, and benchmark contracts for existing
+integrations. Those contracts do not override the default HTML-first route.
 
 ## Shared invariants
 
 - For deterministic rendering, the manifest is the single source of truth
-  consumed by scripts. In Creative text runs, Semantic Slide IR is the
-  authoring truth that lowers to that render contract.
+  consumed by scripts. In default text runs, the repaired HTML is the frozen
+  visual source and the manifest is its native-object compilation result.
 - Never use a full-slide raster as an editable PPTX.
-- Replica routes preserve source layout, color, typography, and tone; they do
-  not explore creative directions.
-- Creative exploration belongs only to the text route.
+- User-supplied replica routes preserve source layout, color, typography, and
+  tone and never add creative exploration. Default text runs complete creative
+  exploration before freezing their internally authored HTML replica source.
+- Every connector between modules must declare source, target, anchors, route,
+  and a target-facing end marker. Detached, reversed, obstructed, or invalidly
+  routed connectors block packaging.
 - Automatic repair is bounded to at most three attempts, then it must block and
   ask for user direction.
 - Localize remote assets before deterministic compilation; scripts never search

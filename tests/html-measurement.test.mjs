@@ -291,7 +291,7 @@ describe("html-to-manifest with measurements", () => {
       type: "gradient",
       gradient: {
         type: "linear",
-        angle: 90,
+        angle: 0,
         stops: [
           { color: "#111827", position: 0 },
           { color: "#2563EB", position: 100 }
@@ -345,7 +345,7 @@ describe("html-to-manifest with measurements", () => {
       type: "gradient",
       gradient: {
         type: "linear",
-        angle: 135,
+        angle: 45,
         stops: [
           { color: "#020617", position: 0 },
           { color: "#2563EB", position: 45 },
@@ -400,7 +400,7 @@ describe("html-to-manifest with measurements", () => {
       type: "gradient",
       gradient: {
         type: "linear",
-        angle: 90,
+        angle: 0,
         stops: [
           { color: "#111827", position: 0 },
           { color: "#2563EB", position: 100 }
@@ -1225,7 +1225,7 @@ describe("html-to-manifest with measurements", () => {
       style: expect.objectContaining({
         gradient: {
           type: "linear",
-          angle: 90,
+          angle: 0,
           stops: [
             { color: "#111827", position: 0 },
             { color: "#2563EB", position: 100 }
@@ -1274,7 +1274,7 @@ describe("html-to-manifest with measurements", () => {
       style: expect.objectContaining({
         gradient: {
           type: "linear",
-          angle: 135,
+          angle: 45,
           stops: [
             { color: "#020617", position: 0 },
             { color: "#2563EB", position: 45 },
@@ -1324,7 +1324,7 @@ describe("html-to-manifest with measurements", () => {
       style: expect.objectContaining({
         gradient: {
           type: "linear",
-          angle: 135,
+          angle: 45,
           stops: [
             { color: "#020617", position: 0 },
             { color: "#2563EB", position: 60 },
@@ -3258,7 +3258,7 @@ describe("html-to-manifest with measurements", () => {
       text: "North\nAmerica",
       style: expect.objectContaining({
         color: "#0F172A",
-        lineHeight: 21
+        lineHeight: 1.1667
       })
     });
   });
@@ -3296,8 +3296,32 @@ Second line</p>
       text: "First line\nSecond line",
       style: expect.objectContaining({
         color: "#0F172A",
-        lineHeight: 19.5
+        lineHeight: 1.3
       })
+    });
+  });
+
+  it("keeps zero-height horizontal SVG connectors in replica manifests", () => {
+    const html = `
+      <section class="pptx-slide">
+        <div data-pptx-kind="shape" data-pptx-id="a"></div>
+        <div data-pptx-kind="shape" data-pptx-id="b"></div>
+        <svg><line data-connector data-pptx-kind="line" data-pptx-id="a-to-b" data-source-id="a" data-target-id="b" x1="200" y1="200" x2="500" y2="200" stroke="#111827" stroke-width="2" marker-end="url(#arrow)"></line></svg>
+      </section>`;
+    const measurements = {
+      viewport: { width: 1280, height: 720 },
+      elements: [
+        { id: "a", kind: "shape", slideIndex: 0, x: 1, y: 1.5, w: 1, h: 1, style: { backgroundColor: "#FFFFFF" } },
+        { id: "b", kind: "shape", slideIndex: 0, x: 5, y: 1.5, w: 1, h: 1, style: { backgroundColor: "#FFFFFF" } },
+        { id: "a-to-b", kind: "line", slideIndex: 0, x: 2, y: 2, w: 3, h: 0, style: { color: "#111827" } }
+      ]
+    };
+    const result = convertHtmlToManifest(html, { measurements, designMode: "replica", returnMetadata: true });
+    expect(result.manifest.slides[0].elements.find((element) => element.id === "a-to-b")).toMatchObject({
+      type: "line",
+      role: "connector",
+      connector: { sourceId: "a", targetId: "b", sourceAnchor: "auto", targetAnchor: "auto", route: "straight" },
+      style: { endArrowType: "triangle" }
     });
   });
 

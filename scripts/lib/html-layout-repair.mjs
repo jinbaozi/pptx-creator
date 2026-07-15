@@ -48,13 +48,20 @@ async function applyRepairPass(inputPath, outputPath, attempt) {
       };
       const px = (value) => `${Math.max(0, Math.round(value))}px`;
       const minFontSize = (node) => node.matches("h1") ? 28 : node.matches("h2,h3") ? 18 : 14;
-      const boundaryAnchor = (rect, toward) => {
+      const boundaryAnchor = (rect, toward, requested = "auto") => {
         const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
         const target = { x: toward.left + toward.width / 2, y: toward.top + toward.height / 2 };
+        if (requested === "top") return { x: center.x, y: rect.top };
+        if (requested === "right") return { x: rect.right, y: center.y };
+        if (requested === "bottom") return { x: center.x, y: rect.bottom };
+        if (requested === "left") return { x: rect.left, y: center.y };
         const dx = target.x - center.x;
         const dy = target.y - center.y;
-        if (Math.abs(dx) > Math.abs(dy)) return { x: dx >= 0 ? rect.right : rect.left, y: center.y };
-        return { x: center.x, y: dy >= 0 ? rect.bottom : rect.top };
+        if (Math.abs(dx) < Number.EPSILON && Math.abs(dy) < Number.EPSILON) return center;
+        const scaleX = Math.abs(dx) < Number.EPSILON ? Infinity : (rect.width / 2) / Math.abs(dx);
+        const scaleY = Math.abs(dy) < Number.EPSILON ? Infinity : (rect.height / 2) / Math.abs(dy);
+        const scale = Math.min(scaleX, scaleY);
+        return { x: center.x + dx * scale, y: center.y + dy * scale };
       };
       const ensureArrowMarker = (connector) => {
         const svg = connector.ownerSVGElement;
@@ -283,15 +290,16 @@ async function applyRepairPass(inputPath, outputPath, attempt) {
       for (const connector of document.querySelectorAll("[data-connector], [data-source-id][data-target-id]")) {
         const sourceId = connector.getAttribute("data-source-id");
         const targetId = connector.getAttribute("data-target-id");
-        const source = sourceId ? document.querySelector(`[data-pptx-id="${CSS.escape(sourceId)}"],#${CSS.escape(sourceId)}`) : null;
-        const target = targetId ? document.querySelector(`[data-pptx-id="${CSS.escape(targetId)}"],#${CSS.escape(targetId)}`) : null;
+        const slide = connector.closest(slideSelector);
+        const source = sourceId ? slide?.querySelector(`[data-pptx-id="${CSS.escape(sourceId)}"],#${CSS.escape(sourceId)}`) : null;
+        const target = targetId ? slide?.querySelector(`[data-pptx-id="${CSS.escape(targetId)}"],#${CSS.escape(targetId)}`) : null;
         if (!source || !target || !(connector instanceof SVGGeometryElement) || !connector.ownerSVGElement) continue;
         if (!connector.getAttribute("data-pptx-id")) connector.setAttribute("data-pptx-id", connector.id || semanticId(connector));
         connector.setAttribute("data-pptx-kind", "line");
         const svg = connector.ownerSVGElement;
         const svgRect = svg.getBoundingClientRect();
-        const sourceAnchor = boundaryAnchor(source.getBoundingClientRect(), target.getBoundingClientRect());
-        const targetAnchor = boundaryAnchor(target.getBoundingClientRect(), source.getBoundingClientRect());
+        const sourceAnchor = boundaryAnchor(source.getBoundingClientRect(), target.getBoundingClientRect(), connector.getAttribute("data-source-anchor") || "auto");
+        const targetAnchor = boundaryAnchor(target.getBoundingClientRect(), source.getBoundingClientRect(), connector.getAttribute("data-target-anchor") || "auto");
         const start = { x: sourceAnchor.x - svgRect.left, y: sourceAnchor.y - svgRect.top };
         const end = { x: targetAnchor.x - svgRect.left, y: targetAnchor.y - svgRect.top };
         const before = connector.outerHTML;

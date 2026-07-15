@@ -187,7 +187,8 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
   let summary = null;
   const deck = await runDeckPipeline(resolvedInput, resolvedOutput, {
     inputType: "html",
-    inputSource: resolvedInput,
+    inputSource: options.replicaSourcePath ?? resolvedInput,
+    protectedInputs: options.protectedInputs ?? [],
     mode,
     strictLayoutSafety: true,
     copyManifest: false,
@@ -206,7 +207,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
         measurements: preparation.measurements,
         designSystem: options.designSystem,
         designMode: mode === "replica" ? "replica" : "balanced",
-        replicaSourcePath: resolvedInput,
+        replicaSourcePath: options.replicaSourcePath ?? resolvedInput,
         allowRemoteAssets: false
       });
       if (preparation.converted.contentCoverage?.ratio !== 1) {
@@ -235,7 +236,8 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
     buildReplicaProof: mode === "replica" ? async ({ manifest, coverage, intermediate, buildBaseEvidence }) => renderAndMeasureHtmlReplica({
       root: resolve(new URL("..", import.meta.url).pathname), outputDir: resolvedOutput,
       sourcePaths: preparation.artifacts.sourcePaths, sourceArtifactPath: preparation.artifacts.sourceDir, manifest, measurements: preparation.measurements,
-      coverage, intermediate, buildBaseEvidence
+      coverage, intermediate, buildBaseEvidence,
+      policyRoute: options.replicaPolicyRoute ?? "html"
     }) : undefined,
     initialRepairArtifact:{planPath:preparation.measurementsPath},
     runRepairAttempt:mode==="replica"?async({iteration,artifact})=>{
@@ -244,7 +246,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
       const repaired=repairHtmlManifestGeometry(currentManifest,preparation.measurements,adjustments);if(!repaired.changed)return null;
       const attemptDir=join(resolvedOutput,"evidence",`repair-${iteration}`);await mkdir(attemptDir,{recursive:true});const candidateManifestPath=join(attemptDir,"deck.manifest.json"),candidatePptxPath=join(attemptDir,"final.pptx"),renderDir=join(attemptDir,"render");await writeFile(candidateManifestPath,`${JSON.stringify(repaired.manifest,null,2)}\n`);
       const rendered=await execFileAsync(process.execPath,[join(resolve(new URL("..",import.meta.url).pathname),"scripts/render-pptx.mjs"),candidateManifestPath,candidatePptxPath],{cwd:resolve(new URL("..",import.meta.url).pathname)});const candidateIntermediate=JSON.parse(rendered.stdout).intermediate;const candidateCoverage=repaired.manifest.metadata.replicaSource.coverage;
-      const proof=await renderAndMeasureHtmlReplica({root:resolve(new URL("..",import.meta.url).pathname),outputDir:attemptDir,sourcePaths:preparation.artifacts.sourcePaths,sourceArtifactPath:preparation.artifacts.sourceDir,manifest:repaired.manifest,measurements:preparation.measurements,coverage:candidateCoverage,pptxPath:candidatePptxPath,renderDir,retryCount:iteration,buildBaseEvidence:({renderPath,retryCount})=>buildReplicaEvidence({pptxPath:candidatePptxPath,manifest:repaired.manifest,coverage:candidateCoverage,intermediate:candidateIntermediate,route:"html",sourcePath:resolvedInput,renderPath,retryCount})});
+      const proof=await renderAndMeasureHtmlReplica({root:resolve(new URL("..",import.meta.url).pathname),outputDir:attemptDir,sourcePaths:preparation.artifacts.sourcePaths,sourceArtifactPath:preparation.artifacts.sourceDir,manifest:repaired.manifest,measurements:preparation.measurements,coverage:candidateCoverage,policyRoute:options.replicaPolicyRoute??"html",pptxPath:candidatePptxPath,renderDir,retryCount:iteration,buildBaseEvidence:({renderPath,retryCount})=>buildReplicaEvidence({pptxPath:candidatePptxPath,manifest:repaired.manifest,coverage:candidateCoverage,intermediate:candidateIntermediate,route:"html",sourcePath:resolvedInput,renderPath,retryCount})});
       return {proof,artifact:{manifestPath:candidateManifestPath,pptxPath:candidatePptxPath,manifest:repaired.manifest,intermediate:candidateIntermediate}};
     }:undefined,
     beforePackage: async () => {

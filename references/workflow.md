@@ -15,22 +15,24 @@ Use this reference for text, Markdown, mixed inputs, batch jobs, common output r
 ## Operating contract
 
 - Perform audience, narrative, writing, design, and repair decisions in the host agent.
-- Keep `deck.manifest.json` as the single source of truth.
-- Select and read one `DESIGN.md` before authoring the manifest.
+- Keep the repaired HTML as the frozen visual source for default text work and
+  `deck.manifest.json` as the renderer's truth.
+- Define Creative Direction before authoring the full HTML deck.
 - Keep scripts deterministic and free of LLM API calls.
 - Prefer native PowerPoint objects and disclose all rasterized regions.
 - Keep generated files under the requested output directory.
 
 ## Text and mixed inputs
 
-For a straightforward content deck:
+For a default content deck:
 
 1. Define the audience, objective, narrative arc, and slide count.
-2. Select a design system.
-3. Read `references/manifest-spec.md` only while authoring the manifest.
+2. Define the visual concept, type, palette, material, composition, image, and
+   connector rules.
+3. Author and inspect a complete 1280x720 `deck.html`.
 4. Write one main idea per slide with specific titles and bounded content density.
 5. Localize any external assets under `output/assets/`.
-6. Run the pipeline and inspect reports.
+6. Run the HTML-first pipeline and inspect every rendered PPTX page.
 
 For a creative roadshow, product launch, briefing, or narrative deck, use `references/design-first-workflow.md` before compiling the manifest.
 
@@ -56,7 +58,10 @@ output/
   output-manifest.json
 ```
 
-Creative text runs may also produce a coordinate-free deck plan, visual review, registry, and static preview artifacts. These remain intermediate evidence; they never replace `deck.manifest.json` or `final.pptx`.
+Default text runs additionally produce `deck.source.html`,
+`deck.repaired.html`, HTML layout evidence, and source-vs-PPTX replica evidence.
+The explicit `--native` compatibility route may also produce a coordinate-free
+deck plan, Semantic Slide IR, visual review, registry, and static preview.
 
 ## Research and assets
 
@@ -75,8 +80,9 @@ When research is used:
 Use the single public CLI. It selects the route contract, prevents creative checks from leaking into replica work, and owns validation through packaging:
 
 ```bash
-npm run pptx -- text output/deck.manifest.json output
-npm run pptx -- text creative-artifacts output
+npm run pptx -- text deck.html output
+npm run pptx -- text native-artifacts/deck.plan.json output/native --native
+npm run pptx -- text output/deck.manifest.json output/direct --direct
 npm run pptx -- html input.html output
 ```
 

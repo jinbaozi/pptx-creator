@@ -4,12 +4,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { runPython } from "./python-utils.mjs";
+import { primaryFontFamily } from "../render-pptx.mjs";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const MAX_WORST_TILE_MAE = 0.20;
 
 const POLICIES = Object.freeze({
   html: { fidelity: { ssim: { min: 0.97 }, normalizedMae: { max: 6 / 255 }, bboxP95Drift: { max: 2 }, fontMapping: { min: 1 }, colorMapping: { min: 1 } }, nativeCoverage: { min: 0.95 }, editability: { min: 4 } },
+  "html-editable": { fidelity: { ssim: { min: 0.85 }, normalizedMae: { max: 12 / 255 }, bboxP95Drift: { max: 4 }, fontMapping: { min: 0.95 }, colorMapping: { min: 0.75 } }, nativeCoverage: { min: 0.95 }, editability: { min: 4 } },
   image: { fidelity: { ssim: { min: 0.94 }, ocrCer: { max: 0.02 }, bboxIou: { min: 0.90 }, paletteDeltaE2000P95: { max: 3 }, nativeHighConfidenceTextRecall: { min: 0.90 } }, nativeCoverage: { min: 0 }, editability: { min: 3 } }
 });
 const MEASUREMENT_RECEIPT = Symbol("replica-measurement-receipt");
@@ -221,7 +223,7 @@ async function inspectPptxObjects(pptxPath, manifest, measurements) {
       if(item.kind==="text") { textTotal+=1; const xmlText=[...(target?.block??"").matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match)=>xmlDecode(match[1])).join(""); const invisible=/<a:(?:rPr|defRPr)\b[^>]*>[\s\S]*?(?:<a:alpha\b[^>]*val="0"|<a:noFill\s*\/>)[\s\S]*?<\/a:(?:rPr|defRPr)>/i.test(target?.block??""); if(target&&drift<=2&&!invisible&&xmlText===item.text) textMapped+=1; }
       if (item.kind === "text" && item.style?.fontFamily) {
         fontTotal += 1;
-        const family = String(item.style.fontFamily).split(",")[0].replace(/["']/g, "").trim().toLowerCase();
+        const family = primaryFontFamily(item.style.fontFamily, "Arial", item.text).toLowerCase();
         const actualTypeface = target?.block.match(/typeface="([^"]+)"/i)?.[1];
         const actualFamily = String(actualTypeface ?? "").split(",")[0].replace(/["']/g, "").trim().toLowerCase();
         if (family && family === actualFamily) fontMapped += 1;
@@ -293,7 +295,8 @@ export async function measureHtmlReplicaEvidence(raw, { sourceArtifactPath, rend
     pages.push({ ...raw.perSlide[index], slideIndex: index, fidelity });
   }
   const aggregateFidelity = {};
-  for (const [name, rule] of Object.entries(POLICIES.html.fidelity)) {
+  const policy = POLICIES[raw.route] ?? POLICIES.html;
+  for (const [name, rule] of Object.entries(policy.fidelity)) {
     const values = pages.map((page) => page.fidelity[name]);
     aggregateFidelity[name] = values.every((item) => item.status === "available")
       ? metric(rule.min !== undefined ? Math.min(...values.map((item) => item.value)) : Math.max(...values.map((item) => item.value)))

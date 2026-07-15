@@ -131,9 +131,12 @@ export async function measureHtmlFile(inputPath, options = {}) {
       function isVisible(node) {
         const style = window.getComputedStyle(node);
         const rect = node.getBoundingClientRect();
+        let visibleGeometry = false;
+        if (node instanceof SVGGeometryElement && !node.closest("defs") && typeof node.getTotalLength === "function") {
+          try { visibleGeometry = node.getTotalLength() > 0 && style.stroke !== "none"; } catch {}
+        }
         return (
-          rect.width > 0 &&
-          rect.height > 0 &&
+          ((rect.width > 0 && rect.height > 0) || visibleGeometry) &&
           style.display !== "none" &&
           style.visibility !== "hidden" &&
           Number.parseFloat(style.opacity || "1") > 0.01
@@ -170,6 +173,30 @@ export async function measureHtmlFile(inputPath, options = {}) {
           .replace(/[ \t]*\n[ \t]*/g, "\n")
           .replace(/\n{3,}/g, "\n\n")
           .trim();
+      }
+
+      function isSemanticConnectorSvg(node) {
+        return node?.tagName?.toLowerCase() === "svg"
+          && Boolean(node.querySelector("[data-connector][data-pptx-kind='line']"))
+          && [...node.children].every((child) => child.tagName.toLowerCase() === "defs"
+            || child.matches("[data-connector][data-pptx-kind='line']"));
+      }
+
+      function ownsReplicaFallback(node) {
+        const tagName = node?.tagName?.toLowerCase();
+        if (!tagName) return false;
+        const style = window.getComputedStyle(node);
+        const before = window.getComputedStyle(node, "::before");
+        const after = window.getComputedStyle(node, "::after");
+        const pseudoVisible = [before, after].some((pseudo) => pseudo.content
+          && !["none", "normal", '""', "''"].includes(pseudo.content)
+          && pseudo.display !== "none" && pseudo.visibility !== "hidden");
+        return tagName === "canvas"
+          || (tagName === "svg" && !isSemanticConnectorSvg(node))
+          || pseudoVisible
+          || style.filter !== "none"
+          || style.backdropFilter !== "none"
+          || style.clipPath !== "none";
       }
 
 	      function directTextNodes(node) {
@@ -365,6 +392,13 @@ export async function measureHtmlFile(inputPath, options = {}) {
         });
         const nodes = [...slide.querySelectorAll(measureSelector)];
         nodes.forEach((node, nodeIndex) => {
+          if (replicaMode) {
+            let ancestor = node.parentElement;
+            while (ancestor && ancestor !== slide) {
+              if (ownsReplicaFallback(ancestor)) return;
+              ancestor = ancestor.parentElement;
+            }
+          }
           if (!isVisible(node)) return;
           const style = window.getComputedStyle(node);
           const rect = node.getBoundingClientRect();
@@ -374,7 +408,12 @@ export async function measureHtmlFile(inputPath, options = {}) {
           const before = window.getComputedStyle(node, "::before");
           const after = window.getComputedStyle(node, "::after");
           const pseudoVisible = [before, after].some((pseudo) => pseudo.content && !["none", "normal", '""', "''"].includes(pseudo.content) && pseudo.display !== "none" && pseudo.visibility !== "hidden");
-          const unsupportedVisual = tagName === "canvas" ? "canvas-paint" : tagName === "svg" ? "svg-paint" : pseudoVisible ? "pseudo-element-paint" : null;
+          const semanticConnectorSvg = isSemanticConnectorSvg(node);
+          const unsupportedVisual = tagName === "canvas"
+            ? "canvas-paint"
+            : tagName === "svg" && !semanticConnectorSvg
+              ? "svg-paint"
+              : pseudoVisible ? "pseudo-element-paint" : null;
           const pushDirectTextFragments = () => {
             if (!replicaMode || !hasVisibleChildElements(node)) return;
             directTextNodes(node).forEach((entry, textIndex) => {
@@ -413,6 +452,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
               });
             });
           };
+          if (semanticConnectorSvg) return;
           const kind = inferKind(node, style) ?? (unsupportedVisual ? "shape" : null);
           if (!kind) {
             pushDirectTextFragments();

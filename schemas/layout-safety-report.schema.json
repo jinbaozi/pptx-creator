@@ -57,6 +57,10 @@
               "text-overflow",
               "card-spacing-tight",
               "connector-detached",
+              "connector-direction",
+              "connector-marker-missing",
+              "connector-obstructed",
+              "connector-route-invalid",
               "decorative-grid",
               "contrast-fail",
               "letter-spacing-too-tight"

@@ -1,4 +1,8 @@
-# Creative Visual Proof 0.2
+# Creative Visual Proof 0.2 (`--native` compatibility)
+
+This contract applies to the explicit Semantic Slide IR compatibility route.
+Default HTML-first text generation uses browser HTML proof followed by
+source-vs-PPTX replica evidence and per-page Host inspection.
 
 Creative Proof 0.2 is the final acceptance contract for a Creative text deck.
 It separates three authorities:
@@ -18,7 +22,7 @@ Host review and cannot substitute for one.
 Run the Creative text route normally:
 
 ```bash
-npm run pptx -- text deck.plan.json output/deck
+npm run pptx -- text deck.plan.json output/deck --native
 ```
 
 After deterministic evidence passes, the command intentionally exits blocked
@@ -43,7 +47,7 @@ use the contact sheet only for deck rhythm. Write a local
 `schemas/host-visual-review.schema.json`, then resume:
 
 ```bash
-npm run pptx -- text deck.plan.json output/deck \
+npm run pptx -- text deck.plan.json output/deck --native \
   --host-final-review /absolute/path/creative-final-review.json
 ```
 

@@ -35,6 +35,16 @@ def _configure_font_environment(profile: Path, env: dict[str, str]) -> dict[str,
     disposable profile and never mutates user or system configuration.
     """
     raw = env.get("PPTX_CREATOR_FONT_DIRS", "")
+    if "PPTX_CREATOR_FONT_DIRS" not in env and platform.system().lower() == "darwin":
+        # The bundled headless LibreOffice profile does not reliably discover
+        # macOS system fonts. Expose the normal font roots by default so CJK
+        # proof renders do not silently become tofu boxes or missing glyphs.
+        raw = os.pathsep.join([
+            "/System/Library/Fonts",
+            "/System/Library/Fonts/Supplemental",
+            "/Library/Fonts",
+            str(Path.home() / "Library" / "Fonts"),
+        ])
     directories = []
     for value in raw.split(os.pathsep):
         if not value:

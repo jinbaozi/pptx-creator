@@ -57,6 +57,8 @@
               "connector-detached",
               "connector-direction",
               "connector-marker-missing",
+              "connector-obstructed",
+              "connector-route-invalid",
               "connector-unsupported",
               "asset-not-ready"
             ]
