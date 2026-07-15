@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "skillName": "pptx-creator",
+  "files": [
+    "LICENSE",
+    "SKILL.md",
+    "package-lock.json",
+    "package.json",
+    "requirements-core.txt",
+    "requirements-image.txt",
+    "requirements-pdf.txt",
+    "requirements.txt"
+  ],
+  "directories": [
+    "agents",
+    "composition-blocks",
+    "design-systems",
+    "examples/creative-benchmark",
+    "examples/html-input",
+    "examples/image-input",
+    "examples/text-input",
+    "examples/visual-roadmap-next",
+    "layout-archetypes",
+    "references",
+    "schemas",
+    "scripts",
+    "slide-archetypes"
+  ],
+  "excludeFiles": [
+    "scripts/lib/skill-package.mjs",
+    "scripts/package-skill.mjs",
+    "scripts/verify-skill-package.mjs"
+  ],
+  "excludeBasenames": [
+    ".DS_Store",
+    "README.md",
+    "README.en.md"
+  ],
+  "excludeExtensions": [
+    ".pyc"
+  ],
+  "excludeSegments": [
+    "__pycache__"
+  ]
+}
