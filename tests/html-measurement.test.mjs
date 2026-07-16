@@ -65,10 +65,16 @@ describe("html-measurement-core", () => {
   it("normalizes raw measured elements", () => {
     const doc = buildMeasurementsDocument({
       source: "sample.html",
-      elements: [{ id: "title", kind: "text", px: { x: 90, y: 42, w: 1100, h: 58 } }]
+      elements: [{
+        id: "title",
+        kind: "text",
+        semantics: { role: "decoration", allowOverlapWith: ["hero"] },
+        px: { x: 90, y: 42, w: 1100, h: 58 }
+      }]
     });
     expect(doc.version).toBe("0.1.0");
     expect(doc.elements[0].x).toBeCloseTo(0.938, 2);
+    expect(doc.elements[0].semantics).toEqual({ role: "decoration", allowOverlapWith: ["hero"] });
   });
 
   it("preserves replica text, src, style, and slide indexes", () => {

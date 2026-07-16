@@ -80,6 +80,7 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
         src: element.src ?? null,
         naturalWidth: Number.isFinite(element.naturalWidth) ? element.naturalWidth : null,
         naturalHeight: Number.isFinite(element.naturalHeight) ? element.naturalHeight : null,
+        semantics: element.semantics && typeof element.semantics === "object" ? element.semantics : {},
         style: element.style && typeof element.style === "object" ? element.style : {},
         replica: element.replica && typeof element.replica === "object" ? element.replica : {}
       };

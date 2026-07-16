@@ -103,6 +103,17 @@ Horizontal or vertical lines may use a zero delta on one axis, but both deltas
 cannot be zero. The compiler resolves connector coordinates after all layout
 transforms so the manifest remains deterministic.
 
+Lines may use negative logical `w`/`h` to express leftward or upward endpoints.
+The renderer normalizes those values to positive PPTX extents and writes
+`flipH`/`flipV`; negative Open XML `a:ext cx/cy` is always invalid. An axis also
+declares `axisDirection: left | right | up | down`, which must agree with its
+logical endpoint delta.
+
+HTML-first elements may preserve `layoutRegion` and a pair-specific
+`allowOverlapWith` array. The latter is the manifest equivalent of
+`data-allow-overlap-with` and must name exact element IDs. It is never a general
+permission to overlap unrelated content.
+
 v0.2 supports native-rendered `chart` elements with `kind: "bar"`. v0.3 also supports `line` and `pie`. The visual roadmap extension also accepts `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`; these newer kinds expand into editable primitive text, shape, and line elements before rendering:
 
 ```json

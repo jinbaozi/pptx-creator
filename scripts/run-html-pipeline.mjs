@@ -11,6 +11,7 @@ import { buildReplicaEvidence, runDeckPipeline } from "./run-deck-pipeline.mjs";
 import { writeHtmlLayoutReport } from "./run-html-layout-check.mjs";
 import { withSettledHtmlPage } from "./lib/html-layout-audit.mjs";
 import { renderAndMeasureHtmlReplica } from "./lib/html-replica-proof.mjs";
+import { enforceHtmlFinalReview } from "./lib/html-final-review.mjs";
 import { measurePptxObjectAdjustments } from "./lib/replica-evidence.mjs";
 
 const execFileAsync=promisify(execFile);
@@ -183,6 +184,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
   await mkdir(resolvedOutput, { recursive: true });
   const manifestPath = join(resolvedOutput, "deck.manifest.json");
   const mode = options.mode ?? "replica";
+  const layoutSafetyProfile = options.layoutSafetyProfile ?? (mode === "replica" ? "replica" : "creative");
   const preparation = {};
   let summary = null;
   const deck = await runDeckPipeline(resolvedInput, resolvedOutput, {
@@ -191,6 +193,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
     protectedInputs: options.protectedInputs ?? [],
     mode,
     strictLayoutSafety: true,
+    layoutSafetyProfile,
     copyManifest: false,
     maxRepairAttempts: options.maxAttempts ?? 3,
     prepareManifest: async () => {
@@ -225,7 +228,7 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
       return { manifestPath };
     },
     routePreflight: async () => {
-      const { report } = await writeHtmlLayoutReport(preparation.browserInput, resolvedOutput, { screenshots: true });
+      const { report } = await writeHtmlLayoutReport(preparation.browserInput, resolvedOutput, { screenshots: true, profile: layoutSafetyProfile });
       preparation.htmlLayout = report.summary;
       return {
         ok: report.summary.criticalCount === 0,
@@ -263,6 +266,18 @@ export async function runHtmlPipeline(inputPath, outputDir, options = {}) {
         replicaCoverage: preparation.converted.replicaCoverage
       };
       await writeFile(join(resolvedOutput, "html-pipeline-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+      if (options.requireHostFinalReview === true) {
+        await enforceHtmlFinalReview({
+          outputDir: resolvedOutput,
+          manifest: preparation.converted.manifest,
+          repairedHtmlPath: options.replicaSourcePath ?? resolvedInput,
+          reviewPath: options.hostFinalReview,
+          schemaPath: join(resolve(new URL("..", import.meta.url).pathname), "schemas", "host-html-visual-review.schema.json")
+        });
+      }
+      if (typeof options.beforePackage === "function") {
+        await options.beforePackage({ outputDir: resolvedOutput, manifest: preparation.converted.manifest, mode });
+      }
     }
   });
   summary = { ...summary, status: deck.status, contract: deck.contract, steps: deck.steps };

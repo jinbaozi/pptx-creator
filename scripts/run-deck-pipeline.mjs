@@ -21,6 +21,7 @@ import { verifyReplicaEvidence } from "./lib/replica-evidence.mjs";
 import { validateJsonSchema } from "./lib/schema-utils.mjs";
 import { reviewManifest } from "./lib/visual-critic.mjs";
 import { buildTextFitReport } from "./lib/text-fit.mjs";
+import { writePptxGeometryReport } from "./lib/pptx-geometry-audit.mjs";
 import {
   assertNoSymlinkBelowTrustedAnchor,
   verifiedRouteOwnedAssetPaths
@@ -44,6 +45,7 @@ const PUBLISHED_OUTPUTS = Object.freeze([
   "consistency-report.json",
   "consistency-report.md",
   "layout-safety-report.json",
+  "pptx-geometry-report.json",
   "text-fit-report.json",
   "html-layout-report.json",
   "html-repair-report.json",
@@ -52,6 +54,7 @@ const PUBLISHED_OUTPUTS = Object.freeze([
   "creative-proof.json",
   "creative-proof",
   "host-visual-review.json",
+  "host-html-visual-review.json",
   "refinement-plan.json",
   ".creative-refinement",
   ".creative-repair",
@@ -76,6 +79,7 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "consistency-report.json",
   "consistency-report.md",
   "layout-safety-report.json",
+  "pptx-geometry-report.json",
   "text-fit-report.json",
   "html-layout-report.json",
   "html-repair-report.json",
@@ -104,6 +108,7 @@ const CONSUMABLE_OUTPUTS = Object.freeze([
   "creative-proof.json",
   "creative-proof",
   "host-visual-review.json",
+  "host-html-visual-review.json",
   ".creative-repair",
   "replica-evidence.json",
   "visual-regression-report.json",
@@ -885,7 +890,7 @@ async function blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy,
   );
   const error = new Error(`pipeline blocked at ${blockedBy}${detail ? `: ${detail}` : ""}`);
   error.summary = summary;
-  if (["host-final-visual-review", "awaiting-refinement-approval", "creative-refinement"].includes(blockedBy)) error.preserveLocalizedAssets = true;
+  if (["host-final-visual-review", "host-final-visual-review-exhausted", "awaiting-refinement-approval", "creative-refinement"].includes(blockedBy)) error.preserveLocalizedAssets = true;
   throw error;
 }
 
@@ -1012,7 +1017,8 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const layoutFlags = ["--output", layoutSafetyPath];
   if (mode !== "direct" && options.allowLayoutViolation !== true) layoutFlags.push("--strict-layout-safety");
   if (options.allowLayoutViolation === true) layoutFlags.push("--allow-layout-violation");
-  if (mode === "replica") layoutFlags.push("--replica-mode");
+  const layoutSafetyProfile = options.layoutSafetyProfile ?? (mode === "replica" ? "replica" : "creative");
+  if (layoutSafetyProfile === "replica") layoutFlags.push("--replica-mode");
   const layout = await runStep("layout-safety", process.execPath, [
     join(root, "scripts/run-layout-safety-check.mjs"), resolvedManifest, ...layoutFlags
   ]);
@@ -1326,6 +1332,39 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     steps.push({ label: "bounded-repair", ok: mode !== "creative" || deterministicCreativeProofPassed(creativeVisualProof), attempts: 0, maxAttempts: repairLimit, stopReason });
   }
 
+  try {
+    const geometryReport = await writePptxGeometryReport(
+      finalPptxPath,
+      manifest,
+      join(resolvedOutput, "pptx-geometry-report.json"),
+      { requireOrder: options.requireObjectLineage !== false }
+    );
+    const schema = JSON.parse(await readFile(join(root, "schemas/pptx-geometry-report.schema.json"), "utf8"));
+    const validation = validateJsonSchema(geometryReport, schema);
+    if (!validation.valid) {
+      throw new Error(`PPTX geometry report contract invalid: ${validation.errors.map((item) => `${item.path} ${item.message}`).join("; ")}`);
+    }
+    const ok = geometryReport.summary.blocked !== true;
+    steps.push({ label: "pptx-geometry-audit", ok });
+    if (!ok) {
+      const detail = geometryReport.findings
+        .filter((finding) => finding.severity === "critical")
+        .map((finding) => `${finding.slideId}/${finding.elementId}: ${finding.message}`)
+        .join("; ");
+      await blockPipeline(resolvedManifest, resolvedOutput, steps, "pptx-geometry-audit", detail);
+    }
+  } catch (error) {
+    if (error?.summary) throw error;
+    steps.push({ label: "pptx-geometry-audit", ok: false });
+    await blockPipeline(
+      resolvedManifest,
+      resolvedOutput,
+      steps,
+      "pptx-geometry-audit",
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+
   if (mode === "creative" && !isDirectionProbeProof(creativeVisualProof) && creativeVisualProof?.accepted !== true
     && creativeVisualProof?.hostVisualReview?.status === "completed"
     && !(options.proofContext?.refinementState?.status === "applied" && options.proofContext?.bestProof)) {
@@ -1440,13 +1479,19 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     }
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    steps.push({ label: "reports", ok: false });
+    const blockedBy = typeof error?.stage === "string" ? error.stage : "reports";
+    steps.push({ label: blockedBy, ok: false });
     if (beforePackageStarted) {
       await rollbackBeforePackage(options, {
-        route, mode, status: "blocked", outputDir: resolvedOutput, blockedBy: "reports", error
+        route, mode, status: "blocked", outputDir: resolvedOutput, blockedBy, error
       });
     }
-    await blockPipeline(resolvedManifest, resolvedOutput, steps, "reports", detail);
+    if (["host-final-visual-review", "host-final-visual-review-exhausted"].includes(blockedBy)) {
+      await rm(join(resolvedOutput, "final.pptx"), { force: true });
+      await rm(join(resolvedOutput, "run.json"), { force: true });
+      await rm(join(resolvedOutput, "output-manifest.json"), { force: true });
+    }
+    await blockPipeline(resolvedManifest, resolvedOutput, steps, blockedBy, detail);
   }
 
   let packaged;

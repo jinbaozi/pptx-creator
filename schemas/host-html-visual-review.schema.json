@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pptx-creator.local/host-html-visual-review.schema.json",
+  "title": "HTML-first Host Final Visual Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "packetHash", "artifacts", "status", "overallVerdict", "slides", "summary"],
+  "properties": {
+    "version": { "const": "0.4.0" },
+    "packetHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repairedHtmlHash", "manifestHash", "pptxHash", "htmlLayoutReportHash", "pptxGeometryReportHash", "contactSheetHash"],
+      "properties": {
+        "repairedHtmlHash": { "$ref": "#/$defs/hash" },
+        "manifestHash": { "$ref": "#/$defs/hash" },
+        "pptxHash": { "$ref": "#/$defs/hash" },
+        "htmlLayoutReportHash": { "$ref": "#/$defs/hash" },
+        "pptxGeometryReportHash": { "$ref": "#/$defs/hash" },
+        "contactSheetHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "status": { "const": "completed" },
+    "overallVerdict": { "enum": ["accept", "reject"] },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slideId", "screenshotPath", "screenshotHash", "noOcclusion", "textRhythm", "whitespaceBalance", "connectorSemantics", "componentVisibility", "findings"],
+        "properties": {
+          "slideId": { "type": "string", "minLength": 1 },
+          "screenshotPath": { "type": "string", "pattern": "^evidence/render/slide-[0-9]+\\.png$" },
+          "screenshotHash": { "$ref": "#/$defs/hash" },
+          "noOcclusion": { "$ref": "#/$defs/judgment" },
+          "textRhythm": { "$ref": "#/$defs/judgment" },
+          "whitespaceBalance": { "$ref": "#/$defs/judgment" },
+          "connectorSemantics": { "$ref": "#/$defs/judgment" },
+          "componentVisibility": { "$ref": "#/$defs/judgment" },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["severity", "type", "reason", "evidence"],
+              "properties": {
+                "severity": { "enum": ["P0", "P1", "P2"] },
+                "type": { "type": "string", "minLength": 1 },
+                "reason": { "type": "string", "minLength": 1 },
+                "evidence": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "summary": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "judgment": { "enum": ["pass", "fail", "not-applicable"] }
+  }
+}

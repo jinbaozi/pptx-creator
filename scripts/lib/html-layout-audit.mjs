@@ -150,7 +150,8 @@ async function captureSlideScreenshots(page, report, outputDir) {
 
 export async function auditHtmlPage(page, options = {}) {
   const tolerancePx = options.tolerancePx ?? 2;
-  return page.evaluate(({ tolerance }) => {
+  const profile = options.profile ?? "creative";
+  return page.evaluate(({ tolerance, layoutProfile }) => {
     const slideSelector = ".pptx-slide, [data-slide]";
     const candidateSelector = [
       "[data-pptx-id]",
@@ -197,6 +198,9 @@ export async function auditHtmlPage(page, options = {}) {
       const role = `${node.getAttribute("data-layout-role") || ""} ${node.getAttribute("aria-hidden") || ""} ${node.className?.baseVal || node.className || ""}`;
       return /decoration|background|ornament|accent-rule/i.test(role) || node.getAttribute("aria-hidden") === "true";
     };
+    const overlapAllowlist = (node) => new Set(String(node.getAttribute("data-allow-overlap-with") || "")
+      .split(/[\s,]+/).map((value) => value.trim()).filter(Boolean));
+    const overlapAllowed = (a, b) => overlapAllowlist(a).has(semanticId(b)) || overlapAllowlist(b).has(semanticId(a));
     const isConnector = (node) => node.hasAttribute("data-connector")
       || node.hasAttribute("marker-end")
       || node.hasAttribute("marker-start")
@@ -318,6 +322,34 @@ export async function auditHtmlPage(page, options = {}) {
         }
 
         if (hasMeaningfulText(node) && !(node instanceof SVGElement)) {
+          const text = (node.innerText || node.textContent || "").trim();
+          const style = getComputedStyle(node);
+          const fontSize = Number.parseFloat(style.fontSize);
+          const lineHeight = Number.parseFloat(style.lineHeight);
+          const cjkBody = /[　-〿぀-ゟ゠-ヿ一-鿿＀-￯]/.test(text) && !node.matches("h1,h2,h3,[data-typography='title'],[data-typography='heading']");
+          if (layoutProfile === "creative" && cjkBody && fontSize > 0 && lineHeight > 0) {
+            const ratio = lineHeight / fontSize;
+            if (ratio < 1.2) {
+              pushCheck(slideId, node, "text-rhythm", `CJK body ${semanticId(node)} has computed line-height ${ratio.toFixed(2)}; minimum is 1.20.`, {
+                suggestion: { operation: "setTextRhythm", lineHeight: 1.35 }
+              });
+            } else if (ratio < 1.35) {
+              pushCheck(slideId, node, "text-rhythm", `CJK body ${semanticId(node)} has computed line-height ${ratio.toFixed(2)}; 1.35 or higher is preferred.`, {
+                severity: "warning",
+                suggestion: { operation: "setTextRhythm", lineHeight: 1.35 }
+              });
+            }
+          }
+          if (layoutProfile === "creative" && node.matches("li")) {
+            const next = node.nextElementSibling;
+            const gap = next?.matches("li") ? next.getBoundingClientRect().top - node.getBoundingClientRect().bottom : null;
+            if (gap !== null && fontSize > 0 && gap < fontSize * 0.35 - tolerance) {
+              pushCheck(slideId, node, "text-rhythm", `List item ${semanticId(node)} has ${gap.toFixed(1)}px paragraph spacing; minimum is 0.35em.`, {
+                relatedNode: next,
+                suggestion: { operation: "setListItemSpacing", marginBlockEnd: "0.35em" }
+              });
+            }
+          }
           const horizontalOverflow = node.scrollWidth > node.clientWidth + tolerance;
           const verticalOverflow = node.scrollHeight > node.clientHeight + tolerance;
           if (horizontalOverflow || verticalOverflow) {
@@ -344,7 +376,8 @@ export async function auditHtmlPage(page, options = {}) {
         for (let j = i + 1; j < candidates.length; j += 1) {
           const a = candidates[i];
           const b = candidates[j];
-          if (a.contains(b) || b.contains(a) || isDecoration(a) || isDecoration(b) || isConnector(a) || isConnector(b)) continue;
+          if (a.contains(b) || b.contains(a) || isConnector(a) || isConnector(b) || overlapAllowed(a, b)) continue;
+          if (layoutProfile !== "creative" && (isDecoration(a) || isDecoration(b))) continue;
           const ar = a.getBoundingClientRect();
           const br = b.getBoundingClientRect();
           const intersection = rectIntersection(ar, br);
@@ -357,15 +390,62 @@ export async function auditHtmlPage(page, options = {}) {
           const stack = document.elementsFromPoint(pointX, pointY);
           const aSeen = stack.some((node) => node === a || a.contains(node));
           const bSeen = stack.some((node) => node === b || b.contains(node));
-          const meaningful = isCard(a) && isCard(b)
+          const decorative = isDecoration(a) || isDecoration(b);
+          const meaningful = decorative
+            || isCard(a) && isCard(b)
             || hasMeaningfulText(a)
             || hasMeaningfulText(b)
             || (aSeen && bSeen && ratio > 0.05);
           if (!meaningful) continue;
-          pushCheck(slideId, a, "overlap", `Elements ${semanticId(a)} and ${semanticId(b)} overlap by ${(ratio * 100).toFixed(1)}% of the smaller element.`, {
+          pushCheck(slideId, a, decorative ? "decoration-occlusion" : "content-occlusion", `Elements ${semanticId(a)} and ${semanticId(b)} overlap by ${(ratio * 100).toFixed(1)}% of the smaller element.`, {
             relatedNode: b,
             suggestion: { operation: "reflowOrMove", overlapRatio: Number(ratio.toFixed(4)) }
           });
+        }
+      }
+
+      if (layoutProfile === "creative") {
+        for (const region of slide.querySelectorAll("[data-layout-region]")) {
+          if (!region.hasAttribute("data-pptx-audit-id")) region.setAttribute("data-pptx-audit-id", `${slideId}-region-${semanticId(region)}`);
+          const style = getComputedStyle(region);
+          if (!["flex", "grid", "inline-flex", "inline-grid"].includes(style.display)) {
+            pushCheck(slideId, region, "vertical-gap-imbalance", `Layout region ${semanticId(region)} must use CSS flex or grid.`, {
+              suggestion: { operation: "normalizeLayoutRegion", display: "flex", direction: "column" }
+            });
+            continue;
+          }
+          const children = [...region.children].filter((child) => isVisible(child) && !isDecoration(child) && !isConnector(child));
+          const vertical = children.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+          for (let index = 0; index < vertical.length - 1; index += 1) {
+            const current = vertical[index];
+            const next = vertical[index + 1];
+            const gap = next.getBoundingClientRect().top - current.getBoundingClientRect().bottom;
+            const em = Number.parseFloat(getComputedStyle(next).fontSize) || Number.parseFloat(style.fontSize) || 16;
+            const spacious = region.getAttribute("data-gap-intent") === "spacious";
+            if (gap < em * 0.25 - tolerance || gap > 72 + tolerance && !spacious) {
+              pushCheck(slideId, current, "vertical-gap-imbalance", `Layout region ${semanticId(region)} has an adjacent vertical gap of ${gap.toFixed(1)}px; expected at least 0.25em and at most 0.75in.`, {
+                relatedNode: next,
+                suggestion: { operation: "balanceVerticalGap", minEm: 0.25, maxPx: 72 }
+              });
+            }
+          }
+        }
+
+        for (const axis of slide.querySelectorAll("[data-layout-role='axis'][data-axis-direction]")) {
+          if (!axis.hasAttribute("data-pptx-audit-id")) axis.setAttribute("data-pptx-audit-id", `${slideId}-axis-${semanticId(axis)}`);
+          const start = pointOnGeometry(axis, false);
+          const end = pointOnGeometry(axis, true);
+          const direction = axis.getAttribute("data-axis-direction");
+          const valid = start && end && (direction === "left" ? end.x < start.x
+            : direction === "right" ? end.x > start.x
+              : direction === "up" ? end.y < start.y
+                : direction === "down" ? end.y > start.y
+                  : false);
+          if (!valid) {
+            pushCheck(slideId, axis, "connector-direction", `Axis ${semanticId(axis)} geometry does not match data-axis-direction=${direction}.`, {
+              suggestion: { operation: "orientAxis", direction }
+            });
+          }
         }
       }
 
@@ -378,6 +458,7 @@ export async function auditHtmlPage(page, options = {}) {
         if (!connector.hasAttribute("data-pptx-audit-id")) {
           connector.setAttribute("data-pptx-audit-id", `${slideId}-connector-${connectors.indexOf(connector) + 1}`);
         }
+        if (connector.getAttribute("data-layout-role") === "axis") continue;
         const sourceId = connector.getAttribute("data-source-id");
         const targetId = connector.getAttribute("data-target-id");
         if (!connector.getAttribute("data-pptx-id") || connector.getAttribute("data-pptx-kind") !== "line") {
@@ -454,7 +535,7 @@ export async function auditHtmlPage(page, options = {}) {
     }
 
     return { slides: slideReports, checks };
-  }, { tolerance: tolerancePx });
+  }, { tolerance: tolerancePx, layoutProfile: profile });
 }
 
 export async function auditHtmlFile(inputPath, options = {}) {

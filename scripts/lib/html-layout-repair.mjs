@@ -47,7 +47,10 @@ async function applyRepairPass(inputPath, outputPath, attempt) {
         });
       };
       const px = (value) => `${Math.max(0, Math.round(value))}px`;
-      const minFontSize = (node) => node.matches("h1") ? 28 : node.matches("h2,h3") ? 18 : 14;
+      const isDecoration = (node) => {
+        const role = `${node?.getAttribute?.("data-layout-role") || ""} ${node?.getAttribute?.("aria-hidden") || ""} ${node?.className?.baseVal || node?.className || ""}`;
+        return /decoration|background|ornament|accent-rule/i.test(role) || node?.getAttribute?.("aria-hidden") === "true";
+      };
       const boundaryAnchor = (rect, toward, requested = "auto") => {
         const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
         const target = { x: toward.left + toward.width / 2, y: toward.top + toward.height / 2 };
@@ -111,7 +114,7 @@ async function applyRepairPass(inputPath, outputPath, attempt) {
       }
 
       // Phase 2: repair card containers before touching individual text boxes.
-      const overlapChecks = checks.filter((item) => item.kind === "overlap");
+      const overlapChecks = checks.filter((item) => ["overlap", "content-occlusion", "decoration-occlusion"].includes(item.kind));
       for (const check of overlapChecks) {
         const a = nodeFor(check.selector);
         const b = nodeFor(check.relatedSelector);
@@ -143,6 +146,38 @@ async function applyRepairPass(inputPath, outputPath, attempt) {
         }
       }
 
+      // Phase 2b: repair text rhythm and bounded vertical regions before
+      // expanding text. Typography is never made smaller to silence a gate.
+      for (const check of checks.filter((item) => item.kind === "text-rhythm")) {
+        const node = nodeFor(check.selector);
+        if (!node) continue;
+        const before = { lineHeight: getComputedStyle(node).lineHeight, marginBlockEnd: getComputedStyle(node).marginBlockEnd };
+        node.style.lineHeight = "1.35";
+        if (node.matches("li")) node.style.marginBlockEnd = "0.35em";
+        record("repair-text-rhythm", node, "Raised computed line height and list paragraph spacing to the creative minimum.", before, {
+          lineHeight: node.style.lineHeight,
+          marginBlockEnd: node.style.marginBlockEnd || before.marginBlockEnd
+        });
+      }
+
+      for (const check of checks.filter((item) => item.kind === "vertical-gap-imbalance")) {
+        const node = nodeFor(check.selector);
+        const region = node?.closest("[data-layout-region]") ?? node;
+        if (!region) continue;
+        const before = { display: getComputedStyle(region).display, gap: getComputedStyle(region).gap, justifyContent: getComputedStyle(region).justifyContent };
+        Object.assign(region.style, {
+          display: "flex",
+          flexDirection: "column",
+          gap: attemptNumber === 1 ? "16px" : attemptNumber === 2 ? "12px" : "8px",
+          justifyContent: "flex-start"
+        });
+        record("balance-layout-region", region, "Normalized a vertical layout region to flex flow with bounded spacing.", before, {
+          display: region.style.display,
+          gap: region.style.gap,
+          justifyContent: region.style.justifyContent
+        });
+      }
+
       // Phase 3: expose and fit overflowing text without deleting or truncating content.
       for (const check of checks.filter((item) => ["text-overflow", "content-clipped"].includes(item.kind))) {
         const node = nodeFor(check.selector);
@@ -163,21 +198,13 @@ async function applyRepairPass(inputPath, outputPath, attempt) {
           whiteSpace: "normal",
           WebkitLineClamp: "unset"
         });
-        let size = parseFloat(getComputedStyle(node).fontSize) || 16;
-        const minimum = minFontSize(node);
-        const slide = node.closest(slideSelector);
-        while (slide && node.getBoundingClientRect().bottom > slide.getBoundingClientRect().bottom - 8 && size > minimum) {
-          size = Math.max(minimum, size - 1);
-          node.style.fontSize = `${size}px`;
-          node.style.minHeight = px(node.scrollHeight);
-        }
         const card = node.closest(".card,[data-card],[data-pptx-kind='card'],.pane,.layer,.phase");
         if (card) {
           card.style.height = "auto";
           card.style.minHeight = px(Math.max(card.scrollHeight, card.getBoundingClientRect().height));
           card.style.overflow = "visible";
         }
-        record("fit-text", node, "Expanded the text box and reduced font size only as far as the minimum readability threshold.", before, {
+        record("fit-text", node, "Expanded and reflowed the text box without shrinking or clipping body text.", before, {
           fontSize: getComputedStyle(node).fontSize,
           minHeight: node.style.minHeight,
           overflow: node.style.overflow
@@ -213,6 +240,30 @@ async function applyRepairPass(inputPath, outputPath, attempt) {
         const a = nodeFor(check.selector);
         const b = nodeFor(check.relatedSelector);
         if (!a || !b) continue;
+        const decoration = isDecoration(a) ? a : isDecoration(b) ? b : null;
+        if (decoration) {
+          const slide = decoration.closest(slideSelector);
+          const slideRect = slide?.getBoundingClientRect();
+          const rect = decoration.getBoundingClientRect();
+          const other = decoration === a ? b : a;
+          const otherRect = other.getBoundingClientRect();
+          const before = { transform: getComputedStyle(decoration).transform, left: getComputedStyle(decoration).left, top: getComputedStyle(decoration).top };
+          const dx = rect.left < otherRect.left ? -Math.min(24, rect.right - otherRect.left + 8) : Math.min(24, otherRect.right - rect.left + 8);
+          const dy = rect.top < otherRect.top ? -Math.min(24, rect.bottom - otherRect.top + 8) : Math.min(24, otherRect.bottom - rect.top + 8);
+          const parentRect = decoration.offsetParent?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+          if (["absolute", "fixed"].includes(getComputedStyle(decoration).position) && slideRect) {
+            decoration.style.left = px(Math.min(Math.max(0, rect.left - parentRect.left + dx), slideRect.right - parentRect.left - rect.width));
+            decoration.style.top = px(Math.min(Math.max(0, rect.top - parentRect.top + dy), slideRect.bottom - parentRect.top - rect.height));
+          } else {
+            decoration.style.transform = `${getComputedStyle(decoration).transform === "none" ? "" : getComputedStyle(decoration).transform} translate(${dx}px, ${dy}px) scale(${attemptNumber === 1 ? 0.94 : attemptNumber === 2 ? 0.9 : 0.85})`.trim();
+          }
+          record("move-decoration", decoration, "Moved or scaled the decorative object away from obscured content.", before, {
+            transform: decoration.style.transform,
+            left: decoration.style.left || before.left,
+            top: decoration.style.top || before.top
+          });
+          continue;
+        }
         if (a.closest(".cards,[data-cards],.panes,.layers,.grid-2,.grid-3,.phases") || b.closest(".cards,[data-cards],.panes,.layers,.grid-2,.grid-3,.phases")) continue;
         const ar = a.getBoundingClientRect();
         const br = b.getBoundingClientRect();

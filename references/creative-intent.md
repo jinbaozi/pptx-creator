@@ -22,8 +22,13 @@ Before compilation, the Host records:
 - localized assets with rights and generation provenance.
 
 The Host chooses a design system and may explicitly select a compatible
-composition block. Scripts validate those choices; they do not rank design
-systems, infer a block, search the web, or call an LLM.
+composition block. An explicit user-requested style, brand, template, or visual
+reference is the highest-priority style lock. If the user supplies none, the
+Host judges the direction from audience, content, delivery environment,
+language, readability, and emotional tone. Built-ins are candidates rather
+than defaults, and topic keywords never auto-select `dark-tech` or another
+system. Scripts validate the Host choice; they do not rank design systems,
+infer a block, search the web, or call an LLM.
 
 ## Context before generic style rules
 

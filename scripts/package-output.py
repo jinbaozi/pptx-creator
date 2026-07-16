@@ -30,6 +30,20 @@ def canonical_sha256(value) -> str:
     return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 
 
+def canonical_review_sha256(value) -> str:
+    def scrub(item):
+        if isinstance(item, list):
+            return [scrub(entry) for entry in item]
+        if isinstance(item, dict):
+            return {
+                key: scrub(item[key])
+                for key in sorted(item)
+                if key not in {"createdAt", "generatedAt"}
+            }
+        return item
+    return canonical_sha256(scrub(value))
+
+
 def byte_sha256(path: Path) -> str:
     return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
 
@@ -514,6 +528,68 @@ def validate_creative_evidence(output_dir: Path) -> None:
                 fail(f"creative run artifact pointer {key} must be null without direction evidence")
 
 
+def validate_html_final_review(output_dir: Path) -> None:
+    packet_path = output_dir / "html-final-review/review-packet.json"
+    if not packet_path.exists() and not packet_path.is_symlink():
+        return
+    packet_file = require_regular_relative(output_dir, "html-final-review/review-packet.json", "HTML final review packet")
+    candidate_file = require_regular_relative(output_dir, "html-final-review/candidate.pptx", "HTML final review candidate")
+    review_file = require_regular_relative(output_dir, "host-html-visual-review.json", "HTML Host final review")
+    final_file = require_regular_relative(output_dir, "final.pptx", "HTML final PPTX")
+    try:
+        packet = json.loads(packet_file.read_text(encoding="utf-8"))
+        review = json.loads(review_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        fail(f"invalid HTML final review evidence: {error}")
+    unsigned_packet = dict(packet)
+    packet_hash = unsigned_packet.pop("packetHash", None)
+    if packet_hash != canonical_review_sha256(unsigned_packet):
+        fail("HTML final review packet hash is stale")
+    if review.get("packetHash") != packet_hash or review.get("artifacts") != packet.get("artifacts"):
+        fail("HTML Host final review is bound to stale artifacts")
+    if review.get("status") != "completed" or review.get("overallVerdict") != "accept":
+        fail("HTML Host final review must be completed and accepted")
+    if byte_sha256(candidate_file) != byte_sha256(final_file):
+        fail("HTML final-review candidate and published final PPTX bytes differ")
+    artifacts = packet.get("artifacts", {})
+    bindings = {
+        "repairedHtmlHash": ("deck.repaired.html", byte_sha256),
+        "manifestHash": ("deck.manifest.json", lambda path: canonical_review_sha256(json.loads(path.read_text(encoding="utf-8")))),
+        "pptxHash": ("final.pptx", canonical_pptx_sha256),
+        "htmlLayoutReportHash": ("html-layout-report.json", lambda path: canonical_review_sha256(json.loads(path.read_text(encoding="utf-8")))),
+        "pptxGeometryReportHash": ("pptx-geometry-report.json", lambda path: canonical_review_sha256(json.loads(path.read_text(encoding="utf-8")))),
+        "contactSheetHash": ("evidence/render/contact-sheet.png", byte_sha256),
+    }
+    for key, (relative, hasher) in bindings.items():
+        target = require_regular_relative(output_dir, relative, f"HTML final review {key}")
+        if artifacts.get(key) != hasher(target):
+            fail(f"HTML final review artifact binding is stale: {key}")
+    packet_slides = {slide.get("slideId"): slide for slide in packet.get("slides", []) if isinstance(slide, dict)}
+    review_slides = review.get("slides", [])
+    if not packet_slides or len(review_slides) != len(packet_slides):
+        fail("HTML Host final review must assess every rendered slide exactly once")
+    judgment_keys = ["noOcclusion", "textRhythm", "whitespaceBalance", "connectorSemantics", "componentVisibility"]
+    seen = set()
+    for assessment in review_slides:
+        slide_id = assessment.get("slideId")
+        expected = packet_slides.get(slide_id)
+        if not expected or slide_id in seen:
+            fail("HTML Host final review has a missing or duplicate slide assessment")
+        seen.add(slide_id)
+        if assessment.get("screenshotPath") != expected.get("screenshotPath") or assessment.get("screenshotHash") != expected.get("screenshotHash"):
+            fail(f"HTML Host final review screenshot binding is stale: {slide_id}")
+        screenshot = require_regular_relative(output_dir, expected["screenshotPath"], f"HTML final review screenshot {slide_id}")
+        if byte_sha256(screenshot) != expected.get("screenshotHash"):
+            fail(f"HTML final review screenshot hash is stale: {slide_id}")
+        if any(assessment.get(key) != "pass" for key in judgment_keys):
+            fail(f"HTML Host final review did not pass every judgment: {slide_id}")
+        if any(finding.get("severity") in {"P0", "P1"} for finding in assessment.get("findings", [])):
+            fail(f"HTML Host final review contains a P0/P1 finding: {slide_id}")
+    geometry = json.loads((output_dir / "pptx-geometry-report.json").read_text(encoding="utf-8"))
+    if geometry.get("summary", {}).get("blocked") is not False:
+        fail("PPTX geometry and lineage report did not pass")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         fail("usage: package-output.py <output-dir>")
@@ -521,6 +597,7 @@ def main() -> None:
     if output_dir.is_symlink() or not output_dir.is_dir():
         fail(f"package output must be a real directory, not a symbolic link: {output_dir}")
     validate_creative_evidence(output_dir)
+    validate_html_final_review(output_dir)
     missing = [
         name
         for name in REQUIRED

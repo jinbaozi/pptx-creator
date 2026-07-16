@@ -532,7 +532,7 @@ function compileDashboard(content) {
   return [title(content.headline), ...metrics.flatMap((entry, index) => {
     const x = 0.78 + (index % 2) * 6.2;
     const y = 1.36 + Math.floor(index / 2) * 2.55;
-    return [shape(`kpi-card-${index}`, x, y, 5.55, 2.0, index % 2 ? "#ECFDF5" : "#EFF6FF"), text(`value-${index}`, entry.value, x + 0.3, y + 0.32, 2.1, 0.66, { fontSize: 30, bold: true, color: "#1D4ED8" }), text(`label-${index}`, entry.label, x + 2.42, y + 0.4, 2.7, 0.5, { fontSize: 16, bold: true })];
+    return [shape(`kpi-card-${index}`, x, y, 5.55, 2.0, index % 2 ? "#ECFDF5" : "#EFF6FF"), text(`value-${index}`, entry.value, x + 0.3, y + 0.32, 2.0, 0.66, { fontSize: 30, bold: true, color: "#1D4ED8" }), text(`label-${index}`, entry.label, x + 2.48, y + 0.4, 2.6, 0.5, { fontSize: 16, bold: true })];
   })];
 }
 

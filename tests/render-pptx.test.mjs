@@ -7,7 +7,8 @@ import { promisify } from "node:util";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { analyzeAccessibility } from "../scripts/analyze-accessibility.mjs";
-import { primaryFontFamily } from "../scripts/render-pptx.mjs";
+import { normalizeLineGeometry, primaryFontFamily } from "../scripts/render-pptx.mjs";
+import { auditPptxGeometry } from "../scripts/lib/pptx-geometry-audit.mjs";
 
 const execFileAsync = promisify(execFile);
 const node = process.execPath;
@@ -21,6 +22,56 @@ async function slideXml(pptxPath) {
 }
 
 describe("render-pptx", () => {
+  it("normalizes all line quadrants to positive PPTX extents without moving logical endpoints", () => {
+    expect(normalizeLineGeometry({ id: "q1", x: 3, y: 3, w: 2, h: 2 })).toEqual({ x: 3, y: 3, w: 2, h: 2, flipH: false, flipV: false });
+    expect(normalizeLineGeometry({ id: "q2", x: 3, y: 3, w: -2, h: 2 })).toEqual({ x: 1, y: 3, w: 2, h: 2, flipH: true, flipV: false });
+    expect(normalizeLineGeometry({ id: "q3", x: 3, y: 3, w: -2, h: -2 })).toEqual({ x: 1, y: 1, w: 2, h: 2, flipH: true, flipV: true });
+    expect(normalizeLineGeometry({ id: "q4", x: 3, y: 3, w: 2, h: -2 })).toEqual({ x: 3, y: 1, w: 2, h: 2, flipH: false, flipV: true });
+  });
+
+  it("writes no negative cx/cy for left, up, and diagonal arrows and preserves target end markers", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-line-quadrants-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements = [
+      { type: "line", role: "axis", axisDirection: "right", id: "q1", x: 1, y: 1, w: 2, h: 2, style: { endArrowType: "triangle" } },
+      { type: "line", role: "axis", axisDirection: "left", id: "q2", x: 5, y: 1, w: -2, h: 2, style: { endArrowType: "triangle" } },
+      { type: "line", role: "axis", axisDirection: "left", id: "q3", x: 5, y: 5, w: -2, h: -2, style: { endArrowType: "triangle" } },
+      { type: "line", role: "axis", axisDirection: "up", id: "q4", x: 7, y: 5, w: 2, h: -2, style: { endArrowType: "triangle" } }
+    ];
+    const manifestPath = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifestPath, JSON.stringify(sample, null, 2), "utf8");
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifestPath, pptxPath], { cwd: root });
+    const xml = await slideXml(pptxPath);
+    expect(xml).not.toMatch(/<a:ext[^>]*(?:cx|cy)="-/);
+    expect(xml.match(/<a:tailEnd type="triangle"\/>/g)).toHaveLength(4);
+    const report = await auditPptxGeometry(pptxPath, sample);
+    expect(report.summary).toMatchObject({ criticalCount: 0, blocked: false });
+  });
+
+  it("rechecks content occlusion against final PPTX object geometry", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-final-occlusion-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements = [
+      { type: "shape", id: "core-content", x: 1, y: 1, w: 3, h: 2, shape: "rect", style: { fill: "#2563EB" } },
+      { type: "text", id: "blocking-label", x: 3.5, y: 1.5, w: 2, h: 0.8, text: "Blocked", style: { fontSize: 18 } }
+    ];
+    const manifestPath = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifestPath, JSON.stringify(sample, null, 2), "utf8");
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifestPath, pptxPath], { cwd: root });
+
+    const report = await auditPptxGeometry(pptxPath, sample);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      slideId: sample.slides[0].id,
+      elementId: "core-content",
+      kind: "content-occlusion",
+      severity: "critical"
+    }));
+    expect(report.summary.blocked).toBe(true);
+  });
   it("reduces CSS font stacks to one valid PowerPoint font face", () => {
     expect(primaryFontFamily('Arial, "PingFang SC", sans-serif')).toBe("Arial");
     expect(primaryFontFamily('"PingFang SC", sans-serif')).toBe("PingFang SC");
@@ -167,6 +218,12 @@ describe("render-pptx", () => {
       y: 4.5,
       w: 0.6,
       h: 0.35,
+      style: { color: "{colors.primary}" }
+    }, {
+      type: "icon", name: "check", id: "check-icon", x: 7.0, y: 4.5, w: 0.6, h: 0.35,
+      style: { color: "{colors.primary}" }
+    }, {
+      type: "icon", name: "x", id: "x-icon", x: 8.0, y: 4.5, w: 0.6, h: 0.35,
       style: { color: "{colors.primary}" }
     });
     const manifest = join(outputDir, "deck.manifest.json");

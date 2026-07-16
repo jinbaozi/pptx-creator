@@ -5,8 +5,8 @@
  * the 8 detection items from U4 of the visual-design-quality-layer plan:
  *
  *   1. bounds           — element out of slide bounds (critical)
- *   2. overlap          — two non-decorative elements with intersection
- *                         area > 5% of the smaller element area (critical)
+ *   2. occlusion        — unapproved content/decorative intersection
+ *                         area > 1% of the smaller element area (critical)
  *   3. role-aware font-size  (critical / warning per role bucket)
  *   4. role-aware line-height (critical / warning per role bucket)
  *   5. text-overflow heuristic (warning)
@@ -67,8 +67,8 @@ import {
 } from "./connector-resolver.mjs";
 
 const TOLERANCE_IN = 0.005;
-const OVERLAP_AREA_THRESHOLD = 0.05; // 5% of smaller element area
-const DECORATIVE_ROLES = new Set(["background", "backdrop", "canvas"]);
+const OVERLAP_AREA_THRESHOLD = 0.01; // 1% of smaller element area
+const DECORATIVE_ROLES = new Set(["background", "backdrop", "canvas", "decoration", "ornament", "accent-rule", "decorative"]);
 
 const FONT_SIZE_RULES = {
   body: { critical: 10, warning: 11 },
@@ -119,8 +119,14 @@ function isDecoration(el) {
   const role = typeof el.role === "string" ? el.role.toLowerCase() : "";
   if (DECORATIVE_ROLES.has(role)) return true;
   const id = typeof el.id === "string" ? el.id.toLowerCase() : "";
-  if (/background|backdrop|canvas/.test(id)) return true;
+  if (/background|backdrop|canvas|decoration|ornament|accent/.test(id)) return true;
   return false;
+}
+
+function overlapAllowed(a, b) {
+  const allowA = Array.isArray(a?.allowOverlapWith) ? a.allowOverlapWith : [];
+  const allowB = Array.isArray(b?.allowOverlapWith) ? b.allowOverlapWith : [];
+  return allowA.includes(b?.id) || allowB.includes(a?.id);
 }
 
 function clamp(value, min, max) {
@@ -333,7 +339,7 @@ function isContainerSurface(el) {
   const component = typeof el.style?.component === "string"
     ? el.style.component.toLowerCase()
     : "";
-  return /card|panel|container|surface/.test(`${id} ${role} ${component}`);
+  return /card|panel|container|surface|module/.test(`${id} ${role} ${component}`);
 }
 
 function containsElement(container, child) {
@@ -358,7 +364,7 @@ function checkOverlap(slide, deckSize) {
       const b = elements[j];
       if (!a || !b) continue;
       if (a.type === "line" || b.type === "line") continue;
-      if (isDecoration(a) || isDecoration(b)) continue;
+      if (overlapAllowed(a, b)) continue;
       if (isIntentionalContainerOverlap(a, b)) continue;
       if (!overlaps(a, b)) continue;
       const areaA = Math.max(1e-6, num(a.w) * num(a.h));
@@ -366,10 +372,11 @@ function checkOverlap(slide, deckSize) {
       const overlap = rectOverlapArea(a, b);
       const smaller = Math.min(areaA, areaB);
       if (overlap / smaller > OVERLAP_AREA_THRESHOLD) {
+        const decorative = isDecoration(a) || isDecoration(b);
         issues.push({
           severity: "high",
-          type: "overlap",
-          message: `Elements ${a.id} and ${b.id} overlap by more than 5% of the smaller area.`,
+          type: decorative ? "decoration-occlusion" : "content-occlusion",
+          message: `Elements ${a.id} and ${b.id} overlap by more than 1% of the smaller area without an explicit pair allowlist.`,
           target: a.id,
           relatedTarget: b.id
         });
@@ -392,7 +399,10 @@ function checkLineHeight(slide, tokens) {
     const lineHeight = safeNum(el.style?.lineHeight, safeNum(typography?.lineHeight, null));
     if (lineHeight === null) continue;
     const role = inferRole(el, tokens);
-    const rules = LINE_HEIGHT_RULES[role] ?? LINE_HEIGHT_RULES.body;
+    const baseRules = LINE_HEIGHT_RULES[role] ?? LINE_HEIGHT_RULES.body;
+    const rules = isCjk(el.text) && ["body", "caption"].includes(role)
+      ? { critical: 1.2, warning: 1.35 }
+      : baseRules;
     if (lineHeight < rules.critical) {
       issues.push({
         severity: "high",
@@ -523,6 +533,24 @@ function checkConnectors(slide) {
     const connectorLike = role === "connector"
       || /connector|arrow|flow|link/.test(id)
       || hasArrow;
+    if (role === "axis" && line.axisDirection) {
+      const direction = String(line.axisDirection).toLowerCase();
+      const w = num(line.w);
+      const h = num(line.h);
+      const valid = direction === "left" ? w < 0
+        : direction === "right" ? w > 0
+          : direction === "up" ? h < 0
+            : direction === "down" ? h > 0
+              : false;
+      if (!valid) {
+        issues.push({
+          severity: "high",
+          type: "connector-direction",
+          message: `Axis ${line.id} geometry does not match axisDirection=${direction}.`,
+          target: line.id
+        });
+      }
+    }
     if (!sourceId && !targetId) {
       if (connectorLike && !["axis", "divider", "decorative"].includes(role)) {
         issues.push({
@@ -605,6 +633,37 @@ function checkConnectors(slide) {
           message: `Connector ${line.id} crosses unrelated module ${obstruction.id}; reroute it or move the module.`,
           target: line.id,
           relatedTarget: obstruction.id
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+function checkVerticalGapBalance(slide, tokens) {
+  const issues = [];
+  const groups = new Map();
+  for (const element of slide.elements ?? []) {
+    if (!element?.layoutRegion || element.type === "line" || isDecoration(element)) continue;
+    if (!groups.has(element.layoutRegion)) groups.set(element.layoutRegion, []);
+    groups.get(element.layoutRegion).push(element);
+  }
+  for (const [region, elements] of groups) {
+    const ordered = [...elements].sort((a, b) => num(a.y) - num(b.y));
+    for (let index = 0; index < ordered.length - 1; index += 1) {
+      const current = ordered[index];
+      const next = ordered[index + 1];
+      const gap = num(next.y) - (num(current.y) + num(current.h));
+      const typography = resolveTokenString(next.style?.typography, tokens);
+      const fontSize = safeNum(next.style?.fontSize, safeNum(typography?.fontSize, 12));
+      const minGap = (fontSize / 72) * 0.25;
+      if (gap < minGap - 0.005 || gap > 0.75 + 0.005) {
+        issues.push({
+          severity: "high",
+          type: "vertical-gap-imbalance",
+          message: `Layout region ${region} has a vertical gap of ${gap.toFixed(3)}in between ${current.id} and ${next.id}; expected ${minGap.toFixed(3)}–0.750in.`,
+          target: current.id,
+          relatedTarget: next.id
         });
       }
     }
@@ -791,6 +850,10 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
     checks.push({ ...issue, severity: issue.severity === "high" ? "critical" : "warning" });
   }
 
+  for (const issue of checkVerticalGapBalance(slide, tokens)) {
+    checks.push({ ...issue, severity: "critical" });
+  }
+
   // (5) text-overflow heuristic.
   for (const issue of checkTextOverflow(slide, tokens)) {
     checks.push({ ...issue, severity: "critical" });
@@ -902,6 +965,9 @@ export function preflightLayout(manifest, options = {}) {
 const KIND_MAP = Object.freeze({
   bounds: "bounds",
   overlap: "overlap",
+  "content-occlusion": "content-occlusion",
+  "decoration-occlusion": "decoration-occlusion",
+  "vertical-gap-imbalance": "vertical-gap-imbalance",
   "font-size": "font-too-small",
   "line-height-too-tight": "line-height-too-tight",
   "text-overflow": "text-overflow",

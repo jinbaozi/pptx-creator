@@ -309,7 +309,7 @@ describe("layout-safety-report-writer (U5)", () => {
         }
       ]);
       const wire = formatReport(preflightLayout(manifest));
-      const overlap = wire.checks.find((c) => c.kind === "overlap");
+      const overlap = wire.checks.find((c) => c.kind === "content-occlusion");
       expect(overlap).toBeTruthy();
       expect(overlap.elementId).toBe("a");
       expect(overlap.relatedElementId).toBe("b");

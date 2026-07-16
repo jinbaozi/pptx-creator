@@ -1915,6 +1915,31 @@ function appendUnmappedSemanticText(slideNode, elements, startY) {
   return cursorY;
 }
 
+function nodeLayoutRegion(node) {
+  let cursor = node;
+  while (cursor) {
+    const value = cursor.getAttribute?.("data-layout-region");
+    if (value) return value;
+    cursor = cursor.parentNode;
+  }
+  return null;
+}
+
+function applyNodeLayoutSemantics(element, node) {
+  const role = node.getAttribute("data-layout-role");
+  const axisDirection = node.getAttribute("data-axis-direction");
+  const layoutRegion = nodeLayoutRegion(node);
+  const allowOverlapWith = String(node.getAttribute("data-allow-overlap-with") || "")
+    .split(/[\s,]+/).map((value) => value.trim()).filter(Boolean);
+  return {
+    ...element,
+    ...(role ? { role } : {}),
+    ...(axisDirection ? { axisDirection } : {}),
+    ...(layoutRegion ? { layoutRegion } : {}),
+    ...(allowOverlapWith.length > 0 ? { allowOverlapWith } : {})
+  };
+}
+
 function convertKindElement(node, lookup) {
   const kind = node.getAttribute("data-pptx-kind");
   const id = node.getAttribute("data-pptx-id") ?? node.getAttribute("data-id") ?? nextId(kind ?? "element");
@@ -1926,32 +1951,32 @@ function convertKindElement(node, lookup) {
 
   if (kind === "text") {
     return [
-      textElement(
+      applyNodeLayoutSemantics(textElement(
         id,
         textContent(node),
         coords,
         node.getAttribute("data-typography") ?? "body",
         node.getAttribute("data-color") ?? "{colors.text}"
-      )
+      ), node)
     ];
   }
   if (kind === "shape") {
-    return [shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}")];
+    return [applyNodeLayoutSemantics(shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}"), node)];
   }
   if (kind === "card") {
     return cardInnerElements(node, coords, id);
   }
   if (kind === "table") {
-    return [tableElement(id, node, coords)];
+    return [applyNodeLayoutSemantics(tableElement(id, node, coords), node)];
   }
   if (kind === "line") {
     const tag = String(node.tagName ?? "").toLowerCase();
     const preserveHeight = ["line", "path", "polyline"].includes(tag) || node.getAttribute("data-connector") !== undefined;
-    return [lineElement(id, coords, preserveHeight, node)];
+    return [applyNodeLayoutSemantics(lineElement(id, coords, preserveHeight, node), node)];
   }
   if (kind === "image") {
     const src = node.getAttribute("src") ?? node.getAttribute("data-src");
-    return src ? [{ type: "image", id, src, ...coords }] : [];
+    return src ? [applyNodeLayoutSemantics({ type: "image", id, src, ...coords }, node)] : [];
   }
   return [];
 }
@@ -2039,7 +2064,19 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
   }
 
   function addLayer(measurement, measurementIndex, layerElements) {
-    const normalized = Array.isArray(layerElements) ? layerElements : [layerElements];
+    const normalized = (Array.isArray(layerElements) ? layerElements : [layerElements]).map((element) => {
+      if (element?.id !== measurement.id) return element;
+      const semantics = measurement.semantics ?? {};
+      return {
+        ...element,
+        ...(semantics.role ? { role: semantics.role } : {}),
+        ...(semantics.axisDirection ? { axisDirection: semantics.axisDirection } : {}),
+        ...(semantics.layoutRegion ? { layoutRegion: semantics.layoutRegion } : {}),
+        ...(Array.isArray(semantics.allowOverlapWith) && semantics.allowOverlapWith.length > 0
+          ? { allowOverlapWith: semantics.allowOverlapWith }
+          : {})
+      };
+    });
     layers.push({
       zIndex: replicaZIndex(measurement),
       measurementIndex,

@@ -28,6 +28,13 @@ describe("SKILL.md exclusive router", () => {
     const skill = await read("SKILL.md");
     expect(skill).toContain("npm run pptx -- <text|html|image|pdf|manifest>");
   });
+
+  it("requires HTML-first final review evidence before delivery", async () => {
+    const skill = await read("SKILL.md");
+    expect(skill).toContain("object-lineage");
+    expect(skill).toContain("host-html");
+    expect(skill).toContain("componentVisibility");
+  });
 });
 
 describe("compiler-roadshow-html showcase artifacts", () => {

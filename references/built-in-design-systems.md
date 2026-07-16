@@ -20,25 +20,20 @@ PPTX Creator ships a small curated set of generic, scenario-based `DESIGN.md` fi
 | `executive-crimson` | formal leadership reports, audit findings, milestone summaries, serious organizational communication | decorative entertainment decks, consumer marketing, or government identity systems |
 | `finance-boardroom` | KPI reviews, investment memos, financial planning, boardroom analysis, operating dashboards | consumer marketing, decorative finance imagery, or print-heavy narrative handouts |
 
-## Selection Heuristics
+## Host Selection Policy
 
-- AI / cloud / security / developer tools -> `dark-tech`.
-- 模型平台 / 推理系统 / AI 基础设施 / 工具链 -> `ai-infra`.
-- 技术文档 / 架构说明 / API / 平台说明 -> `developer-docs`.
-- 数据看板 / 监控 / 可观测性 / 运营分析 -> `dashboard-data`.
-- 产品介绍 / 路演 / 发布 / 商业计划书 -> `product-roadshow`.
-- 学术 / 课程 / 白皮书 / 研究报告 -> `warm-editorial`.
-- 中文讲义 / 东方纸感 / 克制学术材料 -> `paper-minimal`.
-- 高端封面 / 硬科技发布 / 电影感品牌页 -> `premium-black`.
-- 政务 / 公共部门 / 操作系统 -> `chinese-government`.
-- 集团战略 / 业务架构 / 组织流程 / 长期规划 -> `enterprise-blueprint`.
-- 政务汇报 / 红色主题 / 党政机关 / 央企 -> `executive-crimson`.
-- 金融路演 / 投行报告 / 财务披露 / 投资者沟通 -> `finance-boardroom`.
-- Everything else -> `business-neutral`.
+Built-ins are candidates, not defaults. Resolve style in this order:
+
+1. Honor an explicit user-requested style, brand, template, or visual reference.
+2. Honor an explicitly provided project or input-adjacent `DESIGN.md` as a style lock.
+3. If no style lock exists, the Host chooses from the audience, content, delivery environment, language, readability, and desired emotional tone. The Host may select any built-in or author a compatible custom HTML/CSS direction.
+4. Never map a topic keyword directly to a visual system. In particular, AI, cloud, security, infrastructure, and developer-tool content do not automatically imply `dark-tech`.
+
+The table above describes possible fit and mismatch signals only. It is not a topic router. `business-neutral` remains a deterministic safety fallback when no Host selection reaches the compiler; it is not a creative preference.
 
 ## Override Policy
 
-User-provided `DESIGN.md` always wins over built-ins. If the user names a built-in design system explicitly, use it unless a higher-priority local `DESIGN.md` is also explicitly provided.
+An explicit user style always wins over generic heuristics and implicit defaults. If the user names a built-in design system explicitly, use it. A user- or project-provided `DESIGN.md` also acts as a style lock when the request does not override it.
 
 ## No Brand Clone Policy
 

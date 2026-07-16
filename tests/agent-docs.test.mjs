@@ -74,6 +74,45 @@ describe("universal Agent Skill packaging", () => {
     expect(workflow).toMatch(/Replica routes/i);
   });
 
+  it("keeps style selection user-first and free of built-in topic bias", async () => {
+    const skill = await read("SKILL.md");
+    const builtIns = await read("references/built-in-design-systems.md");
+    const workflow = await read("references/design-first-workflow.md");
+    const textRoute = await read("references/routes/text.md");
+    const creativeIntent = await read("references/creative-intent.md");
+    const combined = [skill, workflow, textRoute, creativeIntent].join("\n");
+
+    expect(combined).toMatch(/explicit user-requested style[\s\S]*wins/i);
+    expect(combined).toMatch(/If (?:the )?user (?:supplies|does not specify)[\s\S]*Host (?:judges|selects)/i);
+    expect(combined).toMatch(/topic keywords?[^.]*not (?:automatically |auto-)?select/i);
+    expect(builtIns).toContain("Built-ins are candidates, not defaults.");
+    expect(builtIns).toMatch(/business-neutral[^.]*safety fallback[^.]*not a creative preference/i);
+    expect(builtIns).not.toMatch(/AI \/ cloud \/ security \/ developer tools\s*->\s*`dark-tech`/i);
+  });
+
+  it("requires final visual acceptance for text frames and connector direction", async () => {
+    const skill = await read("SKILL.md");
+    const rubric = await read("references/qa-rubric.md");
+    expect(skill).toMatch(/text remains inside its\s+intended frame/i);
+    expect(skill).toMatch(/connector arrow terminates at its declared target/i);
+    expect(rubric).toMatch(/rendered text crosses its intended frame/i);
+    expect(rubric).toMatch(/target-facing arrowhead terminates at the declared target/i);
+  });
+
+  it("requires the packaged pipeline and HTML-first artifact-bound review evidence", async () => {
+    const skill = await read("SKILL.md");
+    const textRoute = await read("references/routes/text.md");
+    const authoring = await read("references/text-html-authoring.md");
+    expect(skill).toMatch(/Do not deliver[\s\S]*(?:PptxGenJS|Office API)[\s\S]*directly/i);
+    expect(skill).toMatch(/npm run pptx -- text/i);
+    expect(skill).toMatch(/noOcclusion[\s\S]*textRhythm[\s\S]*whitespaceBalance[\s\S]*connectorSemantics[\s\S]*componentVisibility/);
+    expect(textRoute).toMatch(/host-final-visual-review/);
+    expect(textRoute).toContain("pptx-geometry-report.json");
+    expect(authoring).toContain("data-allow-overlap-with");
+    expect(authoring).toContain("data-layout-region");
+    expect(authoring).toContain("data-axis-direction");
+  });
+
   it("publishes one progressive HTML-first contract with explicit native compatibility", async () => {
     const paths = [
       "SKILL.md",

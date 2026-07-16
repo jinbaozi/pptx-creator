@@ -10,6 +10,8 @@ Host agents must self-review after `run-deck-pipeline.mjs` (or equivalent steps)
 | DESIGN.md | `validate-design-md.mjs` exit 0 for referenced source |
 | Asset paths | All `assets[].src` and image `src` exist relative to manifest |
 | PPTX render | `final.pptx` exists, size > 1 KB |
+| PPTX geometry | No negative line extents; final object bounds pass occlusion and connector checks; object IDs/order match manifest lineage |
+| HTML-first Host review | Every slide passes all five packet-bound judgments |
 | Package output | `package-output.py` exit 0 |
 
 ## Content
@@ -23,6 +25,13 @@ Host agents must self-review after `run-deck-pipeline.mjs` (or equivalent steps)
 
 - Minimum body font ≥ 11pt after token expansion.
 - No elements outside slide bounds (validator enforces).
+- No rendered text crosses its intended frame or clipping container.
+- Content remains at least 99% visible; unapproved decorations remain at least
+  85% visible and do not cover content or one another.
+- CJK body line-height is at least 1.20; layout-region gaps are balanced and
+  intentional.
+- Every relationship connector visibly starts at its declared source and its
+  target-facing arrowhead terminates at the declared target.
 - Consistent design system tokens across slides.
 - Reasonable whitespace; no unreadable density.
 
@@ -65,6 +74,12 @@ sheet, and submits a packet-bound sidecar. Safe refinement applies at most one
 approved reversible operation per resume and shares the three-delta cap with
 repair. See `references/creative-visual-proof.md` and
 `references/creative-refinement.md`.
+
+HTML-first uses its own `host-html-visual-review.schema.json`. The five required
+per-slide judgments are `noOcclusion`, `textRhythm`, `whitespaceBalance`,
+`connectorSemantics`, and `componentVisibility`. Missing or stale hashes block;
+P0/P1 findings or any failed judgment return to repair, and no top-level final
+deck is published before acceptance.
 
 Release-quality claims have a separate blind preference threshold: 24 briefs,
 at least five reviewers per brief, overall win rate >=70%, Wilson 95% lower

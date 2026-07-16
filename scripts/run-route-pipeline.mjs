@@ -92,8 +92,11 @@ export function buildRouteInvocation(argv) {
   if (designSystem && (route !== "text" || !["creative", "html-first"].includes(mode))) {
     throw new Error("--design-system is available only for text creative or HTML-first mode");
   }
-  if ((creativeDirections || hostReview || hostFinalReview || refinementState) && (route !== "text" || mode !== "creative")) {
-    throw new Error("creative review options are available only for creative text mode");
+  if ((creativeDirections || hostReview || refinementState) && (route !== "text" || mode !== "creative")) {
+    throw new Error("direction/refinement review options are available only for native creative text mode");
+  }
+  if (hostFinalReview && (route !== "text" || !["creative", "html-first"].includes(mode))) {
+    throw new Error("--host-final-review is available only for native creative or HTML-first text mode");
   }
   if (hostReview && !creativeDirections) throw new Error("--host-review requires --creative-directions");
   if (allowRemoteAssets && (route !== "html" || mode !== "replica")) {

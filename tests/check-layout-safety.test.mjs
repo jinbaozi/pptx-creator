@@ -264,7 +264,7 @@ describe("check-layout-safety", () => {
   });
 
   describe("(2) overlap", () => {
-    it("flags critical overlap when > 5% of smaller area", () => {
+    it("flags critical content occlusion when > 1% of smaller area", () => {
       const manifest = makeManifest([
         {
           id: "s1",
@@ -277,12 +277,12 @@ describe("check-layout-safety", () => {
         }
       ]);
       const result = preflightLayout(manifest);
-      const issue = result.checks.find((c) => c.type === "overlap");
+      const issue = result.checks.find((c) => c.type === "content-occlusion");
       expect(issue).toBeTruthy();
       expect(issue.severity).toBe("critical");
     });
 
-    it("does NOT flag decorative roles (background/backdrop/canvas)", () => {
+    it("blocks decorative occlusion unless the exact pair is allowlisted", () => {
       const manifest = makeManifest([
         {
           id: "s1",
@@ -294,7 +294,20 @@ describe("check-layout-safety", () => {
         }
       ]);
       const result = preflightLayout(manifest);
-      expect(result.checks.find((c) => c.type === "overlap")).toBeUndefined();
+      expect(result.checks.find((c) => c.type === "decoration-occlusion")).toBeTruthy();
+      manifest.slides[0].elements[0].allowOverlapWith = ["x"];
+      const approved = preflightLayout(manifest);
+      expect(approved.checks.find((c) => c.type === "decoration-occlusion")).toBeUndefined();
+    });
+
+    it("blocks CJK body line height below 1.20 and warns below 1.35", () => {
+      const manifest = makeManifest([textSlide({
+        type: "text", id: "cjk-body", x: 1, y: 1, w: 4, h: 1,
+        text: "中文正文需要舒适的阅读节奏", style: { fontSize: 14, lineHeight: 1.1 }
+      })]);
+      expect(preflightLayout(manifest).checks.find((check) => check.type === "line-height-too-tight")?.severity).toBe("critical");
+      manifest.slides[0].elements[0].style.lineHeight = 1.25;
+      expect(preflightLayout(manifest).checks.find((check) => check.type === "line-height-too-tight")?.severity).toBe("warning");
     });
   });
 

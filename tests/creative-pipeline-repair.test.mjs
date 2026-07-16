@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
+import JSZip from "jszip";
 import { buildFinalReviewPacket, evaluateCreativeVisualProof } from "../scripts/lib/creative-visual-proof.mjs";
 import { runDeckPipeline } from "../scripts/run-deck-pipeline.mjs";
 
@@ -54,7 +55,12 @@ function seams() {
       const fontSize = value.slides[0].elements[0].style.fontSize;
       calls.render.push(fontSize);
       await mkdir(dirname(pptxPath), { recursive: true });
-      await writeFile(pptxPath, `pptx-${fontSize}`, "utf8");
+      const zip = new JSZip();
+      zip.file("ppt/slides/slide1.xml", `<p:sld><p:cSld><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="1" name="title"/></p:nvSpPr><p:spPr><a:xfrm><a:off x="731520" y="731520"/><a:ext cx="5486400" cy="731520"/></a:xfrm></p:spPr></p:sp>
+        <p:sp><p:nvSpPr><p:cNvPr id="2" name="accent"/></p:nvSpPr><p:spPr><a:xfrm><a:off x="731520" y="1828800"/><a:ext cx="2194560" cy="1097280"/></a:xfrm></p:spPr></p:sp>
+      </p:spTree></p:cSld></p:sld>`);
+      await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
       return { pptxPath, intermediate: { editabilityCounter: { text: 1, shape: 1, image: 0, croppedAsset: 0, table: 0 }, countersBySlide: [{ text: 1, shape: 1, image: 0, croppedAsset: 0, table: 0 }] } };
     },
     async buildCreativeProof({ evidenceDir, outputDir, manifest, hostFinalReview }) {

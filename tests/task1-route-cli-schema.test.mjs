@@ -66,6 +66,8 @@ describe("Task 1 public CLI", () => {
     });
     expect(buildInvocation(["text", "artifacts", "out", "--native", "--host-final-review", "final-review.json"]).args)
       .toEqual(["text", "creative", "artifacts", "out", "--host-final-review", "final-review.json"]);
+    expect(buildInvocation(["text", "artifacts", "out", "--host-final-review", "final-review.json"]).args)
+      .toEqual(["text", "html-first", "artifacts", "out", "--host-final-review", "final-review.json"]);
     expect(buildInvocation(["text", "artifacts", "out", "--native", "--refinement-state", "state.json"]).args)
       .toEqual(["text", "creative", "artifacts", "out", "--refinement-state", "state.json"]);
     expect(buildInvocation(["text", "deck.json", "out", "--direct"])).toMatchObject({ route: "text", script: "run-route-pipeline.mjs", args: ["text", "direct", "deck.json", "out"] });
@@ -124,6 +126,8 @@ describe("Task 1 public CLI", () => {
       options: { designSystem: null, allowRemoteAssets: false, creativeDirections: "directions.json", hostReview: "review.json" }
     });
     expect(buildRouteInvocation(["text", "creative", "deck.plan.json", "out", "--host-final-review", "final-review.json"]).options)
+      .toMatchObject({ hostFinalReview: "final-review.json" });
+    expect(buildRouteInvocation(["text", "html-first", "deck.html", "out", "--host-final-review", "final-review.json"]).options)
       .toMatchObject({ hostFinalReview: "final-review.json" });
     expect(buildRouteInvocation(["text", "creative", "deck.plan.json", "out", "--refinement-state", "state.json"]).options)
       .toMatchObject({ refinementState: "state.json" });

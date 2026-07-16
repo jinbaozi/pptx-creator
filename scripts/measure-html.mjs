@@ -283,6 +283,10 @@ export async function measureHtmlFile(inputPath, options = {}) {
       }
 
       function computedStyleFor(style, rect = null) {
+        const fontSize = pxToPt(style.fontSize);
+        const lineHeight = style.lineHeight === "normal"
+          ? Math.round((fontSize ?? 0) * 1.2 * 100) / 100
+          : pxToPt(style.lineHeight);
         return {
           color: rgbaToHex(style.color),
           colorTransparency: rgbaToTransparency(style.color),
@@ -324,11 +328,11 @@ export async function measureHtmlFile(inputPath, options = {}) {
           borderBottomLeftRadius: cssRadiusPx(style.borderBottomLeftRadius, rect),
           opacity: Number.parseFloat(style.opacity || "1"),
           fontFamily: style.fontFamily,
-          fontSize: pxToPt(style.fontSize),
+          fontSize,
           fontWeight: Number.parseInt(style.fontWeight, 10) || 400,
           fontStyle: style.fontStyle,
           fontVariantCaps: style.fontVariantCaps,
-          lineHeight: pxToPt(style.lineHeight),
+          lineHeight,
           display: style.display,
           writingMode: style.writingMode,
           listStyleType: style.listStyleType,
@@ -471,6 +475,17 @@ export async function measureHtmlFile(inputPath, options = {}) {
 		            text,
 		            visibleText,
 	            src: node.getAttribute("src") ?? null,
+	            semantics: {
+	              role: node.getAttribute("data-layout-role") || null,
+	              axisDirection: node.getAttribute("data-axis-direction") || null,
+	              layoutRegion: node.getAttribute("data-layout-region")
+	                || node.closest("[data-layout-region]")?.getAttribute("data-layout-region")
+	                || null,
+	              allowOverlapWith: String(node.getAttribute("data-allow-overlap-with") || "")
+	                .split(/[\s,]+/)
+	                .map((value) => value.trim())
+	                .filter(Boolean)
+	            },
 	            ...(kind === "image" ? { naturalWidth: node.naturalWidth || null, naturalHeight: node.naturalHeight || null } : {}),
 	            style: computedStyleFor(style, rect),
             replica: {

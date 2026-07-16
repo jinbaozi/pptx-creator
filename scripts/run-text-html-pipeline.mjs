@@ -54,11 +54,14 @@ export async function runTextHtmlPipeline(inputPath, outputDir, options = {}) {
 
   const summary = await runHtmlPipeline(repaired.repairedPath, output, {
     mode: "replica",
+    layoutSafetyProfile: "creative",
     maxAttempts: options.maxAttempts ?? 3,
     designSystem: options.designSystem,
     protectedInputs: [sourcePath, repaired.repairedPath, repaired.reportPath],
     replicaSourcePath: repaired.repairedPath,
-    replicaPolicyRoute: "html-editable"
+    replicaPolicyRoute: "html-editable",
+    requireHostFinalReview: true,
+    hostFinalReview: options.hostFinalReview
   });
   const textSummary = {
     ...summary,

@@ -41,9 +41,12 @@ function finalReviewFromPacket(packet) {
 }
 
 function execCreativeAccepted(args, options = {}) {
-  const outputDir = args[0] === "scripts/pptx.mjs" ? args[3] : args[2];
+  const invocation = args[0] === "scripts/pptx.mjs" && args[1] === "text" && !args.includes("--native")
+    ? [...args, "--native"]
+    : args;
+  const outputDir = invocation[0] === "scripts/pptx.mjs" ? invocation[3] : invocation[2];
   try {
-    return execFileSync("node", args, options);
+    return execFileSync("node", invocation, options);
   } catch (error) {
     const blockedPath = path.join(outputDir, "pipeline-blocked.json");
     if (!fs.existsSync(blockedPath)) throw error;
@@ -53,7 +56,7 @@ function execCreativeAccepted(args, options = {}) {
   const packet = JSON.parse(fs.readFileSync(path.join(outputDir, "creative-proof", "final-review-packet.json"), "utf8"));
   const reviewPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pptx-final-review-")), "creative-final-review.json");
   fs.writeFileSync(reviewPath, `${JSON.stringify(finalReviewFromPacket(packet), null, 2)}\n`, "utf8");
-  return execFileSync("node", [...args, "--host-final-review", reviewPath], options);
+  return execFileSync("node", [...invocation, "--host-final-review", reviewPath], options);
 }
 
 describe("creative deck-plan pipeline", () => {
@@ -580,7 +583,7 @@ describe("creative deck-plan pipeline", () => {
       fallback: { strategy: "placeholder", description: "Use a native placeholder" }
     });
     fs.writeFileSync(path.join(inputDir, "deck.plan.json"), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
-    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir], {
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--native"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     })).toThrow(/contentHash|localized bytes/i);
@@ -675,7 +678,7 @@ describe("creative deck-plan pipeline", () => {
     fs.mkdirSync(path.dirname(secondTarget), { recursive: true });
     fs.writeFileSync(secondTarget, userBytes);
 
-    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral", "--native"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     })).toThrow();
@@ -727,7 +730,7 @@ describe("creative deck-plan pipeline", () => {
     const firstDigest = createHash("sha256").update(firstBytes).digest("hex").slice(0, 12);
     const firstTarget = path.join(outputDir, "assets", `asset-first-${firstDigest}.png`);
 
-    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral", "--native"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     })).toThrow();
@@ -774,7 +777,7 @@ describe("creative deck-plan pipeline", () => {
     const sourceDigest = createHash("sha256").update(sourceBytes).digest("hex").slice(0, 12);
     const externalLocalizedTarget = path.join(externalDir, `asset-hero-${sourceDigest}.png`);
 
-    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral"], {
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--design-system", "business-neutral", "--native"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     })).toThrow();
@@ -827,7 +830,7 @@ describe("creative deck-plan pipeline", () => {
       ]
     }, null, 2)}\n`, "utf8");
 
-    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", dir, dir], {
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", dir, dir, "--native"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     })).toThrow();
@@ -890,7 +893,7 @@ describe("creative deck-plan pipeline", () => {
       fs.writeFileSync(path.join(outputDir, directory, "stale.txt"), "stale-success", "utf8");
     }
 
-    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir], {
+    expect(() => execFileSync("node", ["scripts/pptx.mjs", "text", inputDir, outputDir, "--native"], {
       stdio: "pipe",
       env: { ...process.env, PPTX_CREATOR_PYTHON: process.env.PPTX_CREATOR_PYTHON || "/opt/homebrew/bin/python3.12" }
     })).toThrow();

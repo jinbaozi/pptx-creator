@@ -452,10 +452,33 @@ async function patchTextStrokes(pptxPath, textStrokePatches) {
   await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
 }
 
+export function normalizeLineGeometry(element) {
+  const logicalX = Number(element.x);
+  const logicalY = Number(element.y);
+  const logicalW = Number(element.w);
+  const logicalH = Number(element.h);
+  if (![logicalX, logicalY, logicalW, logicalH].every(Number.isFinite)) {
+    throw new Error(`line ${element.id ?? "unknown"} requires finite x/y/w/h geometry`);
+  }
+  return {
+    x: logicalW < 0 ? logicalX + logicalW : logicalX,
+    y: logicalH < 0 ? logicalY + logicalH : logicalY,
+    w: Math.abs(logicalW),
+    h: Math.abs(logicalH),
+    flipH: logicalW < 0,
+    flipV: logicalH < 0
+  };
+}
+
+function addNormalizedLineShape(slide, options, shapeType = "line") {
+  const { x, y, w, h, ...rest } = options;
+  slide.addShape(shapeType, { ...rest, ...normalizeLineGeometry({ id: options.objectName, x, y, w, h }) });
+}
+
 function addLine(slide, element, design) {
   const style = resolveValue(element.style ?? {}, design.tokens);
   const shapeType = element.connector?.route === "orthogonal" ? "bentConnector3" : "line";
-  slide.addShape(shapeType, {
+  addNormalizedLineShape(slide, {
     ...(element.id ? { objectName: element.id } : {}),
     x: element.x,
     y: element.y,
@@ -470,7 +493,7 @@ function addLine(slide, element, design) {
       dashType: style.dashType,
       transparency: style.transparency
     }
-  });
+  }, shapeType);
 }
 
 function addTable(slide, element, design) {
@@ -589,7 +612,7 @@ function addLineChart(slide, element, design) {
   for (let index = 0; index < points.length - 1; index += 1) {
     const current = points[index];
     const next = points[index + 1];
-    slide.addShape("line", {
+    addNormalizedLineShape(slide, {
       x: current.x,
       y: current.y,
       w: next.x - current.x,
@@ -683,17 +706,17 @@ function addIcon(slide, element, design) {
   const h = element.h;
 
   if (element.name === "check") {
-    slide.addShape("line", { x: x + w * 0.15, y: y + h * 0.55, w: w * 0.25, h: h * 0.25, line });
-    slide.addShape("line", { x: x + w * 0.38, y: y + h * 0.78, w: w * 0.48, h: -h * 0.58, line });
+    addNormalizedLineShape(slide, { x: x + w * 0.15, y: y + h * 0.55, w: w * 0.25, h: h * 0.25, line });
+    addNormalizedLineShape(slide, { x: x + w * 0.38, y: y + h * 0.78, w: w * 0.48, h: -h * 0.58, line });
     return { shape: 2, text: 0 };
   }
   if (element.name === "x") {
-    slide.addShape("line", { x: x + w * 0.15, y: y + h * 0.15, w: w * 0.7, h: h * 0.7, line });
-    slide.addShape("line", { x: x + w * 0.85, y: y + h * 0.15, w: -w * 0.7, h: h * 0.7, line });
+    addNormalizedLineShape(slide, { x: x + w * 0.15, y: y + h * 0.15, w: w * 0.7, h: h * 0.7, line });
+    addNormalizedLineShape(slide, { x: x + w * 0.85, y: y + h * 0.15, w: -w * 0.7, h: h * 0.7, line });
     return { shape: 2, text: 0 };
   }
   if (element.name === "arrow-right") {
-    slide.addShape("line", {
+    addNormalizedLineShape(slide, {
       x: x + w * 0.1,
       y: y + h * 0.5,
       w: w * 0.8,

@@ -58,7 +58,7 @@ describe("run-deck-pipeline", () => {
     });
 
     const labels = summary.steps.map((step) => step.label);
-    expect(labels).toEqual(["validate", "light-preflight", "render", "editability-proof", "bounded-repair", "package"]);
+    expect(labels).toEqual(["validate", "light-preflight", "render", "editability-proof", "bounded-repair", "pptx-geometry-audit", "package"]);
     expect(summary.contract).toEqual(["validate", "light-preflight", "render", "editability-proof", "bounded-repair", "package"]);
 
     // U2: every report must be on disk.
@@ -72,6 +72,7 @@ describe("run-deck-pipeline", () => {
     await access(join(outputDir, "deck.manifest.json"));
     // U4: layout-safety report written alongside consistency-report.
     await access(join(outputDir, "layout-safety-report.json"));
+    await access(join(outputDir, "pptx-geometry-report.json"));
     await access(join(outputDir, "text-fit-report.json"));
 
     const pptx = await stat(join(outputDir, "final.pptx"));

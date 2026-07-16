@@ -170,6 +170,13 @@
                 "w": { "type": "number" },
                 "h": { "type": "number" },
                 "role": { "type": "string" },
+                "axisDirection": { "type": "string", "enum": ["left", "right", "up", "down"] },
+                "layoutRegion": { "type": "string", "minLength": 1 },
+                "allowOverlapWith": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": { "type": "string", "minLength": 1 }
+                },
                 "connector": {
                   "type": "object",
                   "additionalProperties": false,

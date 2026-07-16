@@ -67,10 +67,24 @@ describe("HTML layout contracts", () => {
     });
   });
 
+  it("preserves overlap, layout-region, and axis semantics in the manifest", () => {
+    const html = `<section class="pptx-slide"><div data-layout-region="stack-a">
+      <div data-pptx-kind="shape" data-pptx-id="ornament" data-layout-role="decoration" data-allow-overlap-with="hero" data-x="1" data-y="1" data-w="1" data-h="1"></div>
+      <line data-pptx-kind="line" data-pptx-id="axis-y" data-layout-role="axis" data-axis-direction="up" data-x="2" data-y="5" data-w="0" data-h="-3"></line>
+    </div></section>`;
+    const manifest = convertHtmlToManifest(html);
+    expect(manifest.slides[0].elements.find((element) => element.id === "ornament")).toMatchObject({
+      role: "decoration", layoutRegion: "stack-a", allowOverlapWith: ["hero"]
+    });
+    expect(manifest.slides[0].elements.find((element) => element.id === "axis-y")).toMatchObject({
+      role: "axis", axisDirection: "up", layoutRegion: "stack-a", h: -3
+    });
+  });
+
   it("ships schemas and public package commands", async () => {
     const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
     expect(Object.keys(pkg.scripts)).toEqual(["pptx", "test", "test:unit", "test:browser", "test:visual", "test:py", "benchmark:creative", "setup"]);
-    for (const schema of ["html-layout-report.schema.json", "html-repair-report.schema.json"]) {
+    for (const schema of ["html-layout-report.schema.json", "html-repair-report.schema.json", "host-html-visual-review.schema.json", "pptx-geometry-report.schema.json"]) {
       expect(JSON.parse(await readFile(join(root, "schemas", schema), "utf8"))).toHaveProperty("$schema");
     }
   });
@@ -79,6 +93,28 @@ describe("HTML layout contracts", () => {
 const playwrightEnabled = process.env.PLAYWRIGHT_RUN === "1";
 
 describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
+  it("blocks every Memphis stress defect class and accepts the repaired fixture", async () => {
+    const { auditHtmlFile } = await import("../scripts/lib/html-layout-audit.mjs");
+    const fixture = join(root, "examples/html-input/memphis-layout-stress");
+    const defective = await auditHtmlFile(join(fixture, "defective.html"), { screenshots: false, profile: "creative" });
+    const kindsBySlide = new Map(defective.slides.map((slide) => [slide.slideId, new Set(defective.checks.filter((check) => check.slideId === slide.slideId).map((check) => check.kind))]));
+    expect(kindsBySlide.get("slide-005").has("decoration-occlusion")).toBe(true);
+    expect(kindsBySlide.get("slide-006").has("text-rhythm")).toBe(true);
+    expect(kindsBySlide.get("slide-006").has("vertical-gap-imbalance")).toBe(true);
+    expect(kindsBySlide.get("slide-007").has("decoration-occlusion")).toBe(true);
+    expect(kindsBySlide.get("slide-008").has("decoration-occlusion")).toBe(true);
+    expect(kindsBySlide.get("slide-010").has("connector-direction")).toBe(true);
+    expect(kindsBySlide.get("slide-014").has("text-rhythm")).toBe(true);
+    expect(kindsBySlide.get("slide-015").has("decoration-occlusion")).toBe(true);
+    expect(kindsBySlide.get("slide-017").has("content-occlusion")).toBe(true);
+    expect(kindsBySlide.get("slide-018").has("connector-direction")).toBe(true);
+    expect(kindsBySlide.get("slide-024").has("connector-direction")).toBe(true);
+    expect(kindsBySlide.get("slide-027").has("connector-direction")).toBe(true);
+
+    const repaired = await auditHtmlFile(join(fixture, "repaired.html"), { screenshots: false, profile: "creative" });
+    expect(repaired.summary).toMatchObject({ criticalCount: 0, blocked: false });
+  }, 60000);
+
   it("measures each slide relative to its own canvas", async () => {
     const { measureHtmlFile } = await import("../scripts/measure-html.mjs");
     const dir = await mkdtemp(join(tmpdir(), "pptx-html-multi-"));
@@ -108,7 +144,7 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
     </section>`, "utf8");
     const report = await auditHtmlFile(input, { screenshots: false });
     const kinds = new Set(report.checks.map((check) => check.kind));
-    expect(kinds.has("overlap")).toBe(true);
+    expect(kinds.has("content-occlusion")).toBe(true);
     expect(kinds.has("content-clipped")).toBe(true);
     expect(kinds.has("connector-detached")).toBe(true);
     expect(kinds.has("connector-marker-missing")).toBe(true);
