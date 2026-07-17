@@ -261,10 +261,11 @@ describe("html-to-manifest", () => {
         </ul>
       </section>`;
     const manifest = convertHtmlToManifest(html);
-    const list = manifest.slides[0].elements.find((element) => element.id.startsWith("list-"));
+    const items = manifest.slides[0].elements.filter((element) => element.listParentId);
 
-    expect(list.text).toBe("• 第一项\n• Second item");
-    expect(list.text).not.toContain("鈥");
+    expect(items.map((item) => item.text)).toEqual(["• 第一项", "• Second item"]);
+    expect(items.every((item) => !item.text.includes("鈥"))).toBe(true);
+    expect(items[1].y).toBeGreaterThanOrEqual(items[0].y + items[0].h);
   });
 
   it("downloads remote HTML image assets next to the manifest", async () => {

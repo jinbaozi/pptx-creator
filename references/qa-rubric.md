@@ -23,13 +23,20 @@ Host agents must self-review after `run-deck-pipeline.mjs` (or equivalent steps)
 
 ## Visual
 
-- Minimum body font ≥ 11pt after token expansion.
+- Creative type floors after token expansion: title ≥28pt, card title ≥18pt,
+  body/list ≥16pt, label/table header ≥11pt, source ≥9pt. Replica routes report
+  source typography without restyling unless it causes actual clipping.
 - No elements outside slide bounds (validator enforces).
 - No rendered text crosses its intended frame or clipping container.
 - Content remains at least 99% visible; unapproved decorations remain at least
   85% visible and do not cover content or one another.
 - CJK body line-height is at least 1.20; layout-region gaps are balanced and
   intentional.
+- Metrics intended as one atomic value remain on one line. Multi-line list
+  items keep natural heights and never collide with their following item.
+- Single-line table headers are vertically centered with line-height 1.0–1.4.
+- Every displayed source URL is clickable; vendor claims and internal
+  recommendations carry visible labels and evidence bindings.
 - Every relationship connector visibly starts at its declared source and its
   target-facing arrowhead terminates at the declared target.
 - Consistent design system tokens across slides.

@@ -16,6 +16,20 @@ const MINIMUM_FONT_SIZE = Object.freeze({
   body: 11
 });
 
+const CREATIVE_MINIMUM_FONT_SIZE = Object.freeze({
+  title: 28,
+  heading: 18,
+  "card-title": 18,
+  metric: 24,
+  "card-metric": 20,
+  "table-header": 11,
+  label: 11,
+  source: 9,
+  caption: 9,
+  "list-item": 16,
+  body: 16
+});
+
 function resolveToken(value, tokens) {
   if (typeof value !== "string") return value;
   const match = value.match(/^\{([^}]+)\}$/);
@@ -63,9 +77,12 @@ export function materializeTextFonts(manifest, designTokens = {}, fontCatalog = 
 }
 
 function inferRole(element, fontSize) {
-  if (typeof element.role === "string" && MINIMUM_FONT_SIZE[element.role]) return element.role;
+  if (typeof element.role === "string" && (MINIMUM_FONT_SIZE[element.role] || CREATIVE_MINIMUM_FONT_SIZE[element.role])) return element.role;
   const id = String(element.id ?? "").toLowerCase();
-  if (/caption|footnote|source/.test(id)) return "caption";
+  if (/source/.test(id)) return "source";
+  if (/caption|footnote/.test(id)) return "caption";
+  if (/label/.test(id)) return "label";
+  if (/table[-_]?header|(^|[-_])th([-_]|$)/.test(id)) return "table-header";
   if (/metric|kpi|stat|big-number/.test(id)) return "metric";
   if (/title|headline|heading/.test(id)) return "title";
   return fontSize >= 32 ? "metric" : fontSize >= 18 ? "heading" : "body";
@@ -134,7 +151,7 @@ export function measureTextElement(element, options = {}) {
   const overflowBy = Math.max(0, requiredHeight - availableHeight);
   const role = inferRole(element, fontSize);
   const minimumFontSize = Number(options.minimumFontSize ?? MINIMUM_FONT_SIZE[role] ?? MINIMUM_FONT_SIZE.body);
-  const maxHeight = Math.max(availableHeight, Number(options.maxHeight ?? availableHeight));
+  const maxHeight = Math.max(0, Number(options.maxHeight ?? availableHeight));
   const suggestedFontSize = requiredHeight > 0
     ? Math.max(0, fontSize * ((availableHeight - (margin.top + margin.bottom) / 72) / Math.max(EPSILON_IN, requiredHeight - (margin.top + margin.bottom) / 72)))
     : fontSize;
@@ -184,6 +201,7 @@ export async function buildTextFitReport(manifest = {}, options = {}) {
     ?? (typeof options.fontCatalog?.measureText === "function" ? options.fontCatalog.measureText.bind(options.fontCatalog) : undefined);
   let checked = 0;
   let overflowCount = 0;
+  const creativeProfile = options.mode === "creative" || manifest.metadata?.qualityProfile === "creative";
   const slides = (manifest.slides ?? []).map((slide) => {
     const expandedElements = (slide.elements ?? []).flatMap((element) => {
       if (element?.type === "chart") return expandChartElement(element);
@@ -191,11 +209,15 @@ export async function buildTextFitReport(manifest = {}, options = {}) {
       return [element];
     });
     const elements = expandedElements.filter((element) => element?.type === "text").map((element) => {
+      const role = inferRole(element, Number(element.style?.fontSize ?? DEFAULT_FONT_SIZE));
       const measured = measureTextElement(element, {
         tokens: designTokens,
         measureText,
         font: options.fontForElement?.(element) ?? resolvedFont(element, designTokens),
-        maxHeight: Math.max(Number(element.h), deckHeight - Number(element.y))
+        maxHeight: maximumTextHeight(slide, element, deckHeight),
+        minimumFontSize: creativeProfile
+          ? CREATIVE_MINIMUM_FONT_SIZE[role] ?? CREATIVE_MINIMUM_FONT_SIZE.body
+          : MINIMUM_FONT_SIZE[role] ?? MINIMUM_FONT_SIZE.body
       });
       checked += 1;
       if (measured.status !== "fits") overflowCount += 1;
@@ -230,6 +252,7 @@ export function applyTextFitAdjustments(manifest, report) {
         const conflicts = (slide.elements ?? []).some((other) => other !== element
           && other.type !== "line"
           && !isBackgroundElement(other)
+          && other.id !== element.semanticParentId
           && rectanglesOverlap(candidate, other));
         if (!conflicts) {
           element.h = proposedHeight;
@@ -270,9 +293,61 @@ function isBackgroundElement(element) {
     || /(^|[-_])(background|backdrop|canvas)([-_]|$)/.test(id);
 }
 
-export async function fitManifestText(manifest, options = {}) {
-  let current = structuredClone(manifest);
+function semanticLabel(element) {
+  return `${element?.role ?? ""} ${element?.layoutRegion ?? ""}`.trim().toLowerCase();
+}
+
+function isFooterElement(element) {
+  return /footer|page[-_ ]?number|slide[-_ ]?number|folio/.test(semanticLabel(element));
+}
+
+function bottomInsetInches(element) {
+  const padding = marginPoints(element?.style?.padding ?? 0);
+  return padding.bottom / 72;
+}
+
+export function maximumTextHeight(slide, element, deckHeight) {
+  const y = Number(element?.y ?? 0);
+  const limits = [Number(deckHeight)];
+  const elements = Array.isArray(slide?.elements) ? slide.elements : [];
+  const parent = element?.semanticParentId
+    ? elements.find((candidate) => candidate?.id === element.semanticParentId)
+    : null;
+  if (parent) limits.push(Number(parent.y) + Number(parent.h) - bottomInsetInches(parent));
+  const footerTop = elements.filter(isFooterElement).reduce(
+    (minimum, candidate) => Math.min(minimum, Number(candidate.y)),
+    Number.POSITIVE_INFINITY
+  );
+  if (Number.isFinite(footerTop)) limits.push(footerTop);
+  return Math.max(0, Math.min(...limits.filter(Number.isFinite)) - y);
+}
+
+function normalizeCreativeTextStyles(manifest) {
+  const next = structuredClone(manifest);
   const adjustments = [];
+  if (next.metadata?.qualityProfile !== "creative") return { manifest: next, adjustments };
+  for (const slide of next.slides ?? []) {
+    for (const element of slide.elements ?? []) {
+      if (element?.type !== "text") continue;
+      const role = inferRole(element, Number(element.style?.fontSize ?? DEFAULT_FONT_SIZE));
+      if (role !== "table-header" || Number(element.style?.lineHeight ?? 0) <= 1.4) continue;
+      element.style = { ...(element.style ?? {}), lineHeight: 1.2, valign: "middle" };
+      adjustments.push({
+        slideId: slide.id,
+        elementId: element.id,
+        operation: "updateStyle",
+        changes: { lineHeight: 1.2, valign: "middle" }
+      });
+    }
+  }
+  return { manifest: next, adjustments };
+}
+
+export async function fitManifestText(manifest, options = {}) {
+  const normalized = normalizeCreativeTextStyles(manifest);
+  let current = normalized.manifest;
+  const adjustments = [...normalized.adjustments];
+  const layoutSafetyHistory = [];
   let report;
   for (let attempt = 0; attempt < Math.min(3, Math.max(1, Number(options.maxAttempts ?? 3))); attempt += 1) {
     report = await buildTextFitReport(current, options);
@@ -280,13 +355,31 @@ export async function fitManifestText(manifest, options = {}) {
     const applied = applyTextFitAdjustments(current, report);
     current = applied.manifest;
     adjustments.push(...applied.adjustments);
-    if (applied.adjustments.length === 0) return { manifest: current, report, adjustments, unresolved: applied.unresolved };
+    const { preflightLayout } = await import("./check-layout-safety.mjs");
+    layoutSafetyHistory.push(preflightLayout(current, {
+      strict: true,
+      mode: current.metadata?.qualityProfile === "replica" ? "replica" : "creative",
+      measureText: options.measureText,
+      fontCatalog: options.fontCatalog,
+      designTokens: options.designTokens
+    }));
+    if (applied.adjustments.length === 0) {
+      return { manifest: current, report, adjustments, unresolved: applied.unresolved, layoutSafetyHistory };
+    }
   }
   report = await buildTextFitReport(current, options);
   const unresolved = report.slides.flatMap((slide) => slide.elements
     .filter((element) => element.status !== "fits")
     .map((element) => ({ slideId: slide.slideId, elementId: element.elementId, status: element.status })));
-  return { manifest: current, report, adjustments, unresolved };
+  const { preflightLayout } = await import("./check-layout-safety.mjs");
+  layoutSafetyHistory.push(preflightLayout(current, {
+    strict: true,
+    mode: current.metadata?.qualityProfile === "replica" ? "replica" : "creative",
+    measureText: options.measureText,
+    fontCatalog: options.fontCatalog,
+    designTokens: options.designTokens
+  }));
+  return { manifest: current, report, adjustments, unresolved, layoutSafetyHistory };
 }
 
-export const __test__ = { heuristicMeasure, marginPoints, resolvedFont, wrappedLineCount };
+export const __test__ = { CREATIVE_MINIMUM_FONT_SIZE, heuristicMeasure, marginPoints, resolvedFont, wrappedLineCount };

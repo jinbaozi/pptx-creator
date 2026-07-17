@@ -179,6 +179,15 @@ function imageSourceSizing(element) {
   return { w: sourceW, h: sourceH };
 }
 
+function hyperlinkOptions(element) {
+  const url = String(element?.hyperlink?.url ?? "").trim();
+  if (!/^https?:\/\//i.test(url)) return null;
+  return {
+    url,
+    ...(element.hyperlink.tooltip ? { tooltip: String(element.hyperlink.tooltip) } : {})
+  };
+}
+
 function addText(slide, element, design, language) {
   const opts = applyElementRotation({
     x: element.x,
@@ -188,6 +197,8 @@ function addText(slide, element, design, language) {
     ...textOptions(element, design, language)
   }, element);
   if (element.id) opts.objectName = element.id;
+  const hyperlink = hyperlinkOptions(element);
+  if (hyperlink) opts.hyperlink = hyperlink;
   slide.addText(element.text ?? "", opts);
 }
 
@@ -213,6 +224,8 @@ function addShape(slide, element, design) {
   }, element);
   const shadow = shadowOptions(style.shadow);
   if (shadow) opts.shadow = shadow;
+  const hyperlink = hyperlinkOptions(element);
+  if (hyperlink) opts.hyperlink = hyperlink;
   slide.addShape(SHAPES[element.shape] ?? "rect", opts);
 }
 
@@ -771,6 +784,8 @@ function addImage(slide, element, baseDir) {
   if (sizing) imageOpts.sizing = sizing;
   const shadow = shadowOptions(style.shadow);
   if (shadow) imageOpts.shadow = shadow;
+  const hyperlink = hyperlinkOptions(element);
+  if (hyperlink) imageOpts.hyperlink = hyperlink;
   slide.addImage(imageOpts);
 }
 
@@ -807,6 +822,8 @@ function addCroppedAsset(slide, element, baseDir, manifestAssets) {
       h: Number(crop.h) || 0
     };
   }
+  const hyperlink = hyperlinkOptions(element);
+  if (hyperlink) imageOpts.hyperlink = hyperlink;
   slide.addImage(imageOpts);
 }
 

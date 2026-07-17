@@ -479,6 +479,9 @@ function replicaTextRtl(style) {
 }
 
 function replicaTextValign(style) {
+  const verticalAlign = String(style.verticalAlign ?? "").trim().toLowerCase();
+  if (["middle", "center"].includes(verticalAlign)) return "middle";
+  if (["bottom", "text-bottom"].includes(verticalAlign)) return "bottom";
   if (style.display === "flex" && style.alignItems === "center") return "middle";
   if (style.display === "flex" && style.alignItems === "flex-end") return "bottom";
   return "top";
@@ -589,6 +592,8 @@ function replicaImageSizing(measurement, style, box) {
 function replicaImageElement(measurement, box) {
   const style = cssStyle(measurement);
   const element = applyReplicaRotation({ type: "image", id: measurement.id, src: measurement.src, ...box }, style);
+  const hyperlink = measurementHyperlink(measurement);
+  if (hyperlink) element.hyperlink = hyperlink;
   const shapeKind = replicaShapeKind(measurement);
   if (shapeKind === "ellipse") element.rounding = true;
   else if (shapeKind === "roundRect") element.imageShape = "roundRect";
@@ -1295,6 +1300,8 @@ function replicaShapeElement(id, measurement) {
       transparency: style.backgroundColor ? (cssCombinedTransparency(style, "backgroundTransparency") ?? 0) : 100
     }
   };
+  const hyperlink = measurementHyperlink(measurement);
+  if (hyperlink) element.hyperlink = hyperlink;
   const gradient = parseCssSupportedGradient(style.backgroundImage);
   if (gradient) element.style.gradient = gradient;
   const borderTransparency = cssCombinedTransparency(style, "borderTransparency");
@@ -1341,17 +1348,59 @@ function replicaPaintLayerElements(id, measurement) {
   return outline ? [...base, outline] : base;
 }
 
-function replicaTextElement(id, measurement) {
+function evidenceFromSemantics(semantics = {}) {
+  const kind = String(semantics.evidenceKind ?? "").trim();
+  if (!kind) return null;
+  const sourceIds = Array.isArray(semantics.sourceIds) ? semantics.sourceIds.filter(Boolean) : [];
+  return {
+    kind,
+    ...(sourceIds.length > 0 ? { sourceIds } : {}),
+    ...(semantics.asOf ? { asOf: semantics.asOf } : {})
+  };
+}
+
+function measurementHyperlink(measurement) {
+  const url = String(measurement?.href ?? "").trim();
+  if (!/^https?:\/\//i.test(url)) return null;
+  return {
+    url,
+    ...(measurement?.hyperlinkTooltip ? { tooltip: measurement.hyperlinkTooltip } : {})
+  };
+}
+
+function measurementWithSourceText(measurement, node) {
+  if (!measurement || typeof measurement !== "object") return measurement;
+  if ((typeof measurement.visibleText === "string" && measurement.visibleText)
+    || (typeof measurement.text === "string" && measurement.text)) return measurement;
+  return { ...measurement, text: textContent(node) };
+}
+
+function replicaTextElement(id, measurement, options = {}) {
   const style = cssStyle(measurement);
   const bullet = replicaTextBullet(style);
-  const lineHeight = Number.isFinite(Number(style.lineHeight)) && Number(style.fontSize) > 0
+  const rawLineHeight = Number.isFinite(Number(style.lineHeight)) && Number(style.fontSize) > 0
     ? Number((Number(style.lineHeight) / Number(style.fontSize)).toFixed(4))
     : undefined;
+  const tagName = String(measurement?.tagName ?? "").toLowerCase();
+  const text = replicaTextContent(measurement, style);
+  const normalizeSingleLineHeader = options.designMode !== "replica"
+    && tagName === "th"
+    && !String(text).includes("\n")
+    && Number(rawLineHeight) > 1.4;
+  const lineHeight = normalizeSingleLineHeader ? 1.2 : rawLineHeight;
+  const semantics = measurement?.semantics ?? {};
+  const evidence = evidenceFromSemantics(semantics);
+  const hyperlink = measurementHyperlink(measurement);
   const element = {
     type: "text",
     id,
-    text: replicaTextContent(measurement, style),
+    ...(tagName === "th" && !semantics.role ? { role: "table-header" } : {}),
+    text,
     ...measuredBox(measurement),
+    ...(hyperlink ? { hyperlink } : {}),
+    ...(evidence ? { evidence } : {}),
+    ...(semantics.listParentId ? { listParentId: semantics.listParentId } : {}),
+    ...(Number.isInteger(semantics.listIndex) && semantics.listIndex >= 0 ? { listIndex: semantics.listIndex } : {}),
     style: {
       color: replicaTextFillColor(style),
       fontFamily: style.fontFamily,
@@ -1360,7 +1409,7 @@ function replicaTextElement(id, measurement) {
       italic: style.fontStyle === "italic",
       smallCaps: replicaTextSmallCaps(style) || undefined,
       align: replicaTextAlign(style),
-      valign: replicaTextValign(style),
+      valign: normalizeSingleLineHeader ? "middle" : replicaTextValign(style),
       textDirection: replicaTextDirection(style),
       rtl: replicaTextRtl(style),
       lineHeight,
@@ -1750,12 +1799,26 @@ function estimatedTextHeight(text, width, options = {}) {
   const fontSize = options.fontSize ?? 12;
   const lineHeight = options.lineHeight ?? 1.35;
   const boldFactor = options.bold ? 1.1 : 1;
-  const cjkFactor = /[\u3000-\u9fff\uff00-\uffef]/.test(value) ? 1.7 : 1;
-  const availableWidth = Math.max(0.25, width);
+  const availableWidthPt = Math.max(0.25, width) * 72;
+  const measuredWidth = (content) => [...String(content ?? "")].reduce(
+    (total, char) => total + (/[　-〿぀-ヿ一-鿿＀-￯]/.test(char) ? 1 : 0.55) * fontSize * boldFactor,
+    0
+  );
   const paragraphs = value.split("\n");
   const lines = paragraphs.reduce((total, paragraph) => {
-    const projectedWidth = (paragraph.length * fontSize * 0.55 * boldFactor * cjkFactor) / 72;
-    return total + Math.max(1, Math.ceil(projectedWidth / availableWidth));
+    const segments = /\s/.test(paragraph) ? (paragraph.match(/\S+\s*|\s+/g) ?? [paragraph]) : [...paragraph];
+    let current = "";
+    let paragraphLines = 1;
+    for (const segment of segments) {
+      const candidate = `${current}${segment}`;
+      if (current && measuredWidth(candidate) > availableWidthPt) {
+        paragraphLines += 1;
+        current = segment.trimStart();
+      } else {
+        current = candidate;
+      }
+    }
+    return total + paragraphLines;
   }, 0);
   return Math.max(fontSize / 72 * lineHeight, lines * (fontSize / 72) * lineHeight + 0.05);
 }
@@ -1768,7 +1831,7 @@ function estimateCardHeight(cardNode, cardWidth) {
   const innerW = Math.max(0.25, cardWidth - padding * 2);
   let height = padding * 2;
   const heading = cardNode.querySelector("h3") ?? cardNode.querySelector("h2");
-  if (heading) height += estimatedTextHeight(textContent(heading), innerW, { fontSize: 14, lineHeight: 1.2, bold: true }) + 0.08;
+  if (heading) height += estimatedTextHeight(textContent(heading), innerW, { fontSize: 18, lineHeight: 1.2, bold: true }) + 0.08;
   const metric = cardNode.querySelector(".metric, [data-metric]");
   if (metric) height += estimatedTextHeight(textContent(metric), innerW, { fontSize: 28, lineHeight: 1 }) + 0.05;
   const paragraphs = cardNode.querySelectorAll("p").filter((p) => {
@@ -1776,19 +1839,20 @@ function estimateCardHeight(cardNode, cardWidth) {
     return !cls.split(/\s+/).includes("metric") && !p.getAttribute("data-metric");
   });
   for (const paragraph of paragraphs) {
-    height += estimatedTextHeight(textContent(paragraph), innerW, { fontSize: 11, lineHeight: 1.35 }) + 0.05;
+    height += estimatedTextHeight(textContent(paragraph), innerW, { fontSize: 16, lineHeight: 1.35 }) + 0.05;
   }
   const listItems = cardNode.querySelectorAll("li");
   if (listItems.length > 0) {
-    const lines = [...listItems].map((item) => `• ${textContent(item)}`).join("\n");
-    height += estimatedTextHeight(lines, innerW, { fontSize: 12, lineHeight: 1.35 });
+    for (const item of listItems) {
+      height += estimatedTextHeight(`• ${textContent(item)}`, innerW, { fontSize: 16, lineHeight: 1.35 }) + (16 / 72) * 0.35;
+    }
   }
   return height;
 }
 
 function cardInnerElements(cardNode, outerBox, shapeId = nextId("card")) {
   const elements = [];
-  elements.push(shapeElement(shapeId, outerBox, "{components.content-card}"));
+  elements.push(applyNodeLayoutSemantics(shapeElement(shapeId, outerBox, "{components.content-card}"), cardNode));
 
   const padding = 0.2;
   let cursorY = outerBox.y + padding;
@@ -1797,12 +1861,13 @@ function cardInnerElements(cardNode, outerBox, shapeId = nextId("card")) {
 
   const heading = cardNode.querySelector("h3") ?? cardNode.querySelector("h2");
   if (heading) {
-    const h = estimatedTextHeight(textContent(heading), innerW, { fontSize: 14, lineHeight: 1.2, bold: true });
+    const h = estimatedTextHeight(textContent(heading), innerW, { fontSize: 18, lineHeight: 1.2, bold: true });
     elements.push(
-      textElement(nextId("card-title"), textContent(heading), { x: innerX, y: cursorY, w: innerW, h }, "h3", "{colors.primary}", {
+      applyNodeLayoutSemantics(textElement(nextId("card-title"), textContent(heading), { x: innerX, y: cursorY, w: innerW, h }, "h3", "{colors.primary}", {
         role: "card-title",
-        style: { fontSize: 14, lineHeight: 1.2, bold: true }
-      })
+        semanticParentId: shapeId,
+        style: { fontSize: 18, lineHeight: 1.2, bold: true, margin: 0 }
+      }), heading)
     );
     cursorY += h + 0.08;
   }
@@ -1811,10 +1876,11 @@ function cardInnerElements(cardNode, outerBox, shapeId = nextId("card")) {
   if (metric) {
     const h = estimatedTextHeight(textContent(metric), innerW, { fontSize: 28, lineHeight: 1 });
     elements.push(
-      textElement(nextId("card-metric"), textContent(metric), { x: innerX, y: cursorY, w: innerW, h }, "metric", "{colors.text}", {
+      applyNodeLayoutSemantics(textElement(nextId("card-metric"), textContent(metric), { x: innerX, y: cursorY, w: innerW, h }, "metric", "{colors.text}", {
         role: "card-metric",
-        style: { fontSize: 28, lineHeight: 1, bold: true }
-      })
+        semanticParentId: shapeId,
+        style: { fontSize: 28, lineHeight: 1, bold: true, margin: 0 }
+      }), metric)
     );
     cursorY += h + 0.05;
   }
@@ -1824,25 +1890,33 @@ function cardInnerElements(cardNode, outerBox, shapeId = nextId("card")) {
     return !cls.split(/\s+/).includes("metric") && !p.getAttribute("data-metric");
   });
   for (const paragraph of paragraphs) {
-    const h = estimatedTextHeight(textContent(paragraph), innerW, { fontSize: 11, lineHeight: 1.35 });
+    const h = estimatedTextHeight(textContent(paragraph), innerW, { fontSize: 16, lineHeight: 1.35 });
     elements.push(
-      textElement(nextId("card-body"), textContent(paragraph), { x: innerX, y: cursorY, w: innerW, h }, "caption", "{colors.textMuted}", {
-        style: { fontSize: 11, lineHeight: 1.35 }
-      })
+      applyNodeLayoutSemantics(textElement(nextId("card-body"), textContent(paragraph), { x: innerX, y: cursorY, w: innerW, h }, "body", "{colors.textMuted}", {
+        role: "body",
+        semanticParentId: shapeId,
+        style: { fontSize: 16, lineHeight: 1.35, margin: 0 }
+      }), paragraph)
     );
     cursorY += h + 0.05;
   }
 
   const listItems = cardNode.querySelectorAll("li");
   if (listItems.length > 0) {
-    const lines = [...listItems].map((item) => `• ${textContent(item)}`).join("\n");
-    const required = estimatedTextHeight(lines, innerW, { fontSize: 12, lineHeight: 1.35 });
-    const remaining = Math.max(required, outerBox.y + outerBox.h - padding - cursorY);
-    elements.push(
-      textElement(nextId("card-list"), lines, { x: innerX, y: cursorY, w: innerW, h: remaining }, "body", "{colors.text}", {
-        style: { fontSize: 12, lineHeight: 1.35 }
-      })
-    );
+    const listParentId = cardNode.querySelector("ul,ol")?.getAttribute("data-pptx-id") ?? `${shapeId}-list`;
+    for (const [index, item] of [...listItems].entries()) {
+      const value = `• ${textContent(item)}`;
+      const required = estimatedTextHeight(value, innerW, { fontSize: 16, lineHeight: 1.35 });
+      elements.push(applyNodeLayoutSemantics(textElement(
+        item.getAttribute("data-pptx-id") ?? item.getAttribute("data-id") ?? nextId("card-list-item"),
+        value,
+        { x: innerX, y: cursorY, w: innerW, h: required },
+        "body",
+        "{colors.text}",
+        { role: "list-item", semanticParentId: shapeId, listParentId, listIndex: index, style: { fontSize: 16, lineHeight: 1.35, margin: 0 } }
+      ), item));
+      cursorY += required + (16 / 72) * 0.35;
+    }
   }
 
   return elements;
@@ -1907,12 +1981,42 @@ function appendUnmappedSemanticText(slideNode, elements, startY) {
     const prefix = tag === "li" ? "• " : "";
     const h = tag === "h2" || tag === "h3"
       ? estimatedTextHeight(value, CONTENT_WIDTH, { fontSize: 22, lineHeight: 1.25, bold: true })
-      : estimatedTextHeight(`${prefix}${value}`, CONTENT_WIDTH, { fontSize: 15, lineHeight: 1.55 });
+      : estimatedTextHeight(`${prefix}${value}`, CONTENT_WIDTH, { fontSize: 16, lineHeight: 1.55 });
     const box = parseCoords(node) ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h };
-    elements.push(textElement(nextId(tag), `${prefix}${value}`, box, typography));
+    elements.push(applyNodeLayoutSemantics(textElement(nextId(tag), `${prefix}${value}`, box, typography, "{colors.text}", {
+      style: tag === "h2" || tag === "h3" ? {} : { fontSize: 16 }
+    }), node));
     cursorY = box.y + box.h + 0.1;
   }
   return cursorY;
+}
+
+function listItemElements(list, startY) {
+  const items = list.querySelectorAll("li");
+  const explicit = parseCoords(list);
+  const width = explicit?.w ?? CONTENT_WIDTH;
+  const x = explicit?.x ?? MARGIN;
+  const ordered = String(list.tagName ?? "").toLowerCase() === "ol";
+  const listParentId = list.getAttribute("data-pptx-id") ?? list.getAttribute("data-id") ?? list.getAttribute("id") ?? nextId("list-group");
+  const elements = [];
+  let cursorY = explicit?.y ?? startY;
+  for (const [index, item] of [...items].entries()) {
+    const prefix = ordered ? `${index + 1}. ` : "• ";
+    const value = `${prefix}${textContent(item)}`;
+    const h = estimatedTextHeight(value, width, { fontSize: 16, lineHeight: 1.35 });
+    let element = textElement(
+      item.getAttribute("data-pptx-id") ?? item.getAttribute("data-id") ?? item.getAttribute("id") ?? nextId("list-item"),
+      value,
+      { x, y: cursorY, w: width, h },
+      "body",
+      "{colors.text}",
+      { role: "list-item", listParentId, listIndex: index, style: { fontSize: 16, lineHeight: 1.35 } }
+    );
+    element = applyNodeLayoutSemantics(applyNodeLayoutSemantics(element, list), item);
+    elements.push(element);
+    cursorY += h + (16 / 72) * 0.35;
+  }
+  return { elements, bottomY: cursorY };
 }
 
 function nodeLayoutRegion(node) {
@@ -1932,17 +2036,34 @@ function applyNodeLayoutSemantics(element, node) {
   const layoutRegion = nodeLayoutRegion(node);
   const allowOverlapWith = String(node.getAttribute("data-allow-overlap-with") || "")
     .split(/[\s,]+/).map((value) => value.trim()).filter(Boolean);
+  const anchor = String(node.tagName ?? "").toLowerCase() === "a" ? node : node.querySelector?.("a[href]");
+  const href = anchor?.getAttribute?.("href");
+  const tooltip = anchor?.getAttribute?.("title") ?? anchor?.getAttribute?.("data-tooltip");
+  const evidenceKind = node.getAttribute("data-evidence-kind");
+  const sourceIds = String(node.getAttribute("data-source-ids") || "")
+    .split(/[\s,]+/).map((value) => value.trim()).filter(Boolean);
+  const asOf = node.getAttribute("data-as-of");
   return {
     ...element,
     ...(role ? { role } : {}),
     ...(axisDirection ? { axisDirection } : {}),
     ...(semanticParentId ? { semanticParentId } : {}),
     ...(layoutRegion ? { layoutRegion } : {}),
-    ...(allowOverlapWith.length > 0 ? { allowOverlapWith } : {})
+    ...(allowOverlapWith.length > 0 ? { allowOverlapWith } : {}),
+    ...(/^https?:\/\//i.test(String(href ?? "")) ? {
+      hyperlink: { url: href, ...(tooltip ? { tooltip } : {}) }
+    } : {}),
+    ...(evidenceKind ? {
+      evidence: {
+        kind: evidenceKind,
+        ...(sourceIds.length > 0 ? { sourceIds } : {}),
+        ...(asOf ? { asOf } : {})
+      }
+    } : {})
   };
 }
 
-function convertKindElement(node, lookup) {
+function convertKindElement(node, lookup, options = {}) {
   const kind = node.getAttribute("data-pptx-kind");
   const id = node.getAttribute("data-pptx-id") ?? node.getAttribute("data-id") ?? nextId(kind ?? "element");
   const coords =
@@ -1952,14 +2073,17 @@ function convertKindElement(node, lookup) {
   if (!coords) return [];
 
   if (kind === "text") {
+    const measurement = lookup?.get(id);
     return [
-      applyNodeLayoutSemantics(textElement(
-        id,
-        textContent(node),
-        coords,
-        node.getAttribute("data-typography") ?? "body",
-        node.getAttribute("data-color") ?? "{colors.text}"
-      ), node)
+      applyNodeLayoutSemantics(measurement
+        ? replicaTextElement(id, measurementWithSourceText(measurement, node), { designMode: options.designMode })
+        : textElement(
+          id,
+          textContent(node),
+          coords,
+          node.getAttribute("data-typography") ?? "body",
+          node.getAttribute("data-color") ?? "{colors.text}"
+        ), node)
     ];
   }
   if (kind === "shape") {
@@ -1983,11 +2107,11 @@ function convertKindElement(node, lookup) {
   return [];
 }
 
-function convertMeasuredSlide(slideNode, lookup, slideId) {
+function convertMeasuredSlide(slideNode, lookup, slideId, options = {}) {
   const elements = [];
   const kindNodes = slideNode.querySelectorAll("[data-pptx-kind]");
   for (const node of kindNodes) {
-    elements.push(...convertKindElement(node, lookup));
+    elements.push(...convertKindElement(node, lookup, options));
   }
   const explicitNodes = slideNode.querySelectorAll("[data-pptx-type]");
   for (const node of explicitNodes) {
@@ -1996,9 +2120,9 @@ function convertMeasuredSlide(slideNode, lookup, slideId) {
     const pptxType = node.getAttribute("data-pptx-type");
     const id = node.getAttribute("data-id") ?? nextId(pptxType);
     if (pptxType === "text") {
-      elements.push(textElement(id, textContent(node), coords, node.getAttribute("data-typography") ?? "body"));
+      elements.push(applyNodeLayoutSemantics(textElement(id, textContent(node), coords, node.getAttribute("data-typography") ?? "body"), node));
     } else if (pptxType === "shape") {
-      elements.push(shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}"));
+      elements.push(applyNodeLayoutSemantics(shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}"), node));
     } else if (pptxType === "table") {
       elements.push(tableElement(id, node, coords));
     } else if (pptxType === "line") {
@@ -2075,9 +2199,12 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
         ...(semantics.axisDirection ? { axisDirection: semantics.axisDirection } : {}),
         ...(semantics.semanticParentId ? { semanticParentId: semantics.semanticParentId } : {}),
         ...(semantics.layoutRegion ? { layoutRegion: semantics.layoutRegion } : {}),
+        ...(semantics.listParentId ? { listParentId: semantics.listParentId } : {}),
+        ...(Number.isInteger(semantics.listIndex) && semantics.listIndex >= 0 ? { listIndex: semantics.listIndex } : {}),
         ...(Array.isArray(semantics.allowOverlapWith) && semantics.allowOverlapWith.length > 0
           ? { allowOverlapWith: semantics.allowOverlapWith }
-          : {})
+          : {}),
+        ...(evidenceFromSemantics(semantics) ? { evidence: evidenceFromSemantics(semantics) } : {})
       };
     });
     layers.push({
@@ -2143,7 +2270,12 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
       if (hasReplicaPaint(style)) {
         layerElements.push(...replicaPaintLayerElements(`${measurement.id}-box`, measurement));
       }
-      layerElements.push(replicaTextElement(measurement.id, measurement));
+      const textNode = findNodeByMeasurementId(slideNode, measurement.id);
+      layerElements.push(replicaTextElement(
+        measurement.id,
+        measurementWithSourceText(measurement, textNode),
+        { designMode: "replica" }
+      ));
       addLayer(measurement, measurementIndex, layerElements);
       coveredMeasurementIds.add(measurement.id);
     } else if (kind === "image") {
@@ -2229,7 +2361,12 @@ function convertAutoLayoutSlide(slideNode, lookup, slideId) {
   if (h1) {
     const titleId = h1.getAttribute("data-pptx-id") ?? nextId("title");
     const coords = getMeasurementBox(lookup, titleId) ?? parseCoords(h1);
-    const box = coords ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: 0.75 };
+    const box = coords ?? {
+      x: MARGIN,
+      y: cursorY,
+      w: CONTENT_WIDTH,
+      h: estimatedTextHeight(textContent(h1), CONTENT_WIDTH, { fontSize: 34, lineHeight: 1.2, bold: true })
+    };
     elements.push(textElement(titleId, textContent(h1), box, "h1", "{colors.text}"));
     cursorY = box.y + box.h + 0.15;
   }
@@ -2295,11 +2432,9 @@ function convertAutoLayoutSlide(slideNode, lookup, slideId) {
 
   const lists = slideNode.childNodes.filter((node) => node.tagName === "UL" || node.tagName === "OL");
   for (const list of lists) {
-    const items = list.querySelectorAll("li");
-    const lines = [...items].map((item) => `• ${textContent(item)}`).join("\n");
-    const box = parseCoords(list) ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: Math.min(2.0, items.length * 0.35) };
-    elements.push(textElement(nextId("list"), lines, box, "body"));
-    cursorY = box.y + box.h + 0.2;
+    const converted = listItemElements(list, cursorY);
+    elements.push(...converted.elements);
+    cursorY = converted.bottomY + 0.2;
   }
 
   cursorY = appendUnmappedSemanticText(slideNode, elements, cursorY);
@@ -2346,7 +2481,12 @@ function convertHybridSlide(slideNode, lookup, slideId) {
     const titleId = h1.getAttribute("data-pptx-id") ?? nextId("title");
     if (!measuredIds.has(titleId)) {
       const coords = getMeasurementBox(lookup, titleId) ?? parseCoords(h1);
-      const box = coords ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: 0.75 };
+      const box = coords ?? {
+        x: MARGIN,
+        y: cursorY,
+        w: CONTENT_WIDTH,
+        h: estimatedTextHeight(textContent(h1), CONTENT_WIDTH, { fontSize: 34, lineHeight: 1.2, bold: true })
+      };
       const el = textElement(titleId, textContent(h1), box, "h1", "{colors.text}");
       el._slideId = slideId;
       elements.push(el);
@@ -2428,13 +2568,12 @@ function convertHybridSlide(slideNode, lookup, slideId) {
 
   const lists = slideNode.childNodes.filter((node) => node.tagName === "UL" || node.tagName === "OL");
   for (const list of lists) {
-    const items = list.querySelectorAll("li");
-    const lines = [...items].map((item) => `• ${textContent(item)}`).join("\n");
-    const box = parseCoords(list) ?? { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: Math.min(2.0, items.length * 0.35) };
-    const el = textElement(nextId("list"), lines, box, "body");
-    el._slideId = slideId;
-    elements.push(el);
-    cursorY = box.y + box.h + 0.2;
+    const converted = listItemElements(list, cursorY);
+    for (const el of converted.elements) {
+      el._slideId = slideId;
+      elements.push(el);
+    }
+    cursorY = converted.bottomY + 0.2;
   }
 
 
@@ -2463,7 +2602,7 @@ function convertSlide(slideNode, slideIndex, options = {}) {
   if (detection.path === "replica") {
     result = convertReplicaSlide(slideNode, options.measurements, slideIndex, slideId);
   } else if (detection.path === "measured") {
-    result = convertMeasuredSlide(slideNode, lookup, slideId);
+    result = convertMeasuredSlide(slideNode, lookup, slideId, options);
   } else if (detection.path === "auto-layout") {
     result = convertAutoLayoutSlide(slideNode, lookup, slideId);
   } else {
@@ -2540,8 +2679,9 @@ function convertAutoPaginatedCards(slideNode, startIndex, options = {}) {
     const slideId = `slide-${String(startIndex + pageIndex + 1).padStart(3, "0")}`;
 
     if (h1) {
-      elements.push(textElement(nextId("title"), textContent(h1), { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: 0.75 }, "h1", "{colors.text}"));
-      cursorY += 0.9;
+      const titleH = estimatedTextHeight(textContent(h1), CONTENT_WIDTH, { fontSize: 34, lineHeight: 1.2, bold: true });
+      elements.push(textElement(nextId("title"), textContent(h1), { x: MARGIN, y: cursorY, w: CONTENT_WIDTH, h: titleH }, "h1", "{colors.text}"));
+      cursorY += titleH + 0.15;
     }
 
     if (subtitle) {
@@ -2588,6 +2728,23 @@ function collectDetectedPalette(slideNode) {
     }
   }
   return [...palette].slice(0, 16);
+}
+
+function collectMetadataSources(root) {
+  const byId = new Map();
+  for (const node of root.querySelectorAll("a[data-source-id][href]")) {
+    const id = String(node.getAttribute("data-source-id") ?? "").trim();
+    const url = String(node.getAttribute("href") ?? "").trim();
+    if (!id || !/^https?:\/\//i.test(url) || byId.has(id)) continue;
+    byId.set(id, {
+      id,
+      url,
+      ...(node.getAttribute("data-source-title") || textContent(node) ? { title: node.getAttribute("data-source-title") || textContent(node) } : {}),
+      ...(node.getAttribute("data-source-publisher") ? { publisher: node.getAttribute("data-source-publisher") } : {}),
+      ...(node.getAttribute("data-accessed-at") ? { accessedAt: node.getAttribute("data-accessed-at") } : {})
+    });
+  }
+  return [...byId.values()];
 }
 
 function buildInputHints(slideNodes, measurements, options = {}) {
@@ -2676,6 +2833,7 @@ export function convertHtmlToManifest(html, options = {}) {
     root.querySelector("title")?.text?.trim() ??
     "Untitled Deck";
   const language = options.language ?? deckNode.getAttribute("data-language") ?? "zh-CN";
+  const metadataSources = collectMetadataSources(root);
 
   const slideNodes = deckNode.querySelectorAll(".pptx-slide, [data-slide]");
   const sourceSlides = slideNodes.length > 0 ? [...slideNodes] : [deckNode];
@@ -2749,7 +2907,8 @@ export function convertHtmlToManifest(html, options = {}) {
           coverage: aggregatedReplicaCoverage
         }
       } : {}),
-      generator: { name: "html-to-manifest-core.mjs" }
+      generator: { name: "html-to-manifest-core.mjs" },
+      ...(metadataSources.length > 0 ? { sources: metadataSources } : {})
     },
     designSystem: {
       source: options.designSystemSource ?? designSystemSource(designId, options),

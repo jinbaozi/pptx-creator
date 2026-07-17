@@ -78,6 +78,8 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
         text: element.text ?? "",
         visibleText: typeof element.visibleText === "string" ? element.visibleText : null,
         src: element.src ?? null,
+        href: element.href ?? null,
+        hyperlinkTooltip: element.hyperlinkTooltip ?? null,
         naturalWidth: Number.isFinite(element.naturalWidth) ? element.naturalWidth : null,
         naturalHeight: Number.isFinite(element.naturalHeight) ? element.naturalHeight : null,
         semantics: element.semantics && typeof element.semantics === "object" ? element.semantics : {},

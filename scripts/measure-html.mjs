@@ -335,9 +335,10 @@ export async function measureHtmlFile(inputPath, options = {}) {
           lineHeight,
           display: style.display,
           writingMode: style.writingMode,
-          listStyleType: style.listStyleType,
-          listStylePosition: style.listStylePosition,
-          alignItems: style.alignItems,
+	          listStyleType: style.listStyleType,
+	          listStylePosition: style.listStylePosition,
+	          verticalAlign: style.verticalAlign,
+	          alignItems: style.alignItems,
           justifyContent: style.justifyContent,
           letterSpacing: style.letterSpacing === "normal" ? null : pxToPt(style.letterSpacing),
           textTransform: style.textTransform,
@@ -462,9 +463,19 @@ export async function measureHtmlFile(inputPath, options = {}) {
             pushDirectTextFragments();
             return;
           }
-	          const text = directText(node, style);
+	          const text = directText(node, style)
+	            || (node.getAttribute("data-pptx-kind") === "text"
+	              ? normalizeTextNodeContent(node.innerText, style.whiteSpace)
+	              : "");
 	          if (kind === "text" && !text) return;
 	          const visibleText = kind === "text" ? renderedEllipsisText(node, style, text) : null;
+	          const anchor = node.matches?.("a[href]") ? node : node.querySelector?.("a[href]") || node.closest?.("a[href]");
+	          const list = node.closest?.("ul,ol");
+	          const listNodes = list ? [...slide.querySelectorAll("ul,ol")] : [];
+	          const listParentId = list
+	            ? list.getAttribute("data-pptx-id") || list.getAttribute("data-id") || list.id || `${slideId}-list-${listNodes.indexOf(list) + 1}`
+	            : null;
+	          const listIndex = list && node.tagName.toLowerCase() === "li" ? [...list.children].indexOf(node) : null;
 	          raw.push({
 	            id,
 	            slideId,
@@ -475,6 +486,8 @@ export async function measureHtmlFile(inputPath, options = {}) {
 		            text,
 		            visibleText,
 	            src: node.getAttribute("src") ?? null,
+	            href: anchor?.getAttribute("href") ?? null,
+	            hyperlinkTooltip: anchor?.getAttribute("title") || anchor?.getAttribute("data-tooltip") || null,
 	            semantics: {
 	              role: node.getAttribute("data-layout-role") || null,
 	              axisDirection: node.getAttribute("data-axis-direction") || null,
@@ -485,7 +498,15 @@ export async function measureHtmlFile(inputPath, options = {}) {
 	              allowOverlapWith: String(node.getAttribute("data-allow-overlap-with") || "")
 	                .split(/[\s,]+/)
 	                .map((value) => value.trim())
-	                .filter(Boolean)
+	                .filter(Boolean),
+	              listParentId,
+	              listIndex,
+	              evidenceKind: node.getAttribute("data-evidence-kind") || null,
+	              sourceIds: String(node.getAttribute("data-source-ids") || "")
+	                .split(/[\s,]+/)
+	                .map((value) => value.trim())
+	                .filter(Boolean),
+	              asOf: node.getAttribute("data-as-of") || null
 	            },
 	            ...(kind === "image" ? { naturalWidth: node.naturalWidth || null, naturalHeight: node.naturalHeight || null } : {}),
 	            style: computedStyleFor(style, rect),

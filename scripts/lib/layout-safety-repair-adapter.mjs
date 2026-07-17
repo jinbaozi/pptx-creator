@@ -16,6 +16,10 @@
  *                                           suggestionKind: "..."}
  *   letter-spacing-too-tight → adjustStyle {style: {letterSpacing: 0}}
  *   contrast-fail           → adjustStyle {style: {color: "#000000"}}
+ *   line-height-too-loose   → adjustStyle using the role-specific suggestion
+ *   text-required-bounds    → resize only when a safe concrete height exists
+ *   list-item-collision     → resize the current item and move the next item
+ *   metric-wrap             → no automatic patch; Host must change composition
  *
  * Every patch (where applicable) carries `suggestionKind` in its
  * `changes` so downstream consumers can discriminate the originating
@@ -137,7 +141,27 @@ export function convertOne(check, slideId) {
       }
       return null;
     }
+    case "text-required-bounds": {
+      if (!elementId) return null;
+      const patches = boundsPatches({ ...check, slideId: effectiveSlideId });
+      return patches.length > 0 ? patches : null;
+    }
+    case "list-item-collision": {
+      if (!elementId) return null;
+      const patches = [];
+      if (typeof check.suggestion?.h === "number") {
+        patches.push({ operation: "resize", targetElementId: elementId, slideId: effectiveSlideId, changes: { h: check.suggestion.h } });
+      }
+      if (check.relatedElementId && typeof check.suggestion?.nextY === "number") {
+        patches.push({ operation: "move", targetElementId: check.relatedElementId, slideId: effectiveSlideId, changes: { y: check.suggestion.nextY } });
+      }
+      return patches.length > 0 ? patches : null;
+    }
     case "line-height-too-tight": {
+      if (!elementId) return null;
+      return [adjustStylePatch({ ...check, slideId: effectiveSlideId }, { style: { lineHeight: 1.4 } })];
+    }
+    case "line-height-too-loose": {
       if (!elementId) return null;
       return [adjustStylePatch({ ...check, slideId: effectiveSlideId }, { style: { lineHeight: 1.4 } })];
     }

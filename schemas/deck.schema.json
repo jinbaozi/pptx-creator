@@ -67,6 +67,29 @@
           "then": { "required": ["x", "y", "w", "h"] }
         }
       ]
+    },
+    "hyperlink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "tooltip": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["official-fact", "vendor-claim", "secondary-report", "internal-recommendation"] },
+        "sourceIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "asOf": { "type": "string", "format": "date" }
+      }
     }
   },
   "properties": {
@@ -85,7 +108,23 @@
           }
         },
         "replicaSource": { "type": "object" },
-        "generator": { "type": "object" }
+        "generator": { "type": "object" },
+        "sources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "url"],
+            "properties": {
+              "id": { "$ref": "#/$defs/nonEmptyString" },
+              "url": { "type": "string", "format": "uri", "pattern": "^https?://" },
+              "title": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "publisher": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "accessedAt": { "type": "string", "format": "date" }
+            }
+          }
+        }
       },
       "additionalProperties": false
     },
@@ -177,6 +216,10 @@
                   "uniqueItems": true,
                   "items": { "type": "string", "minLength": 1 }
                 },
+                "listParentId": { "$ref": "#/$defs/nonEmptyString" },
+                "listIndex": { "type": "integer", "minimum": 0 },
+                "hyperlink": { "$ref": "#/$defs/hyperlink" },
+                "evidence": { "$ref": "#/$defs/evidence" },
                 "connector": {
                   "type": "object",
                   "additionalProperties": false,

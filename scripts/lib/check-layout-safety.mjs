@@ -57,6 +57,7 @@
 
 import { expandChartElement } from "./chart-renderer.mjs";
 import { expandDiagramElement } from "./diagram-compiler.mjs";
+import { measureTextElement } from "./text-fit.mjs";
 import {
   boundaryAnchor,
   connectorDirectionDot,
@@ -81,6 +82,20 @@ const FONT_SIZE_RULES = {
   metric: { critical: 24, warning: 32 }
 };
 
+const CREATIVE_FONT_SIZE_RULES = {
+  body: { critical: 16, warning: 16 },
+  "list-item": { critical: 16, warning: 16 },
+  caption: { critical: 9, warning: 9 },
+  source: { critical: 9, warning: 9 },
+  label: { critical: 11, warning: 11 },
+  "table-header": { critical: 11, warning: 11 },
+  "card-title": { critical: 18, warning: 18 },
+  heading: { critical: 18, warning: 18 },
+  "card-metric": { critical: 20, warning: 28 },
+  title: { critical: 28, warning: 28 },
+  metric: { critical: 24, warning: 32 }
+};
+
 const LINE_HEIGHT_RULES = {
   body: { critical: 1.0, warning: 1.35 },
   caption: { critical: 1.0, warning: 1.35 },
@@ -89,6 +104,20 @@ const LINE_HEIGHT_RULES = {
   title: { critical: 0.95, warning: 1.10 },
   heading: { critical: 0.95, warning: 1.10 },
   metric: { critical: 0.90, warning: 1.0 }
+};
+
+const LINE_HEIGHT_MAXIMUMS = {
+  body: 1.8,
+  "list-item": 1.8,
+  caption: 1.8,
+  source: 1.6,
+  label: 1.5,
+  "table-header": 1.4,
+  "card-title": 1.4,
+  heading: 1.4,
+  "card-metric": 1.2,
+  title: 1.4,
+  metric: 1.2
 };
 
 const CONTRAST_RULES = {
@@ -211,7 +240,10 @@ function roleFromTypographyToken(value, tokens) {
 function roleFromId(id) {
   if (typeof id !== "string") return null;
   const lower = id.toLowerCase();
+  if (/table[-_]?header|(^|[-_])th([-_]|$)/.test(lower)) return "table-header";
   if (/metric|kpi|stat|big-number/.test(lower)) return "metric";
+  if (/source/.test(lower)) return "source";
+  if (/label/.test(lower)) return "label";
   if (/subtitle/.test(lower)) return "body";
   if (/title|hero|headline/.test(lower)) return "title";
   if (/heading/.test(lower)) return "heading";
@@ -287,12 +319,13 @@ export function checkBounds(element, deckSize) {
  * fontSize falls below the role-specific threshold, else null. When no
  * role can be inferred, falls back to body thresholds.
  */
-export function checkFontSize(element, tokens) {
+export function checkFontSize(element, tokens, options = {}) {
   if (!element || element.type !== "text") return null;
   const typography = resolveTokenString(element?.style?.typography, tokens);
   const fontSize = num(element?.style?.fontSize, num(typography?.fontSize, 16));
   const role = inferRole(element, tokens);
-  const rules = FONT_SIZE_RULES[role] ?? FONT_SIZE_RULES.body;
+  const ruleSet = options.creative === true ? CREATIVE_FONT_SIZE_RULES : FONT_SIZE_RULES;
+  const rules = ruleSet[role] ?? ruleSet.body;
   if (fontSize < rules.critical) {
     return {
       severity: "high",
@@ -484,6 +517,16 @@ function checkLineHeight(slide, tokens) {
         target: el.id
       });
     }
+    const maximum = LINE_HEIGHT_MAXIMUMS[role] ?? LINE_HEIGHT_MAXIMUMS.body;
+    if (lineHeight > maximum) {
+      issues.push({
+        severity: "high",
+        type: "line-height-too-loose",
+        message: `Element ${el.id} has line-height ${lineHeight}, above maximum ${maximum} for role ${role}.`,
+        target: el.id,
+        suggestion: { style: { lineHeight: role === "table-header" ? 1.2 : maximum, ...(role === "table-header" ? { valign: "middle" } : {}) } }
+      });
+    }
   }
   return issues;
 }
@@ -536,6 +579,141 @@ function checkTextOverflow(slide, tokens) {
         target: el.id
       });
     }
+  }
+  return issues;
+}
+
+function measuredTextResult(element, tokens, options = {}) {
+  const typography = resolveTokenString(element.style?.typography, tokens);
+  const font = {
+    fontFamily: element.style?.fontFamily ?? typography?.fontFamily,
+    fontWeight: element.style?.fontWeight ?? typography?.fontWeight ?? 400,
+    italic: element.style?.italic ?? false,
+    allowFallback: true
+  };
+  const measureText = options.measureText
+    ?? (typeof options.fontCatalog?.measureText === "function" ? options.fontCatalog.measureText.bind(options.fontCatalog) : undefined);
+  return measureTextElement(element, { tokens, measureText, font, maxHeight: Number(element.h) });
+}
+
+function checkMetricWrap(slide, tokens, options = {}) {
+  const issues = [];
+  for (const element of slide.elements ?? []) {
+    if (element?.type !== "text") continue;
+    const role = inferRole(element, tokens);
+    if (!['metric', 'card-metric'].includes(role)) continue;
+    const measured = measuredTextResult(element, tokens, options);
+    if (measured.lineCount <= 1) continue;
+    issues.push({
+      severity: "high",
+      type: "metric-wrap",
+      message: `Metric ${element.id} wraps to ${measured.lineCount} lines; replace it with a metric group, price group, or wider layout.`,
+      target: element.id,
+      suggestion: {
+        operation: "host-reflow",
+        alternatives: ["metric-group", "price-group", "wider-layout"],
+        automaticTextSplit: false
+      }
+    });
+  }
+  return issues;
+}
+
+function checkTextRequiredBounds(slide, tokens, options = {}) {
+  const issues = [];
+  const elements = Array.isArray(slide.elements) ? slide.elements : [];
+  const byId = new Map(elements.filter((element) => element?.id).map((element) => [element.id, element]));
+  for (const element of elements) {
+    if (element?.type !== "text" || !String(element.text ?? "")) continue;
+    const measured = measuredTextResult(element, tokens, options);
+    const paintedBottom = num(element.y) + measured.requiredHeight;
+    const parent = element.semanticParentId ? byId.get(element.semanticParentId) : null;
+    const exceedsBox = measured.requiredHeight > num(element.h) + TOLERANCE_IN;
+    const exceedsParent = parent && isExplicitContainmentSurface(parent)
+      && paintedBottom > num(parent.y) + num(parent.h) + CONTAINMENT_TOLERANCE_IN;
+    if (!exceedsBox && !exceedsParent) continue;
+    issues.push({
+      severity: "high",
+      type: "text-required-bounds",
+      message: exceedsParent
+        ? `Rendered text for ${element.id} requires ${measured.requiredHeight.toFixed(3)}in and escapes semantic parent ${parent.id}.`
+        : `Rendered text for ${element.id} requires ${measured.requiredHeight.toFixed(3)}in but its textbox height is ${num(element.h).toFixed(3)}in.`,
+      target: element.id,
+      ...(exceedsParent ? { relatedTarget: parent.id } : {}),
+      suggestion: { h: measured.requiredHeight }
+    });
+  }
+  return issues;
+}
+
+function checkListItemCollision(slide, tokens, options = {}) {
+  const groups = new Map();
+  for (const element of slide.elements ?? []) {
+    if (element?.type !== "text" || !element.listParentId) continue;
+    if (!groups.has(element.listParentId)) groups.set(element.listParentId, []);
+    groups.get(element.listParentId).push(element);
+  }
+  const issues = [];
+  for (const [listParentId, items] of groups) {
+    const ordered = [...items].sort((a, b) => (num(a.listIndex, Number.MAX_SAFE_INTEGER) - num(b.listIndex, Number.MAX_SAFE_INTEGER)) || num(a.y) - num(b.y));
+    for (let index = 0; index < ordered.length - 1; index += 1) {
+      const current = ordered[index];
+      const next = ordered[index + 1];
+      const measured = measuredTextResult(current, tokens, options);
+      const paintedBottom = num(current.y) + Math.max(num(current.h), measured.requiredHeight);
+      if (paintedBottom <= num(next.y) + TOLERANCE_IN) continue;
+      issues.push({
+        severity: "high",
+        type: "list-item-collision",
+        message: `List ${listParentId} item ${current.id} intersects following item ${next.id}.`,
+        target: current.id,
+        relatedTarget: next.id,
+        suggestion: { h: measured.requiredHeight, nextY: paintedBottom + (num(current.style?.fontSize, 16) / 72) * 0.35 }
+      });
+    }
+  }
+  return issues;
+}
+
+function checkSourceLinks(slide) {
+  const issues = [];
+  for (const element of slide.elements ?? []) {
+    if (element?.type !== "text") continue;
+    const sourceMarked = inferRole(element) === "source" || /source|来源|参考/.test(`${element.id ?? ""} ${element.role ?? ""}`.toLowerCase());
+    if (!sourceMarked || !/https?:\/\/\S+/i.test(String(element.text ?? ""))) continue;
+    if (/^https?:\/\//i.test(String(element.hyperlink?.url ?? ""))) continue;
+    issues.push({
+      severity: "high",
+      type: "source-link-missing",
+      message: `Source element ${element.id} displays a URL but has no clickable hyperlink relationship.`,
+      target: element.id
+    });
+  }
+  return issues;
+}
+
+function checkEvidenceLabels(slide) {
+  const issues = [];
+  for (const element of slide.elements ?? []) {
+    if (element?.type !== "text" || !element.evidence) continue;
+    const kind = element.evidence.kind;
+    const sourceIds = Array.isArray(element.evidence.sourceIds) ? element.evidence.sourceIds : [];
+    const text = String(element.text ?? "");
+    const visibleLabel = kind === "vendor-claim"
+      ? /厂商声明|厂商口径|vendor claim/i.test(text)
+      : kind === "internal-recommendation"
+        ? /内部建议|内部判断|internal recommendation/i.test(text)
+        : true;
+    const requiresSource = ["official-fact", "vendor-claim", "secondary-report"].includes(kind);
+    if (visibleLabel && (!requiresSource || sourceIds.length > 0)) continue;
+    issues.push({
+      severity: "high",
+      type: "evidence-label-missing",
+      message: !visibleLabel
+        ? `Evidence element ${element.id} is ${kind} but lacks a visible audience-facing label.`
+        : `Evidence element ${element.id} is ${kind} but is not bound to a registered source.`,
+      target: element.id
+    });
   }
   return issues;
 }
@@ -874,6 +1052,7 @@ function checkLetterSpacing(slide, tokens) {
 function preflightSlide(slide, deckSize, tokens, options = {}) {
   const checks = [];
   const elements = Array.isArray(slide.elements) ? slide.elements : [];
+  const htmlTextContracts = options.inputType === "html";
 
   // (1) bounds — one issue per element.
   for (const el of elements) {
@@ -898,12 +1077,24 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
     for (const issue of checkFooterSafeArea(slide)) {
       checks.push({ ...issue, severity: "warning" });
     }
+    for (const issue of checkLineHeight(slide, tokens)) {
+      checks.push({ ...issue, severity: "warning" });
+    }
+    for (const issue of checkTextRequiredBounds(slide, tokens, options)) {
+      // Browser-measured HTML text has authoritative CSS metrics. Image/PDF
+      // replica text boxes are OCR/reconstruction bounds, so heuristic font
+      // metrics may legitimately exceed those boxes without proving clipping.
+      checks.push({ ...issue, severity: options.inputType === "html" ? "critical" : "warning" });
+    }
+    for (const issue of checkListItemCollision(slide, tokens, options)) {
+      checks.push({ ...issue, severity: "critical" });
+    }
     return checks;
   }
 
   // (3) role-aware font-size — text-only.
   for (const el of elements) {
-    const issue = checkFontSize(el, tokens);
+    const issue = checkFontSize(el, tokens, { creative: options.creativeFontFloors === true });
     if (issue) {
       checks.push({
         ...issue,
@@ -927,7 +1118,30 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
 
   // (4) line-height.
   for (const issue of checkLineHeight(slide, tokens)) {
+    if (issue.type === "line-height-too-loose" && !htmlTextContracts) continue;
     checks.push({ ...issue, severity: issue.severity === "high" ? "critical" : "warning" });
+  }
+
+  if (htmlTextContracts) {
+    for (const issue of checkMetricWrap(slide, tokens, options)) {
+      checks.push({ ...issue, severity: "critical" });
+    }
+
+    for (const issue of checkTextRequiredBounds(slide, tokens, options)) {
+      checks.push({ ...issue, severity: "critical" });
+    }
+
+    for (const issue of checkListItemCollision(slide, tokens, options)) {
+      checks.push({ ...issue, severity: "critical" });
+    }
+  }
+
+  for (const issue of checkSourceLinks(slide)) {
+    checks.push({ ...issue, severity: "critical" });
+  }
+
+  for (const issue of checkEvidenceLabels(slide)) {
+    checks.push({ ...issue, severity: "critical" });
   }
 
   for (const issue of checkVerticalGapBalance(slide, tokens)) {
@@ -1009,6 +1223,9 @@ export function preflightLayout(manifest, options = {}) {
     });
     const slideChecks = preflightSlide({ ...slide, elements: expandedElements }, deckSize, tokens, {
       ...options,
+      creativeFontFloors: options.creativeFontFloors
+        ?? (safeManifest.metadata?.qualityProfile === "creative" && safeManifest.metadata?.inputType === "html"),
+      inputType: options.inputType ?? safeManifest.metadata?.inputType,
       visibleGrid: safeManifest.metadata?.designIntent?.visibleGrid === true
     });
     for (const check of slideChecks) {
@@ -1052,7 +1269,13 @@ const KIND_MAP = Object.freeze({
   "vertical-gap-imbalance": "vertical-gap-imbalance",
   "font-size": "font-too-small",
   "line-height-too-tight": "line-height-too-tight",
+  "line-height-too-loose": "line-height-too-loose",
   "text-overflow": "text-overflow",
+  "metric-wrap": "metric-wrap",
+  "text-required-bounds": "text-required-bounds",
+  "list-item-collision": "list-item-collision",
+  "source-link-missing": "source-link-missing",
+  "evidence-label-missing": "evidence-label-missing",
   "card-spacing-tight": "card-spacing-tight",
   "connector-detached": "connector-detached",
   "connector-direction": "connector-direction",
@@ -1166,7 +1389,9 @@ export function formatReport(result, options = {}) {
 export const __test__ = {
   DEFAULT_DECK_SIZE,
   FONT_SIZE_RULES,
+  CREATIVE_FONT_SIZE_RULES,
   LINE_HEIGHT_RULES,
+  LINE_HEIGHT_MAXIMUMS,
   CONTRAST_RULES,
   TOLERANCE_IN,
   CONTAINMENT_TOLERANCE_IN,

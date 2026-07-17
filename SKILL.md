@@ -5,8 +5,7 @@ description: Route editable PowerPoint creation from text, HTML, images, or PDF,
 
 # PPTX Creator Router
 
-Select exactly one route from the input and requested outcome. Read only that
-route contract and its listed next references before acting.
+Select exactly one route, then read only its contract and listed references.
 
 | Route | Select when | Contract |
 |---|---|---|
@@ -16,33 +15,21 @@ route contract and its listed next references before acting.
 | `pdf-replica` | PDF pages are the visual source | `references/routes/pdf-replica.md` |
 | `manifest-repair` | An existing manifest plus a bounded patch is repaired | `references/routes/manifest-repair.md` |
 
-The `text` route is Creative Director-led and HTML-first by default. Before any
-PPT coordinates exist, the host defines the communication task, narrative,
-visual concept, typography, palette, composition rules, image strategy,
-editability target, and connector semantics. It then authors a complete local
-`deck.html`, visually proves and repairs that 1280x720 HTML, freezes the repaired
-HTML as the visual source (`deck.repaired.html`), and runs the strict
-HTML-to-native-PPTX replica compiler. The final deck must preserve native text, shapes, tables, charts, and
-semantic connectors; a full-slide screenshot is forbidden.
+The `text` route is Creative Director-led and HTML-first by default. Define the narrative
+and visual system, author and visually repair a 1280x720 `deck.html`; the Host
+freezes the repaired HTML as the visual source (`deck.repaired.html`), then compiles native objects.
 
-Do not deliver a deck produced by calling PptxGenJS, Artifact Tool, Office API,
-or another renderer directly. Those may be implementation details or local
-diagnostics only. A final text-route deliverable must be created by the packaged
-entry point `npm run pptx -- text ...` and must carry its layout, PPTX geometry,
-object-lineage, final-review, QA, and output-index evidence.
+Final text deliverables must use `npm run pptx -- text ...` and carry layout,
+geometry, object-lineage, final-review, QA, and output-index evidence.
+Do not deliver by invoking PptxGenJS, Office API, or another renderer directly;
+those are implementation details and diagnostics only.
 
-Style resolution is Host-owned. An explicit user-requested style, brand,
-template, or visual reference wins. When the user does not specify a style, the
-Host judges it from the audience, content, delivery context, and readability.
-Built-ins are candidates, never automatic topic-based defaults; AI, cloud,
-security, or developer-tool content must not automatically select `dark-tech`.
+User style, brand, template, or reference wins. Otherwise the Host selects from
+audience and context; built-ins are candidates, never topic-based defaults.
 
-The former `deck.plan.json -> Semantic Slide IR` compiler remains available
-only through explicit `--native` compatibility mode. Direct manifest rendering
-still requires `--direct`. Neither compatibility path is the default.
-The `--native` route retains its composition-block, direction-probe, Creative
-Proof, resumable final-review, refinement, and benchmark contracts for existing
-integrations. Those contracts do not override the default HTML-first route.
+Legacy `deck.plan.json -> Semantic Slide IR` requires explicit `--native` compatibility mode;
+direct manifest rendering requires `--direct`. Both retain their compatibility
+contracts but never override the default HTML-first route.
 
 ## Shared invariants
 
@@ -59,6 +46,13 @@ integrations. Those contracts do not override the default HTML-first route.
   fidelity is proved through the replica compiler. Unapproved content or
   decorative occlusion, unsafe CJK line height, and unbalanced layout-region
   gaps are blocking defects.
+- Block wrapped metrics; use metric/price groups, more width, or another slide.
+- Lists use natural `<ul>/<ol>/<li>` flow and retain measured item geometry.
+- Single-line table headers use `valign: middle` and line height `1.0–1.4`.
+- Bind facts/claims/recommendations to typed evidence and clickable sources;
+  visibly label vendor claims and internal recommendations.
+- Creative floors: title 28pt, card title 18pt, body/list 16pt, label/header
+  11pt, source 9pt. Repair cannot cross them. See authoring and QA references.
 - Every HTML-first final review is packet-bound to the repaired HTML, manifest,
   candidate PPTX, geometry report, contact sheet, and every full-size slide.
   It explicitly records `noOcclusion`, `textRhythm`, `whitespaceBalance`,

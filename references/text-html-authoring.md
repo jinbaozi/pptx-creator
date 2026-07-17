@@ -36,7 +36,17 @@ direction.
   a global exemption.
 - CJK body copy must use computed line-height at least 1.20 (1.35 preferred),
   and adjacent list items need at least 0.35em paragraph spacing. Use real
-  `<ul>/<ol>/<li>` markup instead of separate dot and text objects.
+  `<ul>/<ol>/<li>` markup instead of separate dot and text objects. Keep every
+  `li` at natural height; do not use a shared fixed height.
+- Keep Creative text at or above these post-compilation floors: slide title
+  28pt, card title 18pt, body/list 16pt, label/table header 11pt, source 9pt.
+- Mark atomic metrics with `data-layout-role="metric"`. If browser measurement
+  wraps one onto a second line, change the component to a price group, metric
+  group, wider layout, or another slide. Do not shrink below the role floor and
+  do not let an automatic repair split prices, dates, or formulas.
+- Use `vertical-align: middle` or flex centering for a single-line `<th>` and a
+  computed line-height in the 1.0–1.4 range. Do not use oversized line-height to
+  push text toward the center.
 - Mark native text, shape, image, table, chart, and line intent with supported
   semantic markup or `data-pptx-kind`.
 - Mark footer rules and folios explicitly with `data-layout-role="footer-decoration"`
@@ -47,6 +57,26 @@ direction.
   full-slide rasters are forbidden.
 - Keep all runtime assets local. Remote URLs are provenance only after
   localization.
+- Register cited sources on clickable anchors with `data-source-id` and `href`.
+  Mark claims with `data-evidence-kind`, `data-source-ids`, and `data-as-of`:
+
+```html
+<p data-pptx-kind="text"
+   data-pptx-id="claim-k3"
+   data-evidence-kind="vendor-claim"
+   data-source-ids="vendor-doc"
+   data-as-of="2026-07-17">厂商声明：该数字来自公开技术文档。</p>
+<a data-pptx-kind="text"
+   data-pptx-id="source-k3"
+   data-layout-role="source"
+   data-source-id="vendor-doc"
+   href="https://example.com/vendor-doc">https://example.com/vendor-doc</a>
+```
+
+  Use one of `official-fact`, `vendor-claim`, `secondary-report`, or
+  `internal-recommendation`. Vendor claims and internal recommendations must
+  include the visible label in the slide copy; official, vendor, and secondary
+  evidence must bind at least one registered source.
 - Do not use generic cards, short floating rules, or decorative arrows as a
   substitute for explaining a relationship.
 
@@ -88,6 +118,10 @@ repaired HTML file becomes the replica source. Then measure DOM geometry,
 compile native objects, render the PPTX, compare its pages with the frozen HTML,
 and repair bounded object drift at most three times. Packaging is rejected when
 connector checks, content coverage, editability, fidelity proof, or final visual
-inspection fails. Automatic repairs run in the order container reflow, text
-rhythm/spacing adjustment, then decorative movement/scaling. They must not
-shrink body copy or clip content to silence a gate.
+inspection fails. Automatic repairs run in this order: normalize line height,
+vertical alignment, and natural list height; grow text inside the semantic
+parent and footer-safe band; reflow siblings or grow the parent; change card
+columns or paginate; only then reduce type without crossing its role floor.
+Re-run text fit and layout safety after every change, for at most three rounds.
+A `metric-wrap` finding is Host-owned and is never automatically split. Repairs
+must not clip content to silence a gate.

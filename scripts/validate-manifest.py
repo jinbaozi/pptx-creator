@@ -7,6 +7,7 @@ from pathlib import Path
 HEX = "0123456789abcdefABCDEF"
 CHART_KINDS = {"bar", "line", "pie", "stackedBar", "horizontalBar", "groupedBar", "kpiGroup", "sparkline"}
 DIAGRAM_KINDS = {"layeredArchitecture", "compilerPipeline", "capabilityStack", "swimlane", "matrixMap"}
+EVIDENCE_KINDS = {"official-fact", "vendor-claim", "secondary-report", "internal-recommendation"}
 
 
 def fail(message: str) -> None:
@@ -61,13 +62,24 @@ def validate_metadata(data: dict) -> None:
     require(metadata.get("mode") in {"direct", "creative", "replica", "repair"}, "metadata.mode must be direct, creative, replica, or repair")
     require(metadata.get("inputType") in {"text", "html", "image", "pdf", "manifest", "mixed"}, "metadata.inputType must be text, html, image, pdf, manifest, or mixed")
     require(metadata.get("qualityProfile") in {"light", "creative", "replica"}, "metadata.qualityProfile must be light, creative, or replica")
-    unknown = set(metadata) - {"mode", "inputType", "qualityProfile", "designIntent", "replicaSource", "generator"}
+    unknown = set(metadata) - {"mode", "inputType", "qualityProfile", "designIntent", "replicaSource", "generator", "sources"}
     require(not unknown, f"unsupported metadata field: {', '.join(sorted(unknown))}")
     for key in ("designIntent", "replicaSource", "generator"):
         if key in metadata:
             require(isinstance(metadata[key], dict), f"metadata.{key} must be an object")
     if "designIntent" in metadata and "visibleGrid" in metadata["designIntent"]:
         require(isinstance(metadata["designIntent"]["visibleGrid"], bool), "metadata.designIntent.visibleGrid must be boolean")
+    sources = metadata.get("sources", [])
+    require(isinstance(sources, list), "metadata.sources must be an array")
+    source_ids = set()
+    for index, source in enumerate(sources):
+        require(isinstance(source, dict), f"metadata.sources[{index}] must be an object")
+        source_id = source.get("id")
+        require(isinstance(source_id, str) and source_id, f"metadata.sources[{index}].id is required")
+        require(source_id not in source_ids, f"duplicate metadata source id: {source_id}")
+        source_ids.add(source_id)
+        source_url = source.get("url")
+        require(isinstance(source_url, str) and is_remote_src(source_url), f"metadata.sources[{index}].url must be HTTP(S)")
 
 
 def validate_deck(data: dict) -> tuple[float, float]:
@@ -207,6 +219,20 @@ def validate_element(element: dict, slide_id: str, width: float, height: float, 
             require(isinstance(element.get("columns"), list) and element["columns"], f"{slide_id}/{element['id']}: matrixMap columns are required")
     if "style" in element:
         require(isinstance(element["style"], dict), f"{slide_id}/{element['id']}: style must be an object")
+    hyperlink = element.get("hyperlink")
+    if hyperlink is not None:
+        require(element["type"] in {"text", "shape", "image"}, f"{slide_id}/{element['id']}: hyperlink is supported only for text, shape, or image")
+        require(isinstance(hyperlink, dict), f"{slide_id}/{element['id']}: hyperlink must be an object")
+        require(isinstance(hyperlink.get("url"), str) and is_remote_src(hyperlink["url"]), f"{slide_id}/{element['id']}: hyperlink.url must be HTTP(S)")
+        if "tooltip" in hyperlink:
+            require(isinstance(hyperlink["tooltip"], str) and hyperlink["tooltip"], f"{slide_id}/{element['id']}: hyperlink.tooltip must be a non-empty string")
+    evidence = element.get("evidence")
+    if evidence is not None:
+        require(element["type"] == "text", f"{slide_id}/{element['id']}: evidence is supported only for text")
+        require(isinstance(evidence, dict), f"{slide_id}/{element['id']}: evidence must be an object")
+        require(evidence.get("kind") in EVIDENCE_KINDS, f"{slide_id}/{element['id']}: unsupported evidence.kind")
+        source_ids = evidence.get("sourceIds", [])
+        require(isinstance(source_ids, list) and all(isinstance(value, str) and value for value in source_ids), f"{slide_id}/{element['id']}: evidence.sourceIds must be non-empty strings")
 
 
 def validate_slides(data: dict, width: float, height: float, manifest_path: Path) -> None:
@@ -234,6 +260,11 @@ def validate_slides(data: dict, width: float, height: float, manifest_path: Path
             require(element_id not in seen_elements, f"{slide_id}: duplicate element id: {element_id}")
             seen_elements.add(element_id)
             validate_element(element, slide_id, width, height, manifest_path, data.get("assets", []))
+            evidence = element.get("evidence")
+            if evidence:
+                registered = {source.get("id") for source in data.get("metadata", {}).get("sources", [])}
+                unknown_sources = sorted(set(evidence.get("sourceIds", [])) - registered)
+                require(not unknown_sources, f"{slide_id}/{element_id}: unknown evidence source id: {', '.join(unknown_sources)}")
         non_line_ids = {element.get("id") for element in slide.get("elements", []) if element.get("type") != "line"}
         for element in slide.get("elements", []):
             if element.get("type") != "line":

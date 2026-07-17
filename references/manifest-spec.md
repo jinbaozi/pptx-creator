@@ -123,6 +123,48 @@ or `layoutRegion` such as `footer-decoration`, `slide-number`, or `footer`.
 Non-footer content must end above the earliest marked footer element; entering
 that band is a blocking layout-safety collision in Creative runs.
 
+Text, shape, and image elements may carry a clickable hyperlink:
+
+```json
+{
+  "hyperlink": {
+    "url": "https://example.com/source",
+    "tooltip": "Open source"
+  }
+}
+```
+
+The renderer writes this as a native PPTX hyperlink relationship. HTML
+compilation reads `href` and an optional `title`/`data-tooltip`. Displaying a
+source URL in a source-marked text element without `hyperlink.url` is a blocking
+Creative defect.
+
+`metadata.sources` optionally registers evidence sources as objects with
+required `id` and HTTP(S) `url`, plus optional `title`, `publisher`, and
+`accessedAt`. A text element may bind evidence without changing its visual
+appearance:
+
+```json
+{
+  "evidence": {
+    "kind": "vendor-claim",
+    "sourceIds": ["vendor-doc"],
+    "asOf": "2026-07-17"
+  }
+}
+```
+
+Allowed kinds are `official-fact`, `vendor-claim`, `secondary-report`, and
+`internal-recommendation`. HTML uses `data-evidence-kind`, `data-source-ids`,
+and `data-as-of`. Official facts, vendor claims, and secondary reports bind a
+registered source. Vendor claims and internal recommendations also require a
+visible audience-facing label; evidence metadata alone never silently adds
+slide copy.
+
+Compiled list-item text may carry `listParentId` and zero-based `listIndex` in
+addition to `semanticParentId` and `layoutRegion`. These fields preserve natural
+`li` height and order so the layout gate can reject item collisions.
+
 v0.2 supports native-rendered `chart` elements with `kind: "bar"`. v0.3 also supports `line` and `pie`. The visual roadmap extension also accepts `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`; these newer kinds expand into editable primitive text, shape, and line elements before rendering:
 
 ```json
