@@ -165,6 +165,16 @@ Compiled list-item text may carry `listParentId` and zero-based `listIndex` in
 addition to `semanticParentId` and `layoutRegion`. These fields preserve natural
 `li` height and order so the layout gate can reject item collisions.
 
+Text elements may declare `maxLines: 1 | 2`. Slide-title text defaults to one
+line when omitted. The layout gate compares measured line count and painted
+text bottom against this contract; content must start at least `0.12in` below
+that painted bottom. Critical title text must not depend on viewer autofit.
+
+Rounded-rectangle containers may declare `safeInset` in inches; the HTML
+compiler supplies `0.12` when omitted. Semantic children must be contained by
+the inset rectangle so labels and axes cannot enter the rounded-corner tangent
+zone.
+
 v0.2 supports native-rendered `chart` elements with `kind: "bar"`. v0.3 also supports `line` and `pie`. The visual roadmap extension also accepts `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`; these newer kinds expand into editable primitive text, shape, and line elements before rendering:
 
 ```json

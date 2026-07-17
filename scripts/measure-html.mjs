@@ -489,8 +489,19 @@ export async function measureHtmlFile(inputPath, options = {}) {
 	            href: anchor?.getAttribute("href") ?? null,
 	            hyperlinkTooltip: anchor?.getAttribute("title") || anchor?.getAttribute("data-tooltip") || null,
 	            semantics: {
-	              role: node.getAttribute("data-layout-role") || null,
-	              axisDirection: node.getAttribute("data-axis-direction") || null,
+		              role: node.getAttribute("data-layout-role") || (tagName === "h1" ? "title" : null),
+		              maxLines: (() => {
+		                const raw = node.getAttribute("data-max-lines");
+		                if (raw === null && tagName === "h1") return 1;
+		                const value = Number(raw);
+		                return Number.isInteger(value) && value >= 1 && value <= 2 ? value : null;
+		              })(),
+		              safeInset: (() => {
+		                const raw = node.getAttribute("data-safe-inset");
+		                const value = Number(raw);
+		                return raw !== null && Number.isFinite(value) && value >= 0 ? value : null;
+		              })(),
+		              axisDirection: node.getAttribute("data-axis-direction") || null,
 	              semanticParentId: node.getAttribute("data-semantic-parent-id") || null,
 	              layoutRegion: node.getAttribute("data-layout-region")
 	                || node.closest("[data-layout-region]")?.getAttribute("data-layout-region")

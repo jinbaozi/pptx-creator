@@ -1300,6 +1300,10 @@ function replicaShapeElement(id, measurement) {
       transparency: style.backgroundColor ? (cssCombinedTransparency(style, "backgroundTransparency") ?? 0) : 100
     }
   };
+  if (element.shape === "roundRect") {
+    const explicitInset = Number(measurement?.semantics?.safeInset);
+    element.safeInset = Number.isFinite(explicitInset) && explicitInset >= 0 ? explicitInset : 0.12;
+  }
   const hyperlink = measurementHyperlink(measurement);
   if (hyperlink) element.hyperlink = hyperlink;
   const gradient = parseCssSupportedGradient(style.backgroundImage);
@@ -1395,6 +1399,7 @@ function replicaTextElement(id, measurement, options = {}) {
     type: "text",
     id,
     ...(tagName === "th" && !semantics.role ? { role: "table-header" } : {}),
+    ...(Number.isInteger(semantics.maxLines) ? { maxLines: semantics.maxLines } : {}),
     text,
     ...measuredBox(measurement),
     ...(hyperlink ? { hyperlink } : {}),
@@ -2030,7 +2035,16 @@ function nodeLayoutRegion(node) {
 }
 
 function applyNodeLayoutSemantics(element, node) {
-  const role = node.getAttribute("data-layout-role");
+  const tagName = String(node.tagName ?? "").toLowerCase();
+  const role = node.getAttribute("data-layout-role") || (tagName === "h1" ? "title" : null);
+  const rawMaxLines = node.getAttribute("data-max-lines");
+  const parsedMaxLines = rawMaxLines === null && tagName === "h1" ? 1 : Number(rawMaxLines);
+  const maxLines = Number.isInteger(parsedMaxLines) && parsedMaxLines >= 1 && parsedMaxLines <= 2 ? parsedMaxLines : null;
+  const rawSafeInset = node.getAttribute("data-safe-inset");
+  const explicitSafeInset = Number(rawSafeInset);
+  const safeInset = rawSafeInset !== null && Number.isFinite(explicitSafeInset) && explicitSafeInset >= 0
+    ? explicitSafeInset
+    : element.shape === "roundRect" ? 0.12 : null;
   const axisDirection = node.getAttribute("data-axis-direction");
   const semanticParentId = node.getAttribute("data-semantic-parent-id");
   const layoutRegion = nodeLayoutRegion(node);
@@ -2046,6 +2060,8 @@ function applyNodeLayoutSemantics(element, node) {
   return {
     ...element,
     ...(role ? { role } : {}),
+    ...(maxLines ? { maxLines } : {}),
+    ...(safeInset !== null ? { safeInset } : {}),
     ...(axisDirection ? { axisDirection } : {}),
     ...(semanticParentId ? { semanticParentId } : {}),
     ...(layoutRegion ? { layoutRegion } : {}),
@@ -2193,9 +2209,11 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
     const normalized = (Array.isArray(layerElements) ? layerElements : [layerElements]).map((element) => {
       if (element?.id !== measurement.id) return element;
       const semantics = measurement.semantics ?? {};
-      return {
+      const measuredElement = {
         ...element,
         ...(semantics.role ? { role: semantics.role } : {}),
+        ...(Number.isInteger(semantics.maxLines) ? { maxLines: semantics.maxLines } : {}),
+        ...(Number.isFinite(Number(semantics.safeInset)) ? { safeInset: Number(semantics.safeInset) } : {}),
         ...(semantics.axisDirection ? { axisDirection: semantics.axisDirection } : {}),
         ...(semantics.semanticParentId ? { semanticParentId: semantics.semanticParentId } : {}),
         ...(semantics.layoutRegion ? { layoutRegion: semantics.layoutRegion } : {}),
@@ -2206,6 +2224,8 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
           : {}),
         ...(evidenceFromSemantics(semantics) ? { evidence: evidenceFromSemantics(semantics) } : {})
       };
+      const sourceNode = findNodeByMeasurementId(slideNode, measurement.id);
+      return sourceNode ? applyNodeLayoutSemantics(measuredElement, sourceNode) : measuredElement;
     });
     layers.push({
       zIndex: replicaZIndex(measurement),
@@ -2367,7 +2387,12 @@ function convertAutoLayoutSlide(slideNode, lookup, slideId) {
       w: CONTENT_WIDTH,
       h: estimatedTextHeight(textContent(h1), CONTENT_WIDTH, { fontSize: 34, lineHeight: 1.2, bold: true })
     };
-    elements.push(textElement(titleId, textContent(h1), box, "h1", "{colors.text}"));
+    const title = textElement(titleId, textContent(h1), box, "h1", "{colors.text}");
+    const rawMaxLines = h1.getAttribute("data-max-lines");
+    const parsedMaxLines = rawMaxLines === null ? 1 : Number(rawMaxLines);
+    title.role = "title";
+    if (Number.isInteger(parsedMaxLines) && parsedMaxLines >= 1 && parsedMaxLines <= 2) title.maxLines = parsedMaxLines;
+    elements.push(title);
     cursorY = box.y + box.h + 0.15;
   }
 

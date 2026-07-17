@@ -69,6 +69,8 @@ import {
 
 const TOLERANCE_IN = 0.005;
 const CONTAINMENT_TOLERANCE_IN = 0.01;
+const DEFAULT_ROUNDED_SAFE_INSET_IN = 0.12;
+const TITLE_CONTENT_GAP_IN = 0.12;
 const OVERLAP_AREA_THRESHOLD = 0.01; // 1% of smaller element area
 const DECORATIVE_ROLES = new Set(["background", "backdrop", "canvas", "decoration", "ornament", "accent-rule", "decorative"]);
 
@@ -383,11 +385,17 @@ function isExplicitContainmentSurface(el) {
   return /card|panel|container|surface|module/.test(`${id} ${role}`);
 }
 
-function containsElement(container, child) {
-  return child.x >= container.x - CONTAINMENT_TOLERANCE_IN
-    && child.y >= container.y - CONTAINMENT_TOLERANCE_IN
-    && child.x + child.w <= container.x + container.w + CONTAINMENT_TOLERANCE_IN
-    && child.y + child.h <= container.y + container.h + CONTAINMENT_TOLERANCE_IN;
+function containmentInset(container) {
+  const explicit = Number(container?.safeInset);
+  if (Number.isFinite(explicit) && explicit >= 0) return explicit;
+  return container?.shape === "roundRect" ? DEFAULT_ROUNDED_SAFE_INSET_IN : 0;
+}
+
+function containsElement(container, child, inset = 0) {
+  return child.x >= container.x + inset - CONTAINMENT_TOLERANCE_IN
+    && child.y >= container.y + inset - CONTAINMENT_TOLERANCE_IN
+    && child.x + child.w <= container.x + container.w - inset + CONTAINMENT_TOLERANCE_IN
+    && child.y + child.h <= container.y + container.h - inset + CONTAINMENT_TOLERANCE_IN;
 }
 
 function isIntentionalContainerOverlap(a, b) {
@@ -440,11 +448,15 @@ export function checkSemanticContainment(slide) {
     // Expanded chart/diagram children retain lineage to a source element that
     // is not present in the rendered manifest. Only enforce visible parents.
     if (!parent || !isExplicitContainmentSurface(parent)) continue;
-    if (containsElement(parent, child)) continue;
+    const insideOuterBounds = containsElement(parent, child);
+    const inset = containmentInset(parent);
+    if (insideOuterBounds && containsElement(parent, child, inset)) continue;
     issues.push({
       severity: "high",
-      type: "semantic-container-escape",
-      message: `Element ${child.id} escapes the bounds of semantic parent ${parent.id}.`,
+      type: insideOuterBounds ? "semantic-safe-inset" : "semantic-container-escape",
+      message: insideOuterBounds
+        ? `Element ${child.id} enters the ${inset.toFixed(3)}in safe inset of rounded semantic parent ${parent.id}.`
+        : `Element ${child.id} escapes the bounds of semantic parent ${parent.id}.`,
       target: child.id,
       relatedTarget: parent.id
     });
@@ -596,6 +608,56 @@ function measuredTextResult(element, tokens, options = {}) {
   return measureTextElement(element, { tokens, measureText, font, maxHeight: Number(element.h) });
 }
 
+function isSlideTitle(element) {
+  if (!element || element.type !== "text") return false;
+  const role = String(element.role ?? "").toLowerCase();
+  const id = String(element.id ?? "").toLowerCase();
+  const typography = String(element.style?.typography ?? "").toLowerCase();
+  if (["card-title", "section-title", "table-title"].includes(role) || /(?:^|[-_])card[-_]title(?:[-_]|$)/.test(id)) return false;
+  return ["title", "headline", "slide-title"].includes(role)
+    || /(^|[-_])(?:slide[-_]?title|hero[-_]?title|title|headline)([-_]|$)/.test(id)
+    || /typography\.(?:title|headline)/.test(typography);
+}
+
+function horizontalOverlap(a, b) {
+  return Math.min(num(a.x) + num(a.w), num(b.x) + num(b.w)) - Math.max(num(a.x), num(b.x)) > TOLERANCE_IN;
+}
+
+function checkTitleBand(slide, tokens, options = {}) {
+  const issues = [];
+  const elements = Array.isArray(slide.elements) ? slide.elements : [];
+  for (const title of elements.filter(isSlideTitle)) {
+    const measured = measuredTextResult(title, tokens, options);
+    const maxLines = Number.isInteger(Number(title.maxLines)) ? Number(title.maxLines) : 1;
+    if (measured.lineCount > maxLines) {
+      issues.push({
+        severity: "high",
+        type: "title-line-limit",
+        message: `Slide title ${title.id} renders as ${measured.lineCount} lines but allows ${maxLines}; shorten it, widen the title band, or explicitly author a two-line layout.`,
+        target: title.id,
+        suggestion: { operation: "host-reflow", alternatives: ["shorten-title", "wider-title-band", "two-line-title-layout"] }
+      });
+    }
+    const titleBottom = num(title.y) + Math.max(num(title.h), measured.requiredHeight);
+    for (const other of elements) {
+      if (!other?.id || other === title || other.type === "line" || isDecoration(other) || isFooterElement(other) || isSlideTitle(other)) continue;
+      if (!horizontalOverlap(title, other) || num(other.y) <= num(title.y) + TOLERANCE_IN) continue;
+      if (isContainerSurface(other) && containsElement(other, title)) continue;
+      if (overlapAllowed(title, other) || num(other.y) >= titleBottom + TITLE_CONTENT_GAP_IN - TOLERANCE_IN) continue;
+      issues.push({
+        severity: "high",
+        type: "title-content-gap",
+        message: `Content ${other.id} starts at ${num(other.y).toFixed(3)}in before title ${title.id}'s painted bottom plus ${TITLE_CONTENT_GAP_IN.toFixed(2)}in safety gap.`,
+        target: title.id,
+        relatedTarget: other.id,
+        suggestion: { operation: "host-reflow", nextY: Number((titleBottom + TITLE_CONTENT_GAP_IN).toFixed(4)) }
+      });
+      break;
+    }
+  }
+  return issues;
+}
+
 function checkMetricWrap(slide, tokens, options = {}) {
   const issues = [];
   for (const element of slide.elements ?? []) {
@@ -629,8 +691,9 @@ function checkTextRequiredBounds(slide, tokens, options = {}) {
     const paintedBottom = num(element.y) + measured.requiredHeight;
     const parent = element.semanticParentId ? byId.get(element.semanticParentId) : null;
     const exceedsBox = measured.requiredHeight > num(element.h) + TOLERANCE_IN;
+    const parentInset = parent && isExplicitContainmentSurface(parent) ? containmentInset(parent) : 0;
     const exceedsParent = parent && isExplicitContainmentSurface(parent)
-      && paintedBottom > num(parent.y) + num(parent.h) + CONTAINMENT_TOLERANCE_IN;
+      && paintedBottom > num(parent.y) + num(parent.h) - parentInset + CONTAINMENT_TOLERANCE_IN;
     if (!exceedsBox && !exceedsParent) continue;
     issues.push({
       severity: "high",
@@ -1109,7 +1172,10 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
   }
 
   for (const issue of checkSemanticContainment(slide)) {
-    checks.push({ ...issue, severity: "critical" });
+    checks.push({
+      ...issue,
+      severity: issue.type === "semantic-safe-inset" && !htmlTextContracts ? "warning" : "critical"
+    });
   }
 
   for (const issue of checkFooterSafeArea(slide)) {
@@ -1123,6 +1189,10 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
   }
 
   if (htmlTextContracts) {
+    for (const issue of checkTitleBand(slide, tokens, options)) {
+      checks.push({ ...issue, severity: "critical" });
+    }
+
     for (const issue of checkMetricWrap(slide, tokens, options)) {
       checks.push({ ...issue, severity: "critical" });
     }
@@ -1224,7 +1294,7 @@ export function preflightLayout(manifest, options = {}) {
     const slideChecks = preflightSlide({ ...slide, elements: expandedElements }, deckSize, tokens, {
       ...options,
       creativeFontFloors: options.creativeFontFloors
-        ?? (safeManifest.metadata?.qualityProfile === "creative" && safeManifest.metadata?.inputType === "html"),
+        ?? (options.mode !== "replica" && safeManifest.metadata?.inputType === "html"),
       inputType: options.inputType ?? safeManifest.metadata?.inputType,
       visibleGrid: safeManifest.metadata?.designIntent?.visibleGrid === true
     });
@@ -1265,6 +1335,7 @@ const KIND_MAP = Object.freeze({
   "content-occlusion": "content-occlusion",
   "decoration-occlusion": "decoration-occlusion",
   "semantic-container-escape": "semantic-container-escape",
+  "semantic-safe-inset": "semantic-safe-inset",
   "footer-safe-area-collision": "footer-safe-area-collision",
   "vertical-gap-imbalance": "vertical-gap-imbalance",
   "font-size": "font-too-small",
@@ -1272,6 +1343,8 @@ const KIND_MAP = Object.freeze({
   "line-height-too-loose": "line-height-too-loose",
   "text-overflow": "text-overflow",
   "metric-wrap": "metric-wrap",
+  "title-line-limit": "title-line-limit",
+  "title-content-gap": "title-content-gap",
   "text-required-bounds": "text-required-bounds",
   "list-item-collision": "list-item-collision",
   "source-link-missing": "source-link-missing",
@@ -1395,6 +1468,8 @@ export const __test__ = {
   CONTRAST_RULES,
   TOLERANCE_IN,
   CONTAINMENT_TOLERANCE_IN,
+  DEFAULT_ROUNDED_SAFE_INSET_IN,
+  TITLE_CONTENT_GAP_IN,
   OVERLAP_AREA_THRESHOLD,
   contrastRatio,
   relativeLuminance,

@@ -47,6 +47,7 @@
                 "fontSize": { "type": "number", "exclusiveMinimum": 0 },
                 "minimumFontSize": { "type": "number", "exclusiveMinimum": 0 },
                 "lineCount": { "type": "integer", "minimum": 1 },
+                "maxLines": { "type": "integer", "minimum": 1, "maximum": 2 },
                 "requiredHeight": { "type": "number", "minimum": 0 },
                 "availableWidth": { "type": "number", "minimum": 0 },
                 "availableHeight": { "type": "number", "minimum": 0 },

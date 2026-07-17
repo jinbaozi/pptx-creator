@@ -40,6 +40,17 @@ direction.
   `li` at natural height; do not use a shared fixed height.
 - Keep Creative text at or above these post-compilation floors: slide title
   28pt, card title 18pt, body/list 16pt, label/table header 11pt, source 9pt.
+- Use an `<h1>` for the slide title and declare `data-max-lines="1"` (the
+  default). A deliberate two-line title must use `data-max-lines="2"`; its box
+  height is computed from the actual font metrics, and the following content
+  starts after the measured painted bottom plus at least `0.12in`. Never pin
+  content to a nominal `y` that assumes a single title line. If 28pt cannot fit,
+  shorten the title, widen the title region, or switch layouts. Do not depend on
+  `normAutofit`, `spAutoFit`, or another viewer-specific auto-shrink behavior.
+- Rounded cards and panels use `data-safe-inset` when the default `0.12in`
+  inner frame is insufficient. Every semantic child, including axis labels and
+  corner captions, must remain inside that inset, not merely inside the outer
+  rectangle.
 - Mark atomic metrics with `data-layout-role="metric"`. If browser measurement
   wraps one onto a second line, change the component to a price group, metric
   group, wider layout, or another slide. Do not shrink below the role floor and

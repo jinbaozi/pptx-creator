@@ -142,7 +142,7 @@ describe("html-to-manifest with measurements", () => {
     const html = `
       <div class="pptx-deck" data-deck-title="Replica">
         <section class="pptx-slide">
-          <div id="panel"><h1 id="title">Replica Title</h1></div>
+          <div id="panel" data-safe-inset="0.16"><h1 id="title" data-max-lines="2">Replica Title</h1></div>
         </section>
       </div>`;
     const measurements = {
@@ -190,6 +190,7 @@ describe("html-to-manifest with measurements", () => {
         type: "shape",
         id: "panel",
         shape: "roundRect",
+        safeInset: 0.16,
         x: 0.5,
         y: 0.5,
         style: expect.objectContaining({ fill: "#F8FAFC", borderColor: "#CBD5E1" })
@@ -200,6 +201,8 @@ describe("html-to-manifest with measurements", () => {
         type: "text",
         id: "title",
         text: "Replica Title",
+        role: "title",
+        maxLines: 2,
         style: expect.objectContaining({ color: "#0F172A", fontSize: 24, fontWeight: 700 })
       })
     );

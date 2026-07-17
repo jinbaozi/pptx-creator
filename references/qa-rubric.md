@@ -10,9 +10,9 @@ Host agents must self-review after `run-deck-pipeline.mjs` (or equivalent steps)
 | DESIGN.md | `validate-design-md.mjs` exit 0 for referenced source |
 | Asset paths | All `assets[].src` and image `src` exist relative to manifest |
 | PPTX render | `final.pptx` exists, size > 1 KB |
-| PPTX geometry | No negative line extents; final object bounds pass occlusion and connector checks; object IDs/order match manifest lineage |
-| HTML-first Host review | Every slide passes all five packet-bound judgments |
-| Package output | `package-output.py` exit 0 |
+| PPTX geometry | No negative line extents; final object bounds pass occlusion and connector checks; object IDs/order match manifest lineage; manifest/PPTX hashes match |
+| HTML-first Host review | Every slide passes all five packet-bound judgments, includes observations, and binds passed PowerPoint/WPS/LibreOffice evidence |
+| Package output | `package-output.py` exit 0 and `output-manifest.json` hashes every indexed regular artifact |
 
 ## Content
 
@@ -34,6 +34,11 @@ Host agents must self-review after `run-deck-pipeline.mjs` (or equivalent steps)
   intentional.
 - Metrics intended as one atomic value remain on one line. Multi-line list
   items keep natural heights and never collide with their following item.
+- Slide titles stay within declared `maxLines` (one by default). Content starts
+  after the measured painted title bottom plus `0.12in`; critical text does not
+  use viewer autofit.
+- Children of rounded containers remain inside the declared/default `0.12in`
+  safe inset, including axis labels and corner captions.
 - Single-line table headers are vertically centered with line-height 1.0–1.4.
 - Every displayed source URL is clickable; vendor claims and internal
   recommendations carry visible labels and evidence bindings.
@@ -60,7 +65,9 @@ Report rasterized objects and why (complex icon, photo, gradient, OCR failure).
 | --- | --- |
 | Playwright | HTML CSS measurement blocked; semantic HTML still works |
 | Tesseract | OCR deferred; use host vision |
-| LibreOffice | Creative acceptance blocks; direct/replica routes report unavailable preview evidence |
+| LibreOffice | Deterministic CI rendering; Creative acceptance blocks when evidence is unavailable |
+| PowerPoint | Release acceptance requires a bound open/render artifact; unavailable is not pass |
+| WPS | Release acceptance requires a bound open/render artifact; unavailable is not pass |
 | Fonts | Warn in qa-report if non-system fonts referenced |
 
 ## Response template
@@ -85,9 +92,14 @@ repair. See `references/creative-visual-proof.md` and
 
 HTML-first uses its own `host-html-visual-review.schema.json`. The five required
 per-slide judgments are `noOcclusion`, `textRhythm`, `whitespaceBalance`,
-`connectorSemantics`, and `componentVisibility`. Missing or stale hashes block;
-P0/P1 findings or any failed judgment return to repair, and no top-level final
-deck is published before acceptance.
+`connectorSemantics`, and `componentVisibility`, plus a non-empty observation
+summary. The review also contains an exact three-entry suite ledger for
+PowerPoint, WPS, and LibreOffice with environment, reason, and hashed evidence.
+The generated template is intentionally invalid until every field is filled.
+Missing or stale hashes, unavailable suites, P0/P1 findings, title reflow,
+occlusion, rounded-safe-inset entry, cross-suite divergence, or any failed
+judgment return to repair, and no top-level final deck is published before
+acceptance.
 
 Release-quality claims have a separate blind preference threshold: 24 briefs,
 at least five reviewers per brief, overall win rate >=70%, Wilson 95% lower

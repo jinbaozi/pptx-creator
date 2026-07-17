@@ -50,6 +50,59 @@ describe("render-pptx", () => {
     expect(report.summary).toMatchObject({ criticalCount: 0, blocked: false });
   });
 
+  it("blocks viewer-dependent autofit on a critical title in final PPTX XML", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-title-autofit-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements = [{
+      type: "text", id: "slide-title", role: "title", maxLines: 1,
+      x: 0.8, y: 0.6, w: 11.7, h: 0.6, text: "Measured title",
+      style: { fontSize: 28, lineHeight: 1.2 }
+    }];
+    const manifestPath = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifestPath, JSON.stringify(sample, null, 2), "utf8");
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifestPath, pptxPath], { cwd: root });
+    expect(await slideXml(pptxPath)).not.toMatch(/<a:(?:normAutofit|spAutoFit)\b/);
+
+    const zip = await JSZip.loadAsync(await readFile(pptxPath));
+    const slidePath = "ppt/slides/slide1.xml";
+    let xml = await zip.file(slidePath).async("string");
+    if (/<a:bodyPr\b[^>]*\/>/.test(xml)) {
+      xml = xml.replace(/<a:bodyPr\b([^>]*)\/>/, "<a:bodyPr$1><a:normAutofit/></a:bodyPr>");
+    } else {
+      xml = xml.replace(/<a:bodyPr\b([^>]*)>/, "<a:bodyPr$1><a:normAutofit/>");
+    }
+    zip.file(slidePath, xml);
+    await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+
+    const report = await auditPptxGeometry(pptxPath, sample);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      elementId: "slide-title",
+      kind: "viewer-dependent-autofit",
+      severity: "critical"
+    }));
+    expect(report.summary.blocked).toBe(true);
+  });
+
+  it("blocks generic Office object names that cannot prove manifest lineage", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-generic-lineage-"));
+    const pptxPath = join(outputDir, "external.pptx");
+    const zip = new JSZip();
+    zip.file("ppt/slides/slide1.xml", `<?xml version="1.0" encoding="UTF-8"?>
+      <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="Text 1"/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm></p:spPr></p:sp></p:spTree></p:cSld>
+      </p:sld>`);
+    await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+    const report = await auditPptxGeometry(pptxPath, { slides: [{ id: "slide-001", elements: [] }] });
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      elementId: "Text 1",
+      kind: "pptx-object-lineage",
+      severity: "critical"
+    }));
+  });
+
   it("rechecks content occlusion against final PPTX object geometry", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-final-occlusion-"));
     const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));

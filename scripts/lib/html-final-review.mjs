@@ -6,6 +6,7 @@ import { validateJsonSchema } from "./schema-utils.mjs";
 
 export const HTML_FINAL_REVIEW_VERSION = "0.4.0";
 const JUDGMENTS = ["noOcclusion", "textRhythm", "whitespaceBalance", "connectorSemantics", "componentVisibility"];
+const REQUIRED_SUITES = ["libreoffice", "powerpoint", "wps"];
 
 function sha256(bytes) {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
@@ -29,6 +30,16 @@ async function jsonHash(path) {
 
 async function fileHash(path) {
   return sha256(await readFile(path));
+}
+
+async function assertBoundReviewArtifact(outputDir, artifact, label) {
+  const relativePath = String(artifact?.path ?? "");
+  const target = resolve(outputDir, relativePath);
+  const portable = relative(outputDir, target).replaceAll("\\", "/");
+  if (!relativePath.startsWith("evidence/") || portable !== relativePath || portable.startsWith("../")) {
+    throw reviewError(`${label} must stay below evidence/ as a normalized relative path`);
+  }
+  if (await fileHash(target) !== artifact.hash) throw reviewError(`${label} hash is stale`);
 }
 
 async function canonicalPptxHash(path) {
@@ -115,7 +126,7 @@ export async function enforceHtmlFinalReview(options) {
 
   const artifacts = {
     repairedHtmlHash: await fileHash(resolve(options.repairedHtmlPath)),
-    manifestHash: canonicalJsonHash(manifest),
+    manifestHash: await fileHash(join(outputDir, "deck.manifest.json")),
     pptxHash: await canonicalPptxHash(candidatePath),
     htmlLayoutReportHash: await jsonHash(join(outputDir, "html-layout-report.json")),
     pptxGeometryReportHash: await jsonHash(join(outputDir, "pptx-geometry-report.json")),
@@ -132,6 +143,7 @@ export async function enforceHtmlFinalReview(options) {
     slides,
     connectorTopology: connectorTopology(manifest),
     judgments: JUDGMENTS,
+    suiteTargets: REQUIRED_SUITES,
     maxReviewRounds: 3
   };
   const packet = { ...unsignedPacket, packetHash: canonicalJsonHash(unsignedPacket) };
@@ -141,20 +153,22 @@ export async function enforceHtmlFinalReview(options) {
     version: HTML_FINAL_REVIEW_VERSION,
     packetHash: packet.packetHash,
     artifacts,
-    status: "completed",
-    overallVerdict: "accept",
+    status: "pending",
+    overallVerdict: null,
     slides: slides.map((slide) => ({
       slideId: slide.slideId,
       screenshotPath: slide.screenshotPath,
       screenshotHash: slide.screenshotHash,
-      noOcclusion: "pass",
-      textRhythm: "pass",
-      whitespaceBalance: "pass",
-      connectorSemantics: "pass",
-      componentVisibility: "pass",
+      noOcclusion: null,
+      textRhythm: null,
+      whitespaceBalance: null,
+      connectorSemantics: null,
+      componentVisibility: null,
+      observations: null,
       findings: []
     })),
-    summary: "Inspected every full-size slide and the contact sheet."
+    suites: REQUIRED_SUITES.map((suite) => ({ suite, required: true, status: "pending", environment: null, artifacts: [], reason: null })),
+    summary: null
   };
   await writeFile(templatePath, `${JSON.stringify(template, null, 2)}\n`, "utf8");
 
@@ -183,10 +197,20 @@ export async function enforceHtmlFinalReview(options) {
       throw reviewError(`HTML-first Host final review contains stale screenshot evidence for ${assessment.slideId}`);
     }
   }
+  const suiteNames = review.suites.map((entry) => entry.suite);
+  if (new Set(suiteNames).size !== REQUIRED_SUITES.length || REQUIRED_SUITES.some((suite) => !suiteNames.includes(suite))) {
+    throw reviewError("HTML-first Host final review must assess LibreOffice, PowerPoint, and WPS exactly once");
+  }
+  for (const suite of review.suites) {
+    for (const [index, artifact] of suite.artifacts.entries()) {
+      await assertBoundReviewArtifact(outputDir, artifact, `${suite.suite} evidence ${index + 1}`);
+    }
+  }
 
   const failed = review.overallVerdict !== "accept"
     || review.slides.some((slide) => JUDGMENTS.some((key) => slide[key] !== "pass")
-      || slide.findings.some((finding) => ["P0", "P1"].includes(finding.severity)));
+      || slide.findings.some((finding) => ["P0", "P1"].includes(finding.severity)))
+    || review.suites.some((suite) => suite.required !== true || suite.status !== "passed");
   if (failed) {
     const history = await readHistory(historyPath);
     history.attempts.push({ packetHash: packet.packetHash, reviewHash: canonicalJsonHash(review), verdict: review.overallVerdict });

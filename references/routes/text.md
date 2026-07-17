@@ -38,14 +38,18 @@ inspection are both required. A green structural check never substitutes for
 visual acceptance.
 
 The first successful deterministic pass writes full-size PNGs, a contact sheet,
-`html-final-review/review-packet.json`, and a prefilled review template, then
+`html-final-review/review-packet.json`, and a deliberately incomplete
+`pending/null` review template, then
 blocks at `host-final-visual-review` without publishing top-level `final.pptx`.
 The Host inspects every page and reruns the same command with
 `--host-final-review <json>`. The sidecar must bind the packet and record
 `noOcclusion`, `textRhythm`, `whitespaceBalance`, `connectorSemantics`, and
-`componentVisibility` for every slide. Rejection returns to the earliest HTML,
-layout, or connector responsibility layer; three rejected rounds exhaust the
-automatic review budget.
+`componentVisibility` plus a non-empty observation summary for every slide.
+It must also bind passed evidence for PowerPoint, WPS, and LibreOffice; an
+unavailable suite cannot be claimed as passed. Copying the generated template
+unchanged is invalid. Rejection returns to the earliest HTML, layout, or
+connector responsibility layer; three rejected rounds exhaust the automatic
+review budget.
 
 Assets used by HTML must be local before compilation. The compiler preserves
 native images and localized bounded fallbacks, records coverage, and forbids a
@@ -68,6 +72,9 @@ retains its existing Semantic IR and Creative Proof artifacts.
 Block on missing HTML, a symlink output root, browser layout defects, incomplete
 content coverage, detached/reversed/obstructed connectors, invalid manifest,
 negative PPTX line extents, stale/missing manifest object lineage,
+generic PPTX object names, a title exceeding its declared line count, title
+content entering the painted title band, rounded-container safe-inset entry,
+viewer-dependent autofit on critical text, missing cross-suite evidence,
 full-slide rasterization, editability below the requested floor, failed HTML to
 PPTX fidelity proof, more than three repair attempts, or a rejecting final
 visual review. `--native` additionally retains its plan, IR, provenance,

@@ -7,6 +7,11 @@ description: Route editable PowerPoint creation from text, HTML, images, or PDF,
 
 Select exactly one route, then read only its contract and listed references.
 
+Invoking this Skill selects the project pipeline exclusively for the run. Do
+not switch to a generic presentations/artifact tool, Office automation, or a
+standalone PptxGenJS script. Such tools may inspect evidence but cannot produce
+the deliverable or replace any project gate.
+
 | Route | Select when | Contract |
 |---|---|---|
 | `text` | Text, outline, Markdown, or a document becomes a high-taste editable deck | `references/routes/text.md` |
@@ -23,6 +28,11 @@ Final text deliverables must use `npm run pptx -- text ...` and carry layout,
 geometry, object-lineage, final-review, QA, and output-index evidence.
 Do not deliver by invoking PptxGenJS, Office API, or another renderer directly;
 those are implementation details and diagnostics only.
+An isolated `.pptx` is unfinished. Delivery requires one mutually bound package
+containing `deck.manifest.json`, a passing `pptx-geometry-report.json`, a
+completed per-slide Host review, `output-manifest.json`, and `final.pptx`.
+The geometry report binds manifest and PPTX hashes; the output index records
+artifact hashes, so colocated but stale evidence is still rejected.
 
 User style, brand, template, or reference wins. Otherwise the Host selects from
 audience and context; built-ins are candidates, never topic-based defaults.
@@ -33,40 +43,31 @@ contracts but never override the default HTML-first route.
 
 ## Shared invariants
 
-- For deterministic rendering, the manifest is the single source of truth
-  consumed by scripts. In default text runs, the repaired HTML is the frozen
-  visual source and the manifest is its native-object compilation result.
+- The repaired HTML is the frozen default-text visual source; the compiled
+  manifest is the single source of truth for deterministic rendering.
 - Never use a full-slide raster as an editable PPTX.
-- User-supplied replica routes preserve source layout, color, typography, and
-  tone and never add creative exploration. Default text runs complete creative
-  exploration before freezing their internally authored HTML replica source.
-- Final full-size slide review must confirm that text remains inside its
-  intended frame and every connector arrow terminates at its declared target.
-- Default text runs use the `creative` layout-safety profile even while HTML
-  fidelity is proved through the replica compiler. Unapproved content or
-  decorative occlusion, unsafe CJK line height, and unbalanced layout-region
-  gaps are blocking defects.
+- Replica routes preserve source layout/style. Default text explores first,
+  then freezes HTML and retains the creative safety profile during compilation.
+- Full-size review confirms text remains inside its intended frame and every
+  connector arrow terminates at its declared target.
 - Block wrapped metrics; use metric/price groups, more width, or another slide.
-- Lists use natural `<ul>/<ol>/<li>` flow and retain measured item geometry.
-- Single-line table headers use `valign: middle` and line height `1.0–1.4`.
+- Use natural `<ul>/<ol>/<li>` flow; center single-line headers at line height `1.0–1.4`.
 - Bind facts/claims/recommendations to typed evidence and clickable sources;
   visibly label vendor claims and internal recommendations.
-- Creative floors: title 28pt, card title 18pt, body/list 16pt, label/header
-  11pt, source 9pt. Repair cannot cross them. See authoring and QA references.
-- Every HTML-first final review is packet-bound to the repaired HTML, manifest,
-  candidate PPTX, geometry report, contact sheet, and every full-size slide.
-  It explicitly records `noOcclusion`, `textRhythm`, `whitespaceBalance`,
-  `connectorSemantics`, and `componentVisibility` for each slide.
-  Acceptance is published as `host-html-visual-review.json`; until it validates, top-level `final.pptx` is not a deliverable.
-- Every connector between modules must declare source, target, anchors, route,
-  and a target-facing end marker. Detached, reversed, obstructed, or invalidly
-  routed connectors block packaging.
-- Automatic repair is bounded to at most three attempts, then it must block and
-  ask for user direction.
-- Localize remote assets before deterministic compilation; scripts never search
-  the web or call an LLM. `provenance.rights` is the sole rights authority.
-  Runtime asset paths are normalized POSIX paths below `assets/`; remote
-  HTTP(S) URLs may remain only as provenance.
+- Creative floors are title 28pt, card title 18pt, body/list 16pt,
+  label/header 11pt, source 9pt; repair cannot cross them.
+- Titles default to one line. Two lines require `data-max-lines="2"` / `maxLines: 2`,
+  measured height, and content below the painted bottom; never use viewer autofit.
+- Rounded containers use `data-safe-inset` (default `0.12in`); children cannot
+  enter the rounded-corner tangent zone.
+- HTML-first review binds repaired HTML, manifest, PPTX, geometry, contact sheet,
+  every slide, observations, `noOcclusion`, `textRhythm`, `whitespaceBalance`,
+  `connectorSemantics`, `componentVisibility`, and passed PowerPoint/WPS/LibreOffice evidence
+  in `host-html-visual-review.json`.
+- Connectors declare endpoints, anchors, route, and target marker; invalid geometry blocks.
+- Automatic repair is bounded to at most three attempts before requesting direction.
+- Localize assets; scripts never search/call an LLM. Runtime paths stay below
+  `assets/`, remote URLs are provenance only, and `provenance.rights` is authoritative.
 - Report editability gaps honestly and preserve unrelated files.
 
 ## Public entry point

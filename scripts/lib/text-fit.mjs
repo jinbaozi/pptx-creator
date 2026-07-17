@@ -147,6 +147,8 @@ export function measureTextElement(element, options = {}) {
     return width + Math.max(0, [...String(text ?? "")].length - 1) * charSpacing;
   };
   const lineCount = wrappedLineCount(element.text, availableWidth * 72, fontSize, measureText, options.font);
+  const maxLines = Number.isInteger(Number(element.maxLines)) ? Number(element.maxLines) : null;
+  const lineLimitExceeded = maxLines !== null && lineCount > maxLines;
   const requiredHeight = (lineCount * fontSize * lineHeight + margin.top + margin.bottom) / 72;
   const overflowBy = Math.max(0, requiredHeight - availableHeight);
   const role = inferRole(element, fontSize);
@@ -157,7 +159,9 @@ export function measureTextElement(element, options = {}) {
     : fontSize;
   let status = "fits";
   let suggestion;
-  if (overflowBy > EPSILON_IN) {
+  if (lineLimitExceeded) {
+    status = "content-reflow-required";
+  } else if (overflowBy > EPSILON_IN) {
     if (requiredHeight <= maxHeight + EPSILON_IN) {
       status = "resize-required";
       suggestion = { operation: "resize", changes: { h: Number(requiredHeight.toFixed(4)) } };
@@ -174,6 +178,7 @@ export function measureTextElement(element, options = {}) {
     fontSize,
     minimumFontSize,
     lineCount,
+    ...(maxLines !== null ? { maxLines } : {}),
     requiredHeight: Number(requiredHeight.toFixed(6)),
     availableWidth: Number(availableWidth.toFixed(6)),
     availableHeight,

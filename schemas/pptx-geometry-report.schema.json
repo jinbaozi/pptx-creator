@@ -4,10 +4,19 @@
   "title": "PPTX Geometry and Object Lineage Report",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "pptx", "slides", "findings", "summary"],
+  "required": ["version", "pptx", "bindings", "slides", "findings", "summary"],
   "properties": {
     "version": { "const": "0.4.0" },
     "pptx": { "type": "string", "minLength": 1 },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestHash", "pptxHash"],
+      "properties": {
+        "manifestHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "pptxHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
     "slides": {
       "type": "array",
       "items": {
@@ -37,6 +46,12 @@
               "pptx-object-lineage",
               "content-occlusion",
               "decoration-occlusion",
+              "semantic-container-escape",
+              "semantic-safe-inset",
+              "text-required-bounds",
+              "title-line-limit",
+              "title-content-gap",
+              "viewer-dependent-autofit",
               "connector-detached",
               "connector-marker-missing",
               "connector-direction",

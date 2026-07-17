@@ -294,11 +294,12 @@ export function hasCreativeEditabilityPrerequisites(manifest = {}) {
   return hasText && elements.some((element) => nativeVisualTypes.has(element?.type));
 }
 
-export function buildPipelinePlan({ route = "text", mode = "direct", proofAvailable = true } = {}) {
+export function buildPipelinePlan({ route = "text", mode = "direct", proofAvailable = true, layoutSafetyProfile } = {}) {
   if (mode === "replica") {
     if (!["html", "image", "pdf"].includes(route)) throw new Error(`replica mode is unsupported for route ${route}`);
     if (!proofAvailable) throw new Error(`strict replica fidelity proof is unavailable for route ${route}`);
-    return ["validate", "replica-preflight", "render", "fidelity-proof", "bounded-repair", "package"];
+    const preflight = layoutSafetyProfile === "creative" ? "creative-layout-taste-preflight" : "replica-preflight";
+    return ["validate", preflight, "render", "fidelity-proof", "bounded-repair", "package"];
   }
   if (route !== "text") throw new Error(`${route} requires replica mode`);
   if (mode === "creative") {
@@ -966,9 +967,11 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const inputType = normalizeInputType(options.inputType, routeHint);
   const route = ["html", "image", "pdf"].includes(inputType) ? inputType : "text";
   const mode = options.mode ?? routeHint?.metadata?.mode ?? (route === "text" ? "direct" : "replica");
+  const layoutSafetyProfile = options.layoutSafetyProfile ?? (mode === "replica" ? "replica" : "creative");
+  const creativeLayoutProfile = mode === "creative" || (mode === "replica" && layoutSafetyProfile === "creative");
   let inputSource = options.inputSource ?? resolvedInput;
   const steps = [];
-  const contract = buildPipelinePlan({ route, mode, proofAvailable: true });
+  const contract = buildPipelinePlan({ route, mode, proofAvailable: true, layoutSafetyProfile });
   const stageGuard = createStageGuard(contract);
 
   stageGuard.enter("validate");
@@ -998,6 +1001,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     textFitReport = await buildTextFitReport(manifest, {
       designTokens: design.tokens,
       fontCatalog,
+      mode: creativeLayoutProfile ? "creative" : mode,
       ...(fontCatalog.source === "unavailable"
         ? { source: "unavailable", reason: "fontkit could not open any installed font faces" }
         : {})
@@ -1017,7 +1021,6 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
   const layoutFlags = ["--output", layoutSafetyPath];
   if (mode !== "direct" && options.allowLayoutViolation !== true) layoutFlags.push("--strict-layout-safety");
   if (options.allowLayoutViolation === true) layoutFlags.push("--allow-layout-violation");
-  const layoutSafetyProfile = options.layoutSafetyProfile ?? (mode === "replica" ? "replica" : "creative");
   if (layoutSafetyProfile === "replica") layoutFlags.push("--replica-mode");
   const layout = await runStep("layout-safety", process.execPath, [
     join(root, "scripts/run-layout-safety-check.mjs"), resolvedManifest, ...layoutFlags
@@ -1047,7 +1050,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
       routePreflight = { ok: false, stderr: error instanceof Error ? error.message : String(error) };
     }
   }
-  const preflightLabel = mode === "creative"
+  const preflightLabel = creativeLayoutProfile
     ? "creative-layout-taste-preflight"
     : mode === "replica" ? "replica-preflight" : "light-preflight";
   const creativeEditabilityReady = mode !== "creative" || hasCreativeEditabilityPrerequisites(manifest);
@@ -1055,16 +1058,16 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
     label: preflightLabel,
     ok: routePreflight.ok !== false
       && layout.ok
-      && (mode !== "creative" || textFitReport?.status === "passed")
-      && (mode !== "creative" || fontPreflight?.source !== "unavailable" || Object.keys(fontPreflight?.availability ?? {}).length === 0)
+      && (!creativeLayoutProfile || textFitReport?.status === "passed")
+      && (!creativeLayoutProfile || fontPreflight?.source !== "unavailable" || Object.keys(fontPreflight?.availability ?? {}).length === 0)
       && creativeEditabilityReady
       && (mode !== "replica" || replicaProofAvailable || typeof options.buildReplicaProof === "function"),
-    stdout: mode === "creative" ? `textFit=${textFitReport?.status ?? "unavailable"}; fonts=${fontPreflight?.source ?? "unavailable"}` : (routePreflight.stdout || fontPreflight.source),
+    stdout: creativeLayoutProfile ? `textFit=${textFitReport?.status ?? "unavailable"}; fonts=${fontPreflight?.source ?? "unavailable"}` : (routePreflight.stdout || fontPreflight.source),
     stderr: routePreflight.ok === false
       ? routePreflight.stderr
       : !layout.ok ? layout.stderr
-        : mode === "creative" && textFitReport?.status !== "passed" ? `text fit ${textFitReport?.status ?? "unavailable"}: ${textFitReport?.summary?.overflowCount ?? 0} overflow(s)`
-          : mode === "creative" && fontPreflight?.source === "unavailable" && Object.keys(fontPreflight?.availability ?? {}).length > 0 ? "font preflight capability unavailable"
+        : creativeLayoutProfile && textFitReport?.status !== "passed" ? `text fit ${textFitReport?.status ?? "unavailable"}: ${textFitReport?.summary?.overflowCount ?? 0} overflow(s)`
+          : creativeLayoutProfile && fontPreflight?.source === "unavailable" && Object.keys(fontPreflight?.availability ?? {}).length > 0 ? "font preflight capability unavailable"
             : mode === "creative" && !creativeEditabilityReady ? "creative editability prerequisites require native text and native visual objects"
           : (mode === "replica" && !replicaProofAvailable && typeof options.buildReplicaProof !== "function" ? "strict replica fidelity proof capability unavailable" : "")
   };
@@ -1337,7 +1340,7 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
       finalPptxPath,
       manifest,
       join(resolvedOutput, "pptx-geometry-report.json"),
-      { requireOrder: options.requireObjectLineage !== false }
+      { requireOrder: options.requireObjectLineage !== false, manifestPath: resolvedManifest }
     );
     const schema = JSON.parse(await readFile(join(root, "schemas/pptx-geometry-report.schema.json"), "utf8"));
     const validation = validateJsonSchema(geometryReport, schema);

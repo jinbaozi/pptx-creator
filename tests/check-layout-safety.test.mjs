@@ -538,6 +538,72 @@ describe("check-layout-safety", () => {
     });
   });
 
+  describe("title-band and rounded-container contracts", () => {
+    it("blocks a 28pt two-line title in a 0.55in one-line title band", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          {
+            type: "text", id: "slide-title", role: "title", maxLines: 1,
+            x: 0.72, y: 0.66, w: 11.9, h: 0.55,
+            text: "Kimi K3：极致性价比与 Agent 能力\nFable 5 and GPT-5.6 comparison",
+            style: { fontSize: 28, lineHeight: 1.2 }
+          },
+          { type: "shape", id: "content-card", x: 0.72, y: 1.28, w: 11.9, h: 5.2, shape: "rect" }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true, inputType: "html", mode: "creative" });
+      expect(result.checks.find((check) => check.type === "title-line-limit")).toMatchObject({ severity: "critical", target: "slide-title" });
+      expect(result.checks.find((check) => check.type === "title-content-gap")).toMatchObject({ severity: "critical", relatedTarget: "content-card" });
+      expect(result.summary.blocked).toBe(true);
+    });
+
+    it("accepts an explicit two-line title when measured height and content offset are reserved", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          {
+            type: "text", id: "slide-title", role: "title", maxLines: 2,
+            x: 0.72, y: 0.66, w: 11.9, h: 0.94,
+            text: "Kimi K3：极致性价比与 Agent 能力\nFable 5 and GPT-5.6 comparison",
+            style: { fontSize: 28, lineHeight: 1.2 }
+          },
+          { type: "shape", id: "content-card", x: 0.72, y: 1.74, w: 11.9, h: 4.7, shape: "rect" }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true, inputType: "html", mode: "creative" });
+      expect(result.checks.find((check) => ["title-line-limit", "title-content-gap"].includes(check.type))).toBeUndefined();
+    });
+
+    it("blocks a chart label inside a rounded corner tangent zone", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "chart-panel", role: "container", x: 0.72, y: 1.35, w: 6, h: 4.8, shape: "roundRect", safeInset: 0.12 },
+          { type: "text", id: "axis-label", semanticParentId: "chart-panel", x: 0.75, y: 1.45, w: 0.8, h: 0.3, text: "100%", style: { fontSize: 11 } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true, inputType: "html", mode: "creative" });
+      expect(result.checks.find((check) => check.type === "semantic-safe-inset")).toMatchObject({ severity: "critical", target: "axis-label" });
+    });
+
+    it("accepts a chart label inside the rounded container safe frame", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "chart-panel", role: "container", x: 0.72, y: 1.35, w: 6, h: 4.8, shape: "roundRect", safeInset: 0.12 },
+          { type: "text", id: "axis-label", semanticParentId: "chart-panel", x: 0.88, y: 1.52, w: 0.8, h: 0.3, text: "100%", style: { fontSize: 11 } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true, inputType: "html", mode: "creative" });
+      expect(result.checks.find((check) => ["semantic-safe-inset", "semantic-container-escape"].includes(check.type))).toBeUndefined();
+    });
+  });
+
   describe("summary", () => {
     it("counts critical vs warning separately", () => {
       const manifest = makeManifest([

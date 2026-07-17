@@ -4,7 +4,7 @@
   "title": "HTML-first Host Final Visual Review",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "packetHash", "artifacts", "status", "overallVerdict", "slides", "summary"],
+  "required": ["version", "packetHash", "artifacts", "status", "overallVerdict", "slides", "suites", "summary"],
   "properties": {
     "version": { "const": "0.4.0" },
     "packetHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
@@ -29,7 +29,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slideId", "screenshotPath", "screenshotHash", "noOcclusion", "textRhythm", "whitespaceBalance", "connectorSemantics", "componentVisibility", "findings"],
+        "required": ["slideId", "screenshotPath", "screenshotHash", "noOcclusion", "textRhythm", "whitespaceBalance", "connectorSemantics", "componentVisibility", "observations", "findings"],
         "properties": {
           "slideId": { "type": "string", "minLength": 1 },
           "screenshotPath": { "type": "string", "pattern": "^evidence/render/slide-[0-9]+\\.png$" },
@@ -39,6 +39,7 @@
           "whitespaceBalance": { "$ref": "#/$defs/judgment" },
           "connectorSemantics": { "$ref": "#/$defs/judgment" },
           "componentVisibility": { "$ref": "#/$defs/judgment" },
+          "observations": { "type": "string", "minLength": 1 },
           "findings": {
             "type": "array",
             "items": {
@@ -56,10 +57,38 @@
         }
       }
     },
+    "suites": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/suite" }
+    },
     "summary": { "type": "string", "minLength": 1 }
   },
   "$defs": {
     "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "judgment": { "enum": ["pass", "fail", "not-applicable"] }
+    "judgment": { "enum": ["pass", "fail", "not-applicable"] },
+    "suiteArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "hash"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^evidence/(?:render|compatibility)/[A-Za-z0-9._/-]+$" },
+        "hash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "suite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suite", "required", "status", "environment", "artifacts", "reason"],
+      "properties": {
+        "suite": { "enum": ["libreoffice", "powerpoint", "wps"] },
+        "required": { "const": true },
+        "status": { "enum": ["passed", "failed", "unavailable"] },
+        "environment": { "type": "string", "minLength": 1 },
+        "artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/suiteArtifact" } },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
   }
 }

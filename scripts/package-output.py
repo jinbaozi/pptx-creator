@@ -7,6 +7,7 @@ import stat
 import sys
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 
 
@@ -554,7 +555,7 @@ def validate_html_final_review(output_dir: Path) -> None:
     artifacts = packet.get("artifacts", {})
     bindings = {
         "repairedHtmlHash": ("deck.repaired.html", byte_sha256),
-        "manifestHash": ("deck.manifest.json", lambda path: canonical_review_sha256(json.loads(path.read_text(encoding="utf-8")))),
+        "manifestHash": ("deck.manifest.json", byte_sha256),
         "pptxHash": ("final.pptx", canonical_pptx_sha256),
         "htmlLayoutReportHash": ("html-layout-report.json", lambda path: canonical_review_sha256(json.loads(path.read_text(encoding="utf-8")))),
         "pptxGeometryReportHash": ("pptx-geometry-report.json", lambda path: canonical_review_sha256(json.loads(path.read_text(encoding="utf-8")))),
@@ -583,11 +584,95 @@ def validate_html_final_review(output_dir: Path) -> None:
             fail(f"HTML final review screenshot hash is stale: {slide_id}")
         if any(assessment.get(key) != "pass" for key in judgment_keys):
             fail(f"HTML Host final review did not pass every judgment: {slide_id}")
+        if not isinstance(assessment.get("observations"), str) or not assessment["observations"].strip():
+            fail(f"HTML Host final review is missing slide observations: {slide_id}")
         if any(finding.get("severity") in {"P0", "P1"} for finding in assessment.get("findings", [])):
             fail(f"HTML Host final review contains a P0/P1 finding: {slide_id}")
+    suites = review.get("suites")
+    required_suites = {"libreoffice", "powerpoint", "wps"}
+    if not isinstance(suites, list) or len(suites) != 3 or {entry.get("suite") for entry in suites if isinstance(entry, dict)} != required_suites:
+        fail("HTML Host final review must assess LibreOffice, PowerPoint, and WPS exactly once")
+    for suite in suites:
+        name = suite.get("suite")
+        if suite.get("required") is not True or suite.get("status") != "passed":
+            fail(f"HTML Host final review required suite did not pass: {name}")
+        if not isinstance(suite.get("environment"), str) or not suite["environment"].strip():
+            fail(f"HTML Host final review suite environment is missing: {name}")
+        if not isinstance(suite.get("reason"), str) or not suite["reason"].strip():
+            fail(f"HTML Host final review suite reason is missing: {name}")
+        artifacts = suite.get("artifacts")
+        if not isinstance(artifacts, list) or not artifacts:
+            fail(f"HTML Host final review suite evidence is missing: {name}")
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                fail(f"HTML Host final review suite evidence is invalid: {name}")
+            target = require_regular_relative(output_dir, artifact.get("path"), f"HTML suite evidence {name}")
+            if byte_sha256(target) != artifact.get("hash"):
+                fail(f"HTML Host final review suite evidence hash is stale: {name}")
     geometry = json.loads((output_dir / "pptx-geometry-report.json").read_text(encoding="utf-8"))
     if geometry.get("summary", {}).get("blocked") is not False:
         fail("PPTX geometry and lineage report did not pass")
+
+
+def validate_manifest_lineage(output_dir: Path) -> None:
+    manifest_path = require_regular_relative(output_dir, "deck.manifest.json", "packaged manifest")
+    geometry_path = require_regular_relative(output_dir, "pptx-geometry-report.json", "PPTX geometry report")
+    pptx_path = require_regular_relative(output_dir, "final.pptx", "final PPTX")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        geometry = json.loads(geometry_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        fail(f"invalid manifest or geometry evidence: {error}")
+    slides = manifest.get("slides")
+    if not isinstance(slides, list) or not slides:
+        fail("packaged manifest must contain slides")
+    if geometry.get("summary", {}).get("blocked") is not False or len(geometry.get("slides", [])) != len(slides):
+        fail("packaged PPTX geometry report is blocked or incomplete")
+    bindings = geometry.get("bindings", {})
+    if bindings.get("manifestHash") != byte_sha256(manifest_path):
+        fail("packaged PPTX geometry report is bound to a stale manifest")
+    if bindings.get("pptxHash") != canonical_pptx_sha256(pptx_path):
+        fail("packaged PPTX geometry report is bound to stale PPTX bytes")
+    lineage_types = {"text", "shape", "image", "cropped-asset", "line"}
+    try:
+        with zipfile.ZipFile(pptx_path) as archive:
+            for index, slide in enumerate(slides, start=1):
+                xml = archive.read(f"ppt/slides/slide{index}.xml")
+                root = ET.fromstring(xml)
+                names = {
+                    node.attrib.get("name")
+                    for node in root.iter()
+                    if node.tag.endswith("}cNvPr") and isinstance(node.attrib.get("name"), str)
+                }
+                generic_names = sorted(
+                    name for name in names
+                    if re.match(r"^(?:Shape|Text|Picture|Image|Group|Table|Chart|Diagram)\s+\d+$", name, re.IGNORECASE)
+                )
+                if generic_names:
+                    fail(f"final PPTX contains generic object names on slide {index}: {', '.join(generic_names)}")
+                expected = [
+                    element.get("id")
+                    for element in slide.get("elements", [])
+                    if isinstance(element, dict) and element.get("type") in lineage_types and isinstance(element.get("id"), str)
+                ]
+                unnamed = [
+                    element.get("type")
+                    for element in slide.get("elements", [])
+                    if isinstance(element, dict) and element.get("type") in lineage_types
+                    and (not isinstance(element.get("id"), str) or not element["id"].strip())
+                ]
+                if unnamed:
+                    fail(f"packaged manifest contains unnamed lineage objects on slide {index}: {', '.join(unnamed)}")
+                missing = [element_id for element_id in expected if element_id not in names]
+                if missing:
+                    fail(f"final PPTX is missing manifest object lineage on slide {index}: {', '.join(missing)}")
+                for node in root.iter():
+                    if not node.tag.endswith("}ext"):
+                        continue
+                    if int(node.attrib.get("cx", "0")) < 0 or int(node.attrib.get("cy", "0")) < 0:
+                        fail(f"final PPTX contains a negative object extent on slide {index}")
+    except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError, ValueError) as error:
+        fail(f"invalid final PPTX lineage evidence: {error}")
 
 
 def main() -> None:
@@ -607,6 +692,7 @@ def main() -> None:
     ]
     if missing:
         fail(f"missing output files: {', '.join(missing)}")
+    validate_manifest_lineage(output_dir)
     files = [
         path.name
         for path in output_dir.iterdir()
@@ -622,9 +708,17 @@ def main() -> None:
         and asset_registry.is_file()
     ):
         files.append("assets/asset-registry.json")
+    files = sorted(files)
+    hashes = {}
+    for relative in files:
+        target = output_dir / relative
+        if target.is_symlink() or not target.is_file():
+            continue
+        hashes[relative] = byte_sha256(target)
     manifest = {
         "outputDir": str(output_dir),
-        "files": sorted(files),
+        "files": files,
+        "hashes": hashes,
     }
     output_manifest = output_dir / "output-manifest.json"
     if output_manifest.is_symlink():

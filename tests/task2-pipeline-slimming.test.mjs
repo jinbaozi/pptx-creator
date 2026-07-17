@@ -14,6 +14,33 @@ import { findPython } from "../scripts/lib/python-utils.mjs";
 const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+async function writeFormalPackageBaseline(dir) {
+  const zip = new JSZip();
+  const slideName = "ppt/slides/slide1.xml";
+  const slideBytes = Buffer.from('<?xml version="1.0" encoding="UTF-8"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree/></p:cSld></p:sld>');
+  zip.file(slideName, slideBytes);
+  await writeFile(join(dir, "final.pptx"), await zip.generateAsync({ type: "nodebuffer" }));
+  const manifest = { version: "0.2.0", slides: [{ id: "slide-001", elements: [] }] };
+  await writeFile(join(dir, "deck.manifest.json"), `${JSON.stringify(manifest)}\n`, "utf8");
+  const manifestHash = `sha256:${createHash("sha256").update(`${JSON.stringify(manifest)}\n`).digest("hex")}`;
+  const pptxDigest = createHash("sha256");
+  pptxDigest.update(slideName);
+  pptxDigest.update("\0");
+  pptxDigest.update(slideBytes);
+  pptxDigest.update("\0");
+  const pptxHash = `sha256:${pptxDigest.digest("hex")}`;
+  await writeFile(join(dir, "pptx-geometry-report.json"), `${JSON.stringify({
+    version: "0.4.0",
+    bindings: { manifestHash, pptxHash },
+    slides: [{ slideId: "slide-001" }],
+    summary: { slideCount: 1, blocked: false }
+  })}\n`, "utf8");
+  for (const name of [
+    "editable-report.md", "qa-report.md", "compatibility-report.md",
+    "consistency-report.json", "consistency-report.md"
+  ]) await writeFile(join(dir, name), name, "utf8");
+}
+
 describe("Task 2 public surface and deletion contract", () => {
   it("exposes no more than ten public npm scripts through the unified CLI", async () => {
     const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
@@ -439,6 +466,9 @@ describe("Task 2 single pipeline contract", () => {
       ]);
       expect(plan.join(" ")).not.toMatch(/taste|slop|creative/);
     }
+    expect(pipeline.buildPipelinePlan({ route: "html", mode: "replica", proofAvailable: true, layoutSafetyProfile: "creative" })).toEqual([
+      "validate", "creative-layout-taste-preflight", "render", "fidelity-proof", "bounded-repair", "package"
+    ]);
   });
 
   it("fails fast and never executes later stages after a hard failure", async () => {
@@ -524,17 +554,45 @@ describe("Task 2 setup profiles and Python selection", () => {
 describe("Task 2 packaging ownership", () => {
   it("never indexes output-manifest.json itself and is idempotent", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-package-"));
-    for (const name of [
-      "final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md",
-      "consistency-report.json", "consistency-report.md"
-    ]) await writeFile(join(dir, name), name, "utf8");
+    await writeFormalPackageBaseline(dir);
     const command = [join(root, "scripts/package-output.py"), dir];
     await execFileAsync(process.env.PPTX_CREATOR_PYTHON || "python3", command, { cwd: root });
     const first = await readFile(join(dir, "output-manifest.json"), "utf8");
     await execFileAsync(process.env.PPTX_CREATOR_PYTHON || "python3", command, { cwd: root });
     const second = await readFile(join(dir, "output-manifest.json"), "utf8");
     expect(second).toBe(first);
-    expect(JSON.parse(second).files).not.toContain("output-manifest.json");
+    const index = JSON.parse(second);
+    expect(index.files).not.toContain("output-manifest.json");
+    expect(index.hashes).toMatchObject({
+      "deck.manifest.json": expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      "pptx-geometry-report.json": expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      "final.pptx": expect.stringMatching(/^sha256:[0-9a-f]{64}$/)
+    });
+  });
+
+  it("rejects an isolated PPTX and reports without manifest lineage evidence", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-package-isolated-"));
+    for (const name of [
+      "final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md",
+      "consistency-report.json", "consistency-report.md"
+    ]) await writeFile(join(dir, name), name, "utf8");
+    await expect(execFileAsync(
+      process.env.PPTX_CREATOR_PYTHON || "python3",
+      [join(root, "scripts/package-output.py"), dir],
+      { cwd: root }
+    )).rejects.toMatchObject({ stderr: expect.stringMatching(/packaged manifest|deck\.manifest\.json|lineage/i) });
+    await expect(access(join(dir, "output-manifest.json"))).rejects.toThrow();
+  });
+
+  it("rejects a geometry report bound to a stale manifest", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pptx-package-stale-binding-"));
+    await writeFormalPackageBaseline(dir);
+    await writeFile(join(dir, "deck.manifest.json"), `${JSON.stringify({ version: "0.2.0", slides: [{ id: "slide-renamed", elements: [] }] })}\n`, "utf8");
+    await expect(execFileAsync(
+      process.env.PPTX_CREATOR_PYTHON || "python3",
+      [join(root, "scripts/package-output.py"), dir],
+      { cwd: root }
+    )).rejects.toMatchObject({ stderr: expect.stringMatching(/stale manifest/i) });
   });
 
   it.each([
@@ -689,10 +747,7 @@ describe("Task 2 packaging ownership", () => {
   it("does not index an asset registry through an assets symlink", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pptx-package-assets-link-"));
     const victimDir = await mkdtemp(join(tmpdir(), "pptx-package-assets-victim-"));
-    for (const name of [
-      "final.pptx", "editable-report.md", "qa-report.md", "compatibility-report.md",
-      "consistency-report.json", "consistency-report.md"
-    ]) await writeFile(join(dir, name), name, "utf8");
+    await writeFormalPackageBaseline(dir);
     await writeFile(join(victimDir, "asset-registry.json"), "USER-OWNED\n", "utf8");
     await symlink(victimDir, join(dir, "assets"), "dir");
 

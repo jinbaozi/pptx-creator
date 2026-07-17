@@ -209,6 +209,8 @@
                 "w": { "type": "number" },
                 "h": { "type": "number" },
                 "role": { "type": "string" },
+                "maxLines": { "type": "integer", "minimum": 1, "maximum": 2 },
+                "safeInset": { "type": "number", "minimum": 0 },
                 "axisDirection": { "type": "string", "enum": ["left", "right", "up", "down"] },
                 "layoutRegion": { "type": "string", "minLength": 1 },
                 "allowOverlapWith": {
