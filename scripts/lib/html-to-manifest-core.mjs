@@ -1928,6 +1928,7 @@ function nodeLayoutRegion(node) {
 function applyNodeLayoutSemantics(element, node) {
   const role = node.getAttribute("data-layout-role");
   const axisDirection = node.getAttribute("data-axis-direction");
+  const semanticParentId = node.getAttribute("data-semantic-parent-id");
   const layoutRegion = nodeLayoutRegion(node);
   const allowOverlapWith = String(node.getAttribute("data-allow-overlap-with") || "")
     .split(/[\s,]+/).map((value) => value.trim()).filter(Boolean);
@@ -1935,6 +1936,7 @@ function applyNodeLayoutSemantics(element, node) {
     ...element,
     ...(role ? { role } : {}),
     ...(axisDirection ? { axisDirection } : {}),
+    ...(semanticParentId ? { semanticParentId } : {}),
     ...(layoutRegion ? { layoutRegion } : {}),
     ...(allowOverlapWith.length > 0 ? { allowOverlapWith } : {})
   };
@@ -2071,6 +2073,7 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
         ...element,
         ...(semantics.role ? { role: semantics.role } : {}),
         ...(semantics.axisDirection ? { axisDirection: semantics.axisDirection } : {}),
+        ...(semantics.semanticParentId ? { semanticParentId: semantics.semanticParentId } : {}),
         ...(semantics.layoutRegion ? { layoutRegion: semantics.layoutRegion } : {}),
         ...(Array.isArray(semantics.allowOverlapWith) && semantics.allowOverlapWith.length > 0
           ? { allowOverlapWith: semantics.allowOverlapWith }

@@ -473,6 +473,71 @@ describe("check-layout-safety", () => {
     });
   });
 
+  describe("semantic containment and footer-safe band", () => {
+    it("blocks a child that escapes its declared semantic container", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "panel", role: "container", x: 1, y: 1, w: 3, h: 3, shape: "rect" },
+          { type: "text", id: "subtitle", semanticParentId: "panel", x: 1.2, y: 2, w: 4, h: 0.5, text: "Escapes", style: { fontSize: 14 } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((check) => check.type === "semantic-container-escape")).toMatchObject({
+        severity: "critical", target: "subtitle", relatedTarget: "panel"
+      });
+      expect(result.summary.blocked).toBe(true);
+    });
+
+    it("accepts a child fully contained by its declared semantic parent", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "panel", role: "container", x: 1, y: 1, w: 3, h: 3, shape: "rect" },
+          { type: "text", id: "subtitle", semanticParentId: "panel", x: 1.2, y: 2, w: 2.6, h: 0.5, text: "Contained", style: { fontSize: 14 } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((check) => check.type === "semantic-container-escape")).toBeUndefined();
+    });
+
+    it("blocks body content that extends into an explicitly marked footer region", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "text", id: "row-04", x: 2.6, y: 6.65, w: 6, h: 0.4, text: "Fourth row", style: { fontSize: 14 } },
+          { type: "line", id: "footer-rule", role: "footer-decoration", layoutRegion: "footer", x: 0.7, y: 6.75, w: 2, h: 0, style: { width: 2 } },
+          { type: "text", id: "slide-number", role: "slide-number", layoutRegion: "footer", x: 11.8, y: 6.8, w: 0.4, h: 0.2, text: "10", style: { fontSize: 10 } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((check) => check.type === "footer-safe-area-collision")).toMatchObject({
+        severity: "critical", target: "row-04", relatedTarget: "footer-rule"
+      });
+    });
+
+    it("keeps semantic containment and footer collisions warning-only in strict replica mode", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "panel", x: 1, y: 1, w: 3, h: 3, shape: "rect" },
+          { type: "text", id: "child", semanticParentId: "panel", x: 1, y: 2, w: 4, h: 0.5, text: "Replica", style: { fontSize: 14 } },
+          { type: "line", id: "footer-rule", role: "footer-decoration", layoutRegion: "footer", x: 0.7, y: 6.75, w: 2, h: 0, style: { width: 2 } },
+          { type: "text", id: "row-04", x: 2.6, y: 6.65, w: 6, h: 0.4, text: "Fourth row", style: { fontSize: 14 } }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true, mode: "replica" });
+      expect(result.checks.find((check) => check.type === "semantic-container-escape")?.severity).toBe("warning");
+      expect(result.checks.find((check) => check.type === "footer-safe-area-collision")?.severity).toBe("warning");
+      expect(result.summary.criticalCount).toBe(0);
+      expect(result.summary.blocked).toBe(false);
+    });
+  });
+
   describe("summary", () => {
     it("counts critical vs warning separately", () => {
       const manifest = makeManifest([

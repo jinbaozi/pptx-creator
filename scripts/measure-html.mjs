@@ -478,6 +478,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
 	            semantics: {
 	              role: node.getAttribute("data-layout-role") || null,
 	              axisDirection: node.getAttribute("data-axis-direction") || null,
+	              semanticParentId: node.getAttribute("data-semantic-parent-id") || null,
 	              layoutRegion: node.getAttribute("data-layout-region")
 	                || node.closest("[data-layout-region]")?.getAttribute("data-layout-region")
 	                || null,

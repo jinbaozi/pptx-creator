@@ -67,6 +67,7 @@ import {
 } from "./connector-resolver.mjs";
 
 const TOLERANCE_IN = 0.005;
+const CONTAINMENT_TOLERANCE_IN = 0.01;
 const OVERLAP_AREA_THRESHOLD = 0.01; // 1% of smaller element area
 const DECORATIVE_ROLES = new Set(["background", "backdrop", "canvas", "decoration", "ornament", "accent-rule", "decorative"]);
 
@@ -342,12 +343,18 @@ function isContainerSurface(el) {
   return /card|panel|container|surface|module/.test(`${id} ${role} ${component}`);
 }
 
+function isExplicitContainmentSurface(el) {
+  if (!el || el.type !== "shape") return false;
+  const id = typeof el.id === "string" ? el.id.toLowerCase() : "";
+  const role = typeof el.role === "string" ? el.role.toLowerCase() : "";
+  return /card|panel|container|surface|module/.test(`${id} ${role}`);
+}
+
 function containsElement(container, child) {
-  const tolerance = 0.01;
-  return child.x >= container.x - tolerance
-    && child.y >= container.y - tolerance
-    && child.x + child.w <= container.x + container.w + tolerance
-    && child.y + child.h <= container.y + container.h + tolerance;
+  return child.x >= container.x - CONTAINMENT_TOLERANCE_IN
+    && child.y >= container.y - CONTAINMENT_TOLERANCE_IN
+    && child.x + child.w <= container.x + container.w + CONTAINMENT_TOLERANCE_IN
+    && child.y + child.h <= container.y + container.h + CONTAINMENT_TOLERANCE_IN;
 }
 
 function isIntentionalContainerOverlap(a, b) {
@@ -382,6 +389,65 @@ function checkOverlap(slide, deckSize) {
         });
       }
     }
+  }
+  return issues;
+}
+
+/* -------------------------------------------------------------------------- */
+/* semantic containment and footer-safe band                                  */
+/* -------------------------------------------------------------------------- */
+
+export function checkSemanticContainment(slide) {
+  const elements = Array.isArray(slide?.elements) ? slide.elements : [];
+  const byId = new Map(elements.filter((element) => element?.id).map((element) => [element.id, element]));
+  const issues = [];
+  for (const child of elements) {
+    if (!child?.semanticParentId || child.type === "line") continue;
+    const parent = byId.get(child.semanticParentId);
+    // Expanded chart/diagram children retain lineage to a source element that
+    // is not present in the rendered manifest. Only enforce visible parents.
+    if (!parent || !isExplicitContainmentSurface(parent)) continue;
+    if (containsElement(parent, child)) continue;
+    issues.push({
+      severity: "high",
+      type: "semantic-container-escape",
+      message: `Element ${child.id} escapes the bounds of semantic parent ${parent.id}.`,
+      target: child.id,
+      relatedTarget: parent.id
+    });
+  }
+  return issues;
+}
+
+function semanticLabel(element) {
+  return `${element?.role ?? ""} ${element?.layoutRegion ?? ""}`.trim().toLowerCase();
+}
+
+function isFooterElement(element) {
+  return /footer|page[-_ ]?number|slide[-_ ]?number|folio/.test(semanticLabel(element));
+}
+
+export function checkFooterSafeArea(slide) {
+  const elements = Array.isArray(slide?.elements) ? slide.elements : [];
+  const footerElements = elements.filter(isFooterElement);
+  if (footerElements.length === 0) return [];
+  const footerTop = Math.min(...footerElements.map((element) => num(element.y)));
+  const relatedFooter = footerElements.reduce((earliest, element) => (
+    num(element.y) < num(earliest.y) ? element : earliest
+  ));
+  const issues = [];
+  for (const element of elements) {
+    if (!element?.id || isFooterElement(element) || element.type === "line" || isDecoration(element)) continue;
+    if (overlapAllowed(element, relatedFooter)) continue;
+    const bottom = num(element.y) + num(element.h);
+    if (bottom <= footerTop + TOLERANCE_IN) continue;
+    issues.push({
+      severity: "high",
+      type: "footer-safe-area-collision",
+      message: `Element ${element.id} extends into the footer-safe band beginning at ${footerTop.toFixed(3)}in.`,
+      target: element.id,
+      relatedTarget: relatedFooter.id
+    });
   }
   return issues;
 }
@@ -826,6 +892,12 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
     for (const issue of checkConnectors(slide)) {
       checks.push({ ...issue, severity: issue.severity === "high" ? "critical" : "warning" });
     }
+    for (const issue of checkSemanticContainment(slide)) {
+      checks.push({ ...issue, severity: "warning" });
+    }
+    for (const issue of checkFooterSafeArea(slide)) {
+      checks.push({ ...issue, severity: "warning" });
+    }
     return checks;
   }
 
@@ -842,6 +914,14 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
 
   // (2) overlap (uses pair enumeration, must run after element validity).
   for (const issue of checkOverlap(slide, deckSize)) {
+    checks.push({ ...issue, severity: "critical" });
+  }
+
+  for (const issue of checkSemanticContainment(slide)) {
+    checks.push({ ...issue, severity: "critical" });
+  }
+
+  for (const issue of checkFooterSafeArea(slide)) {
     checks.push({ ...issue, severity: "critical" });
   }
 
@@ -967,6 +1047,8 @@ const KIND_MAP = Object.freeze({
   overlap: "overlap",
   "content-occlusion": "content-occlusion",
   "decoration-occlusion": "decoration-occlusion",
+  "semantic-container-escape": "semantic-container-escape",
+  "footer-safe-area-collision": "footer-safe-area-collision",
   "vertical-gap-imbalance": "vertical-gap-imbalance",
   "font-size": "font-too-small",
   "line-height-too-tight": "line-height-too-tight",
@@ -1087,6 +1169,7 @@ export const __test__ = {
   LINE_HEIGHT_RULES,
   CONTRAST_RULES,
   TOLERANCE_IN,
+  CONTAINMENT_TOLERANCE_IN,
   OVERLAP_AREA_THRESHOLD,
   contrastRatio,
   relativeLuminance,

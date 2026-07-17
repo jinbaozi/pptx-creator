@@ -68,13 +68,13 @@ describe("html-measurement-core", () => {
       elements: [{
         id: "title",
         kind: "text",
-        semantics: { role: "decoration", allowOverlapWith: ["hero"] },
+        semantics: { role: "decoration", semanticParentId: "panel", allowOverlapWith: ["hero"] },
         px: { x: 90, y: 42, w: 1100, h: 58 }
       }]
     });
     expect(doc.version).toBe("0.1.0");
     expect(doc.elements[0].x).toBeCloseTo(0.938, 2);
-    expect(doc.elements[0].semantics).toEqual({ role: "decoration", allowOverlapWith: ["hero"] });
+    expect(doc.elements[0].semantics).toEqual({ role: "decoration", semanticParentId: "panel", allowOverlapWith: ["hero"] });
   });
 
   it("preserves replica text, src, style, and slide indexes", () => {
@@ -3847,6 +3847,32 @@ describe.skipIf(!playwrightEnabled)("measure-html (Playwright)", () => {
     const title = measurements.elements.find((el) => el.id === "title");
     expect(title?.x).toBeCloseTo(0.938, 1);
     expect(title?.y).toBeCloseTo(0.438, 1);
+  }, 60000);
+
+  it("captures semantic containment and footer roles from the measured DOM", async () => {
+    let measureHtmlFile;
+    try {
+      ({ measureHtmlFile } = await import("../scripts/measure-html.mjs"));
+    } catch {
+      return;
+    }
+
+    const dir = await import("node:fs/promises").then((fs) => fs.mkdtemp(join(root, "output", "semantic-layout-")));
+    const input = join(dir, "semantic-layout.html");
+    await import("node:fs/promises").then((fs) => fs.writeFile(input, `<!doctype html>
+      <html><body><section class="pptx-slide">
+        <div id="panel" data-pptx-id="panel" data-pptx-kind="shape" style="position:absolute;left:72px;top:72px;width:360px;height:420px;background:#d67052"></div>
+        <p id="subtitle" data-pptx-id="subtitle" data-semantic-parent-id="panel" style="position:absolute;left:92px;top:376px;width:320px;height:100px">Contained copy</p>
+        <div id="footer-rule" data-pptx-id="footer-rule" data-layout-role="footer-decoration" data-layout-region="footer" style="position:absolute;left:70px;top:650px;width:180px;height:4px;background:#d67052"></div>
+      </section></body></html>`, "utf8"));
+
+    const measurements = await measureHtmlFile(input, { replica: true });
+    expect(measurements.elements.find((element) => element.id === "subtitle")?.semantics).toMatchObject({
+      semanticParentId: "panel"
+    });
+    expect(measurements.elements.find((element) => element.id === "footer-rule")?.semantics).toMatchObject({
+      role: "footer-decoration", layoutRegion: "footer"
+    });
   }, 60000);
 
   it("captures computed CSS padding for replica text nodes", async () => {

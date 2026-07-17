@@ -69,12 +69,13 @@ describe("HTML layout contracts", () => {
 
   it("preserves overlap, layout-region, and axis semantics in the manifest", () => {
     const html = `<section class="pptx-slide"><div data-layout-region="stack-a">
-      <div data-pptx-kind="shape" data-pptx-id="ornament" data-layout-role="decoration" data-allow-overlap-with="hero" data-x="1" data-y="1" data-w="1" data-h="1"></div>
+      <div data-pptx-kind="shape" data-pptx-id="panel" data-layout-role="container" data-x="0.5" data-y="0.5" data-w="3" data-h="3"></div>
+      <div data-pptx-kind="shape" data-pptx-id="ornament" data-semantic-parent-id="panel" data-layout-role="decoration" data-allow-overlap-with="hero" data-x="1" data-y="1" data-w="1" data-h="1"></div>
       <line data-pptx-kind="line" data-pptx-id="axis-y" data-layout-role="axis" data-axis-direction="up" data-x="2" data-y="5" data-w="0" data-h="-3"></line>
     </div></section>`;
     const manifest = convertHtmlToManifest(html);
     expect(manifest.slides[0].elements.find((element) => element.id === "ornament")).toMatchObject({
-      role: "decoration", layoutRegion: "stack-a", allowOverlapWith: ["hero"]
+      role: "decoration", semanticParentId: "panel", layoutRegion: "stack-a", allowOverlapWith: ["hero"]
     });
     expect(manifest.slides[0].elements.find((element) => element.id === "axis-y")).toMatchObject({
       role: "axis", axisDirection: "up", layoutRegion: "stack-a", h: -3

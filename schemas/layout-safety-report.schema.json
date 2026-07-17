@@ -54,6 +54,8 @@
               "overlap",
               "content-occlusion",
               "decoration-occlusion",
+              "semantic-container-escape",
+              "footer-safe-area-collision",
               "vertical-gap-imbalance",
               "text-rhythm",
               "font-too-small",

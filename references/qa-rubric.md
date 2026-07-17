@@ -70,7 +70,8 @@ Tell the user:
 
 A Creative run needs both deterministic evidence and mandatory Host visual
 review. The Host inspects every full-size rendered slide, not only the contact
-sheet, and submits a packet-bound sidecar. Safe refinement applies at most one
+sheet; a contact sheet is navigation evidence, never the final acceptance
+source. The Host submits a packet-bound sidecar. Safe refinement applies at most one
 approved reversible operation per resume and shares the three-delta cap with
 repair. See `references/creative-visual-proof.md` and
 `references/creative-refinement.md`.

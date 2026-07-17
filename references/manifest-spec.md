@@ -109,10 +109,19 @@ The renderer normalizes those values to positive PPTX extents and writes
 declares `axisDirection: left | right | up | down`, which must agree with its
 logical endpoint delta.
 
-HTML-first elements may preserve `layoutRegion` and a pair-specific
-`allowOverlapWith` array. The latter is the manifest equivalent of
+HTML-first elements may preserve `layoutRegion`, `semanticParentId`, and a
+pair-specific `allowOverlapWith` array. When `semanticParentId` references a
+visible shape identified as a card, panel, container, surface, or module, the
+element must remain geometrically contained by it; the layout-safety gate
+rejects children that escape that container. Other semantic-parent links remain
+lineage only. The latter is the manifest equivalent of
 `data-allow-overlap-with` and must name exact element IDs. It is never a general
 permission to overlap unrelated content.
+
+Footer rules, folios, and page numbers use an explicit footer-bearing `role`
+or `layoutRegion` such as `footer-decoration`, `slide-number`, or `footer`.
+Non-footer content must end above the earliest marked footer element; entering
+that band is a blocking layout-safety collision in Creative runs.
 
 v0.2 supports native-rendered `chart` elements with `kind: "bar"`. v0.3 also supports `line` and `pie`. The visual roadmap extension also accepts `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`; these newer kinds expand into editable primitive text, shape, and line elements before rendering:
 

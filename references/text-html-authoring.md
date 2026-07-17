@@ -22,6 +22,12 @@ direction.
 
 - Use one `<section class="pptx-slide">` per 1280x720 slide.
 - Give every editable object a globally unique `data-pptx-id`.
+- When text or media belongs inside a visible panel/card, set
+  `data-semantic-parent-id="<container-id>"`. The compiled element must remain
+  fully inside that referenced shape. Mark the parent with a container-like
+  ID or role (`panel`, `card`, `container`, `surface`, or `module`) so
+  the containment gate is unambiguous; reducing font size is not an acceptable
+  substitute for repairing the geometry.
 - Use `data-layout-region="<id>"` on stacked content and implement it with CSS
   flex/grid. Adjacent vertical gaps must remain between 0.25em and 0.75in;
   larger intentional whitespace requires `data-gap-intent="spacious"`.
@@ -33,6 +39,9 @@ direction.
   `<ul>/<ol>/<li>` markup instead of separate dot and text objects.
 - Mark native text, shape, image, table, chart, and line intent with supported
   semantic markup or `data-pptx-kind`.
+- Mark footer rules and folios explicitly with `data-layout-role="footer-decoration"`
+  or `data-layout-role="slide-number"` and `data-layout-region="footer"`.
+  Body content must end above the first footer element.
 - Use HTML/CSS for composition and browser proof, but prefer effects that map to
   native PowerPoint objects. Unsupported local effects may use bounded crops;
   full-slide rasters are forbidden.
