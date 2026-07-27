@@ -58,6 +58,8 @@
               "semantic-safe-inset",
               "footer-safe-area-collision",
               "vertical-gap-imbalance",
+              "excessive-whitespace",
+              "content-imbalance",
               "text-rhythm",
               "font-too-small",
               "line-height-too-tight",

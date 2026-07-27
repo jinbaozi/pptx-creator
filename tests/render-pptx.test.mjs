@@ -124,7 +124,48 @@ describe("render-pptx", () => {
       severity: "critical"
     }));
     expect(report.summary.blocked).toBe(true);
+
+    const compositionOnlyRelaxed = await auditPptxGeometry(pptxPath, sample, { allowCompositionViolation: true });
+    expect(compositionOnlyRelaxed.findings).toContainEqual(expect.objectContaining({
+      kind: "content-occlusion",
+      severity: "critical"
+    }));
+    expect(compositionOnlyRelaxed.summary.blocked).toBe(true);
+
+    sample.metadata.mode = "replica";
+    sample.metadata.inputType = "image";
+    const sourcePreservingReplica = await auditPptxGeometry(pptxPath, sample);
+    expect(sourcePreservingReplica.findings.find((finding) => finding.kind === "content-occlusion")).toBeUndefined();
   });
+
+  it("rechecks dominant empty bands against final PPTX object geometry", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-final-whitespace-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].type = "content";
+    sample.slides[0].elements = [
+      { type: "shape", id: "module-a", x: 0.8, y: 0.8, w: 2, h: 1.2, shape: "rect", style: { fill: "#EEF2FF" } },
+      { type: "shape", id: "module-b", x: 3.1, y: 0.8, w: 2, h: 1.2, shape: "rect", style: { fill: "#E0E7FF" } }
+    ];
+    const manifestPath = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifestPath, JSON.stringify(sample, null, 2), "utf8");
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifestPath, pptxPath], { cwd: root });
+
+    const report = await auditPptxGeometry(pptxPath, sample);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      slideId: sample.slides[0].id,
+      elementId: "__slide__",
+      kind: "excessive-whitespace",
+      severity: "critical"
+    }));
+    expect(report.summary.blocked).toBe(true);
+
+    const explicitlyRelaxed = await auditPptxGeometry(pptxPath, sample, { allowCompositionViolation: true });
+    expect(explicitlyRelaxed.findings.find((finding) => finding.kind === "excessive-whitespace")).toBeUndefined();
+    expect(explicitlyRelaxed.summary.blocked).toBe(false);
+  });
+
   it("reduces CSS font stacks to one valid PowerPoint font face", () => {
     expect(primaryFontFamily('Arial, "PingFang SC", sans-serif')).toBe("Arial");
     expect(primaryFontFamily('"PingFang SC", sans-serif')).toBe("PingFang SC");

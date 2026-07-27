@@ -82,6 +82,13 @@ describe("HTML layout contracts", () => {
     });
   });
 
+  it("preserves explicit slide whitespace intent in the manifest", () => {
+    const direct = convertHtmlToManifest(`<section class="pptx-slide" data-whitespace-intent="spacious"><h1>Direct</h1></section>`);
+    const gapFallback = convertHtmlToManifest(`<section class="pptx-slide" data-gap-intent="spacious"><h1>Fallback</h1></section>`);
+    expect(direct.slides[0].whitespaceIntent).toBe("spacious");
+    expect(gapFallback.slides[0].whitespaceIntent).toBe("spacious");
+  });
+
   it("ships schemas and public package commands", async () => {
     const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
     expect(Object.keys(pkg.scripts)).toEqual(["pptx", "test", "test:unit", "test:browser", "test:visual", "test:py", "benchmark:creative", "setup"]);
@@ -151,6 +158,37 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
     expect(kinds.has("connector-marker-missing")).toBe(true);
   });
 
+  it("reports wrapped atomic text and unintentional whole-slide whitespace", async () => {
+    const { auditHtmlFile } = await import("../scripts/lib/html-layout-audit.mjs");
+    const dir = await mkdtemp(join(tmpdir(), "pptx-html-balance-"));
+    const input = join(dir, "deck.html");
+    await writeFile(input, `<!doctype html><style>
+      body{margin:0}.pptx-slide{position:relative;width:1280px;height:720px}
+      .module{position:absolute;top:80px;width:190px;height:90px;background:#eef2ff}
+      .a{left:80px}.b{left:300px}
+      h1{position:absolute;left:80px;top:90px;width:220px;height:auto;margin:0;font:700 40px/1.15 Arial}
+      .metric{position:absolute;left:80px;top:300px;width:90px;height:auto;font:700 48px/1 Arial;word-break:break-all}
+    </style>
+    <section class="pptx-slide" id="slide-001" data-type="content">
+      <div class="module a" data-pptx-id="module-a">A</div>
+      <div class="module b" data-pptx-id="module-b">B</div>
+    </section>
+    <section class="pptx-slide" id="slide-002" data-type="cover">
+      <div class="module a" data-pptx-id="cover-a">A</div>
+      <div class="module b" data-pptx-id="cover-b">B</div>
+    </section>
+    <section class="pptx-slide" id="slide-003" data-whitespace-intent="spacious">
+      <h1 data-pptx-id="wrapped-title" data-max-lines="1">A deliberately long title that wraps onto multiple lines</h1>
+      <div class="metric" data-pptx-id="wrapped-metric" data-layout-role="metric">123456</div>
+    </section>`, "utf8");
+    const report = await auditHtmlFile(input, { screenshots: false, profile: "creative" });
+    const kindsFor = (slideId) => new Set(report.checks.filter((check) => check.slideId === slideId).map((check) => check.kind));
+    expect(kindsFor("slide-001").has("excessive-whitespace")).toBe(true);
+    expect(kindsFor("slide-002").has("excessive-whitespace")).toBe(false);
+    expect(kindsFor("slide-003").has("title-line-limit")).toBe(true);
+    expect(kindsFor("slide-003").has("metric-wrap")).toBe(true);
+  });
+
   it("writes a repaired copy, preserves the source, and is idempotent", async () => {
     const { repairHtmlLayout } = await import("../scripts/lib/html-layout-repair.mjs");
     const dir = await mkdtemp(join(tmpdir(), "pptx-html-repair-"));
@@ -203,10 +241,31 @@ describe.skipIf(!playwrightEnabled)("HTML layout browser integration", () => {
     </section>`, "utf8");
     const result = await repairHtmlLayout(input, join(dir, "output"), { maxAttempts: 3, screenshots: false });
     expect(result.report.summary).toMatchObject({ status: "passed", criticalRemaining: 0 });
+    expect(result.report.attempts.flatMap((attempt) => attempt.operations).map((operation) => operation.kind)).toEqual(
+      expect.arrayContaining(["center-composition", "reanchor-connector"])
+    );
     const repaired = await readFile(result.repairedPath, "utf8");
     expect(repaired).toContain('data-pptx-kind="line"');
     expect(repaired).toContain('data-pptx-id="flow"');
     expect(repaired).toContain("marker-end=\"url(#pptx-auto-arrowhead-flow)\"");
+  });
+
+  it("keeps titled extreme whitespace Host-owned instead of moving the hierarchy", async () => {
+    const { repairHtmlLayout } = await import("../scripts/lib/html-layout-repair.mjs");
+    const dir = await mkdtemp(join(tmpdir(), "pptx-html-host-whitespace-"));
+    const input = join(dir, "source.html");
+    await writeFile(input, `<!doctype html><style>
+      body{margin:0}.pptx-slide{position:relative;width:1280px;height:720px}
+      h1{position:absolute;left:80px;top:40px;margin:0;font:700 36px/1.2 Arial}
+      .module{position:absolute;top:130px;width:180px;height:80px}.a{left:80px}.b{left:300px}
+    </style><section class="pptx-slide" data-type="content">
+      <h1 data-pptx-id="title">Deliberate hierarchy</h1>
+      <div class="module a" data-pptx-kind="shape" data-pptx-id="a">A</div>
+      <div class="module b" data-pptx-kind="shape" data-pptx-id="b">B</div>
+    </section>`, "utf8");
+    const result = await repairHtmlLayout(input, join(dir, "output"), { maxAttempts: 1, screenshots: false });
+    expect(result.report.summary).toMatchObject({ status: "blocked", criticalRemaining: 1 });
+    expect(result.report.attempts.flatMap((attempt) => attempt.operations).map((operation) => operation.kind)).not.toContain("center-composition");
   });
 
   it("blocks strict HTML replica when real source-render comparison misses policy", async () => {

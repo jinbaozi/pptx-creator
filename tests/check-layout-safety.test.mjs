@@ -604,6 +604,72 @@ describe("check-layout-safety", () => {
     });
   });
 
+  describe("whole-slide whitespace balance", () => {
+    it("blocks content compressed into one corner with a dominant empty band", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        type: "content",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "module-a", x: 0.8, y: 0.8, w: 2, h: 1.2, shape: "rect" },
+          { type: "shape", id: "module-b", x: 3.1, y: 0.8, w: 2, h: 1.2, shape: "rect" }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: "excessive-whitespace", target: "__slide__", severity: "critical" })
+      ]));
+      expect(result.summary.blocked).toBe(true);
+    });
+
+    it("keeps deliberate sparse cover and explicitly spacious layouts valid", () => {
+      const sparseElements = [
+        { type: "text", id: "cover-title", x: 0.8, y: 0.8, w: 4, h: 0.8, text: "Sparse", style: { fontSize: 30 } },
+        { type: "text", id: "cover-subtitle", x: 0.8, y: 1.8, w: 3, h: 0.5, text: "Intentional", style: { fontSize: 18 } }
+      ];
+      const manifest = makeManifest([
+        { id: "s1", type: "cover", background: { type: "solid", color: "#FFFFFF" }, elements: sparseElements },
+        { id: "s2", type: "content", whitespaceIntent: "spacious", background: { type: "solid", color: "#FFFFFF" }, elements: sparseElements }
+      ]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((check) => ["excessive-whitespace", "content-imbalance"].includes(check.type))).toBeUndefined();
+    });
+
+    it("accepts content whose envelope uses both axes of the slide", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        type: "content",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "top-left", x: 0.8, y: 0.8, w: 3.8, h: 2.1, shape: "rect" },
+          { type: "shape", id: "bottom-right", x: 8.7, y: 4.4, w: 3.8, h: 2.1, shape: "rect" }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks.find((check) => ["excessive-whitespace", "content-imbalance"].includes(check.type))).toBeUndefined();
+    });
+
+    it("reports moderate asymmetric whitespace as a warning without blocking", () => {
+      const manifest = makeManifest([{
+        id: "s1",
+        type: "content",
+        background: { type: "solid", color: "#FFFFFF" },
+        elements: [
+          { type: "shape", id: "module-a", x: 0.8, y: 1, w: 3, h: 2, shape: "rect" },
+          { type: "shape", id: "module-b", x: 5.6, y: 3.5, w: 3, h: 2, shape: "rect" }
+        ]
+      }]);
+      const result = preflightLayout(manifest, { strict: true });
+      expect(result.checks).toContainEqual(expect.objectContaining({
+        type: "content-imbalance",
+        target: "__slide__",
+        severity: "warning"
+      }));
+      expect(result.checks.find((check) => check.type === "excessive-whitespace")).toBeUndefined();
+      expect(result.summary.blocked).toBe(false);
+    });
+  });
+
   describe("summary", () => {
     it("counts critical vs warning separately", () => {
       const manifest = makeManifest([

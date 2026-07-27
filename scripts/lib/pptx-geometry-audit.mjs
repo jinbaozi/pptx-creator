@@ -16,6 +16,7 @@ const POST_RENDER_SAFETY_KINDS = new Set([
   "text-required-bounds",
   "title-line-limit",
   "title-content-gap",
+  "excessive-whitespace",
   "connector-detached",
   "connector-direction",
   "connector-marker-missing",
@@ -121,7 +122,7 @@ function actualElementGeometry(element, object) {
   };
 }
 
-function postRenderSafetyFindings(manifest, slide, objectsByName) {
+function postRenderSafetyFindings(manifest, slide, objectsByName, options = {}) {
   const elements = (slide.elements ?? [])
     .filter((element) => LINEAGE_TYPES.has(element?.type) && objectsByName.has(element.id))
     .map((element) => actualElementGeometry(element, objectsByName.get(element.id)));
@@ -130,8 +131,11 @@ function postRenderSafetyFindings(manifest, slide, objectsByName) {
     ...manifest,
     slides: [{ ...slide, elements }]
   };
-  return preflightLayout(actualManifest, { strict: true }).checks
-    .filter((check) => check.severity === "critical" && POST_RENDER_SAFETY_KINDS.has(check.type))
+  const sourcePreservingReplica = ["image", "pdf"].includes(String(manifest?.metadata?.inputType ?? "").toLowerCase());
+  return preflightLayout(actualManifest, { strict: true, mode: sourcePreservingReplica ? "replica" : "creative" }).checks
+    .filter((check) => check.severity === "critical"
+      && POST_RENDER_SAFETY_KINDS.has(check.type)
+      && !(options.allowCompositionViolation === true && check.type === "excessive-whitespace"))
     .map((check) => ({
       slideId: slide.id,
       elementId: check.target ?? "__slide__",
@@ -270,7 +274,7 @@ export async function auditPptxGeometry(pptxPath, manifest, options = {}) {
         });
       }
       findings.push(...lineFindings(slide, byName));
-      findings.push(...postRenderSafetyFindings(manifest, slide, byName));
+      findings.push(...postRenderSafetyFindings(manifest, slide, byName, options));
     }
     slides.push({ slideId: slide.id, expectedObjectCount: expected.length, matchedObjectCount: expected.length - missing.length, objectCount: objects.length });
   }

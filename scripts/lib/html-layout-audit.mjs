@@ -74,7 +74,48 @@ export async function settleHtmlPage(page, inputPath) {
         try { await image.decode(); } catch { /* reported by the audit */ }
       }
     }));
-    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    const snapshot = () => {
+      const selector = [
+        ".pptx-slide",
+        "[data-slide]",
+        "[data-pptx-id]",
+        "[data-pptx-kind]",
+        "[data-layout-role]",
+        "[data-card]",
+        ".card",
+        "h1",
+        "h2",
+        "h3",
+        "p",
+        "li",
+        "table",
+        "img",
+        "svg"
+      ].join(",");
+      return [...document.querySelectorAll(selector)].map((node) => {
+        const rect = node.getBoundingClientRect();
+        return [
+          node.tagName,
+          node.getAttribute("data-pptx-id") || node.id || "",
+          Number(rect.left.toFixed(2)),
+          Number(rect.top.toFixed(2)),
+          Number(rect.width.toFixed(2)),
+          Number(rect.height.toFixed(2)),
+          node.scrollWidth,
+          node.scrollHeight
+        ];
+      });
+    };
+    let previous = "";
+    let consecutiveMatches = 0;
+    for (let frame = 0; frame < 12; frame += 1) {
+      await new Promise((done) => requestAnimationFrame(done));
+      const current = JSON.stringify(snapshot());
+      consecutiveMatches = current === previous ? consecutiveMatches + 1 : 0;
+      previous = current;
+      if (consecutiveMatches >= 2) return;
+    }
+    throw new Error("HTML layout did not stabilize across two consecutive geometry snapshots.");
   });
 }
 
@@ -215,6 +256,43 @@ export async function auditHtmlPage(page, options = {}) {
     };
     const hasMeaningfulText = (node) => (node.innerText || node.textContent || "").trim().length > 0;
     const isCard = (node) => node.matches(".card,[data-card],[data-pptx-kind='card']");
+    const textLineCount = (node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const lineTops = [];
+      const lineTolerance = Math.max(2, (Number.parseFloat(getComputedStyle(node).fontSize) || 16) * 0.12);
+      for (const rect of [...range.getClientRects()].filter((item) => item.width > tolerance && item.height > tolerance).sort((a, b) => a.top - b.top || a.left - b.left)) {
+        if (!lineTops.some((top) => Math.abs(top - rect.top) <= lineTolerance)) lineTops.push(rect.top);
+      }
+      return Math.max(1, lineTops.length);
+    };
+    const isTitleText = (node) => {
+      const role = `${node.getAttribute("data-layout-role") || ""} ${node.getAttribute("data-typography") || ""} ${node.className?.baseVal || node.className || ""}`;
+      return node.matches("h1,h2,[data-layout-role='title'],[data-layout-role='headline']")
+        || /(?:^|\s|[-_])(?:slide[-_]?title|hero[-_]?title|headline)(?:$|\s|[-_])/i.test(role);
+    };
+    const isMetricText = (node) => {
+      const role = `${node.getAttribute("data-layout-role") || ""} ${node.getAttribute("data-typography") || ""} ${node.className?.baseVal || node.className || ""}`;
+      return /(?:^|\s|[-_])(?:metric|kpi|stat|big[-_]?number)(?:$|\s|[-_])/i.test(role);
+    };
+    const whitespaceIntentional = (slide) => {
+      const intent = `${slide.getAttribute("data-whitespace-intent") || ""} ${slide.getAttribute("data-gap-intent") || ""}`
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean);
+      const type = `${slide.getAttribute("data-type") || ""} ${slide.getAttribute("data-page-role") || ""}`.toLowerCase();
+      return intent.some((value) => ["spacious", "intentional", "sparse"].includes(value))
+        || /(?:^|\s)(?:cover|section|quote|closing)(?:$|\s)/.test(type);
+    };
+    const isSubstantive = (node, slide) => {
+      if (node === slide || isDecoration(node) || isConnector(node)) return false;
+      const rect = node.getBoundingClientRect();
+      if (rect.width <= tolerance || rect.height <= tolerance) return false;
+      if (node instanceof HTMLImageElement || node.matches("table,canvas,video")) return true;
+      const kind = node.getAttribute("data-pptx-kind") || node.getAttribute("data-pptx-type");
+      if (kind && !["line", "connector", "decoration"].includes(kind.toLowerCase())) return true;
+      return hasMeaningfulText(node) || (isCard(node) && node.children.length > 0);
+    };
     const boundaryDistance = (point, rect) => {
       const insideX = point.x >= rect.left - 8 && point.x <= rect.right + 8;
       const insideY = point.y >= rect.top - 8 && point.y <= rect.bottom + 8;
@@ -350,6 +428,22 @@ export async function auditHtmlPage(page, options = {}) {
               });
             }
           }
+          if (layoutProfile === "creative") {
+            const lineCount = textLineCount(node);
+            if (isTitleText(node)) {
+              const declared = Number.parseInt(node.getAttribute("data-max-lines") || "1", 10);
+              const maxLines = Number.isInteger(declared) && declared > 0 ? declared : 1;
+              if (lineCount > maxLines) {
+                pushCheck(slideId, node, "title-line-limit", `Title ${semanticId(node)} renders as ${lineCount} lines but allows ${maxLines}.`, {
+                  suggestion: { operation: "hostReflow", alternatives: ["shorten-title", "widen-title-band", "two-line-title-layout"] }
+                });
+              }
+            } else if (isMetricText(node) && lineCount > 1) {
+              pushCheck(slideId, node, "metric-wrap", `Metric ${semanticId(node)} wraps to ${lineCount} lines; atomic values must remain on one line.`, {
+                suggestion: { operation: "hostReflow", alternatives: ["wider-layout", "metric-group", "price-group"] }
+              });
+            }
+          }
           const horizontalOverflow = node.scrollWidth > node.clientWidth + tolerance;
           const verticalOverflow = node.scrollHeight > node.clientHeight + tolerance;
           if (horizontalOverflow || verticalOverflow) {
@@ -405,6 +499,46 @@ export async function auditHtmlPage(page, options = {}) {
       }
 
       if (layoutProfile === "creative") {
+        if (!whitespaceIntentional(slide)) {
+          const contentRects = candidates.filter((node) => isSubstantive(node, slide)).map((node) => node.getBoundingClientRect());
+          if (contentRects.length >= 2) {
+            const left = Math.min(...contentRects.map((rect) => rect.left));
+            const top = Math.min(...contentRects.map((rect) => rect.top));
+            const right = Math.max(...contentRects.map((rect) => rect.right));
+            const bottom = Math.max(...contentRects.map((rect) => rect.bottom));
+            const gaps = {
+              left: Math.max(0, left - slideRect.left),
+              right: Math.max(0, slideRect.right - right),
+              top: Math.max(0, top - slideRect.top),
+              bottom: Math.max(0, slideRect.bottom - bottom)
+            };
+            const contentWidth = Math.max(0, right - left);
+            const contentHeight = Math.max(0, bottom - top);
+            const horizontalDominant = Math.max(gaps.left, gaps.right) > slideRect.width * 0.40
+              && Math.abs(gaps.left - gaps.right) > slideRect.width * 0.15
+              && contentWidth < slideRect.width * 0.35;
+            const verticalDominant = Math.max(gaps.top, gaps.bottom) > slideRect.height * 0.40
+              && Math.abs(gaps.top - gaps.bottom) > slideRect.height * 0.15
+              && contentHeight < slideRect.height * 0.35;
+            const horizontalImbalance = Math.abs(gaps.left - gaps.right) > slideRect.width * 0.28 && contentWidth < slideRect.width * 0.72;
+            const verticalImbalance = Math.abs(gaps.top - gaps.bottom) > slideRect.height * 0.28 && contentHeight < slideRect.height * 0.72;
+            if (horizontalDominant || verticalDominant) {
+              if (!slide.hasAttribute("data-pptx-audit-id")) slide.setAttribute("data-pptx-audit-id", `${slideId}-canvas`);
+              pushCheck(slideId, slide, "excessive-whitespace", `Slide ${slideId} leaves a dominant empty ${horizontalDominant ? "horizontal" : "vertical"} band without an explicit spacious intent.`, {
+                rect: false,
+                suggestion: { operation: "hostReflow", axis: horizontalDominant ? "horizontal" : "vertical", contentWidth, contentHeight }
+              });
+            } else if (horizontalImbalance || verticalImbalance) {
+              if (!slide.hasAttribute("data-pptx-audit-id")) slide.setAttribute("data-pptx-audit-id", `${slideId}-canvas`);
+              pushCheck(slideId, slide, "content-imbalance", `Slide ${slideId} has strongly asymmetric edge whitespace without an explicit whitespace intent.`, {
+                severity: "warning",
+                rect: false,
+                suggestion: { operation: "reviewBalance", axis: horizontalImbalance ? "horizontal" : "vertical" }
+              });
+            }
+          }
+        }
+
         for (const region of slide.querySelectorAll("[data-layout-region]")) {
           if (!region.hasAttribute("data-pptx-audit-id")) region.setAttribute("data-pptx-audit-id", `${slideId}-region-${semanticId(region)}`);
           const style = getComputedStyle(region);

@@ -10,8 +10,8 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const MAX_WORST_TILE_MAE = 0.20;
 
 const POLICIES = Object.freeze({
-  html: { fidelity: { ssim: { min: 0.97 }, normalizedMae: { max: 6 / 255 }, bboxP95Drift: { max: 2 }, fontMapping: { min: 1 }, colorMapping: { min: 1 } }, nativeCoverage: { min: 0.95 }, editability: { min: 4 } },
-  "html-editable": { fidelity: { ssim: { min: 0.85 }, normalizedMae: { max: 12 / 255 }, bboxP95Drift: { max: 4 }, fontMapping: { min: 0.95 }, colorMapping: { min: 0.75 } }, nativeCoverage: { min: 0.95 }, editability: { min: 4 } },
+  html: { fidelity: { ssim: { min: 0.97 }, normalizedMae: { max: 6 / 255 }, bboxP95Drift: { max: 2 }, bboxMaxDrift: { max: 2 }, fontMapping: { min: 1 }, colorMapping: { min: 1 }, nativeObjectRecall: { min: 1 }, nativeTextRecall: { min: 1 } }, nativeCoverage: { min: 0.95 }, editability: { min: 4 } },
+  "html-editable": { fidelity: { ssim: { min: 0.85 }, normalizedMae: { max: 12 / 255 }, bboxP95Drift: { max: 4 }, bboxMaxDrift: { max: 4 }, fontMapping: { min: 0.95 }, colorMapping: { min: 0.75 }, nativeObjectRecall: { min: 0.95 }, nativeTextRecall: { min: 0.95 } }, nativeCoverage: { min: 0.95 }, editability: { min: 4 } },
   image: { fidelity: { ssim: { min: 0.94 }, ocrCer: { max: 0.02 }, bboxIou: { min: 0.90 }, paletteDeltaE2000P95: { max: 3 }, nativeHighConfidenceTextRecall: { min: 0.90 } }, nativeCoverage: { min: 0 }, editability: { min: 3 } }
 });
 const MEASUREMENT_RECEIPT = Symbol("replica-measurement-receipt");
@@ -218,9 +218,9 @@ async function inspectPptxObjects(pptxPath, manifest, measurements) {
         const actual = { x: target.x / 914400 / size.width * viewport.width, y: target.y / 914400 / size.height * viewport.height, w: target.w / 914400 / size.width * viewport.width, h: target.h / 914400 / size.height * viewport.height };
         drift=Math.max(...["x", "y", "w", "h"].map((key) => Math.abs(Number(item.px[key]) - actual[key]))); drifts.push(drift);
         geometryAdjustments.push({id:item.id,slideIndex,dx:Number(item.px.x)-actual.x,dy:Number(item.px.y)-actual.y,dw:Number(item.px.w)-actual.w,dh:Number(item.px.h)-actual.h});
-        if(drift<=2) nativeMapped+=1;
+        nativeMapped+=1;
       }
-      if(item.kind==="text") { textTotal+=1; const xmlText=[...(target?.block??"").matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match)=>xmlDecode(match[1])).join(""); const invisible=/<a:(?:rPr|defRPr)\b[^>]*>[\s\S]*?(?:<a:alpha\b[^>]*val="0"|<a:noFill\s*\/>)[\s\S]*?<\/a:(?:rPr|defRPr)>/i.test(target?.block??""); if(target&&drift<=2&&!invisible&&xmlText===item.text) textMapped+=1; }
+      if(item.kind==="text") { textTotal+=1; const xmlText=[...(target?.block??"").matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match)=>xmlDecode(match[1])).join(""); const invisible=/<a:(?:rPr|defRPr)\b[^>]*>[\s\S]*?(?:<a:alpha\b[^>]*val="0"|<a:noFill\s*\/>)[\s\S]*?<\/a:(?:rPr|defRPr)>/i.test(target?.block??""); if(target&&!invisible&&xmlText===item.text) textMapped+=1; }
       if (item.kind === "text" && item.style?.fontFamily) {
         fontTotal += 1;
         const family = primaryFontFamily(item.style.fontFamily, "Arial", item.text).toLowerCase();
@@ -241,6 +241,7 @@ async function inspectPptxObjects(pptxPath, manifest, measurements) {
     drifts.sort((a, b) => a - b);
     perSlide.push({
       bboxP95Drift: drifts.length ? metric(Number(drifts[Math.max(0, Math.ceil(drifts.length * 0.95) - 1)].toFixed(4))) : unavailable("no-visible-elements"),
+      bboxMaxDrift: drifts.length ? metric(Number(drifts.at(-1).toFixed(4))) : unavailable("no-visible-elements"),
       fontMapping: fontTotal ? metric(fontMapped / fontTotal) : unavailable("no-font-bearing-elements"),
       colorMapping: colorTotal ? metric(colorMapped / colorTotal) : unavailable("no-color-bearing-elements"),
       nativeObjectRecall: nativeTotal ? metric(nativeMapped/nativeTotal) : unavailable("no-native-elements"),
@@ -282,7 +283,7 @@ export async function measureHtmlReplicaEvidence(raw, { sourceArtifactPath, rend
     const renderPageDigest = await digestArtifact(boundRenderPaths[index]);
     if (sourcePageDigest.sha256 === renderPageDigest.sha256) measurementFindings.push(`candidate-reference-alias: slide ${index + 1}`);
     const pixel = JSON.parse((await runPython([join(PACKAGE_ROOT, "scripts/measure-replica.py"), boundSourcePaths[index], boundRenderPaths[index]], { cwd: PACKAGE_ROOT })).stdout);
-    const structural={bboxP95Drift:mapped[index].bboxP95Drift,fontMapping:mapped[index].fontMapping,colorMapping:mapped[index].colorMapping};
+    const structural={bboxP95Drift:mapped[index].bboxP95Drift,bboxMaxDrift:mapped[index].bboxMaxDrift,fontMapping:mapped[index].fontMapping,colorMapping:mapped[index].colorMapping,nativeObjectRecall:mapped[index].nativeObjectRecall,nativeTextRecall:mapped[index].nativeTextRecall};
     const fidelity = pixel.sizeMatch ? {
       ssim: metric(pixel.ssim), normalizedMae: metric(pixel.normalizedMae), ...structural
     } : {

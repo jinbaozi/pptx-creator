@@ -37,9 +37,10 @@ it("does not expose a caller-controlled measurement receipt mint", async () => {
 });
 
 function validEvidence(route = "html") {
-  const fidelity = route === "html" ? {
-    ssim: metric(0.98), normalizedMae: metric(5 / 255), bboxP95Drift: metric(1.5),
-    fontMapping: metric(1), colorMapping: metric(1)
+  const htmlRoute = route !== "image";
+  const fidelity = htmlRoute ? {
+    ssim: metric(0.98), normalizedMae: metric(5 / 255), bboxP95Drift: metric(1.5), bboxMaxDrift: metric(1.5),
+    fontMapping: metric(1), colorMapping: metric(1), nativeObjectRecall: metric(1), nativeTextRecall: metric(1)
   } : {
     ssim: metric(0.95), ocrCer: metric(0.015), bboxIou: metric(0.92),
     paletteDeltaE2000P95: metric(2.5), nativeHighConfidenceTextRecall: metric(0.92)
@@ -51,8 +52,8 @@ function validEvidence(route = "html") {
     thresholds: {}, retry: { status: "available", attempts: [] }, accepted: true,
     source: { pageCount: 1, size: { width: 1600, height: 900 } },
     render: { pageCount: 1, size: { width: 1600, height: 900 } },
-    perSlide: [{ slideIndex: 0, fidelity, nativeCoverage: metric(route === "html" ? 0.96 : 0.91), editability: { level: route === "html" ? 4 : 3 }, fallbacks: [] }],
-    aggregate: { fidelity, nativeCoverage: metric(route === "html" ? 0.96 : 0.91), editability: { level: route === "html" ? 4 : 3 }, fallbacks: [] },
+    perSlide: [{ slideIndex: 0, fidelity, nativeCoverage: metric(htmlRoute ? 0.96 : 0.91), editability: { level: htmlRoute ? 4 : 3 }, fallbacks: [] }],
+    aggregate: { fidelity, nativeCoverage: metric(htmlRoute ? 0.96 : 0.91), editability: { level: htmlRoute ? 4 : 3 }, fallbacks: [] },
     blockingFindings: []
   };
 }
@@ -64,16 +65,26 @@ describe("strict replica evidence evaluator", () => {
     expect(schema.$defs.metric.oneOf[1].properties.value.type).toBe("null");
     expect(schema.$defs.metric.oneOf[1].required).toContain("reason");
     expect(schema.$defs.slideEvidence.required).toEqual(expect.arrayContaining(["fidelity", "nativeCoverage", "editability", "fallbacks"]));
+    expect(schema.$defs.htmlFidelity.required).toEqual(expect.arrayContaining(["bboxMaxDrift", "nativeObjectRecall", "nativeTextRecall"]));
+    expect(schema.$defs.htmlPolicy.properties.fidelity.required).toEqual(expect.arrayContaining(["bboxMaxDrift", "nativeObjectRecall", "nativeTextRecall"]));
     const dir = await mkdtemp(join(tmpdir(), "replica-schema-"));
     const source = join(dir, "source.html"); const render = join(dir, "render.png");
     await writeFile(source, "source"); await writeFile(render, "render");
     const input = validEvidence("html"); input.paths = { source: { status: "available", path: source }, render: { status: "available", path: render } };
     const evaluated = await verifyReplicaEvidence(input);
     expect(validateJsonSchema(evaluated, schema)).toEqual({ valid: true, errors: [] });
+    const missingFormalMetric = structuredClone(evaluated);
+    delete missingFormalMetric.aggregate.fidelity.bboxMaxDrift;
+    expect(validateJsonSchema(missingFormalMetric, schema).valid).toBe(false);
     evaluated.aggregate.fidelity.ssim = { status: "unavailable", value: 1 };
     expect(validateJsonSchema(evaluated, schema).valid).toBe(false);
     const routeDrift = structuredClone(evaluated); routeDrift.route = "image";
     expect(validateJsonSchema(routeDrift, schema).valid).toBe(false);
+    const image = validEvidence("image");
+    image.paths = { source: { status: "available", path: source }, render: { status: "available", path: render } };
+    const evaluatedImage = await verifyReplicaEvidence(image);
+    expect(validateJsonSchema(evaluatedImage, schema)).toEqual({ valid: true, errors: [] });
+    expect(evaluatedImage.aggregate.fidelity).not.toHaveProperty("bboxMaxDrift");
   });
   it.each(["html", "image"])("blocks complete-looking %s metrics without a trusted measurement receipt", async (route) => {
     const dir = await mkdtemp(join(tmpdir(), "replica-authority-"));
@@ -116,7 +127,47 @@ describe("strict replica evidence evaluator", () => {
     ["image palette", "image", (x) => { x.aggregate.fidelity.paletteDeltaE2000P95 = metric(3.1); x.perSlide[0].fidelity.paletteDeltaE2000P95 = metric(3.1); }]
   ])("enforces %s threshold", (_name, route, mutate) => {
     const input = validEvidence(route); mutate(input);
-    expect(evaluateReplicaEvidence(input).accepted).toBe(false);
+    expect(evaluateReplicaEvidence(input).blockingFindings.join(" ")).toMatch(/threshold-failed/);
+  });
+
+  it("does not let a single missing or badly drifted native HTML item hide behind bbox P95", () => {
+    const drift = validEvidence("html");
+    drift.aggregate.fidelity.bboxP95Drift = metric(0.5);
+    drift.perSlide[0].fidelity.bboxP95Drift = metric(0.5);
+    drift.aggregate.fidelity.bboxMaxDrift = metric(20);
+    drift.perSlide[0].fidelity.bboxMaxDrift = metric(20);
+    expect(evaluateReplicaEvidence(drift).blockingFindings.join(" ")).toMatch(/threshold-failed: aggregate\.fidelity\.bboxMaxDrift/);
+
+    for (const name of ["nativeObjectRecall", "nativeTextRecall"]) {
+      const missing = validEvidence("html");
+      missing.aggregate.fidelity[name] = metric(0.99);
+      missing.perSlide[0].fidelity[name] = metric(0.99);
+      expect(evaluateReplicaEvidence(missing).blockingFindings.join(" ")).toMatch(new RegExp(`threshold-failed: aggregate\\.fidelity\\.${name}`));
+    }
+  });
+
+  it("applies the relaxed HTML-editable maximum drift and recall floors", () => {
+    const boundary = validEvidence("html-editable");
+    boundary.aggregate.fidelity.bboxMaxDrift = metric(4);
+    boundary.perSlide[0].fidelity.bboxMaxDrift = metric(4);
+    boundary.aggregate.fidelity.nativeObjectRecall = metric(0.95);
+    boundary.perSlide[0].fidelity.nativeObjectRecall = metric(0.95);
+    boundary.aggregate.fidelity.nativeTextRecall = metric(0.95);
+    boundary.perSlide[0].fidelity.nativeTextRecall = metric(0.95);
+    const result = evaluateReplicaEvidence(boundary);
+    expect(result.thresholds.fidelity).toMatchObject({
+      bboxMaxDrift: { max: 4 },
+      nativeObjectRecall: { min: 0.95 },
+      nativeTextRecall: { min: 0.95 }
+    });
+    expect(result.blockingFindings.join(" ")).not.toMatch(/threshold-failed/);
+
+    for (const [name, value] of [["bboxMaxDrift", 4.01], ["nativeObjectRecall", 0.949], ["nativeTextRecall", 0.949]]) {
+      const failed = validEvidence("html-editable");
+      failed.aggregate.fidelity[name] = metric(value);
+      failed.perSlide[0].fidelity[name] = metric(value);
+      expect(evaluateReplicaEvidence(failed).blockingFindings.join(" ")).toMatch(new RegExp(`threshold-failed: aggregate\\.fidelity\\.${name}`));
+    }
   });
 
   it("requires unavailable metrics to carry null and a reason", () => {
@@ -174,6 +225,11 @@ describe("strict replica evidence evaluator", () => {
       route: "html", sourcePath: pptxPath, renderPath: null
     });
     expect(result.aggregate.fidelity.ssim).toEqual({ status: "unavailable", value: null, reason: "source-render-comparison-not-implemented" });
+    expect(result.aggregate.fidelity).toMatchObject({
+      bboxMaxDrift: unavailable("source-render-comparison-not-implemented"),
+      nativeObjectRecall: unavailable("source-render-comparison-not-implemented"),
+      nativeTextRecall: unavailable("source-render-comparison-not-implemented")
+    });
     expect(result.capabilities.sourceRenderComparison).toBe(false);
     expect(result.paths.render).toMatchObject({ status: "unavailable", path: null });
     expect(result.retry).toMatchObject({ status: "unavailable", attempts: [] });

@@ -10,17 +10,28 @@ Default text-to-PPTX generation is a two-part contract:
 Write down the one-sentence communication task, audience outcome, narrative arc,
 visual concept, palette, typography, material and image language, whitespace and
 density policy, page rhythm, editability target, and forbidden visual patterns.
+Treat this as the Deck Read: deck kind, audience, communication job, delivery
+environment, vibe, references, brand assets, accessibility constraints, and
+regulatory constraints. Lock three explicit slide-native controls before
+exploration: composition variance, visual density, and narrative tempo
+(represented by the existing `visualEnergy` dial). These controls describe the
+brief; they are not universal preferences.
 Start from the user's explicit style, brand, template, or visual references. If
 none are provided, make a Host judgment from the audience, content, delivery
 environment, language, readability, and emotional tone; do not auto-select a
 built-in from topic keywords.
 Flagship work compares two to four materially different directions using at
 least three representative pages per direction. A palette swap is not a new
-direction.
+direction. Test the cover, a representative content page, and the most
+data- or structure-heavy page. Record why the selected direction won and which
+rejected characteristics must not drift back into the full deck.
 
 ## HTML canvas and native conversion
 
 - Use one `<section class="pptx-slide">` per 1280x720 slide.
+- The browser source must settle after fonts and local images load. Geometry is
+  accepted only after two consecutive DOM snapshots agree; an unstable source
+  blocks measurement instead of producing a race-dependent PPTX.
 - Give every editable object a globally unique `data-pptx-id`.
 - When text or media belongs inside a visible panel/card, set
   `data-semantic-parent-id="<container-id>"`. The compiled element must remain
@@ -31,6 +42,11 @@ direction.
 - Use `data-layout-region="<id>"` on stacked content and implement it with CSS
   flex/grid. Adjacent vertical gaps must remain between 0.25em and 0.75in;
   larger intentional whitespace requires `data-gap-intent="spacious"`.
+- A content slide whose substantive objects are compressed into one edge or
+  corner fails as `excessive-whitespace`. Sparse covers, section breaks,
+  quotations, closings, or deliberately breathing content must declare
+  `data-whitespace-intent="spacious"`; this documents intent but never exempts
+  overlap, clipping, bounds, or text-fit failures.
 - Unapproved overlap is forbidden. When a specific pair must overlap by design,
   declare only that pair with `data-allow-overlap-with="<other-id>"`; do not use
   a global exemption.

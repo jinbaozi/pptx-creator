@@ -147,10 +147,12 @@ describe("universal Agent Skill packaging", () => {
   it("pins external design provenance without claiming runtime integration or effect", async () => {
     const provenance = await read("references/external-design-provenance.md");
     const pins = {
-      "leonxlnx/taste-skill": "b17742737e796305d829b3ad39eda3add0d79060",
+      "leonxlnx/taste-skill": "e988add20dab0fa97d7a76781c48961c8184288e",
       "pbakaus/impeccable": "f2049c2b76383b444bf30cd6184f7d49a6c580d1",
       "jinbaozi/Visual-Proof-Gate": "9742d87b8d6441d1b344ebc9de16548656e60b3e",
-      "Trystan-SA/claude-design-system-prompt": "3c3ddb07d7aa3fef051d83608596470c95cfd8fe"
+      "Trystan-SA/claude-design-system-prompt": "3c3ddb07d7aa3fef051d83608596470c95cfd8fe",
+      "hugohe3/ppt-master": "de0af38a07706eee03b97f6186d8e0ffba595892",
+      "anthropics/skills": "b29e7cf65e5cb78a5ac33d582270551bc74a14eb"
     };
     for (const [repository, commit] of Object.entries(pins)) {
       expect(provenance).toContain(repository);
@@ -160,6 +162,8 @@ describe("universal Agent Skill packaging", () => {
     expect(provenance).toMatch(/adapted protocols/i);
     expect(provenance).toMatch(/not runtime (?:dependencies|integrations)/i);
     expect(provenance).toMatch(/do not independently prove/i);
+    expect(provenance).toMatch(/front-design[^.]*did not resolve/i);
+    expect(provenance).toMatch(/reverse-engineered[^.]*non-authoritative/i);
   });
 
   it("ships a completion audit that leaves absent human blind review open", async () => {

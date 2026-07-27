@@ -384,8 +384,8 @@ function unavailableMetric(reason) {
 }
 
 function unavailableFidelity(route) {
-  const names = route === "html"
-    ? ["ssim", "normalizedMae", "bboxP95Drift", "fontMapping", "colorMapping"]
+  const names = ["html", "html-editable"].includes(route)
+    ? ["ssim", "normalizedMae", "bboxP95Drift", "bboxMaxDrift", "fontMapping", "colorMapping", "nativeObjectRecall", "nativeTextRecall"]
     : ["ssim", "ocrCer", "bboxIou", "paletteDeltaE2000P95", "nativeHighConfidenceTextRecall"];
   return Object.fromEntries(names.map((name) => [name, unavailableMetric("source-render-comparison-not-implemented")]));
 }
@@ -1340,7 +1340,11 @@ export async function runDeckPipeline(manifestPath, outputDir, options = {}) {
       finalPptxPath,
       manifest,
       join(resolvedOutput, "pptx-geometry-report.json"),
-      { requireOrder: options.requireObjectLineage !== false, manifestPath: resolvedManifest }
+      {
+        requireOrder: options.requireObjectLineage !== false,
+        manifestPath: resolvedManifest,
+        allowCompositionViolation: options.allowLayoutViolation === true
+      }
     );
     const schema = JSON.parse(await readFile(join(root, "schemas/pptx-geometry-report.schema.json"), "utf8"));
     const validation = validateJsonSchema(geometryReport, schema);

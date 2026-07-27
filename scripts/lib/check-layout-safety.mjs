@@ -978,6 +978,68 @@ function checkVerticalGapBalance(slide, tokens) {
   return issues;
 }
 
+function whitespaceIntentional(slide) {
+  const intent = String(slide?.whitespaceIntent ?? slide?.compositionIntent?.whitespace ?? "").toLowerCase();
+  const type = `${slide?.pageRole ?? ""} ${slide?.type ?? ""}`.toLowerCase();
+  return ["spacious", "intentional", "sparse"].includes(intent)
+    || /(?:^|\s)(?:cover|section|quote|closing)(?:$|\s)/.test(type);
+}
+
+function checkWhitespaceBalance(slide, deckSize) {
+  if (whitespaceIntentional(slide)) return [];
+  const elements = (slide.elements ?? []).filter((element) => element?.id
+    && element.type !== "line"
+    && !isDecoration(element)
+    && !isFooterElement(element)
+    && num(element.w) > TOLERANCE_IN
+    && num(element.h) > TOLERANCE_IN);
+  if (elements.length < 2) return [];
+  const left = Math.min(...elements.map((element) => num(element.x)));
+  const top = Math.min(...elements.map((element) => num(element.y)));
+  const right = Math.max(...elements.map((element) => num(element.x) + num(element.w)));
+  const bottom = Math.max(...elements.map((element) => num(element.y) + num(element.h)));
+  const width = num(deckSize.width, DEFAULT_DECK_SIZE.width);
+  const height = num(deckSize.height, DEFAULT_DECK_SIZE.height);
+  const contentWidth = Math.max(0, right - left);
+  const contentHeight = Math.max(0, bottom - top);
+  const gaps = {
+    left: Math.max(0, left),
+    right: Math.max(0, width - right),
+    top: Math.max(0, top),
+    bottom: Math.max(0, height - bottom)
+  };
+  const horizontalDominant = Math.max(gaps.left, gaps.right) > width * 0.40
+    && Math.abs(gaps.left - gaps.right) > width * 0.15
+    && contentWidth < width * 0.35;
+  const verticalDominant = Math.max(gaps.top, gaps.bottom) > height * 0.40
+    && Math.abs(gaps.top - gaps.bottom) > height * 0.15
+    && contentHeight < height * 0.35;
+  if (horizontalDominant || verticalDominant) {
+    return [{
+      severity: "high",
+      type: "excessive-whitespace",
+      message: `Slide ${slide.id} leaves a dominant empty ${horizontalDominant ? "horizontal" : "vertical"} band without an explicit spacious intent.`,
+      target: "__slide__",
+      suggestion: {
+        operation: "host-reflow",
+        axis: horizontalDominant ? "horizontal" : "vertical",
+        contentWidth: Number(contentWidth.toFixed(3)),
+        contentHeight: Number(contentHeight.toFixed(3))
+      }
+    }];
+  }
+  const horizontalImbalance = Math.abs(gaps.left - gaps.right) > width * 0.28 && contentWidth < width * 0.72;
+  const verticalImbalance = Math.abs(gaps.top - gaps.bottom) > height * 0.28 && contentHeight < height * 0.72;
+  if (!horizontalImbalance && !verticalImbalance) return [];
+  return [{
+    severity: "medium",
+    type: "content-imbalance",
+    message: `Slide ${slide.id} has strongly asymmetric edge whitespace without an explicit whitespace intent.`,
+    target: "__slide__",
+    suggestion: { operation: "host-reflow", axis: horizontalImbalance ? "horizontal" : "vertical" }
+  }];
+}
+
 function evenlySpaced(values, tolerance = 0.08) {
   if (values.length < 4) return false;
   const sorted = [...values].sort((a, b) => a - b);
@@ -1152,6 +1214,9 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
     for (const issue of checkListItemCollision(slide, tokens, options)) {
       checks.push({ ...issue, severity: "critical" });
     }
+    for (const issue of checkWhitespaceBalance(slide, deckSize)) {
+      checks.push({ ...issue, severity: "warning" });
+    }
     return checks;
   }
 
@@ -1216,6 +1281,10 @@ function preflightSlide(slide, deckSize, tokens, options = {}) {
 
   for (const issue of checkVerticalGapBalance(slide, tokens)) {
     checks.push({ ...issue, severity: "critical" });
+  }
+
+  for (const issue of checkWhitespaceBalance(slide, deckSize)) {
+    checks.push({ ...issue, severity: issue.severity === "high" ? "critical" : "warning" });
   }
 
   // (5) text-overflow heuristic.
@@ -1338,6 +1407,8 @@ const KIND_MAP = Object.freeze({
   "semantic-safe-inset": "semantic-safe-inset",
   "footer-safe-area-collision": "footer-safe-area-collision",
   "vertical-gap-imbalance": "vertical-gap-imbalance",
+  "excessive-whitespace": "excessive-whitespace",
+  "content-imbalance": "content-imbalance",
   "font-size": "font-too-small",
   "line-height-too-tight": "line-height-too-tight",
   "line-height-too-loose": "line-height-too-loose",
@@ -1477,6 +1548,7 @@ export const __test__ = {
   resolveTokenString,
   inferRole,
   checkDecorativeGrid,
+  checkWhitespaceBalance,
   isCjk,
   formatReport,
   sortObjectKeys,

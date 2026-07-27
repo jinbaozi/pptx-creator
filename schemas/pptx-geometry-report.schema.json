@@ -51,6 +51,7 @@
               "text-required-bounds",
               "title-line-limit",
               "title-content-gap",
+              "excessive-whitespace",
               "viewer-dependent-autofit",
               "connector-detached",
               "connector-marker-missing",

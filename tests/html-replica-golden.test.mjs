@@ -24,8 +24,21 @@ describe.skipIf(!enabled)("real HTML replica proof", () => {
     expect(evidence.aggregate.fidelity.ssim.value).toBeGreaterThanOrEqual(0.97);
     expect(evidence.aggregate.fidelity.normalizedMae.value).toBeLessThanOrEqual(6 / 255);
     expect(evidence.aggregate.fidelity.bboxP95Drift.value).toBeLessThanOrEqual(2);
+    expect(evidence.aggregate.fidelity.bboxMaxDrift.value).toBeLessThanOrEqual(2);
     expect(evidence.aggregate.fidelity.fontMapping.value).toBe(1);
     expect(evidence.aggregate.fidelity.colorMapping.value).toBe(1);
+    expect(evidence.aggregate.fidelity.nativeObjectRecall.value).toBe(1);
+    expect(evidence.aggregate.fidelity.nativeTextRecall.value).toBe(1);
+    expect(evidence.thresholds.fidelity).toMatchObject({
+      bboxMaxDrift: { max: 2 },
+      nativeObjectRecall: { min: 1 },
+      nativeTextRecall: { min: 1 }
+    });
+    for (const slide of evidence.perSlide) {
+      expect(slide.fidelity.bboxMaxDrift.value).toBeLessThanOrEqual(2);
+      expect(slide.fidelity.nativeObjectRecall.value).toBe(1);
+      expect(slide.fidelity.nativeTextRecall.value).toBe(1);
+    }
     for (const file of ["final.pptx", "deck.manifest.json", "quality-report.json", "quality-report.md", "replica-evidence.json", "output-manifest.json", "preview/index.html"]) {
       await expect(access(join(dir, file))).resolves.toBeUndefined();
     }

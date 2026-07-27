@@ -21,7 +21,19 @@ Rule-based critic runs before optional model review. It should never change cont
 
 ## Deterministic Design-Quality Rules
 
-The critic borrows the useful, localizable parts of Taste Skill and Impeccable without depending on either repository at runtime:
+The critic borrows useful, localizable protocol ideas from the pinned sources in
+`external-design-provenance.md` without depending on those repositories at
+runtime. Findings are separated into hard geometry failures and soft
+composition review:
+
+- Hard failures include canvas escape, text overflow/clipping, unintended
+  content or decoration occlusion, broken elements, connector detachment or
+  reversal, title-line overflow, metric wrapping, and extreme asymmetric
+  whitespace without an explicit intent.
+- Soft findings include moderate edge imbalance, alignment or rhythm drift,
+  unexplained gap variation, and prominence mismatch. They remain visible in
+  the report and mandatory full-size Host review instead of being silently
+  discarded.
 
 - Contrast: text with explicit hex color is checked against the overlapping shape/card fill first, then the solid slide background, using WCAG thresholds.
 - Layout repetition: three or more similarly sized card shapes on one slide are flagged so the agent can add hierarchy, rhythm, or visual variation.

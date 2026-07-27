@@ -178,6 +178,58 @@ async function applyRepairPass(inputPath, outputPath, attempt) {
         });
       }
 
+      // Center a compact, absolutely positioned composition when it leaves one
+      // extreme edge band. Slides with a title remain Host-owned because moving
+      // only their body can silently damage the intended hierarchy.
+      for (const check of checks.filter((item) => item.kind === "excessive-whitespace")) {
+        const slide = nodeFor(check.selector);
+        if (!slide || slide.matches("h1,h2,h3") || slide.querySelector("h1,h2,[data-layout-role='title'],[data-layout-role='headline']")) continue;
+        const selector = [
+          "[data-pptx-id]",
+          "[data-pptx-kind]",
+          "[data-pptx-type]",
+          "[data-card]",
+          ".card",
+          "p",
+          "li",
+          "table",
+          "img"
+        ].join(",");
+        const raw = [...slide.querySelectorAll(selector)].filter((node) => {
+          if (isDecoration(node) || node.matches("[data-connector],[data-source-id],[data-target-id]")) return false;
+          const rect = node.getBoundingClientRect();
+          return rect.width > 2 && rect.height > 2;
+        });
+        const nodes = raw.filter((node) => !raw.some((parent) => parent !== node && parent.contains(node)));
+        if (nodes.length < 2 || nodes.some((node) => !["absolute", "fixed"].includes(getComputedStyle(node).position))) continue;
+        const slideRect = slide.getBoundingClientRect();
+        const rects = nodes.map((node) => node.getBoundingClientRect());
+        const envelope = {
+          left: Math.min(...rects.map((rect) => rect.left)),
+          top: Math.min(...rects.map((rect) => rect.top)),
+          right: Math.max(...rects.map((rect) => rect.right)),
+          bottom: Math.max(...rects.map((rect) => rect.bottom))
+        };
+        const axis = check.suggestion?.axis;
+        const dx = axis === "horizontal"
+          ? (slideRect.left + slideRect.width / 2) - (envelope.left + envelope.right) / 2
+          : 0;
+        const dy = axis === "vertical"
+          ? (slideRect.top + slideRect.height / 2) - (envelope.top + envelope.bottom) / 2
+          : 0;
+        if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) continue;
+        for (const node of nodes) {
+          const rect = node.getBoundingClientRect();
+          const parentRect = node.offsetParent?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+          if (dx) node.style.left = px(rect.left - parentRect.left + dx);
+          if (dy) node.style.top = px(rect.top - parentRect.top + dy);
+        }
+        record("center-composition", slide, `Centered an absolutely positioned composition along the ${axis} axis.`, envelope, {
+          axis,
+          delta: Number((axis === "horizontal" ? dx : dy).toFixed(2))
+        });
+      }
+
       // Phase 3: expose and fit overflowing text without deleting or truncating content.
       for (const check of checks.filter((item) => ["text-overflow", "content-clipped"].includes(item.kind))) {
         const node = nodeFor(check.selector);

@@ -2663,9 +2663,12 @@ function convertSlide(slideNode, slideIndex, options = {}) {
   // the heuristic), without overwriting the standard path/markers/...
   // fields already declared above.
   const { path: _ignoredPath, markers: _ignoredMarkers, autoLayoutContainers: _ignoredAuto, ...detectionExtras } = detection;
+  const whitespaceIntent = slideNode.getAttribute("data-whitespace-intent")
+    ?? slideNode.getAttribute("data-gap-intent");
 
   return {
     ...result,
+    ...(whitespaceIntent ? { whitespaceIntent } : {}),
     path: detection.path,
     markers: detection.markers,
     autoLayoutContainers: detection.autoLayoutContainers,
