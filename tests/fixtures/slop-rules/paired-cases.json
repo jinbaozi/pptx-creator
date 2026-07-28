@@ -27,9 +27,9 @@
       "shouldPass": [{"id":"rhetoric-pass-clean","scenario":"clean-zh"},{"id":"rhetoric-pass-quote","context":{"verbatimSourceQuote":true}},{"id":"rhetoric-pass-english","scenario":"clean"},{"id":"rhetoric-pass-government","scenario":"clean-zh","context":{"templateType":"government"}},{"id":"rhetoric-pass-editorial","scenario":"clean-zh","context":{"templateType":"editorial"}},{"id":"rhetoric-pass-dashboard","scenario":"clean-zh","context":{"contentPurpose":"data-review"}}]
     },
     {
-      "ruleId": "rounded-token-variance", "trigger": "rounded-cards",
-      "shouldFlag": [{"id":"rounded-flag-1"},{"id":"rounded-flag-2"},{"id":"rounded-flag-3"},{"id":"rounded-flag-4"},{"id":"rounded-flag-5"},{"id":"rounded-flag-6"}],
-      "shouldPass": [{"id":"rounded-pass-clean","scenario":"clean"},{"id":"rounded-pass-dashboard","context":{"templateType":"dashboard"}},{"id":"rounded-pass-government","context":{"templateType":"government"}},{"id":"rounded-pass-brand","context":{"brandLocked":true,"componentSystemApproved":true}},{"id":"rounded-pass-mixed","scenario":"rounded-mixed"},{"id":"rounded-pass-editorial","scenario":"clean","context":{"templateType":"editorial"}}]
+      "ruleId": "rounded-token-variance", "trigger": "rounded-implicit",
+      "shouldFlag": [{"id":"rounded-flag-1"},{"id":"rounded-flag-2","scenario":"rounded-oversized"},{"id":"rounded-flag-3"},{"id":"rounded-flag-4","scenario":"rounded-oversized"},{"id":"rounded-flag-5"},{"id":"rounded-flag-6","scenario":"rounded-oversized"}],
+      "shouldPass": [{"id":"rounded-pass-clean","scenario":"clean"},{"id":"rounded-pass-peer","scenario":"rounded-cards"},{"id":"rounded-pass-mixed","scenario":"rounded-mixed"},{"id":"rounded-pass-brand","scenario":"rounded-implicit","context":{"brandLocked":true,"componentSystemApproved":true}},{"id":"rounded-pass-source-lock","scenario":"rounded-oversized","context":{"sourceLocked":true}},{"id":"rounded-pass-editorial","scenario":"clean","context":{"templateType":"editorial"}}]
     },
     {
       "ruleId": "icon-circle-triad", "trigger": "circle-triad",

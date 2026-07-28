@@ -1301,6 +1301,7 @@ function replicaShapeElement(id, measurement) {
     }
   };
   if (element.shape === "roundRect") {
+    element.style.borderRadius = replicaCornerRadii(style)[0];
     const explicitInset = Number(measurement?.semantics?.safeInset);
     element.safeInset = Number.isFinite(explicitInset) && explicitInset >= 0 ? explicitInset : 0.12;
   }

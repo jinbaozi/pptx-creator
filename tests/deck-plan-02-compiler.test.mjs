@@ -127,6 +127,14 @@ describe("deck.plan 0.2 semantic compiler", () => {
     });
   });
 
+  it("keeps native card radius within eight percent of the short side", () => {
+    const tokens = structuredClone(business.tokens);
+    tokens.components["hero-card"] = { ...tokens.components["hero-card"], rounded: 48 };
+    const manifest = compileDeckPlan(loadPlan(), optionsFor({ ...business, tokens }));
+    const card = manifest.slides.find((slide) => slide.type === "dashboard").elements.find((element) => element.id === "kpi-card-0");
+    expect(card.style.rounded).toBeLessThanOrEqual(Math.min(24, card.h * 96 * 0.08));
+  });
+
   it("preserves a declared metric face when design identity locks protect it", () => {
     const plan = loadPlan();
     plan.designIntent.locks.protectedTokens = ["typography.metric.fontFamily"];

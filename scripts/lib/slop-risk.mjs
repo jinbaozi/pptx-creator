@@ -13,7 +13,7 @@
  *     5. English rhetoric on zh title — anglicism on CJK title        (-10)
  *
  *   Four detection patterns (R6 of the U3 plan):
- *     6. rounded-token variance       — card radii all identical      (-20)
+ *     6. rounded-token variance       — large or implicit card radius (-20)
  *     7. icon-circle triad            — ≥3 circle-bg icons in a row   (-15)
  *     8. 3-up KPI sandwich            — 3 metric cards in a row       (-10)
  *     9. vertical-rhythm variance     — gaps all identical            (-10)
@@ -55,7 +55,7 @@ export const SLOP_RULES = Object.freeze([
   { id: "css-gradient", category: "color-material", applicableWhen: ["inline-gradient-present"], exemptWhen: ["approved-brand-gradient", "intentional-editorial-gradient"], severity: "P2", confidence: 0.94, evidence: ["element-fill-or-background"], repairCommand: "colorize", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
   { id: "all-caps-stroke-shadow", category: "typography", applicableWhen: ["all-caps-text-with-stroke-and-shadow"], exemptWhen: ["approved-display-treatment"], severity: "P2", confidence: 0.92, evidence: ["text-style-combination"], repairCommand: "quieter", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
   { id: "english-rhetoric-on-zh", category: "copy", applicableWhen: ["cjk-title-with-stock-english-rhetoric"], exemptWhen: ["verbatim-source-quote"], severity: "P1", confidence: 0.96, evidence: ["title-text-and-language"], repairCommand: "distill", brandOverrideAllowed: false, readabilityOverrideAllowed: false },
-  { id: "rounded-token-variance", category: "components", applicableWhen: ["repeated-card-radius-without-semantic-role"], exemptWhen: ["dashboard-component-system", "government-template", "approved-brand-component-system"], severity: "P2", confidence: 0.88, evidence: ["card-radius-token-run"], repairCommand: "polish", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
+  { id: "rounded-token-variance", category: "components", applicableWhen: ["large-card-radius-exceeds-safe-ratio", "large-roundrect-without-radius-source"], exemptWhen: ["approved-brand-component-system", "strict-replica-source-lock"], severity: "P2", confidence: 0.9, evidence: ["card-radius-ratio-or-missing-source"], repairCommand: "polish", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
   { id: "icon-circle-triad", category: "iconography", applicableWhen: ["three-or-more-circle-icon-containers-in-row"], exemptWhen: ["approved-icon-system", "government-navigation-system"], severity: "P2", confidence: 0.9, evidence: ["circle-row-geometry"], repairCommand: "layout", brandOverrideAllowed: true, readabilityOverrideAllowed: false },
   { id: "kpi-sandwich", category: "data-layout", applicableWhen: ["three-or-more-peer-kpis-in-row"], exemptWhen: ["dashboard", "data-review", "required-peer-comparison"], severity: "P2", confidence: 0.93, evidence: ["metric-role-row"], repairCommand: "layout", brandOverrideAllowed: false, readabilityOverrideAllowed: false },
   { id: "vertical-rhythm-variance", category: "rhythm", applicableWhen: ["mechanically-identical-gap-run"], exemptWhen: ["intentional-structured-rhythm", "government-template", "editorial-baseline-grid"], severity: "P2", confidence: 0.86, evidence: ["ordered-y-gap-series"], repairCommand: "polish", brandOverrideAllowed: true, readabilityOverrideAllowed: false }
@@ -76,7 +76,7 @@ function exemptionReason(ruleId, context) {
   if (ruleId === "css-gradient" && ((brand && context.gradientIntent === "approved-brand") || (template === "editorial" && context.gradientIntent === "editorial"))) return "intentional approved gradient";
   if (ruleId === "all-caps-stroke-shadow" && brand && context.displayTreatmentApproved === true) return "approved display treatment";
   if (ruleId === "english-rhetoric-on-zh" && context.verbatimSourceQuote === true) return "verbatim source quotation";
-  if (ruleId === "rounded-token-variance" && (["dashboard", "government"].includes(template) || (brand && context.componentSystemApproved === true))) return "approved repeated component system";
+  if (ruleId === "rounded-token-variance" && (context.sourceLocked === true || (brand && context.componentSystemApproved === true))) return "approved component or replica source lock";
   if (ruleId === "icon-circle-triad" && (context.iconSystemApproved === true || template === "government")) return "approved icon system";
   if (ruleId === "kpi-sandwich" && ["dashboard", "data-review"].includes(context.contentPurpose)) return "peer KPI comparison is the content";
   if (ruleId === "vertical-rhythm-variance" && (context.rhythmIntent === "structured" || ["government", "editorial"].includes(template))) return "intentional structured rhythm";
@@ -318,47 +318,29 @@ function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function countRoundedTokenVariance(elements, designTokens) {
-  // Group shapes/cards by slide and check whether the rounded.* token
-  // resolves to the same value across all cards on a slide.
-  // Strategy: for each slide, collect every shape element with a
-  // rounded.* token in style.borderRadius, style.component, or style.fill;
-  // count the slide if the unique count is <= 1 AND there are >= 2 cards.
-  const slideMap = new Map();
-  for (const entry of elements) {
-    const el = entry.el;
-    if (!el || el.type !== "shape") continue;
-    const token = extractRoundedToken(el, designTokens);
-    if (!token) continue;
-    const slideId = entry.slideId;
-    if (!slideMap.has(slideId)) slideMap.set(slideId, []);
-    slideMap.get(slideId).push(token);
-  }
-  let count = 0;
-  for (const tokens of slideMap.values()) {
-    if (tokens.length >= 2 && new Set(tokens).size === 1) count += 1;
-  }
-  return count;
-}
-
-function extractRoundedToken(element, designTokens) {
+function roundedRadiusPx(element, designTokens) {
   const style = element?.style ?? {};
-  const candidates = [
-    style.borderRadius,
-    style.radius,
-    style.component,
-    style.fill
-  ];
+  const candidates = [style.borderRadius, style.radius, style.rounded];
   for (const candidate of candidates) {
+    if (Number.isFinite(Number(candidate))) return Number(candidate);
     if (typeof candidate !== "string") continue;
     const m = candidate.match(/rounded\.(none|sm|md|lg|xl|full)/);
-    if (m) return `rounded.${m[1]}`;
-  }
-  // Direct token reference (already-resolved style).
-  if (typeof style.borderRadius === "string" && /^\d/.test(style.borderRadius.trim())) {
-    return style.borderRadius.trim();
+    if (m) {
+      const resolved = Number(designTokens?.rounded?.[m[1]]);
+      return Number.isFinite(resolved) ? resolved : null;
+    }
   }
   return null;
+}
+
+function countRoundedTokenVariance(elements, designTokens) {
+  return elements.filter(({ el }) => {
+    if (!el || el.type !== "shape" || el.shape !== "roundRect") return false;
+    const shortSidePx = Math.min(Number(el.w), Number(el.h)) * 96;
+    if (!(shortSidePx >= 96)) return false;
+    const radiusPx = roundedRadiusPx(el, designTokens);
+    return radiusPx === null || radiusPx / shortSidePx > 0.08;
+  }).length;
 }
 
 function countIconCircleTriad(elements) {

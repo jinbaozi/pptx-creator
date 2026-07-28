@@ -461,6 +461,24 @@ describe("render-pptx", () => {
     expect(xml).toContain('w="38100"');
   });
 
+  it("writes an editable roundRect adjustment from the resolved radius token", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "pptx-roundrect-adjustment-"));
+    const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));
+    sample.designSystem.source = join(root, "design-systems/business-neutral/DESIGN.md");
+    sample.slides[0].elements = [{
+      type: "shape", id: "precise-card", shape: "roundRect", x: 0.8, y: 1, w: 4, h: 1.4,
+      style: { component: "{components.hero-card}" }
+    }];
+    const manifest = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "final.pptx");
+    await writeFile(manifest, JSON.stringify(sample, null, 2), "utf8");
+
+    await execFileAsync(node, [join(root, "scripts/render-pptx.mjs"), manifest, pptxPath], { cwd: root });
+
+    const xml = await slideXml(pptxPath);
+    expect(xml).toMatch(/name="precise-card"[\s\S]*?<a:gd name="adj" fmla="val 10417"/);
+  });
+
   it("lets explicit fill and line aliases override component baseline colors", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "pptx-component-alias-precedence-"));
     const sample = JSON.parse(await readFile(join(root, "examples/text-input/deck.manifest.json"), "utf8"));

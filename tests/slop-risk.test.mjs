@@ -30,6 +30,8 @@ function scenario(name) {
     "zh-rhetoric": [text("title", "Unlock the power of AI 平台", { typography: "{typography.title}" })],
     "rounded-cards": [shape("card1", "roundRect", 0, 0, { borderRadius: "rounded.lg" }), shape("card2", "roundRect", 2, 0, { borderRadius: "rounded.lg" })],
     "rounded-mixed": [shape("card1", "roundRect", 0, 0, { borderRadius: "rounded.sm" }), shape("card2", "roundRect", 2, 0, { borderRadius: "rounded.lg" })],
+    "rounded-implicit": [{ type: "shape", id: "implicit-card", shape: "roundRect", x: 0, y: 0, w: 5, h: 3, style: {} }],
+    "rounded-oversized": [{ type: "shape", id: "oversized-card", shape: "roundRect", x: 0, y: 0, w: 5, h: 3, style: { borderRadius: 48 } }],
     "circle-triad": [0, 1, 2].map((x) => shape(`i${x}`, "ellipse", x, 1)),
     "circle-pair": [0, 1].map((x) => shape(`i${x}`, "ellipse", x, 1)),
     "kpi-row": [0, 1, 2].map((x) => text(`kpi-${x}`, `${x}`, {}, { role: "metric", x, y: 2 })),
@@ -123,13 +125,24 @@ describe("slop-risk.mjs — 9 detection signals", () => {
     expect(sig.count).toBe(1);
   });
 
-  it("flags rounded-token variance when all cards on a slide resolve to the same rounded token", () => {
+  it("accepts peer cards that share a restrained rounded token", () => {
     const elements = [
-      { type: "shape", id: "card-1", shape: "roundRect", x: 0, y: 0, w: 3, h: 1, style: { borderRadius: "rounded.lg" } },
-      { type: "shape", id: "card-2", shape: "roundRect", x: 4, y: 0, w: 3, h: 1, style: { borderRadius: "rounded.lg" } }
+      { type: "shape", id: "card-1", shape: "roundRect", x: 0, y: 0, w: 3, h: 2, style: { borderRadius: "rounded.lg" } },
+      { type: "shape", id: "card-2", shape: "roundRect", x: 4, y: 0, w: 3, h: 2, style: { borderRadius: "rounded.lg" } }
+    ];
+    const result = scoreSlopRisk(slide(elements), { rounded: { lg: 14 } });
+    const sig = result.signals.find((s) => s.id === "rounded-token-variance");
+    expect(sig.weight).toBe(0);
+  });
+
+  it("flags a large card that lacks a radius source or exceeds the safe ratio", () => {
+    const elements = [
+      { type: "shape", id: "implicit-card", shape: "roundRect", x: 0, y: 0, w: 5, h: 3, style: {} },
+      { type: "shape", id: "oversized-card", shape: "roundRect", x: 6, y: 0, w: 5, h: 3, style: { borderRadius: 48 } }
     ];
     const result = scoreSlopRisk(slide(elements));
     const sig = result.signals.find((s) => s.id === "rounded-token-variance");
+    expect(sig.count).toBe(2);
     expect(sig.weight).toBe(SLOP_WEIGHTS.roundedTokenVariance);
   });
 

@@ -577,7 +577,8 @@ function fixtureSlide(block, fixture, design, index, assetSource = null) {
       style: {
         fill: slot === "media" ? tokens.colors.surface : surface,
         line: slot === "headline" || slot === "metric" ? tokens.colors.primary : tokens.colors.border,
-        lineWidth: 1
+        lineWidth: 1,
+        ...(slot === "accent" ? {} : { borderRadius: slot === "headline" || slot === "metric" ? "{rounded.lg}" : "{rounded.md}" })
       }
     });
     const typography = typographyForSlot(tokens, slot);

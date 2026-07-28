@@ -1465,7 +1465,8 @@ describe("html-to-manifest with measurements", () => {
       shape: "roundRect",
       style: expect.objectContaining({
         fill: "#FFFFFF",
-        borderColor: "#DBEAFE"
+        borderColor: "#DBEAFE",
+        borderRadius: 12
       })
     });
   });

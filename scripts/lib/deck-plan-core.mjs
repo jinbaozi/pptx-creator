@@ -28,7 +28,10 @@ const text = (id, value, x, y, w, h, style = {}) => ({
   type: "text", id, x, y, w, h, text: Array.isArray(value) ? value.join("\n") : String(value ?? ""), style
 });
 const shape = (id, x, y, w, h, fill = "#EEF2FF", line = "#2563EB") => ({
-  type: "shape", id, shape: "roundRect", x, y, w, h, style: { fill, line }
+  type: "shape", id, shape: "rect", x, y, w, h, style: { fill, line }
+});
+const card = (id, x, y, w, h, fill = "#EEF2FF", line = "#2563EB") => ({
+  ...shape(id, x, y, w, h, fill, line), shape: "roundRect"
 });
 const line = (id, x, y, w, h, color = "#2563EB", connector = null) => ({
   type: "line", id, x, y, w, h,
@@ -237,7 +240,11 @@ function applyDesignTokens(elements, tokens, family, metricFont) {
       if (componentName) {
         next.style.component = `{components.${componentName}}`;
         if (component.padding !== undefined) next.style.padding = component.padding;
-        if (component.rounded !== undefined) next.style.rounded = component.rounded;
+        if (component.rounded !== undefined) {
+          const requestedRadius = Number(component.rounded);
+          const creativeCap = Math.min(24, Math.min(next.w, next.h) * 96 * 0.08);
+          next.style.rounded = Number.isFinite(requestedRadius) ? Math.min(requestedRadius, creativeCap) : component.rounded;
+        }
       }
     } else if (next.type === "line") {
       next.style.color = tokens.colors.primary;
@@ -512,7 +519,7 @@ function compileArchitecture(content) {
 }
 
 function compileComparison(content) {
-  return [title(content.headline), shape("left-panel", 0.76, 1.35, 5.55, 4.9, "#EFF6FF"), shape("right-panel", 7.02, 1.35, 5.55, 4.9, "#FFF7ED", "#EA580C"),
+  return [title(content.headline), card("left-panel", 0.76, 1.35, 5.55, 4.9, "#EFF6FF"), card("right-panel", 7.02, 1.35, 5.55, 4.9, "#FFF7ED", "#EA580C"),
     text("left-title", content.primary.title, 1.05, 1.72, 4.9, 0.5, { fontSize: 21, bold: true }),
     text("left-items", content.primary.items, 1.05, 2.42, 4.9, 2.9, { fontSize: 16 }),
     text("right-title", content.secondary.title, 7.32, 1.72, 4.9, 0.5, { fontSize: 21, bold: true }),
@@ -532,7 +539,7 @@ function compileDashboard(content) {
   return [title(content.headline), ...metrics.flatMap((entry, index) => {
     const x = 0.78 + (index % 2) * 6.2;
     const y = 1.36 + Math.floor(index / 2) * 2.55;
-    return [shape(`kpi-card-${index}`, x, y, 5.55, 2.0, index % 2 ? "#ECFDF5" : "#EFF6FF"), text(`value-${index}`, entry.value, x + 0.3, y + 0.32, 2.0, 0.66, { fontSize: 30, bold: true, color: "#1D4ED8" }), text(`label-${index}`, entry.label, x + 2.48, y + 0.4, 2.6, 0.5, { fontSize: 16, bold: true })];
+    return [card(`kpi-card-${index}`, x, y, 5.55, 2.0, index % 2 ? "#ECFDF5" : "#EFF6FF"), text(`value-${index}`, entry.value, x + 0.3, y + 0.32, 2.0, 0.66, { fontSize: 30, bold: true, color: "#1D4ED8" }), text(`label-${index}`, entry.label, x + 2.48, y + 0.4, 2.6, 0.5, { fontSize: 16, bold: true })];
   })];
 }
 

@@ -120,6 +120,13 @@ function componentStyle(element, design) {
   return merged;
 }
 
+function roundRectAdjustment(element, style) {
+  const radiusPx = Number(style.borderRadius ?? style.radius ?? style.rounded);
+  const shortSidePx = Math.min(Number(element.w), Number(element.h)) * 96;
+  if (!(radiusPx >= 0 && shortSidePx > 0)) return null;
+  return Math.round(Math.max(0, Math.min(50000, radiusPx / shortSidePx * 100000)));
+}
+
 function shadowOptions(shadow) {
   if (!shadow || typeof shadow !== "object") return null;
   if (!["outer", "inner", "none"].includes(shadow.type)) return null;
@@ -306,6 +313,30 @@ async function patchImageShapes(pptxPath, imageShapePatches) {
         `(<p:pic>[\\s\\S]*?<p:nvPicPr>[\\s\\S]*?<p:cNvPr[^>]*name="${name}"[\\s\\S]*?<p:spPr>[\\s\\S]*?<a:prstGeom prst=")(rect|roundRect|ellipse)("[\\s\\S]*?</a:prstGeom>)`
       );
       xml = xml.replace(picturePattern, `$1${patch.imageShape}$3`);
+    }
+    zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function patchRoundRectAdjustments(pptxPath, roundRectPatches) {
+  if (!roundRectPatches.some((slide) => slide.length > 0)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, patches] of roundRectPatches.entries()) {
+    if (patches.length === 0) continue;
+    const slidePath = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    let xml = await file.async("string");
+    for (const patch of patches) {
+      const name = xmlEscape(patch.id);
+      const shapePattern = new RegExp(
+        `(<p:sp><p:nvSpPr><p:cNvPr[^>]*name="${name}"[\\s\\S]*?<p:spPr>[\\s\\S]*?)(<a:prstGeom prst="roundRect">[\\s\\S]*?</a:prstGeom>)`
+      );
+      xml = xml.replace(shapePattern, (_match, before, geometry) => {
+        const adjusted = geometry.replace(/<a:avLst>[\s\S]*?<\/a:avLst>/, `<a:avLst><a:gd name="adj" fmla="val ${patch.adjustment}"/></a:avLst>`);
+        return `${before}${adjusted}`;
+      });
     }
     zip.file(slidePath, xml);
   }
@@ -969,6 +1000,7 @@ async function main() {
   const gradientPatches = [];
   const backgroundGradientPatches = [];
   const imageShapePatches = [];
+  const roundRectPatches = [];
   const textCapPatches = [];
   const textIndentPatches = [];
   const textDirectionPatches = [];
@@ -989,6 +1021,12 @@ async function main() {
       renderableElements
         .filter((element) => element.type === "image" && element.id && IMAGE_SHAPES.has(element.imageShape))
         .map((element) => ({ id: element.id, imageShape: element.imageShape }))
+    );
+    roundRectPatches.push(
+      renderableElements
+        .filter((element) => element.type === "shape" && element.shape === "roundRect" && element.id)
+        .map((element) => ({ id: element.id, adjustment: roundRectAdjustment(element, componentStyle(element, design)) }))
+        .filter((patch) => patch.adjustment !== null)
     );
     textCapPatches.push(
       renderableElements
@@ -1023,6 +1061,7 @@ async function main() {
   await patchGradientFills(outputPath, gradientPatches);
   await patchBackgroundGradientFills(outputPath, backgroundGradientPatches);
   await patchImageShapes(outputPath, imageShapePatches);
+  await patchRoundRectAdjustments(outputPath, roundRectPatches);
   await patchTextCaps(outputPath, textCapPatches);
   await patchTextIndents(outputPath, textIndentPatches);
   await patchTextDirections(outputPath, textDirectionPatches);
