@@ -1,0 +1,10 @@
+{
+  "requiredSlots": ["quote"],
+  "optionalSlots": ["attribution", "attributionRole", "decoration"],
+  "constraints": {
+    "preferredEditableLevel": 5,
+    "maxTextBlocks": 4,
+    "density": "low",
+    "maxQuoteChars": 240
+  }
+}

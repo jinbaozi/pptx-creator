@@ -1,0 +1,1 @@
+Rebuild the two reference pages in filename order as one editable PPTX. Preserve the local photographic region on slide 1 as a bounded crop, keep chart bars on slide 2 editable, and do not invent chart values.

@@ -1,0 +1,10 @@
+{
+  "requiredSlots": ["title"],
+  "optionalSlots": ["sectionNumber", "subtitle", "footnote"],
+  "constraints": {
+    "preferredEditableLevel": 5,
+    "maxTextBlocks": 3,
+    "density": "very-low",
+    "sectionNumberFloor": 48
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "version": "1.0.0",
+  "policy": {
+    "providedIsNotVerified": true,
+    "uncertaintyLabels": {
+      "inferred": "假设",
+      "unverified": "待核验",
+      "placeholder": "占位"
+    },
+    "fabricatedFactsAllowed": false
+  },
+  "assumptions": [
+    {
+      "id": "assumption-live",
+      "text": "使用方式按现场讲解处理。",
+      "impact": "low",
+      "status": "confirmed"
+    }
+  ],
+  "sources": [
+    {
+      "id": "source-brief",
+      "kind": "file",
+      "label": "input.md（用户提供，未独立核验）",
+      "locator": "input.md",
+      "factStatus": "provided"
+    }
+  ],
+  "mappings": [
+    {
+      "slideId": "slide-cover",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    },
+    {
+      "slideId": "slide-actions",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    },
+    {
+      "slideId": "slide-closing",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    }
+  ]
+}

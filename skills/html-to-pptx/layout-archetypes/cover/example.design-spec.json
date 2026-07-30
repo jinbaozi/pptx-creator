@@ -1,0 +1,15 @@
+{
+  "id": "slide-example",
+  "layoutType": "cover",
+  "intent": "demonstrate the archetype structure",
+  "mainIdea": "This slide communicates one clear idea using a reusable layout.",
+  "visualPlan": {
+    "focalPoint": "headline and main content",
+    "density": "medium",
+    "visualWeight": { "headline": 25, "content": 60, "support": 15 }
+  },
+  "contentSlots": [
+    { "slot": "headline", "role": "claim", "content": "Example headline" }
+  ],
+  "editableTarget": 5
+}

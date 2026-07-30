@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "skillName": "text-to-html",
+  "files": [
+    "LICENSE",
+    "SKILL.md",
+    "package-lock.json",
+    "package.json",
+    "skill-package.files.json"
+  ],
+  "directories": [
+    "agents",
+    "assets",
+    "examples",
+    "references",
+    "schemas",
+    "scripts",
+    "tests"
+  ],
+  "requiredFiles": [
+    "SKILL.md",
+    "agents/openai.yaml",
+    "package.json",
+    "package-lock.json",
+    "schemas/presentation-package.schema.json",
+    "scripts/validate-presentation-package.mjs",
+    "scripts/run-pipeline.mjs"
+  ],
+  "requiredDirectories": [
+    "scripts",
+    "references",
+    "examples",
+    "tests",
+    "schemas"
+  ],
+  "excludeBasenames": [
+    ".DS_Store"
+  ],
+  "excludeExtensions": [
+    ".pyc"
+  ],
+  "excludeSegments": [
+    "__pycache__",
+    "node_modules",
+    "output"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "name": "source-faithful-fallback",
+  "fonts": {
+    "latin": ["Arial", "Liberation Sans", "Noto Sans"],
+    "cjk": ["Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei"]
+  },
+  "defaults": {
+    "background": "#FFFFFF",
+    "foreground": "#172033",
+    "fontFamily": "Arial"
+  },
+  "policy": "Use extracted source colors and geometry first. These values are only deterministic fallbacks for pixels that cannot be sampled reliably."
+}

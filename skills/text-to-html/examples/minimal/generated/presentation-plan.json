@@ -1,0 +1,148 @@
+{
+  "version": "1.0.0",
+  "deck": {
+    "id": "knowledge-base-pilot",
+    "title": "两周知识库试点",
+    "language": "zh-CN",
+    "size": {
+      "width": 1280,
+      "height": 720,
+      "unit": "px"
+    }
+  },
+  "positioning": {
+    "statement": "让试点项目组在现场启动会上理解两周试点的边界与成功标准，并确认负责人、资料范围和验收日期。",
+    "goal": "试点启动",
+    "audience": "试点项目组",
+    "scenario": "现场启动会",
+    "coreConclusion": "小范围、可验收的两周试点可以立即开始",
+    "desiredAction": "确认负责人、资料范围和验收日期",
+    "deliveryMode": "现场演讲",
+    "durationMinutes": 5,
+    "targetSlideCount": 3
+  },
+  "assumptions": [
+    {
+      "id": "assumption-live",
+      "text": "使用方式按现场讲解处理。",
+      "impact": "low",
+      "status": "confirmed"
+    }
+  ],
+  "narrative": {
+    "framework": "结论—依据—行动",
+    "chapters": [
+      {
+        "id": "chapter-decision",
+        "title": "试点决策",
+        "slideIds": [
+          "slide-cover",
+          "slide-actions",
+          "slide-closing"
+        ]
+      }
+    ]
+  },
+  "design": {
+    "tokenOverrides": {}
+  },
+  "sources": [
+    {
+      "id": "source-brief",
+      "kind": "file",
+      "label": "input.md（用户提供，未独立核验）",
+      "locator": "input.md",
+      "factStatus": "provided"
+    }
+  ],
+  "assets": [],
+  "slides": [
+    {
+      "id": "slide-cover",
+      "order": 1,
+      "type": "cover",
+      "title": "两周知识库试点",
+      "coreMessage": "小范围、可验收的试点可以立即开始",
+      "visual": "简洁标题页，用试点时长和受众标签建立范围",
+      "transition": "先明确为什么要做，再收敛到具体动作",
+      "notes": "强调这不是全量迁移，而是一个有边界的验证。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "subtitle": "用一个项目组验证“批准版本能在两分钟内找到”"
+      }
+    },
+    {
+      "id": "slide-actions",
+      "order": 2,
+      "type": "bullets",
+      "title": "限定范围与成功标准后，试点可以立即启动",
+      "coreMessage": "资料范围、参与范围和成功标准都已具备最小闭环",
+      "visual": "三个编号支撑点",
+      "transition": "边界明确后，最后只剩责任与日期需要确认",
+      "notes": "逐项说明三项边界，不扩展到历史归档。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "points": [
+          {
+            "text": "当前资料分散在三个共享目录中。",
+            "factStatus": "provided",
+            "sourceRefs": [
+              "source-brief"
+            ]
+          },
+          {
+            "text": "试点只覆盖一个项目组，不迁移历史归档。",
+            "factStatus": "provided",
+            "sourceRefs": [
+              "source-brief"
+            ]
+          },
+          {
+            "text": "成功标准是成员能在两分钟内找到已批准版本。",
+            "factStatus": "provided",
+            "sourceRefs": [
+              "source-brief"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "slide-closing",
+      "order": 3,
+      "type": "closing",
+      "title": "今天确认三件事，明天开始试点",
+      "coreMessage": "负责人、资料范围和验收日期是启动所需的最后三个决定",
+      "visual": "强行动号召",
+      "transition": "结束并进入确认",
+      "notes": "现场逐一确认负责人、资料范围和验收日期。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "action": {
+          "text": "今天确认试点负责人、资料范围和验收日期。",
+          "factStatus": "provided",
+          "sourceRefs": [
+            "source-brief"
+          ]
+        }
+      }
+    }
+  ],
+  "hostReview": {
+    "status": "approved",
+    "reviewedAt": "2026-07-30T00:00:00.000Z",
+    "checks": {
+      "positioning": true,
+      "sourceIntegrity": true,
+      "narrative": true,
+      "oneMessagePerSlide": true,
+      "visualIntent": true
+    }
+  }
+}

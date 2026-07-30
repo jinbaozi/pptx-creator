@@ -1,0 +1,171 @@
+{
+  "version": "1.0.0",
+  "producer": {
+    "skill": "text-to-html",
+    "version": "1.0.0"
+  },
+  "status": "passed",
+  "entrypoint": "index.html",
+  "artifacts": [
+    {
+      "path": "assets/deck.css",
+      "sha256": "a7c9cacec3fb947be8ae840a5122b85b1cb6457194a365c5684268dded337b17"
+    },
+    {
+      "path": "assets/deck.js",
+      "sha256": "f19c4ba1b1b46356f274376bd47123329b75acfb7646d3929067764168a8c2ea"
+    },
+    {
+      "path": "assets/design-tokens.css",
+      "sha256": "a81141ac68b6925ff08e10ce4917191ababb8c95af16f39235eea9d11201eb55"
+    },
+    {
+      "path": "assets/media/asset-system-map.svg",
+      "sha256": "42701ba692f1af35212db7ad1124030df6e2cdbea0aa7c98af72a72d1d7b50d8"
+    },
+    {
+      "path": "deck-manifest.json",
+      "sha256": "a915cad65c490e38771e9885abdb68db0d718d481b6662bcdf8451d0911a3d00"
+    },
+    {
+      "path": "design-tokens.json",
+      "sha256": "219804f66a90925c48ac170338493c1cfe9b454b016fc2ccd4a6bc4c3d5f59bf"
+    },
+    {
+      "path": "index.html",
+      "sha256": "9613538727151d4c08e078da384dd961a89f676e2954650d1215427354f74762"
+    },
+    {
+      "path": "presentation-package.json",
+      "sha256": "1c0eb13d7a71164c42f576c4efa58d9e79ae9162bf4535f07528d5efe764d7c5"
+    },
+    {
+      "path": "presentation-plan.json",
+      "sha256": "57d8fdc8a8c2e57884de9f4a6ee3dda308c9f8b2538999ff5a298adf3d0dda48"
+    },
+    {
+      "path": "presentation-plan.source.json",
+      "sha256": "8b474b4712af12df212080d84022b1cc58de1673c3063a6ca25b0366e6a7113a"
+    },
+    {
+      "path": "preview/desktop/slide-001.png",
+      "sha256": "3361ff0cf4a8f155cf4b71bbd39e75d83efd50ff9411b6d6d170d97b70847436"
+    },
+    {
+      "path": "preview/desktop/slide-002.png",
+      "sha256": "3e2f6f0374ff521f280674f6ccc20e8cd64f8280f42069fd4719a1f8f3f6eb32"
+    },
+    {
+      "path": "preview/desktop/slide-003.png",
+      "sha256": "8c3b16ec139f42b00aaea29518c2c32b05a48aa13dd7e87a1c58f36c87bfb5d6"
+    },
+    {
+      "path": "preview/desktop/slide-004.png",
+      "sha256": "b64b7659e4b6ad36003d8ab1abc18a0897ae72b1fdacefbe94bde07bc444d58a"
+    },
+    {
+      "path": "preview/desktop/slide-005.png",
+      "sha256": "1ac6168e53a8f800197539afdccf641305929f58d6f6b95007d5905660fe29cb"
+    },
+    {
+      "path": "preview/desktop/slide-006.png",
+      "sha256": "fe7f47a5daa52b1881845c32d5ac06d29070af2e265176e8647f489d749096ed"
+    },
+    {
+      "path": "preview/desktop/slide-007.png",
+      "sha256": "846dce29a4b637911894d628f2d622a251483c3f90f0d6b13c914075989e2a1e"
+    },
+    {
+      "path": "preview/desktop/slide-008.png",
+      "sha256": "cee4a8366966e24e86f4dbd6971d6da40669a4ce6f2f646cdd114e6f7774b3d2"
+    },
+    {
+      "path": "preview/desktop/slide-009.png",
+      "sha256": "d3deac444dd09e1ea9e8076a3b1a0d834fef6ba446e99938646cdc3859cca5f7"
+    },
+    {
+      "path": "preview/mobile/slide-001.png",
+      "sha256": "f81c5ca941e7d3d3a01f34e42c870cf89f3543be3646d50e7952556a25f35e18"
+    },
+    {
+      "path": "preview/mobile/slide-002.png",
+      "sha256": "c92262f60379b2886dc5f2b67885cbd61433c7f583f51e3156927291d036fe68"
+    },
+    {
+      "path": "preview/mobile/slide-003.png",
+      "sha256": "eab7d55e16e27f8bd99991af240582bc1af803d31d9937042b3b0e37d9a0a736"
+    },
+    {
+      "path": "preview/mobile/slide-004.png",
+      "sha256": "a843f27287dd2acd9833002e1e444aea9894790a137f7ff96b506105fc877cc3"
+    },
+    {
+      "path": "preview/mobile/slide-005.png",
+      "sha256": "3cb08132b5c25b0d1e989d5824d291f9b97d17ef836c4271ad037cbaf1a92432"
+    },
+    {
+      "path": "preview/mobile/slide-006.png",
+      "sha256": "8b6f00793e0be17d916d95773c475568894499688f0ab96bbca2312a8835310b"
+    },
+    {
+      "path": "preview/mobile/slide-007.png",
+      "sha256": "112f376ffbfcc46ed591f7d5548e19e30b39f5f008df27682c0641fa49036c73"
+    },
+    {
+      "path": "preview/mobile/slide-008.png",
+      "sha256": "f5d002aeb47078b2d5109cd281de231b48472666b7df2fcc6e44a38618115669"
+    },
+    {
+      "path": "preview/mobile/slide-009.png",
+      "sha256": "d4bc00205401e1882f6d9c9924ab2102e935d63dff2b5975bb97e2611f257eb5"
+    },
+    {
+      "path": "preview/standard/slide-001.png",
+      "sha256": "5ce32f7a6b5cbb057d9777ee1e8e117e6bd6649a96fd3e367f224ec2f44c9d2b"
+    },
+    {
+      "path": "preview/standard/slide-002.png",
+      "sha256": "8c9ace4f7848eaa0fec29275e18901163bf51a7333ef035523c78fa7cbd662f9"
+    },
+    {
+      "path": "preview/standard/slide-003.png",
+      "sha256": "7eddb6266dc39623732229a95a0276d5da806fc1fb9e496327c56479b456a3e0"
+    },
+    {
+      "path": "preview/standard/slide-004.png",
+      "sha256": "ae4863ca3a0481c15d0571c45daaae52c2af8449784f86c84316ab5cbaafa939"
+    },
+    {
+      "path": "preview/standard/slide-005.png",
+      "sha256": "55ff96ec6ffc6d537fcbc9a9c2854ef4d9c1ed234dd89f18a810020080f0678e"
+    },
+    {
+      "path": "preview/standard/slide-006.png",
+      "sha256": "a49daec74a0496a3db918eafd2916404328e599f306752efabb5dd301ff356b4"
+    },
+    {
+      "path": "preview/standard/slide-007.png",
+      "sha256": "47afac97ddf56a2eb2461b7bf8f942d728177f3a9f8dbfbf59981917cc50537e"
+    },
+    {
+      "path": "preview/standard/slide-008.png",
+      "sha256": "004af5f2f7f0ce4e4eab2f7006f045eb7dfc3f7be89ac386560fc689041b5b9a"
+    },
+    {
+      "path": "preview/standard/slide-009.png",
+      "sha256": "27379eec8db78a40c32d9574c09c6bc73adb6392ad999b84a17beab1912987ad"
+    },
+    {
+      "path": "qa-report.json",
+      "sha256": "8e88fd4c08efc9482feaae0dd0bd3e755c31732903b65c80ad46965863bbcd73"
+    },
+    {
+      "path": "sources.json",
+      "sha256": "fba55ca1a06dd1e1ff8296f9a9e273047390c9144a560ef5a841cc3f13c41364"
+    },
+    {
+      "path": "speaker-notes.md",
+      "sha256": "376b976ce1ad30e110b7bb61b781c1c745140730fe7af6d630bb33f7a5e560bc"
+    }
+  ]
+}

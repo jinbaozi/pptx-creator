@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jinbaozi/pptx-creator/skills/image-to-pptx/schemas/analysis/1.0.0",
+  "title": "Image reconstruction analysis",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "kind",
+    "generator",
+    "deck",
+    "ocr",
+    "sources",
+    "slides",
+    "designTokens",
+    "degradations",
+    "editabilityTarget"
+  ],
+  "properties": {
+    "version": { "const": "1.0.0" },
+    "kind": { "const": "image-reconstruction-analysis" },
+    "generator": { "const": "image-to-pptx" },
+    "deck": {
+      "type": "object",
+      "required": ["id", "title", "size"]
+    },
+    "ocr": {
+      "type": "object",
+      "required": ["engine", "version", "langs", "threshold", "policy"]
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "path", "sha256", "normalizedPath", "normalizedSha256"]
+      }
+    },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "order", "title", "sourceRef", "background", "sizePx", "objects", "degradations"]
+      }
+    },
+    "designTokens": { "type": "object" },
+    "degradations": { "type": "array" },
+    "editabilityTarget": {
+      "type": "object",
+      "required": ["minimumLevel", "wholeSlideRasterAllowed"],
+      "properties": {
+        "minimumLevel": { "minimum": 3 },
+        "wholeSlideRasterAllowed": { "const": false }
+      }
+    }
+  }
+}

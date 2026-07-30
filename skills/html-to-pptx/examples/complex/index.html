@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>复杂 HTML 转换验证</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #dfe7f2; font-family: Arial, sans-serif; }
+    .pptx-slide {
+      position: relative;
+      width: 1280px;
+      height: 720px;
+      overflow: hidden;
+      background: #f8fafc;
+      color: #162033;
+    }
+    .pptx-slide + .pptx-slide { margin-top: 24px; }
+    h1 {
+      position: absolute;
+      left: 64px;
+      top: 48px;
+      width: 1110px;
+      height: 60px;
+      margin: 0;
+      font-size: 38px;
+      line-height: 1.15;
+    }
+    .card {
+      position: absolute;
+      border: 1px solid #cbd5e1;
+      border-radius: 18px;
+      background: #ffffff;
+    }
+    .card h2 {
+      position: absolute;
+      left: 28px;
+      top: 24px;
+      width: 280px;
+      height: 36px;
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+    .card p {
+      position: absolute;
+      left: 28px;
+      top: 78px;
+      width: 280px;
+      height: 90px;
+      margin: 0;
+      color: #475569;
+      font-size: 18px;
+      line-height: 1.4;
+    }
+    .a { left: 64px; top: 154px; width: 350px; height: 214px; }
+    .b { left: 466px; top: 154px; width: 350px; height: 214px; }
+    .c { left: 868px; top: 154px; width: 348px; height: 214px; }
+    .connector-layer {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1280px;
+      height: 720px;
+      pointer-events: none;
+    }
+    .conclusion {
+      position: absolute;
+      left: 64px;
+      top: 424px;
+      width: 1152px;
+      height: 180px;
+      padding: 34px 38px;
+      border-radius: 18px;
+      background: #e8f0ff;
+      color: #1e3a8a;
+      font-size: 30px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .small-fx {
+      position: absolute;
+      right: 64px;
+      bottom: 48px;
+      width: 170px;
+      height: 38px;
+      padding: 8px 14px;
+      border-radius: 19px;
+      background: #172554;
+      color: #ffffff;
+      font-size: 15px;
+      line-height: 1.35;
+      filter: drop-shadow(0 5px 7px rgba(15, 23, 42, .32));
+      clip-path: polygon(0 0, 100% 0, 92% 100%, 0 100%);
+    }
+    .chart {
+      position: absolute;
+      left: 64px;
+      top: 150px;
+      width: 560px;
+      height: 430px;
+      background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1NjAiIGhlaWdodD0iNDMwIiB2aWV3Qm94PSIwIDAgNTYwIDQzMCI+PGcgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjIiIGZpbGw9IiMxNjIwMzMiPjx0ZXh0IHg9IjY2IiB5PSIyOSIgdGV4dC1hbmNob3I9ImVuZCI+5paH5a2XPC90ZXh0Pjx0ZXh0IHg9IjY2IiB5PSI3NSIgdGV4dC1hbmNob3I9ImVuZCI+5b2i54q2PC90ZXh0Pjx0ZXh0IHg9IjY2IiB5PSIxMjEiIHRleHQtYW5jaG9yPSJlbmQiPuihqOagvDwvdGV4dD48dGV4dCB4PSI2NiIgeT0iMTY3IiB0ZXh0LWFuY2hvcj0iZW5kIj7lm77ooag8L3RleHQ+PC9nPjxyZWN0IHg9IjgwIiB5PSIwIiB3aWR0aD0iNDQ1IiBoZWlnaHQ9IjQwIiBmaWxsPSIjMjU2M2ViIi8+PHJlY3QgeD0iODAiIHk9IjQ2IiB3aWR0aD0iNDMxIiBoZWlnaHQ9IjQwIiBmaWxsPSIjMGVhNWU5Ii8+PHJlY3QgeD0iODAiIHk9IjkyIiB3aWR0aD0iNDE3IiBoZWlnaHQ9IjQwIiBmaWxsPSIjMTRiOGE2Ii8+PHJlY3QgeD0iODAiIHk9IjEzOCIgd2lkdGg9IjQwNyIgaGVpZ2h0PSI0MCIgZmlsbD0iI2Y1OWUwYiIvPjxnIGZvbnQtZmFtaWx5PSJBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjIyIiBmaWxsPSIjMTYyMDMzIj48dGV4dCB4PSI1MjkiIHk9IjI5Ij45NjwvdGV4dD48dGV4dCB4PSI1MTUiIHk9Ijc1Ij45MzwvdGV4dD48dGV4dCB4PSI1MDEiIHk9IjEyMSI+OTA8L3RleHQ+PHRleHQgeD0iNDkxIiB5PSIxNjciPjg4PC90ZXh0PjwvZz48L3N2Zz4=");
+      background-repeat: no-repeat;
+      background-size: 100% 100%;
+    }
+    .table-wrap {
+      position: absolute;
+      left: 670px;
+      top: 150px;
+      width: 546px;
+      height: 430px;
+    }
+    table {
+      width: 100%;
+      height: 100%;
+      border-collapse: collapse;
+      background: #ffffff;
+      font-size: 18px;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 14px;
+      text-align: left;
+    }
+    th { background: #e8f0ff; color: #1e3a8a; }
+    .foot {
+      position: absolute;
+      left: 64px;
+      top: 632px;
+      width: 950px;
+      height: 28px;
+      margin: 0;
+      color: #64748b;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main class="pptx-deck" data-deck-title="复杂 HTML 转换验证" data-language="zh-CN">
+    <section class="pptx-slide" data-slide-id="slide-001" data-title="三段流程形成可验证闭环" data-notes="强调连接线必须锚定节点边界。">
+      <h1 data-pptx-id="title-001">三段流程形成可验证闭环</h1>
+      <article class="card a" data-pptx-id="node-a" data-layout-role="container">
+        <h2 data-pptx-id="node-a-title">1. 浏览器测量</h2>
+        <p data-pptx-id="node-a-body">读取计算样式、几何位置、层叠顺序和裁切。</p>
+      </article>
+      <article class="card b" data-pptx-id="node-b" data-layout-role="container">
+        <h2 data-pptx-id="node-b-title">2. 原生重建</h2>
+        <p data-pptx-id="node-b-body">优先生成文字、形状、表格、图表和连接线。</p>
+      </article>
+      <article class="card c" data-pptx-id="node-c" data-layout-role="container">
+        <h2 data-pptx-id="node-c-title">3. 回渲验证</h2>
+        <p data-pptx-id="node-c-body">重新渲染 PPTX，并与 HTML 基准逐页比较。</p>
+      </article>
+      <svg class="connector-layer" viewBox="0 0 1280 720" aria-hidden="true">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="#2563eb"></path>
+          </marker>
+        </defs>
+        <line data-pptx-kind="line" data-pptx-id="connector-a-b" data-connector
+              data-source-id="node-a" data-target-id="node-b"
+              x1="414" y1="261" x2="466" y2="261"
+              stroke="#2563eb" stroke-width="4" marker-end="url(#arrow)"></line>
+        <line data-pptx-kind="line" data-pptx-id="connector-b-c" data-connector
+              data-source-id="node-b" data-target-id="node-c"
+              x1="816" y1="261" x2="868" y2="261"
+              stroke="#2563eb" stroke-width="4" marker-end="url(#arrow)"></line>
+      </svg>
+      <div class="conclusion" data-pptx-id="conclusion-001">确定性转换负责可重复执行，视觉证据负责阻止错误交付。</div>
+      <div class="small-fx" data-pptx-id="local-effect-001">局部效果降级示例</div>
+    </section>
+    <section class="pptx-slide" data-slide-id="slide-002" data-title="图表与表格继续保持主要可编辑" data-notes="图表数据来自示例标记，不代表真实业务数据。">
+      <h1 data-pptx-id="title-002">图表与表格继续保持主要可编辑</h1>
+      <div class="chart"
+           data-pptx-kind="chart"
+           data-pptx-id="chart-001"
+           data-pptx-chart='{"kind":"horizontalBar","data":[{"label":"文字","value":96},{"label":"形状","value":93},{"label":"表格","value":90},{"label":"图表","value":88}],"style":{"palette":["#2563eb","#0ea5e9","#14b8a6","#f59e0b"],"showValues":true}}'></div>
+      <div class="table-wrap" data-pptx-id="table-container" data-layout-role="container">
+        <table data-pptx-id="table-001">
+          <thead><tr><th>对象</th><th>策略</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>文字</td><td>原生文本框</td><td>可编辑</td></tr>
+            <tr><td>连接线</td><td>原生线条</td><td>可编辑</td></tr>
+            <tr><td>复杂效果</td><td>仅局部栅格</td><td>已记录</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="foot" data-pptx-id="source-002">示例数值用于自动化回归，不应作为外部事实引用。</p>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "requiredSlots": ["title", "leftColumn", "rightColumn"],
+  "optionalSlots": ["subtitle", "leftHeading", "rightHeading", "footnote"],
+  "constraints": {
+    "preferredEditableLevel": 5,
+    "maxTextBlocks": 8,
+    "density": "medium",
+    "equalWidth": true,
+    "minColumnItems": 2
+  }
+}

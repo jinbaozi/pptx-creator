@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "skillName": "image-to-pptx",
+  "files": [
+    "LICENSE",
+    "SKILL.md",
+    "package-lock.json",
+    "package.json",
+    "requirements.txt",
+    "skill-package.files.json"
+  ],
+  "directories": [
+    "agents",
+    "assets",
+    "examples",
+    "references",
+    "schemas",
+    "scripts",
+    "tests"
+  ],
+  "requiredFiles": [
+    "SKILL.md",
+    "agents/openai.yaml",
+    "package.json",
+    "package-lock.json",
+    "schemas/presentation-package.schema.json",
+    "scripts/validate-presentation-package.mjs",
+    "scripts/image-to-pptx.mjs"
+  ],
+  "requiredDirectories": [
+    "scripts",
+    "references",
+    "examples",
+    "tests",
+    "schemas"
+  ],
+  "excludeBasenames": [
+    ".DS_Store"
+  ],
+  "excludeExtensions": [
+    ".pyc"
+  ],
+  "excludeSegments": [
+    "__pycache__",
+    "node_modules",
+    "output"
+  ]
+}

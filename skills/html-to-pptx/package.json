@@ -1,0 +1,37 @@
+{
+  "name": "@pptx-creator/html-to-pptx-skill",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "html-to-pptx": "./scripts/convert.mjs"
+  },
+  "scripts": {
+    "convert": "node scripts/convert.mjs",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit.test.mjs tests/contract.test.mjs tests/error.test.mjs",
+    "test:browser": "PLAYWRIGHT_RUN=1 vitest run tests/browser.test.mjs",
+    "test:visual": "PLAYWRIGHT_RUN=1 vitest run tests/visual.test.mjs",
+    "test:isolation": "PLAYWRIGHT_RUN=1 ISOLATION_RUN=1 vitest run tests/isolation.test.mjs",
+    "example:min": "node scripts/convert.mjs examples/minimal/index.html examples/minimal/output --overwrite",
+    "example:complex": "node scripts/convert.mjs examples/complex/index.html examples/complex/output --overwrite"
+  },
+  "dependencies": {
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
+    "fontkit": "2.0.4",
+    "image-size": "1.2.1",
+    "jszip": "3.10.1",
+    "node-html-parser": "6.1.13",
+    "playwright": "1.60.0",
+    "pptxgenjs": "3.12.0",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

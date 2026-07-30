@@ -1,0 +1,589 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jinbaozi/pptx-creator/schemas/presentation-package/1.0.0",
+  "title": "PPTX Creator Presentation Package Protocol",
+  "description": "Project-local optional interoperability contract. It is not a Codex Skill manifest.",
+  "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "html-presentation"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "entrypoint": {
+            "$ref": "#/$defs/relativePath"
+          }
+        },
+        "required": [
+          "entrypoint"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "producer": {
+            "type": "object",
+            "properties": {
+              "skill": {
+                "const": "text-to-html"
+              }
+            },
+            "required": [
+              "skill"
+            ]
+          }
+        },
+        "required": [
+          "producer"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "html-presentation"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "producer": {
+            "type": "object",
+            "properties": {
+              "skill": {
+                "const": "html-to-pptx"
+              }
+            },
+            "required": [
+              "skill"
+            ]
+          }
+        },
+        "required": [
+          "producer"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "pptx-delivery"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "producer": {
+            "type": "object",
+            "properties": {
+              "skill": {
+                "const": "image-to-pptx"
+              }
+            },
+            "required": [
+              "skill"
+            ]
+          }
+        },
+        "required": [
+          "producer"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "image-reconstruction"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "validation": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "enum": [
+                  "passed",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        },
+        "required": [
+          "validation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "validation": {
+            "type": "object",
+            "properties": {
+              "reports": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "version",
+    "kind",
+    "producer",
+    "deck",
+    "assets",
+    "sources",
+    "validation",
+    "degradations",
+    "compatibility"
+  ],
+  "properties": {
+    "protocol": {
+      "const": "pptx-creator.presentation-package"
+    },
+    "version": {
+      "const": "1.0.0"
+    },
+    "kind": {
+      "enum": [
+        "html-presentation",
+        "image-reconstruction",
+        "pptx-delivery"
+      ]
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "skill",
+        "version"
+      ],
+      "properties": {
+        "skill": {
+          "enum": [
+            "text-to-html",
+            "html-to-pptx",
+            "image-to-pptx"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "entrypoint": {
+      "$ref": "#/$defs/relativePath"
+    },
+    "deck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "size",
+        "slides"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "minLength": 2
+        },
+        "size": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "width",
+            "height",
+            "unit"
+          ],
+          "properties": {
+            "width": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "height": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "unit": {
+              "enum": [
+                "px",
+                "in"
+              ]
+            }
+          }
+        },
+        "slides": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/slide"
+          }
+        }
+      }
+    },
+    "designTokens": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/relativePath"
+        },
+        {
+          "type": "object"
+        }
+      ]
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reports"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "passed",
+            "failed"
+          ]
+        },
+        "reports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relativePath"
+          }
+        },
+        "validatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "degradations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/degradation"
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minReaderVersion",
+        "features"
+      ],
+      "properties": {
+        "minReaderVersion": {
+          "const": "1.0.0"
+        },
+        "features": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)(?![\\\\/])(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$))(?!.*\\u0000).+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h",
+        "unit"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "w": {
+          "type": "number",
+          "minimum": 0
+        },
+        "h": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "px",
+            "in"
+          ]
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "box",
+        "z",
+        "editableIntent",
+        "sourceRefs"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "type": {
+          "enum": [
+            "text",
+            "shape",
+            "image",
+            "svg",
+            "table",
+            "chart",
+            "connector",
+            "group",
+            "unknown"
+          ]
+        },
+        "box": {
+          "$ref": "#/$defs/box"
+        },
+        "z": {
+          "type": "integer"
+        },
+        "editableIntent": {
+          "type": "boolean"
+        },
+        "sourceRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stableId"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "slide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "order",
+        "title",
+        "sourceRefs",
+        "components"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coreMessage": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "sourceRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stableId"
+          }
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/component"
+          }
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "mime",
+        "rights"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "mime": {
+          "type": "string",
+          "minLength": 3
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "rights": {
+          "enum": [
+            "user-provided",
+            "project-owned",
+            "licensed",
+            "public-domain",
+            "unknown"
+          ]
+        },
+        "sourceRef": {
+          "$ref": "#/$defs/stableId"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "factStatus"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "kind": {
+          "enum": [
+            "user-input",
+            "file",
+            "url",
+            "image",
+            "assumption",
+            "placeholder"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "factStatus": {
+          "enum": [
+            "provided",
+            "verified",
+            "inferred",
+            "unverified",
+            "placeholder"
+          ]
+        }
+      }
+    },
+    "degradation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "slideId",
+        "reason",
+        "editabilityImpact"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "slideId": {
+          "$ref": "#/$defs/stableId"
+        },
+        "componentId": {
+          "$ref": "#/$defs/stableId"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "editabilityImpact": {
+          "enum": [
+            "none",
+            "partial",
+            "non-editable-region"
+          ]
+        }
+      }
+    }
+  }
+}

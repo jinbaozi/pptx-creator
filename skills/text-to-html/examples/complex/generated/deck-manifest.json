@@ -1,0 +1,185 @@
+{
+  "version": "1.0.0",
+  "generator": {
+    "skill": "text-to-html",
+    "version": "1.0.0",
+    "deterministic": true
+  },
+  "deck": {
+    "id": "knowledge-migration-pilot",
+    "title": "企业知识库迁移试点方案",
+    "language": "zh-CN",
+    "size": {
+      "width": 1280,
+      "height": 720,
+      "unit": "px"
+    }
+  },
+  "positioning": {
+    "statement": "让项目决策组在十五分钟方案评审中理解“先治理再迁移”的试点结论，并确认负责人、范围、权限原则和验收会。",
+    "goal": "方案提案",
+    "audience": "项目决策组",
+    "scenario": "十五分钟方案评审",
+    "coreConclusion": "先建立唯一批准版本与责任链，再迁移高频在用内容",
+    "desiredAction": "确认试点负责人、范围、权限原则和验收会",
+    "deliveryMode": "现场演讲",
+    "durationMinutes": 15,
+    "targetSlideCount": 9
+  },
+  "narrative": {
+    "framework": "痛点—判断—范围—路径—决策",
+    "chapters": [
+      {
+        "id": "chapter-why",
+        "title": "为什么先治理",
+        "slideIds": [
+          "slide-cover",
+          "slide-thesis",
+          "slide-metrics",
+          "slide-quote"
+        ]
+      },
+      {
+        "id": "chapter-how",
+        "title": "如何完成试点",
+        "slideIds": [
+          "slide-scope",
+          "slide-process",
+          "slide-timeline",
+          "slide-map"
+        ]
+      },
+      {
+        "id": "chapter-decision",
+        "title": "需要的决策",
+        "slideIds": [
+          "slide-closing"
+        ]
+      }
+    ]
+  },
+  "repairLevel": 0,
+  "slides": [
+    {
+      "id": "slide-cover",
+      "order": 1,
+      "type": "cover",
+      "title": "企业知识库迁移试点方案",
+      "coreMessage": "先治理再迁移，避免把版本混乱原样搬进新系统",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "说明所有数字和引语均来自虚构测试输入，未独立核验。"
+    },
+    {
+      "id": "slide-thesis",
+      "order": 2,
+      "type": "statement",
+      "title": "真正的迁移风险不是文件数量，而是错误版本继续流通",
+      "coreMessage": "试点首先要解决版本与责任，而不是追求搬运数量",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "不要把该判断扩展为真实企业结论；它只属于示例输入。"
+    },
+    {
+      "id": "slide-metrics",
+      "order": 3,
+      "type": "metrics",
+      "title": "1,240 份活跃文档中，版本歧义已成为可见成本",
+      "coreMessage": "资料规模、目录分散和重复最终版共同构成试点理由",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "明确口头说明：这些是虚构输入里的示例数字。"
+    },
+    {
+      "id": "slide-quote",
+      "order": 4,
+      "type": "quote",
+      "title": "团队耗时集中在判断“哪一份还能用”",
+      "coreMessage": "检索问题背后是版本可信度问题",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "引语来自虚构测试输入，不应署名给真实个人。"
+    },
+    {
+      "id": "slide-scope",
+      "order": 5,
+      "type": "comparison",
+      "title": "只迁移高频、在用、责任明确的内容，试点才能在十天内闭环",
+      "coreMessage": "明确纳入与暂缓规则可以控制治理复杂度",
+      "sourceRefs": [
+        "source-brief",
+        "source-owner-assumption"
+      ],
+      "notes": "提醒听众：管理员兼任内容负责人仍是待确认假设。"
+    },
+    {
+      "id": "slide-process",
+      "order": 6,
+      "type": "process",
+      "title": "四步路径把范围、版本、责任与验收串成闭环",
+      "coreMessage": "每一步都有明确输入输出，避免边迁移边改口径",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "逐步说明前一步产物如何成为下一步输入。"
+    },
+    {
+      "id": "slide-timeline",
+      "order": 7,
+      "type": "timeline",
+      "title": "十天试点在第 5 天完成治理，第 10 天完成验收",
+      "coreMessage": "治理工作前置，后半程集中迁移与验证",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "里程碑均来自虚构测试输入。"
+    },
+    {
+      "id": "slide-map",
+      "order": 8,
+      "type": "image",
+      "title": "治理层把三个共享目录收敛为一个可信入口",
+      "coreMessage": "统一知识库的价值来自范围筛选、版本清理和责任绑定",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "图是本 Skill 示例资产，不代表真实系统架构。"
+    },
+    {
+      "id": "slide-closing",
+      "order": 9,
+      "type": "closing",
+      "title": "今天锁定四项决定，第 1 天即可冻结范围",
+      "coreMessage": "试点启动只等待负责人、范围、权限原则和验收会",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "逐项确认，未确认项记录为阻塞，不替听众做决定。"
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-system-map",
+      "sourcePath": "assets/system-map.svg",
+      "outputPath": "assets/media/asset-system-map.svg",
+      "mime": "image/svg+xml",
+      "rights": "project-owned",
+      "alt": "三个共享目录经过范围筛选、版本治理和责任绑定进入统一知识库的示意图",
+      "objectFit": "contain",
+      "sourceRef": "source-brief",
+      "sha256": "42701ba692f1af35212db7ad1124030df6e2cdbea0aa7c98af72a72d1d7b50d8"
+    }
+  ],
+  "files": {
+    "entrypoint": "index.html",
+    "designTokens": "design-tokens.json",
+    "notes": "speaker-notes.md",
+    "sources": "sources.json",
+    "qa": "qa-report.json",
+    "presentationPackage": "presentation-package.json"
+  }
+}

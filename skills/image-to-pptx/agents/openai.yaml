@@ -1,0 +1,4 @@
+interface:
+  display_name: "Image to PPTX"
+  short_description: "Rebuild slide images as editable PowerPoint decks"
+  default_prompt: "Use $image-to-pptx to reconstruct these slide images as an editable PPTX with confidence and visual-proof reports."

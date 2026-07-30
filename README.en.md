@@ -6,10 +6,22 @@
 
 `pptx-creator` is an agent-oriented toolkit for generating editable PPTX files. A host agent or large language model handles understanding, planning, writing, design, and optional web research. This project handles deterministic validation, conversion, rendering, packaging, and quality checks, producing `.pptx` files that remain editable in PowerPoint or WPS.
 
-Core principle: Creative runs use the selected canonical Semantic Slide IR as
-their authoring truth; every route uses the manifest as render truth before
-deterministic PPTX rendering. Package scripts do not call LLM APIs and do not
-invent content.
+> **V2.0 architecture:** the core is now split into three independently
+> installable standard Skills:
+> [`text-to-html`](skills/text-to-html/),
+> [`html-to-pptx`](skills/html-to-pptx/), and
+> [`image-to-pptx`](skills/image-to-pptx/).
+> Text-to-PPTX explicitly composes the first two Skills; the root router remains
+> only as a migration compatibility layer. Start with
+> [`v2/USER_GUIDE.md`](v2/USER_GUIDE.md), then see
+> [`v2/ARCHITECTURE.md`](v2/ARCHITECTURE.md) and
+> [`v2/MIGRATION.md`](v2/MIGRATION.md). Final test evidence and known
+> limitations are in [`v2/VALIDATION_REPORT.md`](v2/VALIDATION_REPORT.md).
+
+V2 principle: `text-to-html` delivers a verified HTML package. When PPTX is
+needed, `html-to-pptx` produces a manifest and renders it deterministically.
+The old Semantic Slide IR remains only as a root compatibility route. Package
+scripts do not call LLM APIs and do not invent content.
 
 ## Use Cases
 
@@ -23,10 +35,12 @@ invent content.
 
 | Capability | Description |
 | --- | --- |
-| Text to PPTX | Creative text produces `deck.plan.json`, then deterministically compiles Semantic IR and a manifest; the explicit direct route may still provide a manifest. |
-| Creative text generation | Uses the coordinate-free `deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX` flow so design judgment, narrative beats, and layout families remain reviewable before rendering. |
+| Text to HTML | `text-to-html` turns text, Markdown, long-form source, or an outline into an offline HTML presentation package with sources, notes, design tokens, and browser QA. |
+| HTML to PPTX | `html-to-pptx` accepts ordinary local HTML or a compatible protocol package, prefers native editable objects, and verifies fidelity through a rendered-PPTX comparison. |
+| Image to PPTX | `image-to-pptx` performs OCR, structure/style recognition, confidence tracking, and native reconstruction; low-confidence content and local raster regions remain explicit. |
+| Text to PPTX composition | Explicitly run `text-to-html → html-to-pptx`; the old `text_to_pptx` concept is no longer a V2 core capability. |
+| Historical compatibility | Root `text --native` / `--direct` and Semantic Slide IR routes remain for migration, not as a runtime boundary of the three V2 Skills. |
 | Layout archetypes and compilation | Built-in layout archetypes, design system parsing, and manifest compilation turn design specs into deterministic PPTX manifests. |
-| HTML to PPTX | Supports semantic HTML, CSS-positioned HTML, DOM measurement, remote image localization, and multi-slide conversion. |
 | Image/PDF input | Provides image inspection, palette extraction, OCR, cropping, image replica analysis, layer planning, and PDF page hint helpers. |
 | Editable rendering | Prefers native PowerPoint text, shapes, lines, tables, charts, icons, and semantic diagrams. |
 | Charts and diagrams | Supports charts such as `bar`, `line`, `pie`, `stackedBar`, `horizontalBar`, `groupedBar`, `kpiGroup`, and `sparkline`, plus semantic diagrams such as `layeredArchitecture`, `compilerPipeline`, `capabilityStack`, `swimlane`, and `matrixMap`; all expand into editable PowerPoint primitives. |

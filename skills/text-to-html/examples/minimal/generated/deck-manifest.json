@@ -1,0 +1,88 @@
+{
+  "version": "1.0.0",
+  "generator": {
+    "skill": "text-to-html",
+    "version": "1.0.0",
+    "deterministic": true
+  },
+  "deck": {
+    "id": "knowledge-base-pilot",
+    "title": "两周知识库试点",
+    "language": "zh-CN",
+    "size": {
+      "width": 1280,
+      "height": 720,
+      "unit": "px"
+    }
+  },
+  "positioning": {
+    "statement": "让试点项目组在现场启动会上理解两周试点的边界与成功标准，并确认负责人、资料范围和验收日期。",
+    "goal": "试点启动",
+    "audience": "试点项目组",
+    "scenario": "现场启动会",
+    "coreConclusion": "小范围、可验收的两周试点可以立即开始",
+    "desiredAction": "确认负责人、资料范围和验收日期",
+    "deliveryMode": "现场演讲",
+    "durationMinutes": 5,
+    "targetSlideCount": 3
+  },
+  "narrative": {
+    "framework": "结论—依据—行动",
+    "chapters": [
+      {
+        "id": "chapter-decision",
+        "title": "试点决策",
+        "slideIds": [
+          "slide-cover",
+          "slide-actions",
+          "slide-closing"
+        ]
+      }
+    ]
+  },
+  "repairLevel": 0,
+  "slides": [
+    {
+      "id": "slide-cover",
+      "order": 1,
+      "type": "cover",
+      "title": "两周知识库试点",
+      "coreMessage": "小范围、可验收的试点可以立即开始",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "强调这不是全量迁移，而是一个有边界的验证。"
+    },
+    {
+      "id": "slide-actions",
+      "order": 2,
+      "type": "bullets",
+      "title": "限定范围与成功标准后，试点可以立即启动",
+      "coreMessage": "资料范围、参与范围和成功标准都已具备最小闭环",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "逐项说明三项边界，不扩展到历史归档。"
+    },
+    {
+      "id": "slide-closing",
+      "order": 3,
+      "type": "closing",
+      "title": "今天确认三件事，明天开始试点",
+      "coreMessage": "负责人、资料范围和验收日期是启动所需的最后三个决定",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "notes": "现场逐一确认负责人、资料范围和验收日期。"
+    }
+  ],
+  "assets": [],
+  "files": {
+    "entrypoint": "index.html",
+    "designTokens": "design-tokens.json",
+    "notes": "speaker-notes.md",
+    "sources": "sources.json",
+    "qa": "qa-report.json",
+    "presentationPackage": "presentation-package.json"
+  }
+}

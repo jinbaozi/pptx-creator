@@ -5,17 +5,54 @@ import { execFileSync } from "node:child_process";
 import JSZip from "jszip";
 
 const FIXED_ZIP_DATE = new Date("1980-01-01T00:00:00.000Z");
+const compareStrings = (left, right) => left < right ? -1 : left > right ? 1 : 0;
 
 function toPosix(value) {
-  return value.split(path.sep).join("/");
+  return value.replaceAll("\\", "/");
 }
 
 function normalizeRelative(value) {
-  const normalized = path.posix.normalize(toPosix(value)).replace(/^\.\//, "");
+  if (typeof value !== "string") throw new Error(`package path must be a string: ${String(value)}`);
+  if (!value || value.includes("\0") || /^[A-Za-z]:/.test(value) || path.win32.isAbsolute(value)) {
+    throw new Error(`invalid package path: ${value}`);
+  }
+  const portable = toPosix(value);
+  if (portable.split("/").includes("..")) throw new Error(`invalid package path: ${value}`);
+  const normalized = path.posix.normalize(portable).replace(/^\.\//, "");
   if (!normalized || normalized === "." || normalized.startsWith("../") || path.posix.isAbsolute(normalized)) {
     throw new Error(`invalid package path: ${value}`);
   }
   return normalized;
+}
+
+async function assertNotSymlink(target, label) {
+  try {
+    const stat = await fs.lstat(target);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`skill package output path contains a symbolic link: ${label}`);
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+function assertSafeArchiveEntry(entry) {
+  const originalName = entry.unsafeOriginalName ?? entry.name;
+  if (entry.dir || originalName !== entry.name || entry.name.includes("\\")
+      || entry.name.includes("\0") || /^[A-Za-z]:/.test(entry.name)
+      || path.posix.isAbsolute(entry.name)
+      || entry.name.split("/").includes("..")
+      || path.posix.normalize(entry.name) !== entry.name) {
+    throw new Error(`unsafe or unexpected skill archive entry: ${originalName}`);
+  }
+  const rawPermissions = entry.unixPermissions;
+  const permissions = typeof rawPermissions === "string"
+    ? Number.parseInt(rawPermissions, 8)
+    : rawPermissions;
+  const fileType = Number.isInteger(permissions) ? permissions & 0o170000 : 0;
+  if (fileType !== 0 && fileType !== 0o100000) {
+    throw new Error(`skill archive entry is not a regular file: ${entry.name}`);
+  }
 }
 
 function isExcluded(relativePath, spec) {
@@ -33,7 +70,7 @@ async function listFiles(root, relativeDirectory, spec) {
   const absoluteDirectory = path.join(root, normalizedDirectory);
   const entries = await fs.readdir(absoluteDirectory, { withFileTypes: true });
   const files = [];
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const entry of entries.sort((a, b) => compareStrings(a.name, b.name))) {
     const relativePath = normalizeRelative(path.posix.join(normalizedDirectory, entry.name));
     if (isExcluded(relativePath, spec)) continue;
     if (entry.isSymbolicLink()) throw new Error(`symbolic links are not allowed in a skill package: ${relativePath}`);
@@ -48,24 +85,65 @@ export async function loadSkillPackageSpec(root) {
   const spec = JSON.parse(raw);
   if (spec.version !== 1) throw new Error(`unsupported skill package spec version: ${spec.version}`);
   if (!/^[a-z0-9-]{1,64}$/.test(spec.skillName || "")) throw new Error(`invalid skill name: ${spec.skillName}`);
+  for (const field of [
+    "files",
+    "directories",
+    "requiredFiles",
+    "requiredDirectories",
+    "excludeFiles",
+    "excludeSegments",
+    "excludeBasenames",
+    "excludeExtensions"
+  ]) {
+    if (spec[field] !== undefined && (!Array.isArray(spec[field]) || spec[field].some((value) => typeof value !== "string"))) {
+      throw new Error(`skill package spec ${field} must be an array of strings`);
+    }
+  }
   return spec;
 }
 
 export async function collectSkillFiles(root, spec) {
+  const canonicalRoot = await fs.realpath(root);
+  const assertInsideRoot = async (absolutePath, label) => {
+    const canonicalPath = await fs.realpath(absolutePath);
+    const relation = path.relative(canonicalRoot, canonicalPath);
+    if (relation === ".." || relation.startsWith(`..${path.sep}`) || path.isAbsolute(relation)) {
+      throw new Error(`skill package path escapes the package root: ${label}`);
+    }
+  };
   const selected = new Set();
   for (const candidate of spec.files || []) {
     const relativePath = normalizeRelative(candidate);
     if (isExcluded(relativePath, spec)) continue;
-    const stat = await fs.stat(path.join(root, relativePath));
+    const absolutePath = path.join(root, relativePath);
+    const stat = await fs.lstat(absolutePath);
+    if (stat.isSymbolicLink()) throw new Error(`symbolic links are not allowed in a skill package: ${relativePath}`);
     if (!stat.isFile()) throw new Error(`package allowlist entry is not a file: ${relativePath}`);
+    await assertInsideRoot(absolutePath, relativePath);
     selected.add(relativePath);
   }
   for (const directory of spec.directories || []) {
+    const normalizedDirectory = normalizeRelative(directory);
+    const absoluteDirectory = path.join(root, normalizedDirectory);
+    const stat = await fs.lstat(absoluteDirectory);
+    if (stat.isSymbolicLink()) throw new Error(`symbolic links are not allowed in a skill package: ${normalizedDirectory}`);
+    if (!stat.isDirectory()) throw new Error(`package allowlist entry is not a directory: ${normalizedDirectory}`);
+    await assertInsideRoot(absoluteDirectory, normalizedDirectory);
     for (const relativePath of await listFiles(root, directory, spec)) selected.add(relativePath);
   }
-  const files = [...selected].sort((a, b) => a.localeCompare(b));
+  const files = [...selected].sort(compareStrings);
   for (const required of ["SKILL.md", "agents/openai.yaml", "package.json"]) {
     if (!files.includes(required)) throw new Error(`required skill package file is missing: ${required}`);
+  }
+  for (const required of spec.requiredFiles || []) {
+    const normalized = normalizeRelative(required);
+    if (!files.includes(normalized)) throw new Error(`declared required skill package file is missing: ${normalized}`);
+  }
+  for (const required of spec.requiredDirectories || []) {
+    const normalized = `${normalizeRelative(required).replace(/\/$/, "")}/`;
+    if (!files.some((file) => file.startsWith(normalized))) {
+      throw new Error(`declared required skill package directory is empty or missing: ${normalized.slice(0, -1)}`);
+    }
   }
   return files;
 }
@@ -86,6 +164,16 @@ export async function buildSkillPackage(root, outputRoot = path.join(root, "dist
   const checksumPath = `${archivePath}.sha256`;
   const manifestPath = path.join(outputRoot, `${spec.skillName}.skill-manifest.json`);
 
+  for (const [target, label] of [
+    [path.dirname(outputRoot), "output parent"],
+    [outputRoot, "output root"],
+    [packageRoot, "extracted package"],
+    [archivePath, "archive"],
+    [checksumPath, "checksum sidecar"],
+    [manifestPath, "manifest sidecar"]
+  ]) {
+    await assertNotSymlink(target, label);
+  }
   await fs.rm(packageRoot, { recursive: true, force: true });
   await fs.mkdir(packageRoot, { recursive: true });
 
@@ -137,10 +225,9 @@ export async function verifySkillPackage(root, archivePath = path.join(root, "di
   const archive = await fs.readFile(archivePath);
   const zip = await JSZip.loadAsync(archive);
   const prefix = `${spec.skillName}/`;
-  const archiveFiles = Object.values(zip.files)
-    .filter((entry) => !entry.dir)
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b));
+  const archiveEntries = Object.values(zip.files);
+  for (const entry of archiveEntries) assertSafeArchiveEntry(entry);
+  const archiveFiles = archiveEntries.map((entry) => entry.name).sort(compareStrings);
   const expectedArchiveFiles = expectedFiles.map((relativePath) => `${prefix}${relativePath}`);
   if (JSON.stringify(archiveFiles) !== JSON.stringify(expectedArchiveFiles)) {
     const unexpected = archiveFiles.filter((name) => !expectedArchiveFiles.includes(name));
@@ -158,15 +245,48 @@ export async function verifySkillPackage(root, archivePath = path.join(root, "di
   }
 
   const skillMd = await zip.file(`${prefix}SKILL.md`).async("string");
-  if (!skillMd.startsWith("---\nname: pptx-creator\ndescription:")) throw new Error("SKILL.md frontmatter is not the published pptx-creator contract");
+  if (!skillMd.startsWith(`---\nname: ${spec.skillName}\ndescription:`)) {
+    throw new Error(`SKILL.md frontmatter is not the published ${spec.skillName} contract`);
+  }
   const openAiYaml = await zip.file(`${prefix}agents/openai.yaml`).async("string");
-  if (!openAiYaml.includes("$pptx-creator")) throw new Error("agents/openai.yaml default_prompt must explicitly mention $pptx-creator");
+  if (!openAiYaml.includes(`$${spec.skillName}`)) {
+    throw new Error(`agents/openai.yaml default_prompt must explicitly mention $${spec.skillName}`);
+  }
+
+  const archiveSha256 = crypto.createHash("sha256").update(archive).digest("hex");
+  const checksumPath = `${archivePath}.sha256`;
+  const expectedChecksum = `${archiveSha256}  ${path.basename(archivePath)}\n`;
+  const checksum = await fs.readFile(checksumPath, "utf8");
+  if (checksum !== expectedChecksum) throw new Error(`skill package checksum sidecar mismatch: ${checksumPath}`);
+
+  const manifestPath = path.join(path.dirname(archivePath), `${spec.skillName}.skill-manifest.json`);
+  const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  const packageJson = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
+  const expectedSourceBranch = gitValue(root, ["branch", "--show-current"], "unknown");
+  const expectedSourceCommit = gitValue(root, ["rev-parse", "HEAD"], "unknown");
+  const sourceTotalBytes = (await Promise.all(expectedFiles.map(async (relativePath) => (
+    await fs.stat(path.join(root, relativePath))
+  ).size))).reduce((sum, value) => sum + value, 0);
+  if (manifest.schemaVersion !== 1
+      || manifest.skillName !== spec.skillName
+      || manifest.packageVersion !== packageJson.version
+      || manifest.archiveSha256 !== archiveSha256
+      || manifest.fileCount !== expectedFiles.length
+      || manifest.totalBytes !== sourceTotalBytes
+      || manifest.sourceBranch !== expectedSourceBranch
+      || manifest.sourceCommit !== expectedSourceCommit
+      || !/^(?:unknown|[a-f0-9]{40})$/.test(manifest.sourceCommit)) {
+    throw new Error(`skill package manifest sidecar mismatch: ${manifestPath}`);
+  }
 
   return {
     skillName: spec.skillName,
     archivePath,
-    archiveSha256: crypto.createHash("sha256").update(archive).digest("hex"),
+    archiveSha256,
     fileCount: expectedFiles.length,
-    totalBytes: archive.byteLength
+    sourceBytes: sourceTotalBytes,
+    archiveBytes: archive.byteLength,
+    checksumPath,
+    manifestPath
   };
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Text to HTML"
+  short_description: "Build verified offline HTML slide presentations"
+  default_prompt: "Use $text-to-html to turn this source into a verified offline HTML presentation package."

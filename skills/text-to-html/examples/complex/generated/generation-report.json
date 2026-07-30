@@ -1,0 +1,44 @@
+{
+  "version": "1.0.0",
+  "status": "passed",
+  "plan": {
+    "deckId": "knowledge-migration-pilot",
+    "hostReview": {
+      "status": "approved",
+      "reviewedAt": "2026-07-30T00:00:00.000Z",
+      "checks": {
+        "positioning": true,
+        "sourceIntegrity": true,
+        "narrative": true,
+        "oneMessagePerSlide": true,
+        "visualIntent": true
+      }
+    },
+    "assumptions": [
+      {
+        "id": "assumption-admin-owner",
+        "text": "试点可由现有项目管理员兼任内容负责人。",
+        "impact": "medium",
+        "status": "inferred"
+      },
+      {
+        "id": "assumption-live",
+        "text": "评审采用现场演讲并预留提问。",
+        "impact": "low",
+        "status": "confirmed"
+      }
+    ]
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "repairLevel": 0,
+      "status": "passed",
+      "findingCodes": [],
+      "report": "qa/attempt-01.json"
+    }
+  ],
+  "qaReport": "qa-report.json",
+  "presentationPackage": "presentation-package.json",
+  "outputManifest": "output-manifest.json"
+}

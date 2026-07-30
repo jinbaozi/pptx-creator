@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jinbaozi/pptx-creator/skills/text-to-html/schemas/qa-report/1.0.0",
+  "title": "Text to HTML browser QA report",
+  "type": "object",
+  "required": [
+    "version",
+    "status",
+    "timeoutMs",
+    "slideCount",
+    "viewports",
+    "navigation",
+    "print",
+    "findings",
+    "measurements",
+    "summary"
+  ],
+  "properties": {
+    "version": { "const": "1.0.0" },
+    "status": { "enum": ["passed", "failed"] },
+    "timeoutMs": { "type": "number", "minimum": 90000 },
+    "slideCount": { "type": "integer", "minimum": 1 },
+    "viewports": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["name", "width", "height", "slides"],
+        "properties": {
+          "name": { "enum": ["standard", "desktop", "mobile"] },
+          "width": { "type": "integer", "minimum": 1 },
+          "height": { "type": "integer", "minimum": 1 },
+          "slides": { "type": "array" }
+        }
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "required": ["passed"],
+      "properties": { "passed": { "type": "boolean" } }
+    },
+    "print": { "type": "object" },
+    "findings": { "type": "array" },
+    "measurements": { "type": "array" },
+    "attempts": { "type": "array" },
+    "summary": {
+      "type": "object",
+      "required": ["passed", "errorCount", "screenshotCount"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "errorCount": { "type": "integer", "minimum": 0 },
+        "screenshotCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,530 @@
+{
+  "protocol": "pptx-creator.presentation-package",
+  "version": "1.0.0",
+  "kind": "html-presentation",
+  "producer": {
+    "skill": "text-to-html",
+    "version": "1.0.0"
+  },
+  "entrypoint": "index.html",
+  "deck": {
+    "id": "knowledge-base-pilot",
+    "title": "两周知识库试点",
+    "language": "zh-CN",
+    "size": {
+      "width": 1280,
+      "height": 720,
+      "unit": "px"
+    },
+    "slides": [
+      {
+        "id": "slide-cover",
+        "order": 1,
+        "title": "两周知识库试点",
+        "coreMessage": "小范围、可验收的试点可以立即开始",
+        "notes": "强调这不是全量迁移，而是一个有边界的验证。",
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "components": [
+          {
+            "id": "slide-cover-decor-orb",
+            "type": "shape",
+            "box": {
+              "x": 924,
+              "y": 26,
+              "w": 320,
+              "h": 320,
+              "unit": "px"
+            },
+            "z": 0,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-cover-decor-rule",
+            "type": "shape",
+            "box": {
+              "x": 914,
+              "y": 118,
+              "w": 10,
+              "h": 176,
+              "unit": "px"
+            },
+            "z": 1,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-cover-title",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 268.234,
+              "w": 980,
+              "h": 60.313,
+              "unit": "px"
+            },
+            "z": 2,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-cover-subtitle",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 342.547,
+              "w": 930,
+              "h": 32.391,
+              "unit": "px"
+            },
+            "z": 3,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-cover-meta",
+            "type": "shape",
+            "box": {
+              "x": 72,
+              "y": 408.938,
+              "w": 1136,
+              "h": 42,
+              "unit": "px"
+            },
+            "z": 4,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-cover-audience",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 408.938,
+              "w": 112,
+              "h": 42,
+              "unit": "px"
+            },
+            "z": 5,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-cover-duration",
+            "type": "text",
+            "box": {
+              "x": 196,
+              "y": 408.938,
+              "w": 77.344,
+              "h": 42,
+              "unit": "px"
+            },
+            "z": 6,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-cover-mode",
+            "type": "text",
+            "box": {
+              "x": 285.344,
+              "y": 408.938,
+              "w": 96,
+              "h": 42,
+              "unit": "px"
+            },
+            "z": 7,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-cover-sources",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 473.938,
+              "w": 226.031,
+              "h": 15,
+              "unit": "px"
+            },
+            "z": 8,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-cover-folio",
+            "type": "text",
+            "box": {
+              "x": 1184.641,
+              "y": 473.938,
+              "w": 23.359,
+              "h": 15,
+              "unit": "px"
+            },
+            "z": 9,
+            "editableIntent": true,
+            "sourceRefs": []
+          }
+        ]
+      },
+      {
+        "id": "slide-actions",
+        "order": 2,
+        "title": "限定范围与成功标准后，试点可以立即启动",
+        "coreMessage": "资料范围、参与范围和成功标准都已具备最小闭环",
+        "notes": "逐项说明三项边界，不扩展到历史归档。",
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "components": [
+          {
+            "id": "slide-actions-decor-orb",
+            "type": "shape",
+            "box": {
+              "x": 972,
+              "y": 24,
+              "w": 280,
+              "h": 280,
+              "unit": "px"
+            },
+            "z": 0,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-title",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 85.188,
+              "w": 1080,
+              "h": 50.594,
+              "unit": "px"
+            },
+            "z": 1,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-message",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 149.781,
+              "w": 930,
+              "h": 32.391,
+              "unit": "px"
+            },
+            "z": 2,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-point-card-1",
+            "type": "shape",
+            "box": {
+              "x": 72,
+              "y": 214.172,
+              "w": 1136,
+              "h": 125.266,
+              "unit": "px"
+            },
+            "z": 3,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-point-number-1",
+            "type": "text",
+            "box": {
+              "x": 97,
+              "y": 235.172,
+              "w": 38,
+              "h": 38,
+              "unit": "px"
+            },
+            "z": 4,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-point-1",
+            "type": "text",
+            "box": {
+              "x": 155,
+              "y": 235.172,
+              "w": 1028,
+              "h": 22,
+              "unit": "px"
+            },
+            "z": 5,
+            "editableIntent": true,
+            "sourceRefs": [
+              "source-brief"
+            ]
+          },
+          {
+            "id": "slide-actions-point-card-2",
+            "type": "shape",
+            "box": {
+              "x": 72,
+              "y": 357.438,
+              "w": 1136,
+              "h": 125.281,
+              "unit": "px"
+            },
+            "z": 6,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-point-number-2",
+            "type": "text",
+            "box": {
+              "x": 97,
+              "y": 378.438,
+              "w": 38,
+              "h": 38,
+              "unit": "px"
+            },
+            "z": 7,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-point-2",
+            "type": "text",
+            "box": {
+              "x": 155,
+              "y": 378.438,
+              "w": 1028,
+              "h": 22,
+              "unit": "px"
+            },
+            "z": 8,
+            "editableIntent": true,
+            "sourceRefs": [
+              "source-brief"
+            ]
+          },
+          {
+            "id": "slide-actions-point-card-3",
+            "type": "shape",
+            "box": {
+              "x": 72,
+              "y": 500.719,
+              "w": 1136,
+              "h": 125.281,
+              "unit": "px"
+            },
+            "z": 9,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-point-number-3",
+            "type": "text",
+            "box": {
+              "x": 97,
+              "y": 521.719,
+              "w": 38,
+              "h": 38,
+              "unit": "px"
+            },
+            "z": 10,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-point-3",
+            "type": "text",
+            "box": {
+              "x": 155,
+              "y": 521.719,
+              "w": 1028,
+              "h": 22,
+              "unit": "px"
+            },
+            "z": 11,
+            "editableIntent": true,
+            "sourceRefs": [
+              "source-brief"
+            ]
+          },
+          {
+            "id": "slide-actions-sources",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 649,
+              "w": 226.031,
+              "h": 15,
+              "unit": "px"
+            },
+            "z": 12,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-actions-folio",
+            "type": "text",
+            "box": {
+              "x": 1184.641,
+              "y": 649,
+              "w": 23.359,
+              "h": 15,
+              "unit": "px"
+            },
+            "z": 13,
+            "editableIntent": true,
+            "sourceRefs": []
+          }
+        ]
+      },
+      {
+        "id": "slide-closing",
+        "order": 3,
+        "title": "今天确认三件事，明天开始试点",
+        "coreMessage": "负责人、资料范围和验收日期是启动所需的最后三个决定",
+        "notes": "现场逐一确认负责人、资料范围和验收日期。",
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "components": [
+          {
+            "id": "slide-closing-decor-orb",
+            "type": "shape",
+            "box": {
+              "x": 924,
+              "y": 26,
+              "w": 320,
+              "h": 320,
+              "unit": "px"
+            },
+            "z": 0,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-closing-decor-band",
+            "type": "shape",
+            "box": {
+              "x": 820,
+              "y": 616,
+              "w": 460,
+              "h": 104,
+              "unit": "px"
+            },
+            "z": 1,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-closing-title",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 85.188,
+              "w": 1080,
+              "h": 50.594,
+              "unit": "px"
+            },
+            "z": 2,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-closing-message",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 149.781,
+              "w": 930,
+              "h": 32.391,
+              "unit": "px"
+            },
+            "z": 3,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-closing-action",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 214.172,
+              "w": 980,
+              "h": 411.828,
+              "unit": "px"
+            },
+            "z": 4,
+            "editableIntent": true,
+            "sourceRefs": [
+              "source-brief"
+            ]
+          },
+          {
+            "id": "slide-closing-sources",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 649,
+              "w": 226.031,
+              "h": 15,
+              "unit": "px"
+            },
+            "z": 5,
+            "editableIntent": true,
+            "sourceRefs": []
+          },
+          {
+            "id": "slide-closing-folio",
+            "type": "text",
+            "box": {
+              "x": 1184.641,
+              "y": 649,
+              "w": 23.359,
+              "h": 15,
+              "unit": "px"
+            },
+            "z": 6,
+            "editableIntent": true,
+            "sourceRefs": []
+          }
+        ]
+      }
+    ]
+  },
+  "designTokens": "design-tokens.json",
+  "assets": [],
+  "sources": [
+    {
+      "id": "source-brief",
+      "kind": "file",
+      "label": "input.md（用户提供，未独立核验）",
+      "locator": "input.md",
+      "factStatus": "provided"
+    }
+  ],
+  "validation": {
+    "status": "passed",
+    "reports": [
+      "qa-report.json",
+      "qa/attempt-01.json"
+    ]
+  },
+  "degradations": [],
+  "compatibility": {
+    "minReaderVersion": "1.0.0",
+    "features": [
+      "html-offline",
+      "keyboard-navigation",
+      "print-css",
+      "speaker-notes",
+      "source-traceability",
+      "browser-geometry"
+    ]
+  }
+}

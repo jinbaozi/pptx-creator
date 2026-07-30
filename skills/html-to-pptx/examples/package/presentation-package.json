@@ -1,0 +1,68 @@
+{
+  "protocol": "pptx-creator.presentation-package",
+  "version": "1.0.0",
+  "kind": "html-presentation",
+  "producer": {
+    "skill": "text-to-html",
+    "version": "2.0.0"
+  },
+  "entrypoint": "index.html",
+  "deck": {
+    "id": "protocol-example",
+    "title": "协议输入示例",
+    "language": "zh-CN",
+    "size": {
+      "width": 1280,
+      "height": 720,
+      "unit": "px"
+    },
+    "slides": [
+      {
+        "id": "slide-001",
+        "order": 1,
+        "title": "协议只提供可选互操作，不限制普通 HTML",
+        "sourceRefs": [
+          "source-001"
+        ],
+        "components": [
+          {
+            "id": "title-001",
+            "type": "text",
+            "box": {
+              "x": 72,
+              "y": 64,
+              "w": 1080,
+              "h": 64,
+              "unit": "px"
+            },
+            "z": 1,
+            "editableIntent": true,
+            "sourceRefs": [
+              "source-001"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [],
+  "sources": [
+    {
+      "id": "source-001",
+      "kind": "user-input",
+      "label": "Protocol example",
+      "factStatus": "provided"
+    }
+  ],
+  "validation": {
+    "status": "pending",
+    "reports": []
+  },
+  "degradations": [],
+  "compatibility": {
+    "minReaderVersion": "1.0.0",
+    "features": [
+      "editable-text"
+    ]
+  }
+}

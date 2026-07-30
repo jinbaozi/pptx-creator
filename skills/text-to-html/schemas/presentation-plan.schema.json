@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jinbaozi/pptx-creator/skills/text-to-html/schemas/presentation-plan/1.0.0",
+  "title": "Text to HTML presentation plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "deck",
+    "positioning",
+    "assumptions",
+    "narrative",
+    "design",
+    "sources",
+    "assets",
+    "slides",
+    "hostReview"
+  ],
+  "properties": {
+    "version": {
+      "const": "1.0.0"
+    },
+    "deck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "language", "size"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "language": { "type": "string", "minLength": 2, "maxLength": 20 },
+        "size": {
+          "const": { "width": 1280, "height": 720, "unit": "px" }
+        }
+      }
+    },
+    "positioning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statement",
+        "goal",
+        "audience",
+        "scenario",
+        "coreConclusion",
+        "desiredAction",
+        "deliveryMode",
+        "durationMinutes",
+        "targetSlideCount"
+      ],
+      "properties": {
+        "statement": { "type": "string", "minLength": 1, "maxLength": 360 },
+        "goal": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "audience": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "scenario": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "coreConclusion": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "desiredAction": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "deliveryMode": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "durationMinutes": { "type": "number", "exclusiveMinimum": 0 },
+        "targetSlideCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "impact", "status"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "text": { "type": "string", "minLength": 1, "maxLength": 240 },
+          "impact": { "enum": ["low", "medium", "high"] },
+          "status": { "enum": ["inferred", "confirmed", "rejected"] }
+        }
+      }
+    },
+    "narrative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["framework", "chapters"],
+      "properties": {
+        "framework": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "chapters": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "title", "slideIds"],
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "slideIds": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/id" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tokenOverrides"],
+      "properties": {
+        "tokenOverrides": { "type": "object" }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "assets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/asset" }
+    },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/slide" }
+    },
+    "hostReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checks"],
+      "properties": {
+        "status": { "enum": ["required", "approved"] },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "checks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["positioning", "sourceIntegrity", "narrative", "oneMessagePerSlide", "visualIntent"],
+          "properties": {
+            "positioning": { "type": "boolean" },
+            "sourceIntegrity": { "type": "boolean" },
+            "narrative": { "type": "boolean" },
+            "oneMessagePerSlide": { "type": "boolean" },
+            "visualIntent": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "factStatus", "sourceRefs"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "factStatus": { "enum": ["provided", "verified", "inferred", "unverified", "placeholder"] },
+        "sourceRefs": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "label", "factStatus"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["user-input", "file", "url", "assumption", "placeholder"] },
+        "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "locator": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "factStatus": { "enum": ["provided", "verified", "inferred", "unverified", "placeholder"] }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "mime", "rights", "alt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "mime": { "type": "string", "minLength": 3 },
+        "rights": { "enum": ["user-provided", "project-owned", "licensed", "public-domain", "unknown"] },
+        "alt": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "objectFit": { "enum": ["contain", "cover"] },
+        "sourceRef": { "$ref": "#/$defs/id" }
+      }
+    },
+    "slide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "order",
+        "type",
+        "title",
+        "coreMessage",
+        "visual",
+        "transition",
+        "notes",
+        "sourceRefs",
+        "content"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "order": { "type": "integer", "minimum": 1 },
+        "type": {
+          "enum": ["cover", "statement", "bullets", "comparison", "metrics", "process", "timeline", "quote", "image", "closing"]
+        },
+        "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "coreMessage": { "type": "string", "minLength": 1, "maxLength": 260 },
+        "visual": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "transition": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "notes": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "sourceRefs": {
+          "type": "array",
+          "maxItems": 12,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "content": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

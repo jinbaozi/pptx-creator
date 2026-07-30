@@ -1,0 +1,21 @@
+:root {
+  --font-display: Arial, Helvetica, sans-serif;
+  --font-body: Arial, Helvetica, sans-serif;
+  --color-bg: #F6F7FB;
+  --color-surface: #FFFFFF;
+  --color-text: #172033;
+  --color-muted: #5B6475;
+  --color-primary: #2457E6;
+  --color-primary-soft: #E8EEFF;
+  --color-accent: #E97831;
+  --color-positive: #147D64;
+  --color-border: #D9DEEA;
+  --title-size: 46px;
+  --section-size: 28px;
+  --body-size: 24px;
+  --label-size: 16px;
+  --source-size: 12px;
+  --canvas-x: 72px;
+  --canvas-y: 56px;
+  --gap: 24px;
+}

@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0",
+  "status": "passed",
+  "validatedAt": "2026-07-30T19:00:27+08:00",
+  "application": {
+    "name": "WPS Office",
+    "bundleId": "com.kingsoft.wpsoffice.mac",
+    "path": "/Applications/wpsoffice.app"
+  },
+  "mode": "read-only-open-and-object-selection",
+  "files": [
+    {
+      "producer": "html-to-pptx",
+      "path": "html-to-pptx-final-validated.pptx",
+      "sha256": "03a3c7b68743df71b6c20b23c71404af16dd274d80c21acd1c8ca7a085b79016",
+      "windowTitleObserved": "html-to-pptx-final-validated.pptx",
+      "slideCountObserved": 2,
+      "opened": true,
+      "nativeObjectSelected": true,
+      "selectionEvidence": "html-to-pptx-final-editable-shape.jpeg",
+      "openEvidence": "html-to-pptx-final-open.jpeg"
+    },
+    {
+      "producer": "image-to-pptx",
+      "path": "image-to-pptx-final-validated.pptx",
+      "sha256": "90fe74b7b2efe7af755cd3c26a5bd69bb2a6e72ff279dabc98b6f79441ed47d9",
+      "windowTitleObserved": "image-to-pptx-final-validated.pptx",
+      "slideCountObserved": 2,
+      "opened": true,
+      "nativeTextSelected": true,
+      "selectionEvidence": "image-to-pptx-final-editable-text.jpeg",
+      "openEvidence": "image-to-pptx-final-open.jpeg"
+    }
+  ],
+  "savedOrModified": false,
+  "limitations": [
+    "This is representative WPS validation, not a guarantee for every WPS or Office version.",
+    "Microsoft PowerPoint is not installed in the validation environment."
+  ]
+}

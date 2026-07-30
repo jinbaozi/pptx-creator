@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "status": "passed",
+  "plan": {
+    "deckId": "knowledge-base-pilot",
+    "hostReview": {
+      "status": "approved",
+      "reviewedAt": "2026-07-30T00:00:00.000Z",
+      "checks": {
+        "positioning": true,
+        "sourceIntegrity": true,
+        "narrative": true,
+        "oneMessagePerSlide": true,
+        "visualIntent": true
+      }
+    },
+    "assumptions": [
+      {
+        "id": "assumption-live",
+        "text": "使用方式按现场讲解处理。",
+        "impact": "low",
+        "status": "confirmed"
+      }
+    ]
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "repairLevel": 0,
+      "status": "passed",
+      "findingCodes": [],
+      "report": "qa/attempt-01.json"
+    }
+  ],
+  "qaReport": "qa-report.json",
+  "presentationPackage": "presentation-package.json",
+  "outputManifest": "output-manifest.json"
+}

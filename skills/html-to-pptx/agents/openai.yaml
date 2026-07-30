@@ -1,0 +1,4 @@
+interface:
+  display_name: "HTML to PPTX"
+  short_description: "Convert HTML presentations into editable PPTX with visual proof"
+  default_prompt: "Use $html-to-pptx to convert this local HTML presentation into an editable PPTX and verify it visually."

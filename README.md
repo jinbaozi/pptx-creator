@@ -6,9 +6,20 @@
 
 `pptx-creator` 是一个面向 Agent 的可编辑 PPTX 生成工具包。它让大模型或宿主 Agent 负责理解、策划、写作、设计与必要的联网检索，让本项目的确定性脚本负责校验、转换、渲染、打包和质量检查，最终输出可在 PowerPoint/WPS 中继续编辑的 `.pptx` 文件。
 
-项目核心原则：Creative 路线以选中的 canonical Semantic Slide IR 作为
-authoring truth；所有路线都以 manifest 作为 render truth，再确定性渲染
-PPTX。脚本不会调用 LLM API，也不会自行编造内容。
+> **V2.0 架构：**核心能力现拆分为
+> [`text-to-html`](skills/text-to-html/)、
+> [`html-to-pptx`](skills/html-to-pptx/) 和
+> [`image-to-pptx`](skills/image-to-pptx/) 三个独立标准 Skill。
+> 文本生成 PPTX 请显式组合前两个 Skill；旧根级入口仅作为迁移期兼容层。
+> 普通用户请从 [`v2/USER_GUIDE.md`](v2/USER_GUIDE.md) 开始，
+> 架构与迁移依据见 [`v2/ARCHITECTURE.md`](v2/ARCHITECTURE.md) 和
+> [`v2/MIGRATION.md`](v2/MIGRATION.md)，最终测试与已知限制见
+> [`v2/VALIDATION_REPORT.md`](v2/VALIDATION_REPORT.md)。
+
+V2 核心原则：`text-to-html` 以经过验证的 HTML 包作为正式交付；
+需要 PPTX 时，再由 `html-to-pptx` 生成 manifest 并确定性渲染。
+旧 Semantic Slide IR 仅保留为根级兼容路线。脚本不会调用 LLM API，
+也不会自行编造内容。
 
 ## 适用场景
 
@@ -22,10 +33,12 @@ PPTX。脚本不会调用 LLM API，也不会自行编造内容。
 
 | 能力 | 说明 |
 | --- | --- |
-| 文本到 PPTX | Creative 文本先生成 `deck.plan.json`，再确定性编译为 Semantic IR 与 manifest；显式 direct 路线仍可直接提供 manifest。 |
-| 创意文本生成 | 通过无坐标的 `deck.plan.json -> semantic-slide-ir.json -> deck.manifest.json -> PPTX` 流程，让设计判断、叙事节拍和布局族在渲染前可审查。 |
+| 文本到 HTML | `text-to-html` 将文本、Markdown、长文或大纲转为带来源、演讲备注、设计令牌和浏览器 QA 的离线 HTML 演示包。 |
+| HTML 到 PPTX | `html-to-pptx` 接受普通本地 HTML 或兼容协议包，优先重建为原生可编辑对象，并通过 PPTX 回渲验证保真度。 |
+| 图片到 PPTX | `image-to-pptx` 对参考图执行 OCR、结构/样式识别、置信度分层和原生重建；低置信内容与局部栅格化必须登记。 |
+| 文本到 PPTX 组合 | 显式执行 `text-to-html → html-to-pptx`；不再把旧 `text_to_pptx` 作为 V2 核心功能。 |
+| 历史兼容 | 根级 `text --native` / `--direct` 和 Semantic Slide IR 路线继续用于迁移，不定义 V2 三 Skill 的运行时边界。 |
 | 布局原型与编译 | 内置 layout archetypes、设计系统解析和 manifest 编译器，把设计规格转换成确定性的 PPTX manifest。 |
-| HTML 到 PPTX | 支持语义 HTML、CSS 定位 HTML、DOM 测量、远程图片本地化和多页转换。 |
 | 图片/PDF 输入 | 提供图片检查、颜色提取、OCR、裁剪、图片复刻分析、图层规划、PDF 页面 hints 等辅助脚本，由 Agent 重建可编辑对象。 |
 | 可编辑渲染 | 优先输出 PPT 原生文本、形状、线条、表格、图表、图标和语义图解。 |
 | 图表与图解 | 支持 `bar`、`line`、`pie`、`stackedBar`、`horizontalBar`、`groupedBar`、`kpiGroup`、`sparkline` 等图表，以及 `layeredArchitecture`、`compilerPipeline`、`capabilityStack`、`swimlane`、`matrixMap` 等语义图解，均会展开成可编辑 PPT 原生对象。 |
@@ -34,6 +47,23 @@ PPTX。脚本不会调用 LLM API，也不会自行编造内容。
 | 质量检查 | 包含 manifest 校验、可编辑性报告、QA 报告、WPS 兼容性、可访问性、OpenXML 检查和视觉回归。 |
 | Registry | 支持来源 registry 和素材 registry，记录事实来源、素材来源、授权状态和使用位置。 |
 | Metadata Flow | 将 registry 校验、run index、design-first pipeline flags 和报告产物串联，便于批量生成、审计和复盘。 |
+
+## V2 三个 Skill 入口
+
+安装为 Codex Skill 后，分别使用 `$text-to-html`、`$html-to-pptx` 和
+`$image-to-pptx`。在源码目录手工运行时，先阅读对应 `SKILL.md`，再从该
+Skill 目录执行其公开命令：
+
+| Skill | 使用说明 | 确定性脚本入口 |
+|---|---|---|
+| `text-to-html` | [`skills/text-to-html/SKILL.md`](skills/text-to-html/SKILL.md) | `node scripts/run-pipeline.mjs <approved-presentation-plan.json> <output-dir>` |
+| `html-to-pptx` | [`skills/html-to-pptx/SKILL.md`](skills/html-to-pptx/SKILL.md) | `node scripts/convert.mjs <input.html\|directory\|presentation-package.json> <output-dir>` |
+| `image-to-pptx` | [`skills/image-to-pptx/SKILL.md`](skills/image-to-pptx/SKILL.md) | `node scripts/image-to-pptx.mjs build --output <output-dir> <image...>` |
+
+`$text-to-html` 可以由 Host/Codex 接收自然语言请求，但脚本入口不会自动
+理解自然语言、研究事实或编写叙事；Host 必须先完成这些判断，并提交已审核
+的 `presentation-plan.json`。另外两个脚本也只转换已提供的 HTML 或图片，
+不会替用户重写内容。
 
 ## 安装部署
 
@@ -79,7 +109,8 @@ npm run setup -- core
 `pip install -r requirements-image.txt`；pdf 使用
 `pip install -r requirements-pdf.txt`。HTML 浏览器依赖由 Node/Playwright 提供。
 
-运行内置 HTML-first 文本示例：
+以下命令运行的是保留的根级兼容层，不是 V2 三 Skill 的入口。运行内置
+HTML-first 文本示例：
 
 ```bash
 npm run pptx -- text examples/text-input/html-first/deck.html output
@@ -100,9 +131,10 @@ output/
   output-manifest.json
 ```
 
-## 默认文字生成高品味 PPTX
+## 根级 HTML-first 文本兼容路线
 
-默认路线由 Host Agent 先完成叙事与 Creative Direction，再绘制并验证
+根级 `text` 入口的默认路线由 Host Agent 先完成叙事与 Creative Direction，
+再绘制并验证
 1280x720 HTML；确定性编译器将已接受的 HTML 复刻为主要元素可编辑的
 PPTX，并校验模块连线和源图与 PPTX 的视觉一致性。
 
@@ -160,7 +192,7 @@ preview/index.html
 output-manifest.json
 ```
 
-deck plan 记录设计判断、三项上下文旋钮、受众、叙事节拍、页面信息、布局族以及内容/素材引用。`compileDeckPlanArtifacts()` 一次生成选中的 canonical IR 与 manifest；`run.json` 通过 `artifacts.semanticIr` 索引该 IR。IR/run 只有在打包成功后才算正式发布；pre-package hook 或打包失败时，pipeline 会先尽力回滚这两个文件，再写入 blocked 状态，且回滚错误不会掩盖主失败。候选证据不会覆盖 canonical 文件，且 direct/replica 路线不会生成 Semantic IR。HTML 不是文本路线的必经中间层。
+deck plan 记录设计判断、三项上下文旋钮、受众、叙事节拍、页面信息、布局族以及内容/素材引用。`compileDeckPlanArtifacts()` 一次生成选中的 canonical IR 与 manifest；`run.json` 通过 `artifacts.semanticIr` 索引该 IR。IR/run 只有在打包成功后才算正式发布；pre-package hook 或打包失败时，pipeline 会先尽力回滚这两个文件，再写入 blocked 状态，且回滚错误不会掩盖主失败。候选证据不会覆盖 canonical 文件，且 direct/replica 路线不会生成 Semantic IR。只有这条旧 `--native` 兼容路线可以不经过 HTML；V2 核心文本到 PPTX 必须显式组合 `$text-to-html → $html-to-pptx`，HTML 演示包是两者之间的正式交付边界。
 
 ## HTML、图片和 PDF 输入
 
@@ -184,7 +216,25 @@ PDF 支持是页面级 hints：最终仍应由 Agent 重建可编辑文本、形
 
 统一管线负责 layout、taste/fidelity proof、可编辑性、兼容性和一致性报告。自动修复最多三次；候选没有改善时立即停止并保留最佳版本，硬失败不会进入打包。
 
-## 整体架构
+## 架构边界
+
+V2 核心是三个独立运行时，组合动作由用户或 Host 显式发起：
+
+```text
+natural-language / Markdown / long-form source
+  -> Host content reasoning
+  -> approved presentation-plan.json
+  -> text-to-html deterministic build + browser QA
+  -> HTML presentation package
+  -> html-to-pptx deterministic conversion + render-back QA
+  -> final.pptx
+
+reference images
+  -> image-to-pptx OCR/reconstruction + render-back QA
+  -> final.pptx
+```
+
+下面是仍保留的根级兼容运行时。它不定义 V2 三 Skill 的内部调用关系：
 
 ```text
 User input
@@ -242,6 +292,8 @@ final.pptx
 | 路径 | 作用 |
 | --- | --- |
 | `SKILL.md` | 通用 Agent Skill 入口、核心契约和按需路由。 |
+| `skills/` | V2 三个可独立安装的 Skill 及各自运行时。 |
+| `v2/` | V2 用户指南、架构、迁移和状态说明。 |
 | `agents/openai.yaml` | Codex/OpenAI 界面元数据；不参与运行时逻辑。 |
 | `references/` | 按输入类型和任务阶段渐进加载的详细流程。 |
 | `design-systems/` | 内置通用设计系统。 |
@@ -277,7 +329,9 @@ final.pptx
 
 | 命令 | 说明 |
 | --- | --- |
-| `npm run pptx -- ...` | 唯一公开操作入口。 |
+| `npm run pptx -- ...` | 保留的根级兼容入口。 |
+| `node scripts/package-v2-skills.mjs` | 构建三个独立 V2 Skill 包。 |
+| `node scripts/verify-v2-skills.mjs` | 校验三个 V2 Skill 包及其独立性。 |
 | `npm run setup -- core\|html\|image\|pdf` | 检查指定环境 profile。 |
 | `npm test` / `npm run test:unit` | JavaScript 单元测试。 |
 | `npm run test:browser` | 浏览器集成测试。 |

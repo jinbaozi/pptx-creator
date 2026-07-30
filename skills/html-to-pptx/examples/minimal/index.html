@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>最小可编辑演示</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #e8eef7; font-family: Arial, sans-serif; }
+    .pptx-slide {
+      position: relative;
+      width: 1280px;
+      height: 720px;
+      overflow: hidden;
+      background: #ffffff;
+      color: #172033;
+    }
+    h1 {
+      position: absolute;
+      left: 72px;
+      top: 64px;
+      width: 1050px;
+      height: 64px;
+      margin: 0;
+      font-size: 42px;
+      line-height: 1.15;
+    }
+    .card {
+      position: absolute;
+      left: 72px;
+      top: 182px;
+      width: 1136px;
+      height: 388px;
+      border: 2px solid #cdd8eb;
+      border-radius: 20px;
+      background: #f7faff;
+    }
+    .metric {
+      position: absolute;
+      left: 56px;
+      top: 54px;
+      width: 300px;
+      height: 92px;
+      margin: 0;
+      color: #1d4ed8;
+      font-size: 64px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .message {
+      position: absolute;
+      left: 56px;
+      top: 178px;
+      width: 880px;
+      height: 74px;
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.35;
+    }
+    .source {
+      position: absolute;
+      left: 72px;
+      top: 628px;
+      width: 800px;
+      height: 28px;
+      margin: 0;
+      color: #64748b;
+      font-size: 15px;
+      line-height: 1.3;
+    }
+  </style>
+</head>
+<body>
+  <main class="pptx-deck" data-deck-title="最小可编辑演示" data-language="zh-CN">
+    <section class="pptx-slide" data-slide-id="slide-001" data-title="HTML 元素保持主要可编辑" data-notes="说明：本页验证文字、形状和备注写入。">
+      <h1 data-pptx-id="title-001" data-max-lines="1">HTML 元素保持主要可编辑</h1>
+      <div class="card" data-pptx-id="card-001" data-layout-role="container">
+        <p class="metric" data-pptx-id="metric-001">92%</p>
+        <p class="message" data-pptx-id="message-001">文字、卡片和关键指标被重建为 PowerPoint 原生对象。</p>
+      </div>
+      <p class="source" data-pptx-id="source-001">示例数据仅用于转换验证，不代表真实业务结论。</p>
+    </section>
+  </main>
+</body>
+</html>

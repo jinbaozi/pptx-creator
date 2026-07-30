@@ -1,0 +1,99 @@
+{
+  "version": "1.0.0",
+  "policy": {
+    "providedIsNotVerified": true,
+    "uncertaintyLabels": {
+      "inferred": "假设",
+      "unverified": "待核验",
+      "placeholder": "占位"
+    },
+    "fabricatedFactsAllowed": false
+  },
+  "assumptions": [
+    {
+      "id": "assumption-admin-owner",
+      "text": "试点可由现有项目管理员兼任内容负责人。",
+      "impact": "medium",
+      "status": "inferred"
+    },
+    {
+      "id": "assumption-live",
+      "text": "评审采用现场演讲并预留提问。",
+      "impact": "low",
+      "status": "confirmed"
+    }
+  ],
+  "sources": [
+    {
+      "id": "source-brief",
+      "kind": "file",
+      "label": "input.md（虚构测试输入，用户提供，未独立核验）",
+      "locator": "input.md",
+      "factStatus": "provided"
+    },
+    {
+      "id": "source-owner-assumption",
+      "kind": "assumption",
+      "label": "内容负责人安排假设",
+      "locator": "assumptions/assumption-admin-owner",
+      "factStatus": "inferred"
+    }
+  ],
+  "mappings": [
+    {
+      "slideId": "slide-cover",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    },
+    {
+      "slideId": "slide-thesis",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    },
+    {
+      "slideId": "slide-metrics",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    },
+    {
+      "slideId": "slide-quote",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    },
+    {
+      "slideId": "slide-scope",
+      "sourceRefs": [
+        "source-brief",
+        "source-owner-assumption"
+      ]
+    },
+    {
+      "slideId": "slide-process",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    },
+    {
+      "slideId": "slide-timeline",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    },
+    {
+      "slideId": "slide-map",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    },
+    {
+      "slideId": "slide-closing",
+      "sourceRefs": [
+        "source-brief"
+      ]
+    }
+  ]
+}

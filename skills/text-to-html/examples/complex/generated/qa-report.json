@@ -1,0 +1,2086 @@
+{
+  "version": "1.0.0",
+  "status": "passed",
+  "timeoutMs": 90000,
+  "slideCount": 9,
+  "viewports": [
+    {
+      "name": "standard",
+      "width": 1280,
+      "height": 720,
+      "horizontal": {
+        "moved": 0,
+        "viewportWidth": 1280,
+        "scrollWidth": 1280,
+        "overflowX": "hidden"
+      },
+      "slides": [
+        {
+          "slideId": "slide-cover",
+          "order": 1,
+          "screenshot": "preview/standard/slide-001.png",
+          "componentCount": 10
+        },
+        {
+          "slideId": "slide-thesis",
+          "order": 2,
+          "screenshot": "preview/standard/slide-002.png",
+          "componentCount": 7
+        },
+        {
+          "slideId": "slide-metrics",
+          "order": 3,
+          "screenshot": "preview/standard/slide-003.png",
+          "componentCount": 17
+        },
+        {
+          "slideId": "slide-quote",
+          "order": 4,
+          "screenshot": "preview/standard/slide-004.png",
+          "componentCount": 8
+        },
+        {
+          "slideId": "slide-scope",
+          "order": 5,
+          "screenshot": "preview/standard/slide-005.png",
+          "componentCount": 15
+        },
+        {
+          "slideId": "slide-process",
+          "order": 6,
+          "screenshot": "preview/standard/slide-006.png",
+          "componentCount": 24
+        },
+        {
+          "slideId": "slide-timeline",
+          "order": 7,
+          "screenshot": "preview/standard/slide-007.png",
+          "componentCount": 25
+        },
+        {
+          "slideId": "slide-map",
+          "order": 8,
+          "screenshot": "preview/standard/slide-008.png",
+          "componentCount": 10
+        },
+        {
+          "slideId": "slide-closing",
+          "order": 9,
+          "screenshot": "preview/standard/slide-009.png",
+          "componentCount": 9
+        }
+      ]
+    },
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900,
+      "horizontal": {
+        "moved": 0,
+        "viewportWidth": 1440,
+        "scrollWidth": 1440,
+        "overflowX": "hidden"
+      },
+      "slides": [
+        {
+          "slideId": "slide-cover",
+          "order": 1,
+          "screenshot": "preview/desktop/slide-001.png",
+          "componentCount": 10
+        },
+        {
+          "slideId": "slide-thesis",
+          "order": 2,
+          "screenshot": "preview/desktop/slide-002.png",
+          "componentCount": 7
+        },
+        {
+          "slideId": "slide-metrics",
+          "order": 3,
+          "screenshot": "preview/desktop/slide-003.png",
+          "componentCount": 17
+        },
+        {
+          "slideId": "slide-quote",
+          "order": 4,
+          "screenshot": "preview/desktop/slide-004.png",
+          "componentCount": 8
+        },
+        {
+          "slideId": "slide-scope",
+          "order": 5,
+          "screenshot": "preview/desktop/slide-005.png",
+          "componentCount": 15
+        },
+        {
+          "slideId": "slide-process",
+          "order": 6,
+          "screenshot": "preview/desktop/slide-006.png",
+          "componentCount": 24
+        },
+        {
+          "slideId": "slide-timeline",
+          "order": 7,
+          "screenshot": "preview/desktop/slide-007.png",
+          "componentCount": 25
+        },
+        {
+          "slideId": "slide-map",
+          "order": 8,
+          "screenshot": "preview/desktop/slide-008.png",
+          "componentCount": 10
+        },
+        {
+          "slideId": "slide-closing",
+          "order": 9,
+          "screenshot": "preview/desktop/slide-009.png",
+          "componentCount": 9
+        }
+      ]
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "horizontal": {
+        "moved": 0,
+        "viewportWidth": 390,
+        "scrollWidth": 390,
+        "overflowX": "hidden"
+      },
+      "slides": [
+        {
+          "slideId": "slide-cover",
+          "order": 1,
+          "screenshot": "preview/mobile/slide-001.png",
+          "componentCount": 10
+        },
+        {
+          "slideId": "slide-thesis",
+          "order": 2,
+          "screenshot": "preview/mobile/slide-002.png",
+          "componentCount": 7
+        },
+        {
+          "slideId": "slide-metrics",
+          "order": 3,
+          "screenshot": "preview/mobile/slide-003.png",
+          "componentCount": 17
+        },
+        {
+          "slideId": "slide-quote",
+          "order": 4,
+          "screenshot": "preview/mobile/slide-004.png",
+          "componentCount": 8
+        },
+        {
+          "slideId": "slide-scope",
+          "order": 5,
+          "screenshot": "preview/mobile/slide-005.png",
+          "componentCount": 15
+        },
+        {
+          "slideId": "slide-process",
+          "order": 6,
+          "screenshot": "preview/mobile/slide-006.png",
+          "componentCount": 24
+        },
+        {
+          "slideId": "slide-timeline",
+          "order": 7,
+          "screenshot": "preview/mobile/slide-007.png",
+          "componentCount": 25
+        },
+        {
+          "slideId": "slide-map",
+          "order": 8,
+          "screenshot": "preview/mobile/slide-008.png",
+          "componentCount": 10
+        },
+        {
+          "slideId": "slide-closing",
+          "order": 9,
+          "screenshot": "preview/mobile/slide-009.png",
+          "componentCount": 9
+        }
+      ]
+    }
+  ],
+  "navigation": {
+    "passed": true
+  },
+  "print": {
+    "passed": true,
+    "slideCount": 9,
+    "invalid": [],
+    "controlsVisible": false,
+    "noteVisible": false
+  },
+  "findings": [],
+  "measurements": [
+    {
+      "slideId": "slide-cover",
+      "order": 1,
+      "components": [
+        {
+          "id": "slide-cover-decor-orb",
+          "type": "shape",
+          "box": {
+            "x": 924,
+            "y": 26,
+            "w": 320,
+            "h": 320,
+            "unit": "px"
+          },
+          "z": 0,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-cover-decor-rule",
+          "type": "shape",
+          "box": {
+            "x": 914,
+            "y": 118,
+            "w": 10,
+            "h": 176,
+            "unit": "px"
+          },
+          "z": 1,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-cover-title",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 268.234,
+            "w": 980,
+            "h": 60.313,
+            "unit": "px"
+          },
+          "z": 2,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-cover-subtitle",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 342.547,
+            "w": 930,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 3,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-cover-meta",
+          "type": "shape",
+          "box": {
+            "x": 72,
+            "y": 408.938,
+            "w": 1136,
+            "h": 42,
+            "unit": "px"
+          },
+          "z": 4,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-cover-audience",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 408.938,
+            "w": 112,
+            "h": 42,
+            "unit": "px"
+          },
+          "z": 5,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-cover-duration",
+          "type": "text",
+          "box": {
+            "x": 196,
+            "y": 408.938,
+            "w": 86.25,
+            "h": 42,
+            "unit": "px"
+          },
+          "z": 6,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-cover-mode",
+          "type": "text",
+          "box": {
+            "x": 294.25,
+            "y": 408.938,
+            "w": 96,
+            "h": 42,
+            "unit": "px"
+          },
+          "z": 7,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-cover-sources",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 473.938,
+            "w": 310.031,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 8,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-cover-folio",
+          "type": "text",
+          "box": {
+            "x": 1184.641,
+            "y": 473.938,
+            "w": 23.359,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 9,
+          "editableIntent": true,
+          "sourceRefs": []
+        }
+      ]
+    },
+    {
+      "slideId": "slide-thesis",
+      "order": 2,
+      "components": [
+        {
+          "id": "slide-thesis-decor-orb",
+          "type": "shape",
+          "box": {
+            "x": 972,
+            "y": 24,
+            "w": 280,
+            "h": 280,
+            "unit": "px"
+          },
+          "z": 0,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-thesis-title",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 85.188,
+            "w": 1080,
+            "h": 50.594,
+            "unit": "px"
+          },
+          "z": 1,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-thesis-message",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 149.781,
+            "w": 930,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 2,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-thesis-statement-card",
+          "type": "shape",
+          "box": {
+            "x": 72,
+            "y": 270.078,
+            "w": 1136,
+            "h": 300,
+            "unit": "px"
+          },
+          "z": 3,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-thesis-statement",
+          "type": "text",
+          "box": {
+            "x": 279.188,
+            "y": 403.875,
+            "w": 730.609,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 4,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-thesis-sources",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 649,
+            "w": 310.031,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 5,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-thesis-folio",
+          "type": "text",
+          "box": {
+            "x": 1184.641,
+            "y": 649,
+            "w": 23.359,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 6,
+          "editableIntent": true,
+          "sourceRefs": []
+        }
+      ]
+    },
+    {
+      "slideId": "slide-metrics",
+      "order": 3,
+      "components": [
+        {
+          "id": "slide-metrics-decor-orb",
+          "type": "shape",
+          "box": {
+            "x": 972,
+            "y": 24,
+            "w": 280,
+            "h": 280,
+            "unit": "px"
+          },
+          "z": 0,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-title",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 85.188,
+            "w": 1080,
+            "h": 50.594,
+            "unit": "px"
+          },
+          "z": 1,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-message",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 149.781,
+            "w": 930,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 2,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-metric-card-1",
+          "type": "shape",
+          "box": {
+            "x": 72,
+            "y": 214.172,
+            "w": 362.656,
+            "h": 411.828,
+            "unit": "px"
+          },
+          "z": 3,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-metric-value-1",
+          "type": "text",
+          "box": {
+            "x": 101,
+            "y": 243.172,
+            "w": 304.656,
+            "h": 59.391,
+            "unit": "px"
+          },
+          "z": 4,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-metrics-metric-label-1",
+          "type": "text",
+          "box": {
+            "x": 101,
+            "y": 320.563,
+            "w": 304.656,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 5,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-metric-detail-1",
+          "type": "text",
+          "box": {
+            "x": 101,
+            "y": 564.609,
+            "w": 304.656,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 6,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-metric-card-2",
+          "type": "shape",
+          "box": {
+            "x": 458.656,
+            "y": 214.172,
+            "w": 362.672,
+            "h": 411.828,
+            "unit": "px"
+          },
+          "z": 7,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-metric-value-2",
+          "type": "text",
+          "box": {
+            "x": 487.656,
+            "y": 243.172,
+            "w": 304.672,
+            "h": 59.391,
+            "unit": "px"
+          },
+          "z": 8,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-metrics-metric-label-2",
+          "type": "text",
+          "box": {
+            "x": 487.656,
+            "y": 320.563,
+            "w": 304.672,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 9,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-metric-detail-2",
+          "type": "text",
+          "box": {
+            "x": 487.656,
+            "y": 564.609,
+            "w": 304.672,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 10,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-metric-card-3",
+          "type": "shape",
+          "box": {
+            "x": 845.328,
+            "y": 214.172,
+            "w": 362.656,
+            "h": 411.828,
+            "unit": "px"
+          },
+          "z": 11,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-metric-value-3",
+          "type": "text",
+          "box": {
+            "x": 874.328,
+            "y": 243.172,
+            "w": 304.656,
+            "h": 59.391,
+            "unit": "px"
+          },
+          "z": 12,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-metrics-metric-label-3",
+          "type": "text",
+          "box": {
+            "x": 874.328,
+            "y": 320.563,
+            "w": 304.656,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 13,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-metric-detail-3",
+          "type": "text",
+          "box": {
+            "x": 874.328,
+            "y": 564.609,
+            "w": 304.656,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 14,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-sources",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 649,
+            "w": 310.031,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 15,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-metrics-folio",
+          "type": "text",
+          "box": {
+            "x": 1184.641,
+            "y": 649,
+            "w": 23.359,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 16,
+          "editableIntent": true,
+          "sourceRefs": []
+        }
+      ]
+    },
+    {
+      "slideId": "slide-quote",
+      "order": 4,
+      "components": [
+        {
+          "id": "slide-quote-decor-orb",
+          "type": "shape",
+          "box": {
+            "x": 972,
+            "y": 24,
+            "w": 280,
+            "h": 280,
+            "unit": "px"
+          },
+          "z": 0,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-quote-title",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 85.188,
+            "w": 1080,
+            "h": 50.594,
+            "unit": "px"
+          },
+          "z": 1,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-quote-message",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 149.781,
+            "w": 930,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 2,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-quote-quote-card",
+          "type": "shape",
+          "box": {
+            "x": 72,
+            "y": 214.172,
+            "w": 1136,
+            "h": 411.828,
+            "unit": "px"
+          },
+          "z": 3,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-quote-quote",
+          "type": "text",
+          "box": {
+            "x": 141,
+            "y": 406.688,
+            "w": 998,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 4,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-quote-attribution",
+          "type": "text",
+          "box": {
+            "x": 141,
+            "y": 463.078,
+            "w": 998,
+            "h": 25,
+            "unit": "px"
+          },
+          "z": 5,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-quote-sources",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 649,
+            "w": 310.031,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 6,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-quote-folio",
+          "type": "text",
+          "box": {
+            "x": 1184.641,
+            "y": 649,
+            "w": 23.359,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 7,
+          "editableIntent": true,
+          "sourceRefs": []
+        }
+      ]
+    },
+    {
+      "slideId": "slide-scope",
+      "order": 5,
+      "components": [
+        {
+          "id": "slide-scope-decor-orb",
+          "type": "shape",
+          "box": {
+            "x": 972,
+            "y": 24,
+            "w": 280,
+            "h": 280,
+            "unit": "px"
+          },
+          "z": 0,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-scope-title",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 85.188,
+            "w": 1080,
+            "h": 101.188,
+            "unit": "px"
+          },
+          "z": 1,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-scope-message",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 200.375,
+            "w": 930,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 2,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-scope-left-card",
+          "type": "shape",
+          "box": {
+            "x": 72,
+            "y": 264.766,
+            "w": 556,
+            "h": 361.234,
+            "unit": "px"
+          },
+          "z": 3,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-scope-left-label",
+          "type": "text",
+          "box": {
+            "x": 101,
+            "y": 293.766,
+            "w": 498,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 4,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-scope-left-point-1",
+          "type": "text",
+          "box": {
+            "x": 125,
+            "y": 343.953,
+            "w": 474,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 5,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-scope-left-point-2",
+          "type": "text",
+          "box": {
+            "x": 125,
+            "y": 389.344,
+            "w": 474,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 6,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-scope-left-point-3",
+          "type": "text",
+          "box": {
+            "x": 125,
+            "y": 434.734,
+            "w": 474,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 7,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-scope-right-card",
+          "type": "shape",
+          "box": {
+            "x": 652,
+            "y": 264.766,
+            "w": 556,
+            "h": 361.234,
+            "unit": "px"
+          },
+          "z": 8,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-scope-right-label",
+          "type": "text",
+          "box": {
+            "x": 681,
+            "y": 293.766,
+            "w": 498,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 9,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-scope-right-point-1",
+          "type": "text",
+          "box": {
+            "x": 705,
+            "y": 343.953,
+            "w": 474,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 10,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-scope-right-point-2",
+          "type": "text",
+          "box": {
+            "x": 705,
+            "y": 389.344,
+            "w": 474,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 11,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-scope-right-point-3",
+          "type": "text",
+          "box": {
+            "x": 705,
+            "y": 434.734,
+            "w": 474,
+            "h": 64.781,
+            "unit": "px"
+          },
+          "z": 12,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-owner-assumption"
+          ]
+        },
+        {
+          "id": "slide-scope-sources",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 649,
+            "w": 428.703,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 13,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-scope-folio",
+          "type": "text",
+          "box": {
+            "x": 1184.641,
+            "y": 649,
+            "w": 23.359,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 14,
+          "editableIntent": true,
+          "sourceRefs": []
+        }
+      ]
+    },
+    {
+      "slideId": "slide-process",
+      "order": 6,
+      "components": [
+        {
+          "id": "slide-process-decor-orb",
+          "type": "shape",
+          "box": {
+            "x": 972,
+            "y": 24,
+            "w": 280,
+            "h": 280,
+            "unit": "px"
+          },
+          "z": 0,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-title",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 85.188,
+            "w": 1080,
+            "h": 50.594,
+            "unit": "px"
+          },
+          "z": 1,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-message",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 149.781,
+            "w": 930,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 2,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-1",
+          "type": "shape",
+          "box": {
+            "x": 72,
+            "y": 305.594,
+            "w": 252.5,
+            "h": 228.969,
+            "unit": "px"
+          },
+          "z": 3,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-index-1",
+          "type": "text",
+          "box": {
+            "x": 101,
+            "y": 334.594,
+            "w": 42,
+            "h": 42,
+            "unit": "px"
+          },
+          "z": 4,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-label-1",
+          "type": "text",
+          "box": {
+            "x": 101,
+            "y": 392.594,
+            "w": 194.5,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 5,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-copy-1",
+          "type": "text",
+          "box": {
+            "x": 101,
+            "y": 440.781,
+            "w": 194.5,
+            "h": 64.781,
+            "unit": "px"
+          },
+          "z": 6,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-process-step-2",
+          "type": "shape",
+          "box": {
+            "x": 366.5,
+            "y": 305.594,
+            "w": 252.5,
+            "h": 228.969,
+            "unit": "px"
+          },
+          "z": 7,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-index-2",
+          "type": "text",
+          "box": {
+            "x": 395.5,
+            "y": 334.594,
+            "w": 42,
+            "h": 42,
+            "unit": "px"
+          },
+          "z": 8,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-label-2",
+          "type": "text",
+          "box": {
+            "x": 395.5,
+            "y": 392.594,
+            "w": 194.5,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 9,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-copy-2",
+          "type": "text",
+          "box": {
+            "x": 395.5,
+            "y": 440.781,
+            "w": 194.5,
+            "h": 64.781,
+            "unit": "px"
+          },
+          "z": 10,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-process-step-3",
+          "type": "shape",
+          "box": {
+            "x": 661,
+            "y": 305.594,
+            "w": 252.5,
+            "h": 228.969,
+            "unit": "px"
+          },
+          "z": 11,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-index-3",
+          "type": "text",
+          "box": {
+            "x": 690,
+            "y": 334.594,
+            "w": 42,
+            "h": 42,
+            "unit": "px"
+          },
+          "z": 12,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-label-3",
+          "type": "text",
+          "box": {
+            "x": 690,
+            "y": 392.594,
+            "w": 194.5,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 13,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-copy-3",
+          "type": "text",
+          "box": {
+            "x": 690,
+            "y": 440.781,
+            "w": 194.5,
+            "h": 64.781,
+            "unit": "px"
+          },
+          "z": 14,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-process-step-4",
+          "type": "shape",
+          "box": {
+            "x": 955.5,
+            "y": 305.594,
+            "w": 252.5,
+            "h": 228.969,
+            "unit": "px"
+          },
+          "z": 15,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-index-4",
+          "type": "text",
+          "box": {
+            "x": 984.5,
+            "y": 334.594,
+            "w": 42,
+            "h": 42,
+            "unit": "px"
+          },
+          "z": 16,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-label-4",
+          "type": "text",
+          "box": {
+            "x": 984.5,
+            "y": 392.594,
+            "w": 194.5,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 17,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-step-copy-4",
+          "type": "text",
+          "box": {
+            "x": 984.5,
+            "y": 440.781,
+            "w": 194.5,
+            "h": 64.781,
+            "unit": "px"
+          },
+          "z": 18,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-process-connector-1",
+          "type": "connector",
+          "box": {
+            "x": 324.5,
+            "y": 420.078,
+            "w": 42,
+            "h": 0,
+            "unit": "px"
+          },
+          "z": 19,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-connector-2",
+          "type": "connector",
+          "box": {
+            "x": 619,
+            "y": 420.078,
+            "w": 42,
+            "h": 0,
+            "unit": "px"
+          },
+          "z": 20,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-connector-3",
+          "type": "connector",
+          "box": {
+            "x": 913.5,
+            "y": 420.078,
+            "w": 42,
+            "h": 0,
+            "unit": "px"
+          },
+          "z": 21,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-sources",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 649,
+            "w": 310.031,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 22,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-process-folio",
+          "type": "text",
+          "box": {
+            "x": 1184.641,
+            "y": 649,
+            "w": 23.359,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 23,
+          "editableIntent": true,
+          "sourceRefs": []
+        }
+      ]
+    },
+    {
+      "slideId": "slide-timeline",
+      "order": 7,
+      "components": [
+        {
+          "id": "slide-timeline-decor-orb",
+          "type": "shape",
+          "box": {
+            "x": 972,
+            "y": 24,
+            "w": 280,
+            "h": 280,
+            "unit": "px"
+          },
+          "z": 0,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-title",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 85.188,
+            "w": 1080,
+            "h": 50.594,
+            "unit": "px"
+          },
+          "z": 1,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-message",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 149.781,
+            "w": 930,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 2,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-1",
+          "type": "shape",
+          "box": {
+            "x": 72,
+            "y": 285.078,
+            "w": 266,
+            "h": 270,
+            "unit": "px"
+          },
+          "z": 3,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-dot-1",
+          "type": "shape",
+          "box": {
+            "x": 188,
+            "y": 285.078,
+            "w": 34,
+            "h": 34,
+            "unit": "px"
+          },
+          "z": 4,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-when-1",
+          "type": "text",
+          "box": {
+            "x": 171.203,
+            "y": 341.078,
+            "w": 67.594,
+            "h": 22,
+            "unit": "px"
+          },
+          "z": 5,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-label-1",
+          "type": "text",
+          "box": {
+            "x": 159,
+            "y": 372.078,
+            "w": 92,
+            "h": 32,
+            "unit": "px"
+          },
+          "z": 6,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-copy-1",
+          "type": "text",
+          "box": {
+            "x": 142,
+            "y": 414.078,
+            "w": 126,
+            "h": 23.391,
+            "unit": "px"
+          },
+          "z": 7,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-timeline-milestone-2",
+          "type": "shape",
+          "box": {
+            "x": 362,
+            "y": 285.078,
+            "w": 266,
+            "h": 270,
+            "unit": "px"
+          },
+          "z": 8,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-dot-2",
+          "type": "shape",
+          "box": {
+            "x": 478,
+            "y": 285.078,
+            "w": 34,
+            "h": 34,
+            "unit": "px"
+          },
+          "z": 9,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-when-2",
+          "type": "text",
+          "box": {
+            "x": 461.203,
+            "y": 341.078,
+            "w": 67.594,
+            "h": 22,
+            "unit": "px"
+          },
+          "z": 10,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-label-2",
+          "type": "text",
+          "box": {
+            "x": 437.5,
+            "y": 372.078,
+            "w": 115,
+            "h": 32,
+            "unit": "px"
+          },
+          "z": 11,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-copy-2",
+          "type": "text",
+          "box": {
+            "x": 362,
+            "y": 414.078,
+            "w": 266,
+            "h": 46.781,
+            "unit": "px"
+          },
+          "z": 12,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-timeline-milestone-3",
+          "type": "shape",
+          "box": {
+            "x": 652,
+            "y": 285.078,
+            "w": 266,
+            "h": 270,
+            "unit": "px"
+          },
+          "z": 13,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-dot-3",
+          "type": "shape",
+          "box": {
+            "x": 768,
+            "y": 285.078,
+            "w": 34,
+            "h": 34,
+            "unit": "px"
+          },
+          "z": 14,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-when-3",
+          "type": "text",
+          "box": {
+            "x": 751.203,
+            "y": 341.078,
+            "w": 67.594,
+            "h": 22,
+            "unit": "px"
+          },
+          "z": 15,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-label-3",
+          "type": "text",
+          "box": {
+            "x": 727.5,
+            "y": 372.078,
+            "w": 115,
+            "h": 32,
+            "unit": "px"
+          },
+          "z": 16,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-copy-3",
+          "type": "text",
+          "box": {
+            "x": 652,
+            "y": 414.078,
+            "w": 266,
+            "h": 46.781,
+            "unit": "px"
+          },
+          "z": 17,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-timeline-milestone-4",
+          "type": "shape",
+          "box": {
+            "x": 942,
+            "y": 285.078,
+            "w": 266,
+            "h": 270,
+            "unit": "px"
+          },
+          "z": 18,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-dot-4",
+          "type": "shape",
+          "box": {
+            "x": 1058,
+            "y": 285.078,
+            "w": 34,
+            "h": 34,
+            "unit": "px"
+          },
+          "z": 19,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-when-4",
+          "type": "text",
+          "box": {
+            "x": 1045.656,
+            "y": 341.078,
+            "w": 58.688,
+            "h": 22,
+            "unit": "px"
+          },
+          "z": 20,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-label-4",
+          "type": "text",
+          "box": {
+            "x": 1017.5,
+            "y": 372.078,
+            "w": 115,
+            "h": 32,
+            "unit": "px"
+          },
+          "z": 21,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-milestone-copy-4",
+          "type": "text",
+          "box": {
+            "x": 942,
+            "y": 414.078,
+            "w": 266,
+            "h": 46.781,
+            "unit": "px"
+          },
+          "z": 22,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-timeline-sources",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 649,
+            "w": 310.031,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 23,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-timeline-folio",
+          "type": "text",
+          "box": {
+            "x": 1184.641,
+            "y": 649,
+            "w": 23.359,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 24,
+          "editableIntent": true,
+          "sourceRefs": []
+        }
+      ]
+    },
+    {
+      "slideId": "slide-map",
+      "order": 8,
+      "components": [
+        {
+          "id": "slide-map-decor-orb",
+          "type": "shape",
+          "box": {
+            "x": 972,
+            "y": 24,
+            "w": 280,
+            "h": 280,
+            "unit": "px"
+          },
+          "z": 0,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-map-title",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 85.188,
+            "w": 1080,
+            "h": 50.594,
+            "unit": "px"
+          },
+          "z": 1,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-map-message",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 149.781,
+            "w": 930,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 2,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-map-image-frame",
+          "type": "shape",
+          "box": {
+            "x": 112,
+            "y": 230.172,
+            "w": 726.188,
+            "h": 379.828,
+            "unit": "px"
+          },
+          "z": 3,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-map-image",
+          "type": "image",
+          "box": {
+            "x": 131,
+            "y": 249.172,
+            "w": 688.188,
+            "h": 341.828,
+            "unit": "px"
+          },
+          "z": 4,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-map-caption-card",
+          "type": "shape",
+          "box": {
+            "x": 902.188,
+            "y": 214.172,
+            "w": 305.813,
+            "h": 411.828,
+            "unit": "px"
+          },
+          "z": 5,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-map-caption-title",
+          "type": "text",
+          "box": {
+            "x": 931.188,
+            "y": 330.203,
+            "w": 247.813,
+            "h": 32.188,
+            "unit": "px"
+          },
+          "z": 6,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-map-caption",
+          "type": "text",
+          "box": {
+            "x": 931.188,
+            "y": 380.391,
+            "w": 247.813,
+            "h": 129.563,
+            "unit": "px"
+          },
+          "z": 7,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-map-sources",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 649,
+            "w": 310.031,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 8,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-map-folio",
+          "type": "text",
+          "box": {
+            "x": 1184.641,
+            "y": 649,
+            "w": 23.359,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 9,
+          "editableIntent": true,
+          "sourceRefs": []
+        }
+      ]
+    },
+    {
+      "slideId": "slide-closing",
+      "order": 9,
+      "components": [
+        {
+          "id": "slide-closing-decor-orb",
+          "type": "shape",
+          "box": {
+            "x": 924,
+            "y": 26,
+            "w": 320,
+            "h": 320,
+            "unit": "px"
+          },
+          "z": 0,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-closing-decor-band",
+          "type": "shape",
+          "box": {
+            "x": 820,
+            "y": 616,
+            "w": 460,
+            "h": 104,
+            "unit": "px"
+          },
+          "z": 1,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-closing-title",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 85.188,
+            "w": 1080,
+            "h": 50.594,
+            "unit": "px"
+          },
+          "z": 2,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-closing-message",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 149.781,
+            "w": 930,
+            "h": 32.391,
+            "unit": "px"
+          },
+          "z": 3,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-closing-action",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 214.172,
+            "w": 967.438,
+            "h": 411.828,
+            "unit": "px"
+          },
+          "z": 4,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-closing-summary-1",
+          "type": "text",
+          "box": {
+            "x": 1063.438,
+            "y": 244.172,
+            "w": 144.563,
+            "h": 173.406,
+            "unit": "px"
+          },
+          "z": 5,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-closing-summary-2",
+          "type": "text",
+          "box": {
+            "x": 1063.438,
+            "y": 430.578,
+            "w": 144.563,
+            "h": 195.422,
+            "unit": "px"
+          },
+          "z": 6,
+          "editableIntent": true,
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        {
+          "id": "slide-closing-sources",
+          "type": "text",
+          "box": {
+            "x": 72,
+            "y": 649,
+            "w": 310.031,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 7,
+          "editableIntent": true,
+          "sourceRefs": []
+        },
+        {
+          "id": "slide-closing-folio",
+          "type": "text",
+          "box": {
+            "x": 1184.641,
+            "y": 649,
+            "w": 23.359,
+            "h": 15,
+            "unit": "px"
+          },
+          "z": 8,
+          "editableIntent": true,
+          "sourceRefs": []
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "passed": true,
+    "errorCount": 0,
+    "screenshotCount": 27
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "repairLevel": 0,
+      "status": "passed",
+      "findingCodes": [],
+      "report": "qa/attempt-01.json"
+    }
+  ]
+}

@@ -1,0 +1,480 @@
+{
+  "version": "1.0.0",
+  "deck": {
+    "id": "knowledge-migration-pilot",
+    "title": "企业知识库迁移试点方案",
+    "language": "zh-CN",
+    "size": {
+      "width": 1280,
+      "height": 720,
+      "unit": "px"
+    }
+  },
+  "positioning": {
+    "statement": "让项目决策组在十五分钟方案评审中理解“先治理再迁移”的试点结论，并确认负责人、范围、权限原则和验收会。",
+    "goal": "方案提案",
+    "audience": "项目决策组",
+    "scenario": "十五分钟方案评审",
+    "coreConclusion": "先建立唯一批准版本与责任链，再迁移高频在用内容",
+    "desiredAction": "确认试点负责人、范围、权限原则和验收会",
+    "deliveryMode": "现场演讲",
+    "durationMinutes": 15,
+    "targetSlideCount": 9
+  },
+  "assumptions": [
+    {
+      "id": "assumption-admin-owner",
+      "text": "试点可由现有项目管理员兼任内容负责人。",
+      "impact": "medium",
+      "status": "inferred"
+    },
+    {
+      "id": "assumption-live",
+      "text": "评审采用现场演讲并预留提问。",
+      "impact": "low",
+      "status": "confirmed"
+    }
+  ],
+  "narrative": {
+    "framework": "痛点—判断—范围—路径—决策",
+    "chapters": [
+      {
+        "id": "chapter-why",
+        "title": "为什么先治理",
+        "slideIds": [
+          "slide-cover",
+          "slide-thesis",
+          "slide-metrics",
+          "slide-quote"
+        ]
+      },
+      {
+        "id": "chapter-how",
+        "title": "如何完成试点",
+        "slideIds": [
+          "slide-scope",
+          "slide-process",
+          "slide-timeline",
+          "slide-map"
+        ]
+      },
+      {
+        "id": "chapter-decision",
+        "title": "需要的决策",
+        "slideIds": [
+          "slide-closing"
+        ]
+      }
+    ]
+  },
+  "design": {
+    "tokenOverrides": {
+      "colors": {
+        "primary": "#2457E6",
+        "accent": "#E97831",
+        "background": "#F7F9FF"
+      }
+    }
+  },
+  "sources": [
+    {
+      "id": "source-brief",
+      "kind": "file",
+      "label": "input.md（虚构测试输入，用户提供，未独立核验）",
+      "locator": "input.md",
+      "factStatus": "provided"
+    },
+    {
+      "id": "source-owner-assumption",
+      "kind": "assumption",
+      "label": "内容负责人安排假设",
+      "locator": "assumptions/assumption-admin-owner",
+      "factStatus": "inferred"
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-system-map",
+      "path": "assets/media/asset-system-map.svg",
+      "mime": "image/svg+xml",
+      "rights": "project-owned",
+      "alt": "三个共享目录经过范围筛选、版本治理和责任绑定进入统一知识库的示意图",
+      "objectFit": "contain",
+      "sourceRef": "source-brief"
+    }
+  ],
+  "slides": [
+    {
+      "id": "slide-cover",
+      "order": 1,
+      "type": "cover",
+      "title": "企业知识库迁移试点方案",
+      "coreMessage": "先治理再迁移，避免把版本混乱原样搬进新系统",
+      "visual": "标题页，突出试点而非全量迁移",
+      "transition": "从试点目标进入核心判断",
+      "notes": "说明所有数字和引语均来自虚构测试输入，未独立核验。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "subtitle": "先建立唯一批准版本与责任链，再迁移高频在用内容"
+      }
+    },
+    {
+      "id": "slide-thesis",
+      "order": 2,
+      "type": "statement",
+      "title": "真正的迁移风险不是文件数量，而是错误版本继续流通",
+      "coreMessage": "试点首先要解决版本与责任，而不是追求搬运数量",
+      "visual": "单一结论大字",
+      "transition": "用盘点数据说明版本治理的必要性",
+      "notes": "不要把该判断扩展为真实企业结论；它只属于示例输入。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "statement": {
+          "text": "试点的首要目标不是搬运文件数量，而是建立唯一批准版本与责任链。",
+          "factStatus": "provided",
+          "sourceRefs": [
+            "source-brief"
+          ]
+        }
+      }
+    },
+    {
+      "id": "slide-metrics",
+      "order": 3,
+      "type": "metrics",
+      "title": "1,240 份活跃文档中，版本歧义已成为可见成本",
+      "coreMessage": "资料规模、目录分散和重复最终版共同构成试点理由",
+      "visual": "三张指标卡，数字均标记为用户提供且未核验",
+      "transition": "数据之后，用团队原话补充体验",
+      "notes": "明确口头说明：这些是虚构输入里的示例数字。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "metrics": [
+          {
+            "value": "1,240",
+            "label": "活跃文档",
+            "detail": "示例盘点记录",
+            "claim": {
+              "text": "示例盘点记录显示，试点团队现有 1,240 份活跃文档。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          },
+          {
+            "value": "3",
+            "label": "共享目录",
+            "detail": "内容分散位置",
+            "claim": {
+              "text": "活跃文档分布于 3 个共享目录。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          },
+          {
+            "value": "28%",
+            "label": "多“最终版”文档",
+            "detail": "示例抽样记录",
+            "claim": {
+              "text": "示例抽样记录显示，28% 的文档存在两个或更多“最终版”文件名。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "slide-quote",
+      "order": 4,
+      "type": "quote",
+      "title": "团队耗时集中在判断“哪一份还能用”",
+      "coreMessage": "检索问题背后是版本可信度问题",
+      "visual": "克制的引语版式",
+      "transition": "从问题转向试点范围选择",
+      "notes": "引语来自虚构测试输入，不应署名给真实个人。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "quote": {
+          "text": "我们最耗时的不是写文档，而是判断哪一份还能用。",
+          "factStatus": "provided",
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        "attribution": "示例访谈记录（用户提供，未独立核验）"
+      }
+    },
+    {
+      "id": "slide-scope",
+      "order": 5,
+      "type": "comparison",
+      "title": "只迁移高频、在用、责任明确的内容，试点才能在十天内闭环",
+      "coreMessage": "明确纳入与暂缓规则可以控制治理复杂度",
+      "visual": "纳入与暂缓双栏对比",
+      "transition": "范围收敛后进入四步实施路径",
+      "notes": "提醒听众：管理员兼任内容负责人仍是待确认假设。",
+      "sourceRefs": [
+        "source-brief",
+        "source-owner-assumption"
+      ],
+      "content": {
+        "left": {
+          "label": "纳入试点",
+          "points": [
+            {
+              "text": "最近 90 天更新的文档。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            },
+            {
+              "text": "每周被使用的文档。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            },
+            {
+              "text": "存在明确责任人的文档。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          ]
+        },
+        "right": {
+          "label": "暂缓与待确认",
+          "points": [
+            {
+              "text": "历史归档和无人负责的文档暂缓。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            },
+            {
+              "text": "合规状态未知的文档暂缓。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            },
+            {
+              "text": "试点可由现有项目管理员兼任内容负责人。",
+              "factStatus": "inferred",
+              "sourceRefs": [
+                "source-owner-assumption"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "slide-process",
+      "order": 6,
+      "type": "process",
+      "title": "四步路径把范围、版本、责任与验收串成闭环",
+      "coreMessage": "每一步都有明确输入输出，避免边迁移边改口径",
+      "visual": "四个过程模块和锚定连接线",
+      "transition": "把四步路径映射到十天里程碑",
+      "notes": "逐步说明前一步产物如何成为下一步输入。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "steps": [
+          {
+            "label": "冻结范围",
+            "claim": {
+              "text": "盘点并冻结试点清单。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          },
+          {
+            "label": "清理版本",
+            "claim": {
+              "text": "清理重复版本并标记唯一批准版本。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          },
+          {
+            "label": "迁移责任",
+            "claim": {
+              "text": "迁移内容、权限与责任人。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          },
+          {
+            "label": "任务验收",
+            "claim": {
+              "text": "以查找任务和回滚演练验收。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "slide-timeline",
+      "order": 7,
+      "type": "timeline",
+      "title": "十天试点在第 5 天完成治理，第 10 天完成验收",
+      "coreMessage": "治理工作前置，后半程集中迁移与验证",
+      "visual": "四节点时间轴",
+      "transition": "用结构图总结试点如何改变信息流",
+      "notes": "里程碑均来自虚构测试输入。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "milestones": [
+          {
+            "when": "第 1–2 天",
+            "label": "冻结范围",
+            "claim": {
+              "text": "冻结试点清单。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          },
+          {
+            "when": "第 3–5 天",
+            "label": "清理与标记",
+            "claim": {
+              "text": "清理重复版本并标记唯一批准版本。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          },
+          {
+            "when": "第 6–9 天",
+            "label": "迁移与抽检",
+            "claim": {
+              "text": "迁移内容、权限与责任人并抽检。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          },
+          {
+            "when": "第 10 天",
+            "label": "验收与复盘",
+            "claim": {
+              "text": "完成查找任务、回滚演练和复盘。",
+              "factStatus": "provided",
+              "sourceRefs": [
+                "source-brief"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "slide-map",
+      "order": 8,
+      "type": "image",
+      "title": "治理层把三个共享目录收敛为一个可信入口",
+      "coreMessage": "统一知识库的价值来自范围筛选、版本清理和责任绑定",
+      "visual": "本地 SVG 结构图加观察要点",
+      "transition": "结构闭环后，回到需要当场确认的决定",
+      "notes": "图是本 Skill 示例资产，不代表真实系统架构。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "assetId": "asset-system-map",
+        "caption": {
+          "text": "三个共享目录先经过范围筛选、版本清理和责任绑定，再进入统一知识库。",
+          "factStatus": "provided",
+          "sourceRefs": [
+            "source-brief"
+          ]
+        }
+      }
+    },
+    {
+      "id": "slide-closing",
+      "order": 9,
+      "type": "closing",
+      "title": "今天锁定四项决定，第 1 天即可冻结范围",
+      "coreMessage": "试点启动只等待负责人、范围、权限原则和验收会",
+      "visual": "高对比行动号召",
+      "transition": "结束并进入确认",
+      "notes": "逐项确认，未确认项记录为阻塞，不替听众做决定。",
+      "sourceRefs": [
+        "source-brief"
+      ],
+      "content": {
+        "action": {
+          "text": "今天确认试点负责人、文档范围、权限原则和第 10 天验收会。",
+          "factStatus": "provided",
+          "sourceRefs": [
+            "source-brief"
+          ]
+        },
+        "summary": [
+          {
+            "text": "先治理再迁移。",
+            "factStatus": "provided",
+            "sourceRefs": [
+              "source-brief"
+            ]
+          },
+          {
+            "text": "用查找任务和回滚演练验收。",
+            "factStatus": "provided",
+            "sourceRefs": [
+              "source-brief"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "hostReview": {
+    "status": "approved",
+    "reviewedAt": "2026-07-30T00:00:00.000Z",
+    "checks": {
+      "positioning": true,
+      "sourceIntegrity": true,
+      "narrative": true,
+      "oneMessagePerSlide": true,
+      "visualIntent": true
+    }
+  }
+}

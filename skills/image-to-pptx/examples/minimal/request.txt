@@ -1,0 +1,1 @@
+Rebuild input.png as a mostly editable PPTX, retain only visible facts, and include visual-proof and confidence reports.

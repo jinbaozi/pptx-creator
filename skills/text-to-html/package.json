@@ -1,0 +1,25 @@
+{
+  "name": "@pptx-creator/text-to-html",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-contained standard Skill for producing verified offline HTML slide packages.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "npm run test:unit",
+    "test:unit": "node --test tests/unit/*.test.mjs tests/contract/*.test.mjs tests/error/*.test.mjs",
+    "test:browser": "node --test tests/browser/*.test.mjs",
+    "test:visual": "node --test tests/visual/*.test.mjs",
+    "test:isolation": "node --test tests/isolation/*.test.mjs",
+    "test:all": "npm test && npm run test:browser && npm run test:visual",
+    "example:min": "node scripts/run-pipeline.mjs examples/minimal/presentation-plan.json examples/minimal/generated"
+  },
+  "dependencies": {
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
+    "playwright": "1.60.0"
+  }
+}

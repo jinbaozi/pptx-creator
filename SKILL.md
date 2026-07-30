@@ -5,6 +5,11 @@ description: Route editable PowerPoint creation from text, HTML, images, or PDF,
 
 # PPTX Creator Router
 
+> V2.0 将核心能力拆分为三个可独立安装的标准 Skill：
+> `skills/text-to-html`、`skills/html-to-pptx` 和
+> `skills/image-to-pptx`。本根级 Router 仅保留迁移期兼容入口；新的
+> 文本到 PPTX 链路应显式组合 `$text-to-html` 与 `$html-to-pptx`。
+
 Select exactly one route, then read only its contract and listed references.
 
 Invoking this Skill selects the project pipeline exclusively for the run. Do
