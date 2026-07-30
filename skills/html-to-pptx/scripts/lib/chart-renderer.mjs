@@ -1,10 +1,14 @@
-// Expands chart elements into editable primitive elements (shape/line/text).
-// Existing kinds (bar, line, pie) pass through unchanged so the legacy
-// rendering path in scripts/render-pptx.mjs keeps working.
+// Expands the V2 chart vocabulary into editable primitive elements
+// (shape/line/text).
 
-const LEGACY_KINDS = new Set(["bar", "line", "pie"]);
 const STACK_LIKE_KINDS = new Set(["stackedBar", "groupedBar"]);
-const HORIZONTAL_KINDS = new Set(["horizontalBar"]);
+const SUPPORTED_KINDS = new Set([
+  "stackedBar",
+  "groupedBar",
+  "horizontalBar",
+  "kpiGroup",
+  "sparkline"
+]);
 
 function normalizeSemanticKey(value) {
   return String(value ?? "")
@@ -289,13 +293,14 @@ function expandSparkline(element) {
 export function expandChartElement(element) {
   if (!element || element.type !== "chart") return [element];
   const kind = element.kind;
-  if (LEGACY_KINDS.has(kind)) return [element];
+  if (!SUPPORTED_KINDS.has(kind)) {
+    throw new Error(`unsupported chart kind ${String(kind ?? "missing")}; expected ${[...SUPPORTED_KINDS].join(",")}`);
+  }
   if (STACK_LIKE_KINDS.has(kind)) {
     if (kind === "groupedBar") return expandGroupedBar(element);
     return expandStackedBar(element);
   }
-  if (HORIZONTAL_KINDS.has(kind)) return expandHorizontalBar(element);
+  if (kind === "horizontalBar") return expandHorizontalBar(element);
   if (kind === "kpiGroup") return expandKpiGroup(element);
-  if (kind === "sparkline") return expandSparkline(element);
-  return [element];
+  return expandSparkline(element);
 }

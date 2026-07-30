@@ -1,11 +1,7 @@
 node_modules/
 output/
-.pptx-creator/
 __pycache__/
 *.pyc
 *.log
-docs/
-.learnings/
 .DS_Store
 dist/
-CLAUDE.md

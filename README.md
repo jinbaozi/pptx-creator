@@ -1,370 +1,59 @@
-# pptx-creator
+# pptx-creator V2
 
-**中文** | [English](README.en.md)
+`pptx-creator` V2 发布三个可独立安装、独立运行的演示文稿 Skill：
 
-## 中文版
+| Skill | 适用任务 | 主要交付 |
+| --- | --- | --- |
+| [`text-to-html`](skills/text-to-html/SKILL.md) | 将经过 Host 审核的文本、Markdown 或大纲制作成离线 HTML 演示包 | HTML、预览、QA 证据与 `presentation-package.json` |
+| [`html-to-pptx`](skills/html-to-pptx/SKILL.md) | 将本地 HTML 或兼容演示包转换为以原生对象为主的 PPTX | `final.pptx`、可编辑性与回渲 QA 证据 |
+| [`image-to-pptx`](skills/image-to-pptx/SKILL.md) | 从图片、截图或参考幻灯片重建可编辑 PPTX | `final.pptx`、OCR/置信度、降级与回渲 QA 证据 |
 
-`pptx-creator` 是一个面向 Agent 的可编辑 PPTX 生成工具包。它让大模型或宿主 Agent 负责理解、策划、写作、设计与必要的联网检索，让本项目的确定性脚本负责校验、转换、渲染、打包和质量检查，最终输出可在 PowerPoint/WPS 中继续编辑的 `.pptx` 文件。
+每个 Skill 都拥有自己的 `SKILL.md`、依赖锁文件、测试与运行时；它们不会导入或调用兄弟 Skill。跨 Skill 组合只能通过版本化的 `pptx-creator.presentation-package` 1.0.0 数据包完成。
 
-> **V2.0 架构：**核心能力现拆分为
-> [`text-to-html`](skills/text-to-html/)、
-> [`html-to-pptx`](skills/html-to-pptx/) 和
-> [`image-to-pptx`](skills/image-to-pptx/) 三个独立标准 Skill。
-> 文本生成 PPTX 请显式组合前两个 Skill；旧根级入口仅作为迁移期兼容层。
-> 普通用户请从 [`v2/USER_GUIDE.md`](v2/USER_GUIDE.md) 开始，
-> 架构与迁移依据见 [`v2/ARCHITECTURE.md`](v2/ARCHITECTURE.md) 和
-> [`v2/MIGRATION.md`](v2/MIGRATION.md)，最终测试与已知限制见
-> [`v2/VALIDATION_REPORT.md`](v2/VALIDATION_REPORT.md)。
+## 安装
 
-V2 核心原则：`text-to-html` 以经过验证的 HTML 包作为正式交付；
-需要 PPTX 时，再由 `html-to-pptx` 生成 manifest 并确定性渲染。
-旧 Semantic Slide IR 仅保留为根级兼容路线。脚本不会调用 LLM API，
-也不会自行编造内容。
-
-## 适用场景
-
-- 从文本、Markdown 或结构化内容生成商务路演、技术汇报、产品说明、培训课件和研究报告。
-- 将语义 HTML 或 CSS 定位 HTML 转换为可编辑 PPTX。
-- 将截图、图片型幻灯片或 PDF 页面重建为尽量可编辑的 PPTX。
-- 让 Agent 结合设计系统、联网检索、素材 registry 和质量检查，生成更可靠的交付物。
-- 批量生成 PPTX，并输出可编辑性、兼容性、可访问性、视觉回归等报告。
-
-## 核心能力
-
-| 能力 | 说明 |
-| --- | --- |
-| 文本到 HTML | `text-to-html` 将文本、Markdown、长文或大纲转为带来源、演讲备注、设计令牌和浏览器 QA 的离线 HTML 演示包。 |
-| HTML 到 PPTX | `html-to-pptx` 接受普通本地 HTML 或兼容协议包，优先重建为原生可编辑对象，并通过 PPTX 回渲验证保真度。 |
-| 图片到 PPTX | `image-to-pptx` 对参考图执行 OCR、结构/样式识别、置信度分层和原生重建；低置信内容与局部栅格化必须登记。 |
-| 文本到 PPTX 组合 | 显式执行 `text-to-html → html-to-pptx`；不再把旧 `text_to_pptx` 作为 V2 核心功能。 |
-| 历史兼容 | 根级 `text --native` / `--direct` 和 Semantic Slide IR 路线继续用于迁移，不定义 V2 三 Skill 的运行时边界。 |
-| 布局原型与编译 | 内置 layout archetypes、设计系统解析和 manifest 编译器，把设计规格转换成确定性的 PPTX manifest。 |
-| 图片/PDF 输入 | 提供图片检查、颜色提取、OCR、裁剪、图片复刻分析、图层规划、PDF 页面 hints 等辅助脚本，由 Agent 重建可编辑对象。 |
-| 可编辑渲染 | 优先输出 PPT 原生文本、形状、线条、表格、图表、图标和语义图解。 |
-| 图表与图解 | 支持 `bar`、`line`、`pie`、`stackedBar`、`horizontalBar`、`groupedBar`、`kpiGroup`、`sparkline` 等图表，以及 `layeredArchitecture`、`compilerPipeline`、`capabilityStack`、`swimlane`、`matrixMap` 等语义图解，均会展开成可编辑 PPT 原生对象。 |
-| 设计系统 | 使用 `DESIGN.md` 提供颜色、字体、组件、布局规则和导出规则。 |
-| 视觉评审与修复 | 包含规则化 visual critic、visual review 契约、repair patch、bounded repair loop 和自动修复 CLI；会拦截小字号、越界、过密图表、缺少描述、空图解层和超大空白装饰容器等问题。 |
-| 质量检查 | 包含 manifest 校验、可编辑性报告、QA 报告、WPS 兼容性、可访问性、OpenXML 检查和视觉回归。 |
-| Registry | 支持来源 registry 和素材 registry，记录事实来源、素材来源、授权状态和使用位置。 |
-| Metadata Flow | 将 registry 校验、run index、design-first pipeline flags 和报告产物串联，便于批量生成、审计和复盘。 |
-
-## V2 三个 Skill 入口
-
-安装为 Codex Skill 后，分别使用 `$text-to-html`、`$html-to-pptx` 和
-`$image-to-pptx`。在源码目录手工运行时，先阅读对应 `SKILL.md`，再从该
-Skill 目录执行其公开命令：
-
-| Skill | 使用说明 | 确定性脚本入口 |
-|---|---|---|
-| `text-to-html` | [`skills/text-to-html/SKILL.md`](skills/text-to-html/SKILL.md) | `node scripts/run-pipeline.mjs <approved-presentation-plan.json> <output-dir>` |
-| `html-to-pptx` | [`skills/html-to-pptx/SKILL.md`](skills/html-to-pptx/SKILL.md) | `node scripts/convert.mjs <input.html\|directory\|presentation-package.json> <output-dir>` |
-| `image-to-pptx` | [`skills/image-to-pptx/SKILL.md`](skills/image-to-pptx/SKILL.md) | `node scripts/image-to-pptx.mjs build --output <output-dir> <image...>` |
-
-`$text-to-html` 可以由 Host/Codex 接收自然语言请求，但脚本入口不会自动
-理解自然语言、研究事实或编写叙事；Host 必须先完成这些判断，并提交已审核
-的 `presentation-plan.json`。另外两个脚本也只转换已提供的 HTML 或图片，
-不会替用户重写内容。
-
-## 安装部署
-
-### 环境要求
-
-必需：
-
-- Node.js 20+
-- npm
-- Python 3.10+
-
-建议：
-
-- PowerPoint 或 WPS，用于人工检查最终 `.pptx`
-- Windows PowerShell、macOS Terminal 或 Linux shell
-
-可选：
-
-- Playwright Chromium：用于 CSS 定位 HTML 的 DOM 测量
-- Tesseract OCR：用于本地 OCR
-- LibreOffice：用于 PPTX 预览渲染和视觉回归
-- PyMuPDF：用于 PDF 页面渲染
-
-### 安装依赖
+从仓库根目录构建并验证三个独立安装包：
 
 ```bash
-npm install
-pip install -r requirements-core.txt
-npx playwright install chromium
-npm run setup -- core
+npm ci
+npm run package:skills
+npm run verify:skills
 ```
 
-如需指定 Python：
-
-```powershell
-$env:PPTX_CREATOR_PYTHON="C:\Path\To\python.exe"
-npm run setup -- core
-```
-
-## 快速开始
-
-按 profile 安装 Python 依赖：core 无第三方 Python 包；image 使用
-`pip install -r requirements-image.txt`；pdf 使用
-`pip install -r requirements-pdf.txt`。HTML 浏览器依赖由 Node/Playwright 提供。
-
-以下命令运行的是保留的根级兼容层，不是 V2 三 Skill 的入口。运行内置
-HTML-first 文本示例：
-
-```bash
-npm run pptx -- text examples/text-input/html-first/deck.html output
-```
-
-成功后输出：
+这会生成并验证：
 
 ```text
-output/
-  final.pptx
-  deck.source.html
-  deck.repaired.html
-  deck.manifest.json
-  replica-evidence.json
-  editable-report.md
-  qa-report.md
-  compatibility-report.md
-  output-manifest.json
+dist/v2/text-to-html.skill
+dist/v2/html-to-pptx.skill
+dist/v2/image-to-pptx.skill
 ```
 
-## 根级 HTML-first 文本兼容路线
+在 Codex 中按需分别导入所需的 `.skill` 包。也可以直接使用任一
+`skills/<name>/` 源目录：进入该目录，按其 `SKILL.md` 的安装说明安装依赖、
+系统工具和浏览器，再运行该 Skill 的公开命令。不要把仓库根目录当作运行时依赖。
 
-根级 `text` 入口的默认路线由 Host Agent 先完成叙事与 Creative Direction，
-再绘制并验证
-1280x720 HTML；确定性编译器将已接受的 HTML 复刻为主要元素可编辑的
-PPTX，并校验模块连线和源图与 PPTX 的视觉一致性。
+## 组合方式
 
-适合从文本生成更精美、更有变化的商务或技术 PPT：
-
-```bash
-npm run pptx -- text examples/text-input/html-first/deck.html output/creative
-```
-
-下述 `deck.plan.json`、方向盲选与 Host 最终复核协议是保留的原生兼容
-路线，必须显式添加 `--native`：
-
-首次运行会在确定性证据通过后停在 `host-final-visual-review`，只发布逐页
-PNG、contact sheet、候选 PPTX 与哈希绑定的复核包。Host 实际检查每张
-完整截图并填写 `creative-final-review.json` 后，再恢复运行：
-
-```bash
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --native \
-  --design-system dark-tech \
-  --host-final-review /absolute/path/creative-final-review.json
-```
-
-方向盲选使用的 `--host-review` 与最终全稿验收使用的
-`--host-final-review` 是两个独立判断阶段。完整契约见
-[`references/creative-visual-proof.md`](references/creative-visual-proof.md)。
-
-如果最终全稿复核拒绝，流水线会输出只读的 `refinement-plan.json` 并停在
-`awaiting-refinement-approval`。Host 在输出目录外准备只批准一个操作的
-`creative-refinement-state.json`，再恢复运行；任何 delta 都会使旧截图复核
-失效，并消耗共享的最多 3 次 Creative 修复/精炼预算：
-
-```bash
-npm run pptx -- text examples/text-input/creative/deck.plan.json output/creative --native \
-  --design-system dark-tech \
-  --refinement-state /absolute/path/creative-refinement-state.json
-```
-
-完整契约见 [`references/creative-refinement.md`](references/creative-refinement.md)。
-
-成功完成打包的 Creative 路线发布 plan、选中的 canonical Semantic Slide
-IR、render manifest 和真实 run index：
+文本生成 PPTX 时，显式串联两个独立 Skill：
 
 ```text
-deck.plan.json
-semantic-slide-ir.json
-deck.manifest.json
-run.json
-final.pptx
-host-visual-review.json
-creative-proof.json
-creative-proof/
-quality-report.json
-quality-report.md
-preview/index.html
-output-manifest.json
-```
-
-deck plan 记录设计判断、三项上下文旋钮、受众、叙事节拍、页面信息、布局族以及内容/素材引用。`compileDeckPlanArtifacts()` 一次生成选中的 canonical IR 与 manifest；`run.json` 通过 `artifacts.semanticIr` 索引该 IR。IR/run 只有在打包成功后才算正式发布；pre-package hook 或打包失败时，pipeline 会先尽力回滚这两个文件，再写入 blocked 状态，且回滚错误不会掩盖主失败。候选证据不会覆盖 canonical 文件，且 direct/replica 路线不会生成 Semantic IR。只有这条旧 `--native` 兼容路线可以不经过 HTML；V2 核心文本到 PPTX 必须显式组合 `$text-to-html → $html-to-pptx`，HTML 演示包是两者之间的正式交付边界。
-
-## HTML、图片和 PDF 输入
-
-HTML（语义或 CSS 定位）：
-
-```bash
-npm run pptx -- html input.html output/html
-```
-
-Replica 模式会从浏览器真实渲染结果提取 DOM 坐标与计算样式，优先转成可编辑 PPT 原生文本、形状、表格、线条、图片和单层外阴影；非 `drop-shadow(...)` 滤镜、backdrop-filter、clip-path、复杂渐变、多重阴影等 PPT 原生难以表达的效果会进入视觉评审报告，避免把整页悄悄退化成截图。
-
-图片或截图使用 `npm run pptx -- image reference.png output/image`。管线会执行真实 OCR、颜色/几何检测，生成原生文本、形状和线条，仅把照片或高复杂度局部区域裁剪为图片；随后从 PPTX 重新渲染并校验 SSIM、OCR CER、文本框 IoU、CIEDE2000 色差、OOXML 原生对象与全部 raster 引用。整页或未声明 raster 会直接阻断。
-
-PDF 页面：
-
-严格 PDF 入口为 `npm run pptx -- pdf source.pdf output/pdf`；在 fidelity-proof compiler 尚未实现时会明确阻断。
-
-PDF 支持是页面级 hints：最终仍应由 Agent 重建可编辑文本、形状、表格和图表，而不是直接整页栅格化。
-
-## 质量检查与修复
-
-统一管线负责 layout、taste/fidelity proof、可编辑性、兼容性和一致性报告。自动修复最多三次；候选没有改善时立即停止并保留最佳版本，硬失败不会进入打包。
-
-## 架构边界
-
-V2 核心是三个独立运行时，组合动作由用户或 Host 显式发起：
-
-```text
-natural-language / Markdown / long-form source
-  -> Host content reasoning
-  -> approved presentation-plan.json
-  -> text-to-html deterministic build + browser QA
-  -> HTML presentation package
-  -> html-to-pptx deterministic conversion + render-back QA
-  -> final.pptx
-
-reference images
-  -> image-to-pptx OCR/reconstruction + render-back QA
+已审核的内容和演示计划
+  -> text-to-html
+  -> 已通过 QA 的 presentation-package.json
+  -> html-to-pptx
   -> final.pptx
 ```
 
-下面是仍保留的根级兼容运行时。它不定义 V2 三 Skill 的内部调用关系：
+图片重建可独立完成：
 
 ```text
-User input
-  text / markdown / HTML / image / PDF / mixed references
-        |
-        v
-Host Agent
-  Planner      -> audience, outline, storyline
-  Writer       -> claims, copy, tables, chart data, speaker notes
-  Designer     -> DESIGN.md, layouts, components, visual direction
-  Researcher   -> optional web search, sources, asset discovery
-  Critic       -> review, repair patch, quality gates
-        |
-        v
-Creative authoring contracts
-  deck.plan.json
-        |
-        v
-  semantic-slide-ir.json
-  selected canonical authoring truth
-        |
-        v
-deck.manifest.json
-  render truth: version, designSystem, deck, assets, slides, elements
-        |
-        v
-Deterministic scripts
-  validate-manifest.py
-  deck-plan.mjs
-  html-to-manifest.mjs
-  measure-html.mjs
-  image/pdf hint scripts
-  registry/run-index/visual review helpers
-        |
-        v
-Renderer
-  render-pptx.mjs + PptxGenJS
-        |
-        v
-Reports and QA
-  editable-report.md
-  qa-report.md
-  compatibility-report.md
-  accessibility-report.md
-  visual-review.json
-  visual-regression-report.json
-  run.json artifact index
-        |
-        v
-final.pptx
+参考图片 -> image-to-pptx -> final.pptx
 ```
 
-## 目录结构
+当图片重建需要进入 HTML 到 PPTX 的后续转换时，`image-to-pptx` 可显式输出
+兼容的 HTML 演示包，再由 `html-to-pptx` 消费。任何协议版本、路径或验证状态
+不符合要求的输入都会被拒绝。
 
-| 路径 | 作用 |
-| --- | --- |
-| `SKILL.md` | 通用 Agent Skill 入口、核心契约和按需路由。 |
-| `skills/` | V2 三个可独立安装的 Skill 及各自运行时。 |
-| `v2/` | V2 用户指南、架构、迁移和状态说明。 |
-| `agents/openai.yaml` | Codex/OpenAI 界面元数据；不参与运行时逻辑。 |
-| `references/` | 按输入类型和任务阶段渐进加载的详细流程。 |
-| `design-systems/` | 内置通用设计系统。 |
-| `layout-archetypes/` | 设计优先流程使用的页面布局原型。 |
-| `schemas/` | deck、deck plan、registry、repair、review 等 JSON Schema。 |
-| `scripts/` | 转换、渲染、校验、修复和回归脚本。 |
-| `scripts/lib/` | 可复用核心逻辑。 |
-| `references/` | workflow、manifest、HTML/image/PDF 和 QA 参考。 |
-| `examples/` | 文本、HTML、图片、design-first 和 visual-roadmap 示例。 |
-| `tests/` | JavaScript 与 Python 回归测试。 |
+## License
 
-## 内置设计系统
-
-常用设计系统包括：
-
-- `business-neutral`
-- `warm-editorial`
-- `paper-minimal`
-- `dark-tech`
-- `ai-infra`
-- `product-roadshow`
-- `developer-docs`
-- `dashboard-data`
-- `premium-black`
-- `chinese-government`
-- `enterprise-blueprint`
-- `executive-crimson`
-- `finance-boardroom`
-
-用户提供的 `DESIGN.md` 优先级最高。内置系统是安全基线，不是品牌模板，不应加入真实 logo、商标素材或商业字体。
-
-## 常用 npm scripts
-
-| 命令 | 说明 |
-| --- | --- |
-| `npm run pptx -- ...` | 保留的根级兼容入口。 |
-| `node scripts/package-v2-skills.mjs` | 构建三个独立 V2 Skill 包。 |
-| `node scripts/verify-v2-skills.mjs` | 校验三个 V2 Skill 包及其独立性。 |
-| `npm run setup -- core\|html\|image\|pdf` | 检查指定环境 profile。 |
-| `npm test` / `npm run test:unit` | JavaScript 单元测试。 |
-| `npm run test:browser` | 浏览器集成测试。 |
-| `npm run test:visual` | 视觉管线测试。 |
-| `npm run test:py` | Python 测试。 |
-
-## 测试
-
-```bash
-npm test
-npm run test:py
-```
-
-## 输出与可编辑性
-
-默认目标是 Level 4 或 Level 5：
-
-- Level 5：主要对象均为 PPT 原生对象。
-- Level 4：文本和主视觉结构可编辑，复杂照片/纹理可作为图片。
-- Level 3：文本可编辑，但较多视觉对象为图片。
-- Level 1-2：主要用于严格截图复刻或用户明确接受低编辑性的场景。
-
-本项目不应把整页截图包装成“可编辑 PPTX”。
-
-## 联网检索与素材策略
-
-宿主 Agent 可以自行判断是否联网检索，以提升事实准确性、术语质量、视觉参考、素材质量和来源追踪。使用外部资料时必须：
-
-- 不编造事实、指标、案例或引用。
-- 尊重版权、授权、商标、logo 和字体限制。
-- 将远程素材本地化到输出目录后再写入 manifest。
-- 在最终回复、QA 记录或 registry 中保留关键来源。
-
-## 许可证
-
-MIT
+[MIT](LICENSE)

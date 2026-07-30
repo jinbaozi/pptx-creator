@@ -6,6 +6,7 @@ import {
   injectNativeCharts,
   resolveHtmlInput
 } from "../scripts/convert.mjs";
+import { expandChartElement } from "../scripts/lib/chart-renderer.mjs";
 
 describe("diagnostic failures", () => {
   it("rejects ambiguous HTML directories", async () => {
@@ -17,15 +18,24 @@ describe("diagnostic failures", () => {
     });
   });
 
-  it("rejects chart markers with unsupported kinds", () => {
+  it("rejects removed chart kinds at the HTML and renderer boundaries", () => {
     const value = {
       deck: { size: { width: 13.333, height: 7.5 } },
       slides: [{ id: "slide-001", elements: [] }]
     };
-    const html = `<div data-pptx-id="chart-001" data-pptx-chart='{"kind":"unknown","data":[1]}'></div>`;
+    const html = `<div data-pptx-id="chart-001" data-pptx-chart='{"kind":"bar","data":[1]}'></div>`;
     expect(() => injectNativeCharts(html, value, {
       elements: [{ id: "chart-001", slideIndex: 0, x: 1, y: 1, w: 2, h: 2 }]
     })).toThrow(/unsupported/);
+    expect(() => expandChartElement({
+      type: "chart",
+      kind: "bar",
+      data: [{ label: "A", value: 1 }],
+      x: 1,
+      y: 1,
+      w: 2,
+      h: 2
+    })).toThrow(/unsupported chart kind/);
   });
 
   it("reports a missing file with a stable code", async () => {

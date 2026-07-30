@@ -1,29 +1,20 @@
 {
   "name": "pptx-creator",
-  "version": "0.5.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "pptx": "node scripts/pptx.mjs",
-    "test": "npm run test:unit",
-    "test:unit": "PLAYWRIGHT_RUN=0 vitest run --exclude tests/visual-regression.test.mjs",
-    "test:browser": "PLAYWRIGHT_RUN=1 vitest run tests/html-layout-safety.test.mjs tests/html-measurement.test.mjs tests/html-replica-golden.test.mjs tests/image-replica-golden.test.mjs",
-    "test:visual": "vitest run tests/visual-regression.test.mjs",
-    "test:py": "node scripts/run-python.mjs -m unittest discover -s tests -p \"*_test.py\"",
-    "benchmark:creative": "node scripts/run-creative-benchmark.mjs",
-    "setup": "node scripts/setup.mjs"
+    "test:integration": "vitest run --config integration/vitest.config.mjs",
+    "test:composition": "V2_COMPOSITION_RUN=1 vitest run --config integration/vitest.config.mjs integration/tests/v2-composition.test.mjs",
+    "package:skills": "node integration/scripts/package-v2-skills.mjs",
+    "verify:skills": "node integration/scripts/verify-v2-skills.mjs"
   },
   "dependencies": {
     "ajv": "8.17.1",
     "ajv-formats": "3.0.1",
-    "fontkit": "^2.0.0",
-    "jszip": "^3.10.1",
-    "node-html-parser": "^6.1.13",
-    "pptxgenjs": "^3.12.0",
-    "yaml": "^2.0.0"
+    "jszip": "3.10.1"
   },
   "devDependencies": {
-    "playwright": "^1.52.0",
-    "vitest": "^1.6.0"
+    "vitest": "4.1.10"
   }
 }

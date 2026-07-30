@@ -1,28 +1,17 @@
 const ANCHORS = new Set(["auto", "top", "right", "bottom", "left"]);
-const LEGACY_KEYS = ["sourceId", "targetId", "sourceAnchor", "targetAnchor", "route"];
 
 export function connectorMetadata(line) {
-  const semantic = line?.connector ?? {};
-  const legacy = line?.style ?? {};
-  const sourceId = semantic.sourceId ?? legacy.sourceId;
-  const targetId = semantic.targetId ?? legacy.targetId;
+  const connector = line?.connector;
+  if (!connector || typeof connector !== "object") return null;
+  const { sourceId, targetId } = connector;
   if (!sourceId && !targetId) return null;
   return {
     sourceId,
     targetId,
-    sourceAnchor: semantic.sourceAnchor ?? legacy.sourceAnchor ?? "auto",
-    targetAnchor: semantic.targetAnchor ?? legacy.targetAnchor ?? "auto",
-    route: semantic.route ?? legacy.route ?? "straight"
+    sourceAnchor: connector.sourceAnchor ?? "auto",
+    targetAnchor: connector.targetAnchor ?? "auto",
+    route: connector.route ?? "straight"
   };
-}
-
-function normalizeConnector(line) {
-  const next = structuredClone(line);
-  const connector = connectorMetadata(next);
-  if (!connector) return next;
-  next.connector = connector;
-  next.style = Object.fromEntries(Object.entries(next.style ?? {}).filter(([key]) => !LEGACY_KEYS.includes(key)));
-  return next;
 }
 
 export function boundaryAnchor(rect, toward, requested = "auto") {
@@ -107,7 +96,7 @@ export function segmentIntersectsRectInterior(start, end, rect, inset = 0.02) {
 }
 
 export function resolveConnectorGeometry(line, byId) {
-  const next = normalizeConnector(line);
+  const next = structuredClone(line);
   const connector = connectorMetadata(next);
   const source = byId.get(connector?.sourceId);
   const target = byId.get(connector?.targetId);

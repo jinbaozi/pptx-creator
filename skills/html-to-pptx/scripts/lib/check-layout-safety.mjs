@@ -2,7 +2,7 @@
  * check-layout-safety.mjs
  *
  * Pure-function layout-safety preflight for `deck.manifest.json`. Implements
- * the 8 detection items from U4 of the visual-design-quality-layer plan:
+ * the required layout-safety detections for HTML-to-PPTX conversion:
  *
  *   1. bounds           — element out of slide bounds (critical)
  *   2. occlusion        — unapproved content/decorative intersection
@@ -18,18 +18,17 @@
  *   - `preflightLayout(manifest, options)`  → primary entry. Returns
  *     `{checks, summary: {criticalCount, warningCount, blocked, ...}}`.
  *     Internal shape — call `formatReport()` for the schema-conforming wire
- *     shape consumed by the CLI, pipeline, and U6 repair-patch adapter.
- *   - `formatReport(result, options)`       → U5 writer. Pure transform from
+ *     shape consumed by the converter and bounded repair loop.
+ *   - `formatReport(result, options)`       → Pure transform from
  *     the internal `preflightLayout()` output to the
  *     `schemas/layout-safety-report.schema.json` shape. Deterministic key
  *     order; byte-identical output across runs for the same input.
- *   - `checkBounds(element, deckSize)`      → extracted from visual-critic
- *     for reuse by `scripts/lib/visual-critic.mjs`.
- *   - `checkFontSize(element)`              → extracted from visual-critic
- *     for reuse by `scripts/lib/visual-critic.mjs`. Returns the same issue
- *     shape that visual-critic emits (`{severity, type, message, target}`).
+ *   - `checkBounds(element, deckSize)`      → deterministic bounds check
+ *     returning the internal `{severity, type, message, target}` shape.
+ *   - `checkFontSize(element)`              → deterministic role-aware
+ *     font-size check returning that same internal shape.
  *
- * Role inference (per U4 spec):
+ * Role inference:
  *   1. `el.role` explicit field, if present.
  *   2. `el.style.typography` token → resolve against designTokens; map
  *      token segments containing `title|hero|headline` → title,
@@ -41,18 +40,16 @@
  *
  * Two output shapes exist:
  *   - **Internal** (`preflightLayout` return value): `{slideId, severity,
- *     type, message, target, relatedTarget?, ...}` — mirrors the
- *     `visual-critic.mjs` issue shape so the visual-critic can reuse
- *     `checkBounds` / `checkFontSize` without translation.
+ *     type, message, target, relatedTarget?, ...}` — used by the
+ *     deterministic repair loop.
  *   - **Wire** (`formatReport` return value): conforms to
  *     `schemas/layout-safety-report.schema.json`. Stable `kind` enum
  *     (separate from the internal `type`); field names use the
  *     `elementId` / `relatedElementId` vocabulary to match the schema.
  *
  * Output is JSON-serializable. The wire shape is intentionally simple so
- * the CLI wrapper (`scripts/run-layout-safety-check.mjs`), the pipeline
- * (`scripts/run-deck-pipeline.mjs`), and the U6 repair-patch adapter can
- * consume it without further transformation.
+ * the converter and repair loop can consume it without further
+ * transformation.
  */
 
 import { expandChartElement } from "./chart-renderer.mjs";
@@ -284,12 +281,11 @@ export function inferRole(element, tokens) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* (1) bounds — extracted verbatim-shape from visual-critic.mjs              */
+/* (1) bounds                                                                  */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Bounds check. Returns the same `issue` shape that `visual-critic.mjs`
- * `scoreSlide()` historically emitted, so existing tests stay green.
+ * Bounds check. Returns the internal issue shape consumed by the repair loop.
  */
 export function checkBounds(element, deckSize) {
   const size = deckSize ?? DEFAULT_DECK_SIZE;
@@ -313,12 +309,12 @@ export function checkBounds(element, deckSize) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* (3) role-aware font-size — extracted verbatim-shape from visual-critic.mjs */
+/* (3) role-aware font-size                                                     */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Font-size check. Returns the visual-critic-shaped issue if the element's
- * fontSize falls below the role-specific threshold, else null. When no
+ * Font-size check. Returns an internal issue if the element's fontSize falls
+ * below the role-specific threshold, else null. When no
  * role can be inferred, falls back to body thresholds.
  */
 export function checkFontSize(element, tokens, options = {}) {
@@ -1389,14 +1385,13 @@ export function preflightLayout(manifest, options = {}) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* U5 writer — schema-conforming report formatter                              */
+/* Schema-conforming report formatter                                           */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Mapping from internal `type` strings (used by the preflight checks and the
- * legacy visual-critic issue shape) to the stable `kind` enum exposed in
- * `schemas/layout-safety-report.schema.json`. Downstream tooling (U6 repair
- * adapter switches on `kind`; the schema enum is the contract.
+ * Map the internal `type` strings emitted by preflight checks to the stable
+ * `kind` enum exposed in `schemas/layout-safety-report.schema.json`.
+ * The converter uses `type` for repairs; the report schema uses `kind`.
  */
 const KIND_MAP = Object.freeze({
   bounds: "bounds",
@@ -1477,8 +1472,8 @@ function mapCheckToWire(check) {
 
 /**
  * Pure: transform the internal `preflightLayout()` output into the
- * schema-conforming wire shape consumed by the CLI, pipeline, and U6
- * repair-patch adapter. Deterministic key order via `sortObjectKeys` so
+ * schema-conforming wire shape consumed by the converter and repair loop.
+ * Deterministic key order via `sortObjectKeys` so
  * the JSON serialized from the result is byte-identical across runs.
  *
  * @param {object} result  Output of `preflightLayout(manifest, options)`.

@@ -15,6 +15,7 @@ import {
   suppressNativeTableDescendants,
   validateManifestContract
 } from "../scripts/convert.mjs";
+import { connectorMetadata } from "../scripts/lib/connector-resolver.mjs";
 
 function manifest() {
   return {
@@ -172,6 +173,30 @@ describe("public argument and safety contracts", () => {
       x: 1,
       w: 4
     });
+  });
+
+  it("requires V2 connector metadata on the connector object", () => {
+    expect(connectorMetadata({
+      type: "line",
+      connector: {
+        sourceId: "source-001",
+        targetId: "target-001",
+        route: "orthogonal"
+      }
+    })).toEqual({
+      sourceId: "source-001",
+      targetId: "target-001",
+      sourceAnchor: "auto",
+      targetAnchor: "auto",
+      route: "orthogonal"
+    });
+    expect(connectorMetadata({
+      type: "line",
+      style: {
+        sourceId: "source-001",
+        targetId: "target-001"
+      }
+    })).toBeNull();
   });
 
   it("suppresses duplicate cell objects after a native table is emitted", () => {

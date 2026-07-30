@@ -1,133 +1,98 @@
-name: ci
+name: V2 CI
 
 on:
   pull_request:
   push:
-    branches: [main]
-  schedule:
-    - cron: "17 18 * * *"
   workflow_dispatch:
-    inputs:
-      creative_lane:
-        description: Creative benchmark lane
-        required: true
-        default: fast
-        type: choice
-        options: [fast, render, nightly, release]
-      artifact_manifest:
-        description: Release artifact manifest path in the checked-out revision
-        required: false
-        default: examples/creative-benchmark/release-artifacts.json
-      review_file:
-        description: Blinded review records path; leave empty to prepare the offline reviewer handoff
-        required: false
-        default: ""
-      blind_seed:
-        description: Explicit release blinding seed
-        required: false
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: v2-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  changes:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+  text-to-html:
+    name: text-to-html independent tests
     runs-on: ubuntu-latest
-    outputs:
-      creative: ${{ steps.filter.outputs.creative }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            creative:
-              - 'SKILL.md'
-              - 'agents/openai.yaml'
-              - 'composition-blocks/**'
-              - 'design-systems/**'
-              - 'examples/creative-benchmark/**'
-              - 'references/**'
-              - 'schemas/deck-plan.schema.json'
-              - 'schemas/semantic-slide-ir.schema.json'
-              - 'schemas/creative-*.schema.json'
-              - 'schemas/refinement-*.schema.json'
-              - 'schemas/visual-review.schema.json'
-              - 'scripts/lib/archetype-resolver.mjs'
-              - 'scripts/lib/blind-preference.mjs'
-              - 'scripts/lib/composition-blocks.mjs'
-              - 'scripts/lib/contextual-taste.mjs'
-              - 'scripts/lib/creative-*.mjs'
-              - 'scripts/lib/deck-plan*.mjs'
-              - 'scripts/lib/semantic-slide-ir.mjs'
-              - 'scripts/lib/slop-risk.mjs'
-              - 'scripts/lib/visual-critic.mjs'
-              - 'scripts/run-creative-benchmark.mjs'
-              - 'tests/creative-*.test.mjs'
-              - 'tests/deck-plan*.test.mjs'
-              - 'tests/slop-risk.test.mjs'
-              - 'tests/visual-design-calibration.test.mjs'
-
-  fast:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
-    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: skills/text-to-html
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
+          cache-dependency-path: skills/text-to-html/package-lock.json
       - run: npm ci
-      - run: python -m pip install -r requirements.txt
+      - run: npx playwright install --with-deps chromium
       - run: npm run test:unit
-      - run: npm run test:py
+      - run: npm run test:browser
+      - run: npm run test:visual
+      - run: npm run test:isolation
 
-  replica-fidelity:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+  html-to-pptx:
+    name: html-to-pptx independent tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: skills/html-to-pptx
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: skills/html-to-pptx/package-lock.json
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - run: sudo apt-get update && sudo apt-get install -y libreoffice poppler-utils tesseract-ocr
+          cache-dependency-path: skills/html-to-pptx/requirements.txt
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice poppler-utils fonts-liberation fonts-noto-cjk
       - run: npm ci
       - run: python -m pip install -r requirements.txt
       - run: npx playwright install --with-deps chromium
+      - run: npm run test:unit
       - run: npm run test:browser
+      - run: npm run test:visual
+      - run: npm run test:isolation
 
-  creative-fast:
-    needs: [changes]
-    if: needs.changes.outputs.creative == 'true'
+  image-to-pptx:
+    name: image-to-pptx independent tests
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: skills/image-to-pptx
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - run: npm run benchmark:creative -- --lane fast --output output/creative-benchmark-fast
-      - uses: actions/upload-artifact@v4
-        if: always()
+          cache-dependency-path: skills/image-to-pptx/package-lock.json
+      - uses: actions/setup-python@v5
         with:
-          name: creative-benchmark-fast
-          path: output/creative-benchmark-fast/benchmark-report.json
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: skills/image-to-pptx/requirements.txt
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr libreoffice poppler-utils fonts-liberation fonts-noto-cjk
+      - run: npm ci
+      - run: python -m pip install -r requirements.txt
+      - run: IMAGE_TO_PPTX_VISUAL=1 npm test
+      - run: npm run test:py
 
-  creative-render:
-    needs: [changes]
-    if: needs.changes.outputs.creative == 'true'
+  integration:
+    name: root integration
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -136,56 +101,14 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: sudo apt-get update && sudo apt-get install -y libreoffice poppler-utils fonts-noto-cjk fonts-liberation
+          cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: python -m pip install -r requirements-core.txt
-      - run: npm run benchmark:creative -- --lane render --output output/creative-benchmark-render
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: creative-benchmark-render
-          path: |
-            output/creative-benchmark-render/**/*.pptx
-            output/creative-benchmark-render/**/*.png
-            output/creative-benchmark-render/**/creative-proof.json
-            output/creative-benchmark-render/challenger-artifacts.json
-            output/creative-benchmark-render/benchmark-report.json
+      - run: node integration/scripts/check-v2-repository-governance.mjs
+      - run: npm run test:integration
 
-  creative-nightly:
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.creative_lane == 'nightly')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: sudo apt-get update && sudo apt-get install -y libreoffice poppler-utils fonts-noto-cjk fonts-liberation
-      - run: npm ci
-      - run: python -m pip install -r requirements-core.txt
-      - run: npm run benchmark:creative -- --lane nightly --output output/creative-benchmark-nightly
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: creative-benchmark-nightly
-          path: |
-            output/creative-benchmark-nightly/**/*.pptx
-            output/creative-benchmark-nightly/**/*.png
-            output/creative-benchmark-nightly/**/creative-proof.json
-            output/creative-benchmark-nightly/challenger-artifacts.json
-            output/creative-benchmark-nightly/benchmark-report.json
-
-  creative-manual-fast-or-render:
-    if: github.event_name == 'workflow_dispatch' && (inputs.creative_lane == 'fast' || inputs.creative_lane == 'render')
+  packages:
+    name: package and verify Skills
+    needs: integration
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -194,61 +117,42 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - uses: actions/setup-python@v5
-        if: inputs.creative_lane == 'render'
-        with:
-          python-version: "3.12"
-          cache: pip
-      - if: inputs.creative_lane == 'render'
-        run: sudo apt-get update && sudo apt-get install -y libreoffice poppler-utils fonts-noto-cjk fonts-liberation
+          cache-dependency-path: package-lock.json
       - run: npm ci
-      - if: inputs.creative_lane == 'render'
-        run: python -m pip install -r requirements-core.txt
-      - run: npm run benchmark:creative -- --lane ${{ inputs.creative_lane }} --output output/creative-benchmark-manual
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: creative-benchmark-${{ inputs.creative_lane }}
-          path: output/creative-benchmark-manual
+      - run: npm run package:skills
+      - run: npm run verify:skills
 
-  creative-release:
-    if: github.event_name == 'workflow_dispatch' && inputs.creative_lane == 'release'
+  composition:
+    name: full Skill composition
+    needs: [text-to-html, html-to-pptx, image-to-pptx, integration, packages]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - name: Prepare blinded reviewer handoff
-        if: inputs.review_file == ''
-        run: >-
-          npm run benchmark:creative -- --lane release
-          --output output/creative-benchmark-release
-          --artifacts "${{ inputs.artifact_manifest }}"
-          --seed "${{ inputs.blind_seed }}"
-          --prepare-review
-      - name: Evaluate blinded release preference
-        if: inputs.review_file != ''
-        run: >-
-          npm run benchmark:creative -- --lane release
-          --output output/creative-benchmark-release
-          --artifacts "${{ inputs.artifact_manifest }}"
-          --reviews "${{ inputs.review_file }}"
-          --seed "${{ inputs.blind_seed }}"
-      - uses: actions/upload-artifact@v4
-        if: always()
+          cache-dependency-path: |
+            package-lock.json
+            skills/text-to-html/package-lock.json
+            skills/html-to-pptx/package-lock.json
+            skills/image-to-pptx/package-lock.json
+      - uses: actions/setup-python@v5
         with:
-          name: creative-benchmark-release-public-evidence
-          path: |
-            output/creative-benchmark-release/**/*.pptx
-            output/creative-benchmark-release/**/*.png
-            output/creative-benchmark-release/**/creative-proof.json
-            output/creative-benchmark-release/blind-review-packet.json
-            output/creative-benchmark-release/blind-preference-report.json
-            output/creative-benchmark-release/benchmark-report.json
-            output/creative-benchmark-release/reviewer/index.html
-            output/creative-benchmark-release/reviewer/README.md
-            !output/creative-benchmark-release/private/**
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            skills/html-to-pptx/requirements.txt
+            skills/image-to-pptx/requirements.txt
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr libreoffice poppler-utils fonts-liberation fonts-noto-cjk
+      - run: npm ci
+      - run: npm ci --prefix skills/text-to-html
+      - run: npm ci --prefix skills/html-to-pptx
+      - run: npm ci --prefix skills/image-to-pptx
+      - run: python -m pip install -r skills/html-to-pptx/requirements.txt
+      - run: python -m pip install -r skills/image-to-pptx/requirements.txt
+      - run: npx --prefix skills/html-to-pptx playwright install --with-deps chromium
+      - run: npm run test:composition

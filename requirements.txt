@@ -1,4 +1,0 @@
-# Aggregate install for every optional Python profile.
--r requirements-core.txt
--r requirements-image.txt
--r requirements-pdf.txt

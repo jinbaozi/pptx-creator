@@ -1,7 +1,0 @@
-{
-  "deckId": "internal-005-deck-plan",
-  "sourcePath": "../../text-input/calibration/clean.deck.plan.json",
-  "expectedSlopRisk": 0,
-  "reviewer": "calibration-author",
-  "annotatedAt": "2026-07-10"
-}

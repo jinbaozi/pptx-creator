@@ -1,121 +1,52 @@
-# AGENTS.md
+# Contributor constraints
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+## V2 scope
 
-## What this project is
+- The published runtime consists only of `skills/text-to-html`,
+  `skills/html-to-pptx`, and `skills/image-to-pptx`.
+- Keep the repository root limited to public documentation, contributor rules,
+  MIT license, package metadata, CI, and `integration/` verification tooling.
+- Do not add a root `SKILL.md`, a root runtime entrypoint, or alternate routes
+  around the three Skill contracts.
+- Do not introduce migration guidance, historical runtime descriptions, or
+  compatibility interfaces into V2 public files.
 
-`pptx-creator` is an Agent-oriented tool that produces **mostly editable** PowerPoint files. The architecture splits work in two:
+## Skill independence
 
-- **Host agent** (you, or another LLM) does all reasoning: classifying input, defining Creative Direction, authoring and visually accepting a Creative `deck.html` (or explicitly choosing a compatibility route), picking assets, and judging QA output.
-- **Deterministic scripts** (Node.js + Python) validate, compile, render, package, and report — they **never** call LLM APIs and never invent content.
+- Each Skill must install, test, and execute from its own directory with only
+  its declared dependencies.
+- Do not import from a parent repository, sibling Skill, shared local path, or
+  machine-specific absolute path.
+- Exchange data across Skills only through the versioned
+  `pptx-creator.presentation-package` protocol. Treat it as an optional input
+  or output contract, not a runtime dependency.
+- Keep protocol schema and validator copies byte-aligned with the integration
+  contract when a Skill declares protocol support.
 
-Core invariant: Creative runs use the selected canonical Semantic Slide IR as
-their authoring truth; the manifest is the render truth for every renderer.
-Scripts render exactly what the manifest says.
+## Delivery and QA
 
-## Common commands
+- Scripts are deterministic: they do not call an LLM or invent facts, sources,
+  text, brands, or data.
+- Preserve local asset provenance and reject traversal, absolute paths, and
+  missing package resources.
+- Do not publish a failed or pending QA result as complete.
+- Do not use a full-slide raster as a substitute for an editable PPTX.
 
-```bash
-# One-time setup
-npm install
-pip install -r requirements-core.txt
-npx playwright install chromium
-npm run setup -- core                  # writes env-report.json
+## Change discipline
 
-# Tests
-npm test                               # vitest (JS, 120s timeout)
-npm run test:browser                   # Playwright-backed HTML checks
-npm run test:visual                    # visual pipeline tests
-npm run test:py                        # python unittest in tests/
+- Make the smallest change that satisfies the V2 contract. Do not refactor
+  adjacent behavior without a task requirement.
+- This is a shared worktree. Preserve unrelated edits; never reset, revert, or
+  delete work owned by another contributor.
+- Keep generated `node_modules/`, `dist/`, `output/`, Python caches, and local
+  editor files out of commits.
+- Preserve the MIT `LICENSE`.
 
-# Quick run on a built-in text example
-npm run pptx -- text examples/text-input/deck.manifest.json output
+## Verification
 
-# Creative text end-to-end
-npm run pptx -- text examples/design-first/compiler-roadshow-html/deck.html output/creative
-
-# Replica routes (image/PDF block until a fidelity-proof compiler exists)
-npm run pptx -- html input.html output/html
-npm run pptx -- image reference.png output/image
-npm run pptx -- pdf source.pdf output/pdf
-```
-
-All Python helpers are invoked through `node scripts/run-python.mjs` (honors `PPTX_CREATOR_PYTHON` env var for interpreter selection). The pipeline runner (`run-deck-pipeline.mjs`) chains: `validate-manifest.py` → `render-pptx.mjs` → `package-output.py`.
-
-## High-level architecture
-
-The data flow has five stages. Reading order matters when debugging:
-
-```
-input (text / HTML / image / PDF / mixed)
-    │
-    ▼
-Host agent reasoning ──► DESIGN.md selection
-    │
-    ▼
-text -> Creative Direction -> deck.html -> repaired HTML -> deck.manifest.json -> PPTX
-       │                 │                         │
-       └──── localized assets ──► assets/asset-registry.json
-                                   │
-                                   └──── run.json indexes published artifacts
-```
-
-### 1. Inputs → design system
-
-`SKILL.md` is the universal entry point. Load only the input-specific file routed from its progressive-disclosure table. `DESIGN.md` priority: user-provided → project-root → input-adjacent → built-in (`design-systems/<name>/`) → `business-neutral` fallback. Built-in systems are **safe baselines, not brand templates** — never add logos, trademarks, or commercial fonts to them.
-
-Built-in design systems: `business-neutral`, `warm-editorial`, `paper-minimal`, `dark-tech`, `ai-infra`, `product-roadshow`, `developer-docs`, `dashboard-data`, `premium-black`, `chinese-government`, `enterprise-blueprint`, `executive-crimson`, `finance-boardroom`.
-
-### 2. Creative text pipeline
-
-For creative text-to-PPTX, roadshows, and briefings, follow `references/design-first-workflow.md` and `references/text-html-authoring.md`. The Host first defines narrative and Creative Direction, then authors a complete 1280x720 `deck.html`, visually audits and repairs it, and freezes the repaired HTML. Deterministic scripts measure the DOM, compile it to native PowerPoint objects, prove source-to-PPTX fidelity, and package only accepted output. Full-slide rasters are prohibited. The previous coordinate-free `deck.plan.json` 0.2.0 and Semantic Slide IR compiler remains available only with the explicit `--native` compatibility flag.
-
-Default HTML-first output preserves `deck.source.html`, `deck.repaired.html`, HTML layout/repair reports, layout measurements, the compiled manifest, replica evidence, and editability/QA reports. The previous deck-plan schema, eight content families, composition blocks, and Creative pre-package transaction apply only to `--native` compatibility runs. Runtime `src` values remain normalized POSIX paths below `assets/`; remote URLs are provenance only. The private `.pptx-generated-assets.json` ownership file remains separate from public audit evidence.
-
-### 3. Manifest render truth → PPTX
-
-`references/manifest-spec.md` is the canonical contract. Required top-level: `version`, `metadata`, `designSystem`, `deck`, `assets`, and `slides`; `designSystem` requires `source` and `name`, and `deck.size` carries dimensions. Coordinates are inches. Element style values can reference DESIGN.md tokens (`{colors.primary}`, `{typography.title}`, `{components.hero-card}`).
-
-Element types: `text`, `shape`, `image`, `table`, `line`, `icon` (v0.2), `chart` (v0.2), `diagram` (visual roadmap). Schemas live in `schemas/`.
-
-The renderer is `scripts/render-pptx.mjs` using `pptxgenjs`. `scripts/lib/chart-renderer.mjs` and `scripts/lib/diagram-compiler.mjs` expand higher-level elements to native PPT objects before render.
-
-### 4. Reports and QA gates
-
-Every successfully packaged pipeline run writes to `output/`:
-
-- `final.pptx` — the deliverable
-- `deck.manifest.json` — copy of the input manifest
-- `editable-report.md`, `qa-report.md`, `compatibility-report.md` — quality dimensions
-- `output-manifest.json` — packaged output index
-- (default text) `deck.source.html`, `deck.repaired.html`, `html-repair-report.json`, `replica-evidence.json`, and `visual-review.json`
-- (`--native` compatibility) `deck.plan.json`, `semantic-slide-ir.json`, `assets/asset-registry.json`, and `run.json`
-
-Editability ladder (`references/qa-rubric.md`): Level 5 = fully native objects, Level 4 = text + main shapes editable, Level 3 = text editable, Levels 1-2 = replica/screenshot. **Never** package a single full-slide raster as "editable PPTX".
-
-The visual critic (`scripts/lib/visual-critic.mjs` + `scripts/run-visual-critic.mjs`) flags overflow, tiny fonts, dense charts, empty diagram layers, oversized decorative containers. The bounded repair loop applies at most three automatic patches before asking the user (per `SKILL.md`).
-
-## Repository layout
-
-| Path | Purpose |
-|---|---|
-| `SKILL.md` | Universal skill entry, host-agent contract, and progressive routing |
-| `agents/openai.yaml` | Optional Codex/OpenAI interface metadata |
-| `schemas/` | JSON Schemas (deck, deck-plan, registry, repair, review) |
-| `scripts/` | Entry scripts; heavy logic in `scripts/lib/` |
-| `scripts/lib/` | Reusable JS/Python cores (`deck-plan.mjs`, `chart-renderer.mjs`, `diagram-compiler.mjs`, `visual-critic.mjs`, `run-index.mjs`, `registry.mjs`, `python-utils.mjs`, `*_core.py`) |
-| `design-systems/<name>/DESIGN.md` | Built-in visual systems |
-| `layout-archetypes/` | Page layout primitives consumed by `lib/archetype-resolver.mjs` |
-| `references/` | Workflows, manifest spec, and QA rubric |
-| `examples/{text-input,html-input,image-input,design-first,visual-roadmap-next}/` | Reference inputs |
-| `tests/` | Vitest + Python unittest suites |
-
-## Conventions specific to this codebase
-
-- All JS scripts are ESM (`"type": "module"`). Run with `node`, not via build step.
-- Python helpers must be invoked through `scripts/run-python.mjs` so interpreter selection (`PPTX_CREATOR_PYTHON`) is consistent.
-- Web search is permitted inside the host agent (you) but **prohibited** inside scripts. Remote assets found by search must be localized under `output/assets/` before being referenced from the manifest.
-- Strict replica mode (1:1 HTML/image/PDF) must not run creative direction exploration on top of the source — preserve original layout, color, typography, tone.
-- Never treat a full-slide raster as an editable PPTX. If the host agent cannot achieve Level 3+, report the gap honestly.
-- Do not commit `node_modules/`, `output/`, `.pptx-creator/`, or `docs/` (per `.gitignore`).
-- `package.json` is private (`"private": true`); do not publish.
+- Run the relevant Skill-local tests after changing a Skill.
+- For root integration changes, run `npm run test:integration`.
+- Before publishing Skill packages, run `npm run package:skills` and
+  `npm run verify:skills`.
+- Run `npm run test:composition` when a change can affect cross-Skill protocol,
+  packaging, or runtime composition.
