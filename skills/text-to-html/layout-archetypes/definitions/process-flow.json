@@ -1,0 +1,13 @@
+{
+  "id": "process-flow",
+  "label": "Process flow",
+  "legacyType": "process",
+  "description": "An ordered process with two to five causal steps.",
+  "slots": {
+    "required": ["steps"],
+    "optional": [],
+    "rules": {
+      "steps": { "kind": "steps", "minItems": 2, "maxItems": 5 }
+    }
+  }
+}

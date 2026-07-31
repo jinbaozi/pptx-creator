@@ -1,0 +1,48 @@
+{
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "not-a-layout",
+      "slots": {},
+      "expectedPathSuffix": "layoutArchetype"
+    },
+    {
+      "id": "hero-statement",
+      "slots": {},
+      "expectedPathSuffix": "slots.statement"
+    },
+    {
+      "id": "cover",
+      "slots": { "subtitle": "Opening", "unexpected": "No implicit slots." },
+      "expectedPathSuffix": "slots.unexpected"
+    },
+    {
+      "id": "metric-focus",
+      "slots": {
+        "metrics": [
+          { "value": "1", "label": "First", "claim": { "text": "First." } },
+          { "value": "2", "label": "Second", "claim": { "text": "Second." } }
+        ]
+      },
+      "expectedPathSuffix": "slots.metrics"
+    },
+    {
+      "id": "dashboard",
+      "slots": { "metrics": [{ "value": "1", "label": "Only", "claim": { "text": "Only one." } }] },
+      "expectedPathSuffix": "slots.metrics"
+    },
+    {
+      "id": "evidence-image",
+      "slots": { "assetId": "", "caption": { "text": "An image must have a stable asset identifier." } },
+      "expectedPathSuffix": "slots.assetId"
+    },
+    {
+      "id": "comparison-matrix",
+      "slots": {
+        "left": { "label": "A", "points": [{ "text": "1" }, { "text": "2" }, { "text": "3" }, { "text": "4" }] },
+        "right": { "label": "B", "points": [{ "text": "1" }] }
+      },
+      "expectedPathSuffix": "slots.left.points"
+    }
+  ]
+}

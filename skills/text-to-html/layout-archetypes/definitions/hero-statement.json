@@ -1,0 +1,13 @@
+{
+  "id": "hero-statement",
+  "label": "Hero statement",
+  "legacyType": "statement",
+  "description": "One decisive conclusion with no competing primary support.",
+  "slots": {
+    "required": ["statement"],
+    "optional": [],
+    "rules": {
+      "statement": { "kind": "claim" }
+    }
+  }
+}

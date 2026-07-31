@@ -1,9 +1,20 @@
 # Visual design and layout selection
 
+> **Purpose:** Turn a Host-approved visual direction into safe, readable layout choices within the Plan 2.0 contract.
+>
+> **Trigger:** Use while defining `designIntent`, selecting layout archetypes, or resolving a visual QA finding that does not change meaning.
+>
+> **Prereqs:** A reviewed brief, slide-level semantic intent, available local assets, and the theme/token choices named in the plan.
+>
+> **Next:** [browser-quality-gate.md](browser-quality-gate.md)
+>
+> **Contract:** The Host locks visual intent in the plan; deterministic rendering applies only supported archetypes and bounded token overrides.
+
 ## Contents
 
 - Design tokens
 - Visual translation
+- Responsibility boundary
 - Layout invariants
 - Density and type floors
 - Connectors and media
@@ -27,6 +38,10 @@ Choose the visual container that best exposes the message:
 - definition or quotation → `quote`.
 
 Do not add decorative icons, gradients, shadows, or diagrams that do not strengthen the conclusion. Do not invent chart values. A visual recommendation may remain Host-authored when deterministic rendering cannot express it safely.
+
+## Responsibility boundary
+
+The Host selects the visual proposition, reference signals, theme, imagery strategy, and permitted techniques based on the actual brief and evidence. The renderer does not infer a brand, source, chart value, or design rationale; it only realizes the locked plan with supported layouts and bounded repairs.
 
 ## Layout invariants
 

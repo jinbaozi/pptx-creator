@@ -1,0 +1,82 @@
+{
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "cover",
+      "slots": { "subtitle": "A concise opening position" }
+    },
+    {
+      "id": "section-break",
+      "slots": { "statement": { "text": "The next chapter explains the decision." } }
+    },
+    {
+      "id": "hero-statement",
+      "slots": { "statement": { "text": "The evidence supports a focused pilot." } }
+    },
+    {
+      "id": "executive-summary",
+      "slots": { "points": [{ "text": "Clarify ownership." }, { "text": "Localize the source." }] }
+    },
+    {
+      "id": "editorial-split",
+      "slots": {
+        "left": { "label": "Today", "points": [{ "text": "Discovery is fragmented." }] },
+        "right": { "label": "Target", "points": [{ "text": "One accountable route." }] }
+      }
+    },
+    {
+      "id": "evidence-image",
+      "slots": { "assetId": "source-map", "caption": { "text": "The source map documents the current state." } }
+    },
+    {
+      "id": "metric-focus",
+      "slots": { "metrics": [{ "value": "42%", "label": "Repeated requests", "claim": { "text": "42% of requests repeat an existing question." } }] }
+    },
+    {
+      "id": "dashboard",
+      "slots": {
+        "metrics": [
+          { "value": "42%", "label": "Repeated requests", "claim": { "text": "Requests repeat." } },
+          { "value": "3", "label": "Source systems", "claim": { "text": "Three systems are involved." } }
+        ]
+      }
+    },
+    {
+      "id": "comparison-matrix",
+      "slots": {
+        "left": { "label": "Option A", "points": [{ "text": "Retains local control." }] },
+        "right": { "label": "Option B", "points": [{ "text": "Consolidates access." }] }
+      }
+    },
+    {
+      "id": "process-flow",
+      "slots": {
+        "steps": [
+          { "label": "Confirm", "claim": { "text": "Confirm the owner." } },
+          { "label": "Deliver", "claim": { "text": "Deliver the reviewed package." } }
+        ]
+      }
+    },
+    {
+      "id": "timeline-roadmap",
+      "slots": {
+        "milestones": [
+          { "when": "Week 1", "label": "Scope", "claim": { "text": "Confirm the scope." } },
+          { "when": "Week 2", "label": "Review", "claim": { "text": "Review the package." } }
+        ]
+      }
+    },
+    {
+      "id": "quote-story",
+      "slots": { "quote": { "text": "A direct user quote belongs to its source." }, "attribution": "Research interview" }
+    },
+    {
+      "id": "table-chart-diagram",
+      "slots": { "assetId": "decision-table", "caption": { "text": "The table compares the approved options." } }
+    },
+    {
+      "id": "closing-action",
+      "slots": { "action": { "text": "Approve the accountable pilot owner today." }, "summary": [{ "text": "Start with one source." }] }
+    }
+  ]
+}

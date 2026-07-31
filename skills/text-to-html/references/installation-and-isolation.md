@@ -1,5 +1,15 @@
 # Installation, isolated execution, and publishing
 
+> **Purpose:** Install, exercise, and package this Skill as an independent offline runtime.
+>
+> **Trigger:** Use before a fresh install, an isolation proof, or publishing this Skill directory.
+>
+> **Prereqs:** Node.js 20 or newer and permission to install the declared npm and Playwright dependencies.
+>
+> **Next:** [workflow.md](workflow.md)
+>
+> **Contract:** The installed `skills/text-to-html` directory must execute without a parent repository or sibling Skill.
+
 Requirements: Node.js 20 or newer and a Chromium binary installed by Playwright.
 
 From this Skill directory:
@@ -7,6 +17,7 @@ From this Skill directory:
 ```bash
 npm ci
 npx playwright install chromium
+node scripts/lint-references.mjs
 npm test
 npm run test:browser
 npm run test:visual

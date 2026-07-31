@@ -1,0 +1,13 @@
+{
+  "id": "metric-focus",
+  "label": "Metric focus",
+  "legacyType": "metrics",
+  "description": "A single metric that carries the slide's primary evidence.",
+  "slots": {
+    "required": ["metrics"],
+    "optional": [],
+    "rules": {
+      "metrics": { "kind": "metrics", "minItems": 1, "maxItems": 1 }
+    }
+  }
+}

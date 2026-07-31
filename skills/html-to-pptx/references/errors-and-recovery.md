@@ -9,6 +9,9 @@ Repair the earliest responsible boundary and rerun the full conversion.
 | `E_INPUT_TYPE` | Input is not HTML, a directory, or a package JSON | Pass a supported input |
 | `E_INPUT_AMBIGUOUS` | Directory contains several possible HTML files | Add `index.html` or pass the intended file directly |
 | `E_OUTPUT_EXISTS` | Destination is non-empty | Choose a new directory or explicitly use `--overwrite` |
+| `E_OUTPUT_STALE` | Overwrite found unrecognized residual output | Use a fresh output directory; do not erase unknown files to proceed |
+| `E_OUTPUT_SYMLINK` | Output root or a nested output entry is a symbolic link | Use a real directory containing only regular generated files |
+| `E_OUTPUT_MANIFEST` | A required published artifact is missing or not a regular file | Repair the failed finalization step and rerun the complete conversion |
 | `E_PROTOCOL_VERSION` | Protocol is not exactly 1.0.0 | Migrate the producer package; do not coerce fields silently |
 | `E_PROTOCOL_SCHEMA` and `E_PROTOCOL_*` | Strict schema, path, ID, source, asset, or degradation violation | Fix the producer package using the reported JSON path |
 | `E_PROTOCOL_ENTRYPOINT` | HTML package has no usable entrypoint | Add a safe relative HTML entrypoint |
@@ -25,9 +28,9 @@ Repair the earliest responsible boundary and rerun the full conversion.
 | `E_VISUAL_COMPARE` | Reference or candidate images cannot be compared | Restore screenshots, preview pages, Pillow, or matching slide count |
 | `E_QUALITY_GATE` | Layout, geometry, visual, or editability gate did not pass | Read the last attempt and fix the earliest failing source or mapping |
 
-`failure-report.json` contains the code, message, structured details, input kind,
-run ID, and `finalPublished: false`. Candidate files under `evidence/` are
-diagnostic only.
+`failure-report.json` and the replacement `qa-report.json` contain the failure
+code, message, structured details, input kind, run ID, and `finalPublished:
+false`. Candidate files under `evidence/` are diagnostic only.
 
 Do not increase the visual threshold merely to hide a deterministic defect.
 Change a threshold only when the acceptance policy itself changes, document the

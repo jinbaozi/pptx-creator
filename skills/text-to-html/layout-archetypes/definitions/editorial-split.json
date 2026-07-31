@@ -1,0 +1,14 @@
+{
+  "id": "editorial-split",
+  "label": "Editorial split",
+  "legacyType": "comparison",
+  "description": "A two-sided editorial contrast with independently labeled evidence.",
+  "slots": {
+    "required": ["left", "right"],
+    "optional": [],
+    "rules": {
+      "left": { "kind": "group", "minPoints": 1, "maxPoints": 3 },
+      "right": { "kind": "group", "minPoints": 1, "maxPoints": 3 }
+    }
+  }
+}

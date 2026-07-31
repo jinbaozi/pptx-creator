@@ -1,0 +1,19 @@
+{
+  "version": "1.0.0",
+  "definitions": [
+    { "id": "closing-action", "path": "definitions/closing-action.json" },
+    { "id": "comparison-matrix", "path": "definitions/comparison-matrix.json" },
+    { "id": "cover", "path": "definitions/cover.json" },
+    { "id": "dashboard", "path": "definitions/dashboard.json" },
+    { "id": "editorial-split", "path": "definitions/editorial-split.json" },
+    { "id": "evidence-image", "path": "definitions/evidence-image.json" },
+    { "id": "executive-summary", "path": "definitions/executive-summary.json" },
+    { "id": "hero-statement", "path": "definitions/hero-statement.json" },
+    { "id": "metric-focus", "path": "definitions/metric-focus.json" },
+    { "id": "process-flow", "path": "definitions/process-flow.json" },
+    { "id": "quote-story", "path": "definitions/quote-story.json" },
+    { "id": "section-break", "path": "definitions/section-break.json" },
+    { "id": "table-chart-diagram", "path": "definitions/table-chart-diagram.json" },
+    { "id": "timeline-roadmap", "path": "definitions/timeline-roadmap.json" }
+  ]
+}

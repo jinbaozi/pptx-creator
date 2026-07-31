@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "themes": [
+    { "id": "legacy-default", "manifest": "assets/themes/legacy-default/manifest.json" },
+    { "id": "restrained-business", "manifest": "assets/themes/restrained-business/manifest.json" },
+    { "id": "accessible-high-contrast", "manifest": "assets/themes/accessible-high-contrast/manifest.json" },
+    { "id": "editorial-magazine", "manifest": "assets/themes/editorial-magazine/manifest.json" },
+    { "id": "dark-technical", "manifest": "assets/themes/dark-technical/manifest.json" },
+    { "id": "warm-humanist", "manifest": "assets/themes/warm-humanist/manifest.json" },
+    { "id": "swiss-data", "manifest": "assets/themes/swiss-data/manifest.json" },
+    { "id": "reference-adapted", "manifest": "assets/themes/reference-adapted/manifest.json" }
+  ]
+}

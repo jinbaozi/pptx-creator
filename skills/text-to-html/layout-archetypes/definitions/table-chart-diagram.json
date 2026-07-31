@@ -1,0 +1,14 @@
+{
+  "id": "table-chart-diagram",
+  "label": "Table, chart, or diagram",
+  "legacyType": "image",
+  "description": "A localized structured visual with a traceable caption.",
+  "slots": {
+    "required": ["assetId", "caption"],
+    "optional": [],
+    "rules": {
+      "assetId": { "kind": "assetId" },
+      "caption": { "kind": "claim" }
+    }
+  }
+}

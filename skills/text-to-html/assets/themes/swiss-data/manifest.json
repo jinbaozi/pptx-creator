@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "id": "swiss-data",
+  "label": "Swiss data",
+  "description": "A grid-led system for analytic, data, and operating-model communication.",
+  "useWhen": ["The plan centers data, comparisons, systems, or clear analytical hierarchy."],
+  "quietConstraints": ["Use the grid to clarify, not to turn every slide into a card wall."],
+  "antiPatterns": ["Rainbow charts", "arbitrary rounded cards"],
+  "tokens": "tokens.json",
+  "preview": "preview.svg",
+  "notice": "NOTICE",
+  "fontFallbacks": ["Arial", "Helvetica", "sans-serif"]
+}

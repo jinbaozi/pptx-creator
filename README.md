@@ -20,6 +20,15 @@ npm run package:skills
 npm run verify:skills
 ```
 
+在修改协议或跨 Skill 组合后，再运行：
+
+```bash
+npm run test:integration
+npm run test:composition
+```
+
+前者验证版本化交接记录，后者验证三个 Skill 仍能独立安装和执行。
+
 这会生成并验证：
 
 ```text

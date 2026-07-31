@@ -1,0 +1,13 @@
+{
+  "id": "cover",
+  "label": "Cover",
+  "legacyType": "cover",
+  "description": "Opening position with an optional subtitle.",
+  "slots": {
+    "required": [],
+    "optional": ["subtitle"],
+    "rules": {
+      "subtitle": { "kind": "string", "maxLength": 220 }
+    }
+  }
+}

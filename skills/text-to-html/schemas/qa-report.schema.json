@@ -41,6 +41,14 @@
     },
     "print": { "type": "object" },
     "findings": { "type": "array" },
+    "contactSheets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": { "path": { "type": "string", "minLength": 1 } }
+      }
+    },
     "measurements": { "type": "array" },
     "attempts": { "type": "array" },
     "summary": {

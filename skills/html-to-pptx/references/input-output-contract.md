@@ -72,8 +72,10 @@ and localized asset URLs remain available.
 
 The destination must be empty unless `--overwrite` is passed. Overwrite removes
 only the known generated top-level artifacts, then recreates the evidence for
-the current run. A failure writes `failure-report.json` and does not publish a
-new `final.pptx`.
+the current run. Unknown residual files and every symbolic link in the output
+tree are rejected rather than deleted or followed. A failure replaces any
+top-level passed QA report with failed QA evidence, writes `failure-report.json`,
+and removes `final.pptx`, the delivery package, and the passed output manifest.
 
 A passed run produces:
 
@@ -81,7 +83,7 @@ A passed run produces:
 |---|---|
 | `final.pptx` | Accepted deliverable |
 | `presentation-package.json` | `pptx-delivery` protocol 1.0.0 |
-| `output-manifest.json` | Published file hashes and byte counts |
+| `output-manifest.json` | Recursive published-file hashes, byte counts, and a canonical root digest |
 | `deck.manifest.json` | Deterministic render truth |
 | `layout-measurements.json` | Browser geometry and computed style |
 | `qa-report.json` | Aggregate gate result and repair history |

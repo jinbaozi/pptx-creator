@@ -35,7 +35,8 @@ import { parseDesignFile } from "./parse-design-md.mjs";
 import { validatePresentationPackage } from "./validate-presentation-package.mjs";
 import {
   auditHtmlFile,
-  withSettledHtmlPage
+  withSettledHtmlPage,
+  withTemporarilyVisibleSlide
 } from "./lib/html-layout-audit.mjs";
 import {
   formatReport,
@@ -61,6 +62,7 @@ const PROTOCOL_FILENAMES = [
 ];
 const GENERATED_TOP_LEVEL = [
   "final.pptx",
+  "final.pptx.pending",
   "presentation-package.json",
   "output-manifest.json",
   "qa-report.json",
@@ -84,7 +86,9 @@ const GENERATED_TOP_LEVEL = [
   "design-tokens.json",
   "preview",
   "visual-diff",
-  "evidence"
+  "evidence",
+  "assets",
+  "design-system"
 ];
 const CHART_KINDS = new Set([
   "stackedBar",
@@ -292,7 +296,10 @@ async function prepareOutput(outputDir, overwrite) {
   let entries = [];
   try {
     const info = await lstat(output);
-    if (!info.isDirectory() || info.isSymbolicLink()) {
+    if (info.isSymbolicLink()) {
+      fail("E_OUTPUT_SYMLINK", `output directory cannot be a symbolic link: ${output}`);
+    }
+    if (!info.isDirectory()) {
       fail("E_OUTPUT_TYPE", `output must be a real directory: ${output}`);
     }
     entries = await readdir(output);
@@ -300,6 +307,7 @@ async function prepareOutput(outputDir, overwrite) {
     if (error.code !== "ENOENT") throw error;
     await mkdir(output, { recursive: true });
   }
+  await assertNoOutputSymlinks(output);
   if (entries.length > 0 && !overwrite) {
     fail("E_OUTPUT_EXISTS", `output directory is not empty; pass --overwrite to replace generated artifacts: ${output}`);
   }
@@ -307,9 +315,24 @@ async function prepareOutput(outputDir, overwrite) {
     for (const name of GENERATED_TOP_LEVEL) {
       await rm(join(output, name), { recursive: true, force: true });
     }
+    const residual = await readdir(output);
+    if (residual.length > 0) {
+      fail("E_OUTPUT_STALE", `output contains unrecognized residual entries after overwrite cleanup: ${residual.join(", ")}`);
+    }
   }
   await mkdir(output, { recursive: true });
   return output;
+}
+
+async function assertNoOutputSymlinks(outputDir, currentDir = outputDir) {
+  for (const entry of await readdir(currentDir, { withFileTypes: true })) {
+    const path = join(currentDir, entry.name);
+    const relativePath = relative(outputDir, path).replaceAll("\\", "/");
+    if (entry.isSymbolicLink()) {
+      fail("E_OUTPUT_SYMLINK", `output contains an unsupported symbolic link: ${relativePath}`);
+    }
+    if (entry.isDirectory()) await assertNoOutputSymlinks(outputDir, path);
+  }
 }
 
 function remoteAssetUrls(html) {
@@ -622,8 +645,9 @@ export function suppressDuplicateNestedTextElements(manifest, measurements) {
     for (const candidate of textMeasurements.filter((measurement) => isGeneratedId(measurement.id))) {
       const duplicateOf = stableParents.find((parent) =>
         parent.id !== candidate.id
-        && normalizedText(parent) === normalizedText(candidate)
-        && contains(parent, candidate));
+        && (candidate.semantics?.semanticParentId === parent.id
+          || (normalizedText(parent) === normalizedText(candidate)
+            && contains(parent, candidate))));
       if (!duplicateOf) continue;
       duplicateIds.add(candidate.id);
       duplicateIds.add(`${candidate.id}-box`);
@@ -653,7 +677,7 @@ function fallbackReason(effect) {
   ].filter(Boolean).join("; ") || "unsupported-css-effect";
 }
 
-async function applyLocalizedFallbacks(
+export async function applyLocalizedFallbacks(
   htmlPath,
   manifest,
   measurements,
@@ -707,25 +731,27 @@ async function applyLocalizedFallbacks(
     const slides = page.locator(".pptx-slide, [data-slide]");
     const count = await slides.count();
     for (const [index, plan] of plans.entries()) {
-      const slideBox = count > 0
-        ? await slides.nth(plan.slideIndex).boundingBox()
-        : { x: 0, y: 0 };
-      if (!slideBox) fail("E_LOCAL_FALLBACK", `slide ${plan.slideId} has no screenshot geometry`);
-      const path = join(assetsDir, `fallback-${String(index + 1).padStart(3, "0")}.png`);
-      await page.screenshot({
-        path,
-        omitBackground: true,
-        animations: "disabled",
-        timeout: browserTimeoutMs,
-        clip: {
-          x: Math.max(0, slideBox.x + plan.px.x),
-          y: Math.max(0, slideBox.y + plan.px.y),
-          width: Math.max(1, plan.px.w),
-          height: Math.max(1, plan.px.h)
-        }
+      await withTemporarilyVisibleSlide(page, plan.slideIndex, async () => {
+        const slideBox = count > 0
+          ? await slides.nth(plan.slideIndex).boundingBox()
+          : { x: 0, y: 0 };
+        if (!slideBox) fail("E_LOCAL_FALLBACK", `slide ${plan.slideId} has no screenshot geometry`);
+        const path = join(assetsDir, `fallback-${String(index + 1).padStart(3, "0")}.png`);
+        await page.screenshot({
+          path,
+          omitBackground: true,
+          animations: "disabled",
+          timeout: browserTimeoutMs,
+          clip: {
+            x: Math.max(0, slideBox.x + plan.px.x),
+            y: Math.max(0, slideBox.y + plan.px.y),
+            width: Math.max(1, plan.px.w),
+            height: Math.max(1, plan.px.h)
+          }
+        });
+        plan.path = relative(outputDir, path).replaceAll("\\", "/");
+        plan.sha256 = await sha256File(path);
       });
-      plan.path = relative(outputDir, path).replaceAll("\\", "/");
-      plan.sha256 = await sha256File(path);
     }
   });
 
@@ -1105,7 +1131,46 @@ function protocolComponentType(element) {
   return "unknown";
 }
 
-async function protocolAssets(manifest, outputDir) {
+function outputProtocolSources(input, sourceHash) {
+  const sources = (input.packageManifest?.sources ?? []).map((source) => ({ ...source }));
+  const sourceIds = new Set(sources.map((source) => source.id));
+  let htmlSourceId = "source-html";
+  let collision = 0;
+  while (sourceIds.has(htmlSourceId)) {
+    collision += 1;
+    htmlSourceId = `source-html-input-${collision}`;
+  }
+  sources.push({
+    id: htmlSourceId,
+    kind: "file",
+    label: basename(input.htmlPath),
+    locator: basename(input.htmlPath),
+    sha256: sourceHash,
+    factStatus: "provided"
+  });
+  sourceIds.add(htmlSourceId);
+  return { sources, sourceIds, htmlSourceId };
+}
+
+function protocolSourceRefs(values, sourceIds, fallback, path) {
+  const refs = [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => String(value).trim())
+    .filter(Boolean))];
+  for (const ref of refs) {
+    if (!sourceIds.has(ref)) {
+      fail("E_PROTOCOL_SOURCE_REF", `output ${path} references an unknown source: ${ref}`);
+    }
+  }
+  return refs.length > 0 ? refs : fallback;
+}
+
+function manifestSourceRefs(element) {
+  if (Array.isArray(element?.sourceRefs)) return element.sourceRefs;
+  if (Array.isArray(element?.evidence?.sourceIds)) return element.evidence.sourceIds;
+  return [];
+}
+
+async function protocolAssets(manifest, outputDir, sourceRef) {
   const byPath = new Map();
   for (const slide of manifest.slides ?? []) {
     if (slide.background?.type === "image" && slide.background.src) {
@@ -1133,7 +1198,7 @@ async function protocolAssets(manifest, outputDir) {
       mime,
       sha256: await sha256File(absolute),
       rights: "user-provided",
-      sourceRef: "source-html"
+      sourceRef
     });
   }
   return assets;
@@ -1164,6 +1229,9 @@ export async function buildOutputProtocol({
   designTokens
 }) {
   const sourceHash = await sha256File(input.htmlPath);
+  const { sources, sourceIds, htmlSourceId } = outputProtocolSources(input, sourceHash);
+  const inputSlides = new Map((input.packageManifest?.deck?.slides ?? [])
+    .map((slide) => [slide.id, slide]));
   const protocol = {
     protocol: "pptx-creator.presentation-package",
     version: PROTOCOL_VERSION,
@@ -1179,13 +1247,15 @@ export async function buildOutputProtocol({
         height: Number(manifest.deck.size.height),
         unit: "in"
       },
-      slides: (manifest.slides ?? []).map((slide, slideIndex) => ({
-        id: slide.id,
-        order: slideIndex + 1,
-        title: String(slide.title || `Slide ${slideIndex + 1}`),
-        ...(slide.notes ? { notes: slide.notes } : {}),
-        sourceRefs: ["source-html"],
-        components: (slide.elements ?? []).map((element, elementIndex) => ({
+      slides: (manifest.slides ?? []).map((slide, slideIndex) => {
+        const inputSlide = inputSlides.get(slide.id);
+        const inheritedRefs = protocolSourceRefs(
+          inputSlide?.sourceRefs,
+          sourceIds,
+          [htmlSourceId],
+          `slide ${slide.id}`
+        );
+        const components = (slide.elements ?? []).map((element, elementIndex) => ({
           id: element.id || `${slide.id}-component-${elementIndex + 1}`,
           type: protocolComponentType(element),
           box: {
@@ -1197,20 +1267,29 @@ export async function buildOutputProtocol({
           },
           z: elementIndex,
           editableIntent: element.type !== "cropped-asset",
-          sourceRefs: ["source-html"]
-        }))
-      }))
+          sourceRefs: protocolSourceRefs(
+            manifestSourceRefs(element),
+            sourceIds,
+            inheritedRefs,
+            `component ${element.id || elementIndex + 1}`
+          )
+        }));
+        const componentRefs = [...new Set(components.flatMap((component) => component.sourceRefs))];
+        return {
+          id: slide.id,
+          order: slideIndex + 1,
+          title: String(slide.title || `Slide ${slideIndex + 1}`),
+          ...(slide.notes ? { notes: slide.notes } : {}),
+          sourceRefs: inputSlide?.sourceRefs?.length
+            ? inheritedRefs
+            : componentRefs.length > 0 ? componentRefs : [htmlSourceId],
+          components
+        };
+      })
     },
     ...(designTokens ? { designTokens } : {}),
-    assets: await protocolAssets(manifest, outputDir),
-    sources: [{
-      id: "source-html",
-      kind: "file",
-      label: basename(input.htmlPath),
-      locator: basename(input.htmlPath),
-      sha256: sourceHash,
-      factStatus: "provided"
-    }],
+    assets: await protocolAssets(manifest, outputDir, htmlSourceId),
+    sources,
     validation: {
       status: "passed",
       reports: reportPaths
@@ -1239,27 +1318,91 @@ export async function buildOutputProtocol({
   return protocol;
 }
 
-async function outputManifest(outputDir, paths) {
-  const artifacts = [];
-  for (const path of paths) {
+async function collectOutputFiles(outputDir, currentDir = outputDir) {
+  const files = [];
+  for (const entry of await readdir(currentDir, { withFileTypes: true })) {
+    const absolute = join(currentDir, entry.name);
+    const relativePath = relative(outputDir, absolute).replaceAll("\\", "/");
+    if (entry.isSymbolicLink()) {
+      fail("E_OUTPUT_SYMLINK", `output contains an unsupported symbolic link: ${relativePath}`);
+    }
+    if (entry.isDirectory()) {
+      files.push(...await collectOutputFiles(outputDir, absolute));
+      continue;
+    }
+    if (!entry.isFile()) {
+      fail("E_OUTPUT_TYPE", `output contains an unsupported filesystem entry: ${relativePath}`);
+    }
+    files.push(relativePath);
+  }
+  return files;
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) =>
+      `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export async function buildOutputManifest(outputDir, paths = []) {
+  const discovered = await collectOutputFiles(outputDir);
+  const requiredPaths = [...new Set(paths)]
+    .map((path) => String(path).replaceAll("\\", "/"))
+    .filter((path) => path !== "output-manifest.json")
+    .sort();
+  for (const path of requiredPaths) {
     const absolute = resolve(outputDir, path);
+    if (!pathWithin(outputDir, absolute)) {
+      fail("E_OUTPUT_PATH", `output artifact escapes the output directory: ${path}`);
+    }
     try {
-      const info = await stat(absolute);
-      if (!info.isFile()) continue;
-      artifacts.push({
-        path,
-        bytes: info.size,
-        sha256: await sha256File(absolute)
-      });
-    } catch {
-      // Optional evidence remains absent and is reflected in QA.
+      const info = await lstat(absolute);
+      if (info.isSymbolicLink()) {
+        fail("E_OUTPUT_SYMLINK", `output artifact is a symbolic link: ${path}`);
+      }
+      if (!info.isFile()) {
+        fail("E_OUTPUT_MANIFEST", `required output artifact is not a regular file: ${path}`);
+      }
+    } catch (error) {
+      if (error instanceof HtmlToPptxError) throw error;
+      if (error.code === "ENOENT") {
+        fail("E_OUTPUT_MANIFEST", `required output artifact is missing: ${path}`);
+      }
+      throw error;
     }
   }
-  return {
+  const artifactPaths = [...new Set(discovered)]
+    .filter((path) => path !== "output-manifest.json")
+    .sort();
+  const artifacts = [];
+  for (const path of artifactPaths) {
+    const absolute = resolve(outputDir, path);
+    if (!pathWithin(outputDir, absolute)) {
+      fail("E_OUTPUT_PATH", `output artifact escapes the output directory: ${path}`);
+    }
+    const info = await lstat(absolute);
+    if (info.isSymbolicLink()) {
+      fail("E_OUTPUT_SYMLINK", `output artifact is a symbolic link: ${path}`);
+    }
+    if (!info.isFile()) continue;
+    artifacts.push({
+      path,
+      bytes: info.size,
+      sha256: await sha256File(absolute)
+    });
+  }
+  const manifest = {
     version: "1.0.0",
     producer: { skill: "html-to-pptx", version: SKILL_VERSION },
     status: "passed",
     artifacts
+  };
+  return {
+    ...manifest,
+    rootSha256: sha256Bytes(Buffer.from(canonicalJson(manifest)))
   };
 }
 
@@ -1297,6 +1440,19 @@ function editableMarkdown(report) {
   ].join("\n");
 }
 
+function failureQaMarkdown(report) {
+  return [
+    "# HTML to PPTX QA",
+    "",
+    "- Status: failed",
+    `- Code: ${report.code}`,
+    `- Final published: ${report.finalPublished}`,
+    "",
+    `Failure: ${report.message}`,
+    ""
+  ].join("\n");
+}
+
 async function writeFailure(outputDir, error, context = {}) {
   const report = {
     version: "1.0.0",
@@ -1304,12 +1460,57 @@ async function writeFailure(outputDir, error, context = {}) {
     code: error.code ?? "E_UNKNOWN",
     message: error.message,
     details: error.details ?? null,
-    finalPublished: false,
-    ...context
+    ...context,
+    finalPublished: false
   };
   await mkdir(outputDir, { recursive: true }).catch(() => {});
-  await writeFile(join(outputDir, "failure-report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8").catch(() => {});
+  const failedQa = {
+    version: "1.0.0",
+    status: "failed",
+    code: report.code,
+    message: report.message,
+    details: report.details,
+    finalPublished: false,
+    ...(report.runId ? { runId: report.runId } : {}),
+    ...(report.input ? { input: report.input } : {}),
+    ...(report.inputKind ? { inputKind: report.inputKind } : {})
+  };
+  await Promise.all([
+    "failure-report.json",
+    "qa-report.json",
+    "qa-report.md"
+  ].map((name) => rm(join(outputDir, name), { recursive: true, force: true }).catch(() => {})));
+  await Promise.all([
+    writeFile(join(outputDir, "failure-report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8"),
+    writeFile(join(outputDir, "qa-report.json"), `${JSON.stringify(failedQa, null, 2)}\n`, "utf8"),
+    writeFile(join(outputDir, "qa-report.md"), failureQaMarkdown(report), "utf8")
+  ].map((operation) => operation.catch(() => {})));
   return report;
+}
+
+export async function discardPublishedArtifacts(outputDir) {
+  const removed = [];
+  for (const name of ["final.pptx", "final.pptx.pending", "presentation-package.json", "output-manifest.json"]) {
+    const path = join(outputDir, name);
+    try {
+      await lstat(path);
+      await rm(path, { recursive: true, force: true });
+      removed.push(name);
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      // Failure reporting must not mask the original conversion error.
+    }
+  }
+  return removed;
+}
+
+export async function finalizeFailedOutput(outputDir, error, context = {}) {
+  const removedPublishedArtifacts = await discardPublishedArtifacts(outputDir);
+  return writeFailure(outputDir, error, {
+    ...context,
+    removedPublishedArtifacts,
+    finalPublished: false
+  });
 }
 
 export async function runConversion(inputPath, outputPath, options = {}) {
@@ -1578,7 +1779,8 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       "utf8"
     );
     const finalPath = join(outputDir, "final.pptx");
-    await rename(success.candidatePath, finalPath);
+    const pendingFinalPath = join(outputDir, "final.pptx.pending");
+    await copyFile(success.candidatePath, pendingFinalPath);
     await cp(success.renderDir, join(outputDir, "preview"), {
       recursive: true,
       force: true
@@ -1647,12 +1849,6 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       nestedTextSuppressions,
       remainingIssues
     };
-    await writeFile(
-      join(outputDir, "qa-report.json"),
-      `${JSON.stringify(qa, null, 2)}\n`,
-      "utf8"
-    );
-    await writeFile(join(outputDir, "qa-report.md"), qaMarkdown(qa), "utf8");
     const designTokens = await materializeProtocolDesignTokens(input, outputDir);
     const reportPaths = [
       "qa-report.json",
@@ -1661,7 +1857,8 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       "html-layout-report.json",
       "pptx-geometry-report.json",
       "visual-comparison.json",
-      "fallback-ledger.json"
+      "fallback-ledger.json",
+      "output-manifest.json"
     ];
     const outputProtocol = await buildOutputProtocol({
       input,
@@ -1671,6 +1868,12 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       reportPaths,
       designTokens
     });
+    await writeFile(
+      join(outputDir, "qa-report.json"),
+      `${JSON.stringify(qa, null, 2)}\n`,
+      "utf8"
+    );
+    await writeFile(join(outputDir, "qa-report.md"), qaMarkdown(qa), "utf8");
     await writeFile(
       join(outputDir, "presentation-package.json"),
       `${JSON.stringify(outputProtocol, null, 2)}\n`,
@@ -1695,7 +1898,8 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       "html-mobile-report.json",
       ...(designTokens ? [designTokens] : [])
     ];
-    const index = await outputManifest(outputDir, artifactPaths);
+    await rename(pendingFinalPath, finalPath);
+    const index = await buildOutputManifest(outputDir, artifactPaths);
     await writeFile(
       join(outputDir, "output-manifest.json"),
       `${JSON.stringify(index, null, 2)}\n`,
@@ -1714,7 +1918,7 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       protocolVersion: PROTOCOL_VERSION
     };
   } catch (error) {
-    await writeFailure(outputDir, error, {
+    await finalizeFailedOutput(outputDir, error, {
       input: input.htmlPath,
       inputKind: input.inputKind,
       runId

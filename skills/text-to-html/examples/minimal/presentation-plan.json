@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
   "deck": {
     "id": "knowledge-base-pilot",
     "title": "两周知识库试点",
@@ -10,16 +10,29 @@
       "unit": "px"
     }
   },
-  "positioning": {
-    "statement": "让试点项目组在现场启动会上理解两周试点的边界与成功标准，并确认负责人、资料范围和验收日期。",
-    "goal": "试点启动",
-    "audience": "试点项目组",
+  "brief": {
+    "audience": {
+      "description": "试点项目组",
+      "familiarity": "mixed",
+      "decisionAuthority": "decision-maker"
+    },
     "scenario": "现场启动会",
-    "coreConclusion": "小范围、可验收的两周试点可以立即开始",
-    "desiredAction": "确认负责人、资料范围和验收日期",
+    "device": "会议投影与桌面浏览器",
     "deliveryMode": "现场演讲",
     "durationMinutes": 5,
-    "targetSlideCount": 3
+    "desiredAction": "确认负责人、资料范围和验收日期",
+    "networkPolicy": "prefer",
+    "quietConstraints": [
+      "不扩展为未经批准的事实或范围"
+    ],
+    "brandConstraints": [
+      "使用当前中性业务视觉基线"
+    ],
+    "confidentiality": "internal",
+    "languageRegion": "zh-CN",
+    "accessibility": [
+      "保留文字来源标签和可编辑静态 DOM"
+    ]
   },
   "assumptions": [
     {
@@ -31,6 +44,7 @@
   ],
   "narrative": {
     "framework": "结论—依据—行动",
+    "thesis": "小范围、可验收的两周试点可以立即开始",
     "chapters": [
       {
         "id": "chapter-decision",
@@ -39,12 +53,107 @@
           "slide-cover",
           "slide-actions",
           "slide-closing"
+        ],
+        "beatIds": [
+          "beat-1"
         ]
+      }
+    ],
+    "beats": [
+      {
+        "id": "beat-1",
+        "role": "opening",
+        "text": "试点决策",
+        "slideIds": [
+          "slide-cover",
+          "slide-actions",
+          "slide-closing"
+        ]
+      }
+    ],
+    "titleChain": [
+      "两周知识库试点",
+      "限定范围与成功标准后，试点可以立即启动",
+      "今天确认三件事，明天开始试点"
+    ],
+    "attentionCurve": [
+      {
+        "slideId": "slide-cover",
+        "level": 3
+      },
+      {
+        "slideId": "slide-actions",
+        "level": 4
+      },
+      {
+        "slideId": "slide-closing",
+        "level": 5
       }
     ]
   },
-  "design": {
-    "tokenOverrides": {}
+  "designIntent": {
+    "proposition": "清晰、有边界、可执行的决策沟通",
+    "counterProposition": "不以装饰掩盖未确认事实或来源",
+    "mood": [
+      "克制",
+      "清晰"
+    ],
+    "referenceSignals": [
+      "当前中性业务基线"
+    ],
+    "themeId": "legacy-default",
+    "compositionDiversity": "medium",
+    "motionIntensity": "subtle",
+    "informationDensity": "balanced",
+    "imageryStrategy": "仅使用已批准且本地化的素材",
+    "allowedTechniques": [
+      "结构化排版",
+      "明确来源标签"
+    ],
+    "forbiddenTechniques": [
+      "未署名素材",
+      "整页栅格替代"
+    ],
+    "tokenOverrides": {},
+    "lock": {
+      "themeManifestSha256": "3f239445d42a3bf338c2520ec6b93223bef2659c794c6093a618a08866f8cc4e",
+      "tokenSha256": "7a07107b66803ef9649ab38a31d72b96032c7034c75adab604a922b83b8dd055",
+      "archetypeRegistrySha256": "75555b8f9a44fe4736d60f64250bb2e02385aabdce84865af0ede171ede8a69d",
+      "assetLockSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "rendererVersion": "text-to-html@2.0.0-registry",
+      "canonicalPlanSha256": "c0df0209dc9aa85ced8ce22ab6c20ed46ed6385428b536672b5847793123c465"
+    }
+  },
+  "pagination": {
+    "pageBudgets": [
+      {
+        "slideId": "slide-cover",
+        "maxWords": 400,
+        "maxPrimarySupports": 0,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-actions",
+        "maxWords": 400,
+        "maxPrimarySupports": 3,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-closing",
+        "maxWords": 400,
+        "maxPrimarySupports": 0,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      }
+    ]
   },
   "sources": [
     {
@@ -60,32 +169,44 @@
     {
       "id": "slide-cover",
       "order": 1,
-      "type": "cover",
+      "intent": "cover",
+      "layoutArchetype": "cover",
       "title": "两周知识库试点",
-      "coreMessage": "小范围、可验收的试点可以立即开始",
-      "visual": "简洁标题页，用试点时长和受众标签建立范围",
-      "transition": "先明确为什么要做，再收敛到具体动作",
-      "notes": "强调这不是全量迁移，而是一个有边界的验证。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "小范围、可验收的试点可以立即开始",
+      "focalPoint": "简洁标题页，用试点时长和受众标签建立范围",
+      "hierarchy": "title-first",
+      "visualRole": "简洁标题页，用试点时长和受众标签建立范围",
+      "speakerNotes": "强调这不是全量迁移，而是一个有边界的验证。",
+      "transitionPurpose": "先明确为什么要做，再收敛到具体动作",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "subtitle": "用一个项目组验证“批准版本能在两分钟内找到”"
       }
     },
     {
       "id": "slide-actions",
       "order": 2,
-      "type": "bullets",
+      "intent": "bullets",
+      "layoutArchetype": "bullets",
       "title": "限定范围与成功标准后，试点可以立即启动",
-      "coreMessage": "资料范围、参与范围和成功标准都已具备最小闭环",
-      "visual": "三个编号支撑点",
-      "transition": "边界明确后，最后只剩责任与日期需要确认",
-      "notes": "逐项说明三项边界，不扩展到历史归档。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "资料范围、参与范围和成功标准都已具备最小闭环",
+      "focalPoint": "三个编号支撑点",
+      "hierarchy": "title-first",
+      "visualRole": "三个编号支撑点",
+      "speakerNotes": "逐项说明三项边界，不扩展到历史归档。",
+      "transitionPurpose": "边界明确后，最后只剩责任与日期需要确认",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "points": [
           {
             "text": "当前资料分散在三个共享目录中。",
@@ -114,16 +235,22 @@
     {
       "id": "slide-closing",
       "order": 3,
-      "type": "closing",
+      "intent": "closing",
+      "layoutArchetype": "closing",
       "title": "今天确认三件事，明天开始试点",
-      "coreMessage": "负责人、资料范围和验收日期是启动所需的最后三个决定",
-      "visual": "强行动号召",
-      "transition": "结束并进入确认",
-      "notes": "现场逐一确认负责人、资料范围和验收日期。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "负责人、资料范围和验收日期是启动所需的最后三个决定",
+      "focalPoint": "强行动号召",
+      "hierarchy": "action-first",
+      "visualRole": "强行动号召",
+      "speakerNotes": "现场逐一确认负责人、资料范围和验收日期。",
+      "transitionPurpose": "结束并进入确认",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "action": {
           "text": "今天确认试点负责人、资料范围和验收日期。",
           "factStatus": "provided",
@@ -134,15 +261,33 @@
       }
     }
   ],
-  "hostReview": {
-    "status": "approved",
-    "reviewedAt": "2026-07-30T00:00:00.000Z",
-    "checks": {
-      "positioning": true,
-      "sourceIntegrity": true,
-      "narrative": true,
-      "oneMessagePerSlide": true,
-      "visualIntent": true
+  "review": {
+    "content": {
+      "status": "approved",
+      "reviewedAt": "2026-07-30T00:00:00.000Z",
+      "artifactHashes": {
+        "designIntent": "b748c89fbf782de028c67279dced6abccce42bad35227926328f14d14b8886a8",
+        "assetLock": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "renderer": "c187037cdecdcc4a05c51dab5ab4bb8ba69d41281c160a86a6e5b42efcd4d936"
+      }
+    },
+    "design": {
+      "status": "approved",
+      "reviewedAt": "2026-07-30T00:00:00.000Z",
+      "artifactHashes": {
+        "designIntent": "b748c89fbf782de028c67279dced6abccce42bad35227926328f14d14b8886a8",
+        "assetLock": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "renderer": "c187037cdecdcc4a05c51dab5ab4bb8ba69d41281c160a86a6e5b42efcd4d936"
+      }
+    },
+    "rights": {
+      "status": "approved",
+      "reviewedAt": "2026-07-30T00:00:00.000Z",
+      "artifactHashes": {
+        "designIntent": "b748c89fbf782de028c67279dced6abccce42bad35227926328f14d14b8886a8",
+        "assetLock": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "renderer": "c187037cdecdcc4a05c51dab5ab4bb8ba69d41281c160a86a6e5b42efcd4d936"
+      }
     }
   }
 }

@@ -8,8 +8,9 @@
   },
   "scripts": {
     "convert": "node scripts/convert.mjs",
+    "lint:catalog-references": "node scripts/lint-catalog-references.mjs",
     "test": "vitest run",
-    "test:unit": "vitest run tests/unit.test.mjs tests/contract.test.mjs tests/error.test.mjs",
+    "test:unit": "vitest run tests/unit.test.mjs tests/contract.test.mjs tests/error.test.mjs tests/catalog-reference.test.mjs",
     "test:browser": "PLAYWRIGHT_RUN=1 vitest run tests/browser.test.mjs",
     "test:visual": "PLAYWRIGHT_RUN=1 vitest run tests/visual.test.mjs",
     "test:isolation": "PLAYWRIGHT_RUN=1 ISOLATION_RUN=1 vitest run tests/isolation.test.mjs",

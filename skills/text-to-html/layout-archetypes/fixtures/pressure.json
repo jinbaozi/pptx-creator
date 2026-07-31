@@ -1,0 +1,50 @@
+{
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "executive-summary",
+      "slots": { "points": [{ "text": "First support." }, { "text": "Second support." }, { "text": "Third support." }] }
+    },
+    {
+      "id": "dashboard",
+      "slots": {
+        "metrics": [
+          { "value": "1", "label": "First", "claim": { "text": "First metric." } },
+          { "value": "2", "label": "Second", "claim": { "text": "Second metric." } },
+          { "value": "3", "label": "Third", "claim": { "text": "Third metric." } }
+        ]
+      }
+    },
+    {
+      "id": "process-flow",
+      "slots": {
+        "steps": [
+          { "label": "One", "claim": { "text": "One." } },
+          { "label": "Two", "claim": { "text": "Two." } },
+          { "label": "Three", "claim": { "text": "Three." } },
+          { "label": "Four", "claim": { "text": "Four." } },
+          { "label": "Five", "claim": { "text": "Five." } }
+        ]
+      }
+    },
+    {
+      "id": "timeline-roadmap",
+      "slots": {
+        "milestones": [
+          { "when": "T1", "label": "One", "claim": { "text": "One." } },
+          { "when": "T2", "label": "Two", "claim": { "text": "Two." } },
+          { "when": "T3", "label": "Three", "claim": { "text": "Three." } },
+          { "when": "T4", "label": "Four", "claim": { "text": "Four." } },
+          { "when": "T5", "label": "Five", "claim": { "text": "Five." } }
+        ]
+      }
+    },
+    {
+      "id": "closing-action",
+      "slots": {
+        "action": { "text": "Confirm the next step." },
+        "summary": [{ "text": "One." }, { "text": "Two." }, { "text": "Three." }]
+      }
+    }
+  ]
+}

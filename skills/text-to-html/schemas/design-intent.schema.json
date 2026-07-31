@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jinbaozi/pptx-creator/skills/text-to-html/schemas/design-intent/2.0.0",
+  "title": "Text to HTML design-intent lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "proposition",
+    "counterProposition",
+    "mood",
+    "referenceSignals",
+    "themeId",
+    "compositionDiversity",
+    "motionIntensity",
+    "informationDensity",
+    "imageryStrategy",
+    "allowedTechniques",
+    "forbiddenTechniques",
+    "tokenOverrides",
+    "lock"
+  ],
+  "properties": {
+    "proposition": { "$ref": "#/$defs/shortText" },
+    "counterProposition": { "$ref": "#/$defs/shortText" },
+    "mood": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/shortText" }
+    },
+    "referenceSignals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/shortText" }
+    },
+    "themeId": { "$ref": "#/$defs/id" },
+    "compositionDiversity": { "enum": ["low", "medium", "high"] },
+    "motionIntensity": { "enum": ["none", "subtle", "expressive"] },
+    "informationDensity": { "enum": ["sparse", "balanced", "dense"] },
+    "imageryStrategy": { "$ref": "#/$defs/shortText" },
+    "allowedTechniques": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/shortText" }
+    },
+    "forbiddenTechniques": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/shortText" }
+    },
+    "tokenOverrides": { "$ref": "#/$defs/tokenOverrides" },
+    "lock": { "$ref": "#/$defs/designLock" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "shortText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "fontStack": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^(?=.*[A-Za-z0-9\\u00C0-\\uFFFF])[A-Za-z0-9\\u00C0-\\uFFFF .,'\"-]+$"
+    },
+    "hexColor": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "fontOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "display": { "$ref": "#/$defs/fontStack" },
+        "body": { "$ref": "#/$defs/fontStack" }
+      }
+    },
+    "colorOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "background": { "$ref": "#/$defs/hexColor" },
+        "surface": { "$ref": "#/$defs/hexColor" },
+        "text": { "$ref": "#/$defs/hexColor" },
+        "muted": { "$ref": "#/$defs/hexColor" },
+        "primary": { "$ref": "#/$defs/hexColor" },
+        "primarySoft": { "$ref": "#/$defs/hexColor" },
+        "accent": { "$ref": "#/$defs/hexColor" },
+        "positive": { "$ref": "#/$defs/hexColor" },
+        "border": { "$ref": "#/$defs/hexColor" }
+      }
+    },
+    "typeOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "display": { "type": "number", "minimum": 38, "maximum": 96 },
+        "title": { "type": "number", "minimum": 38, "maximum": 96 },
+        "section": { "type": "number", "minimum": 24, "maximum": 72 },
+        "body": { "type": "number", "minimum": 22, "maximum": 48 },
+        "label": { "type": "number", "minimum": 15, "maximum": 32 },
+        "source": { "type": "number", "minimum": 12, "maximum": 24 }
+      }
+    },
+    "spaceOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canvasX": { "type": "number", "minimum": 48, "maximum": 144 },
+        "canvasY": { "type": "number", "minimum": 40, "maximum": 96 },
+        "gap": { "type": "number", "minimum": 8, "maximum": 64 },
+        "small": { "type": "number", "minimum": 4, "maximum": 32 }
+      }
+    },
+    "radiusOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "card": { "type": "number", "minimum": 0, "maximum": 40 },
+        "pill": { "type": "number", "minimum": 12, "maximum": 999 }
+      }
+    },
+    "boxShadow": {
+      "type": "string",
+      "maxLength": 120,
+      "pattern": "^(?:none|(?:0|-?[0-9]+(?:\\.[0-9]+)?px)(?:\\s+(?:0|-?[0-9]+(?:\\.[0-9]+)?px)){2,3}\\s+(?:#[0-9A-Fa-f]{6}|rgba?\\([0-9.]+,\\s*[0-9.]+,\\s*[0-9.]+(?:,\\s*(?:0|0?\\.[0-9]+|1))?\\)))$"
+    },
+    "shadowOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "card": { "$ref": "#/$defs/boxShadow" }
+      }
+    },
+    "tokenOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fonts": { "$ref": "#/$defs/fontOverrides" },
+        "colors": { "$ref": "#/$defs/colorOverrides" },
+        "type": { "$ref": "#/$defs/typeOverrides" },
+        "space": { "$ref": "#/$defs/spaceOverrides" },
+        "radius": { "$ref": "#/$defs/radiusOverrides" },
+        "shadow": { "$ref": "#/$defs/shadowOverrides" }
+      }
+    },
+    "designLock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonicalPlanSha256",
+        "themeManifestSha256",
+        "tokenSha256",
+        "archetypeRegistrySha256",
+        "assetLockSha256",
+        "rendererVersion"
+      ],
+      "properties": {
+        "canonicalPlanSha256": { "$ref": "#/$defs/sha256" },
+        "themeManifestSha256": { "$ref": "#/$defs/sha256" },
+        "tokenSha256": { "$ref": "#/$defs/sha256" },
+        "archetypeRegistrySha256": { "$ref": "#/$defs/sha256" },
+        "assetLockSha256": { "$ref": "#/$defs/sha256" },
+        "rendererVersion": { "$ref": "#/$defs/shortText" }
+      }
+    }
+  }
+}

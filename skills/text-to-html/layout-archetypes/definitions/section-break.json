@@ -1,0 +1,13 @@
+{
+  "id": "section-break",
+  "label": "Section break",
+  "legacyType": "statement",
+  "description": "A decisive transition statement between chapters.",
+  "slots": {
+    "required": ["statement"],
+    "optional": [],
+    "rules": {
+      "statement": { "kind": "claim" }
+    }
+  }
+}

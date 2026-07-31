@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "id": "legacy-default",
+  "label": "Neutral baseline",
+  "description": "The stable adapter for existing business-neutral decks.",
+  "useWhen": ["A reviewed plan requests the existing neutral baseline."],
+  "quietConstraints": ["Do not infer a brand from a generic topic."],
+  "antiPatterns": ["Decorative gradients", "full-slide raster output"],
+  "tokens": "tokens.json",
+  "preview": "preview.svg",
+  "notice": "NOTICE",
+  "fontFallbacks": ["Arial", "Helvetica", "sans-serif"]
+}

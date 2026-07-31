@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "id": "warm-humanist",
+  "label": "Warm humanist",
+  "description": "A warm, humane system for learning, culture, and change narratives.",
+  "useWhen": ["The design intent emphasizes trust, people, learning, or reflection."],
+  "quietConstraints": ["Keep warmth purposeful and avoid sentimental decoration."],
+  "antiPatterns": ["Stock-photo aesthetics without provenance", "saccharine color overload"],
+  "tokens": "tokens.json",
+  "preview": "preview.svg",
+  "notice": "NOTICE",
+  "fontFallbacks": ["Georgia", "Times New Roman", "serif", "Arial", "sans-serif"]
+}

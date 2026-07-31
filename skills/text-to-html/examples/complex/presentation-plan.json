@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
   "deck": {
     "id": "knowledge-migration-pilot",
     "title": "企业知识库迁移试点方案",
@@ -10,16 +10,29 @@
       "unit": "px"
     }
   },
-  "positioning": {
-    "statement": "让项目决策组在十五分钟方案评审中理解“先治理再迁移”的试点结论，并确认负责人、范围、权限原则和验收会。",
-    "goal": "方案提案",
-    "audience": "项目决策组",
+  "brief": {
+    "audience": {
+      "description": "项目决策组",
+      "familiarity": "mixed",
+      "decisionAuthority": "decision-maker"
+    },
     "scenario": "十五分钟方案评审",
-    "coreConclusion": "先建立唯一批准版本与责任链，再迁移高频在用内容",
-    "desiredAction": "确认试点负责人、范围、权限原则和验收会",
+    "device": "会议投影与桌面浏览器",
     "deliveryMode": "现场演讲",
     "durationMinutes": 15,
-    "targetSlideCount": 9
+    "desiredAction": "确认试点负责人、范围、权限原则和验收会",
+    "networkPolicy": "prefer",
+    "quietConstraints": [
+      "不扩展为未经批准的事实或范围"
+    ],
+    "brandConstraints": [
+      "使用当前中性业务视觉基线"
+    ],
+    "confidentiality": "internal",
+    "languageRegion": "zh-CN",
+    "accessibility": [
+      "保留文字来源标签和可编辑静态 DOM"
+    ]
   },
   "assumptions": [
     {
@@ -37,6 +50,7 @@
   ],
   "narrative": {
     "framework": "痛点—判断—范围—路径—决策",
+    "thesis": "先建立唯一批准版本与责任链，再迁移高频在用内容",
     "chapters": [
       {
         "id": "chapter-why",
@@ -46,6 +60,9 @@
           "slide-thesis",
           "slide-metrics",
           "slide-quote"
+        ],
+        "beatIds": [
+          "beat-1"
         ]
       },
       {
@@ -56,6 +73,9 @@
           "slide-process",
           "slide-timeline",
           "slide-map"
+        ],
+        "beatIds": [
+          "beat-2"
         ]
       },
       {
@@ -63,18 +83,217 @@
         "title": "需要的决策",
         "slideIds": [
           "slide-closing"
+        ],
+        "beatIds": [
+          "beat-3"
         ]
+      }
+    ],
+    "beats": [
+      {
+        "id": "beat-1",
+        "role": "opening",
+        "text": "为什么先治理",
+        "slideIds": [
+          "slide-cover",
+          "slide-thesis",
+          "slide-metrics",
+          "slide-quote"
+        ]
+      },
+      {
+        "id": "beat-2",
+        "role": "evidence",
+        "text": "如何完成试点",
+        "slideIds": [
+          "slide-scope",
+          "slide-process",
+          "slide-timeline",
+          "slide-map"
+        ]
+      },
+      {
+        "id": "beat-3",
+        "role": "action",
+        "text": "需要的决策",
+        "slideIds": [
+          "slide-closing"
+        ]
+      }
+    ],
+    "titleChain": [
+      "企业知识库迁移试点方案",
+      "真正的迁移风险不是文件数量，而是错误版本继续流通",
+      "1,240 份活跃文档中，版本歧义已成为可见成本",
+      "团队耗时集中在判断“哪一份还能用”",
+      "只迁移高频、在用、责任明确的内容，试点才能在十天内闭环",
+      "四步路径把范围、版本、责任与验收串成闭环",
+      "十天试点在第 5 天完成治理，第 10 天完成验收",
+      "治理层把三个共享目录收敛为一个可信入口",
+      "今天锁定四项决定，第 1 天即可冻结范围"
+    ],
+    "attentionCurve": [
+      {
+        "slideId": "slide-cover",
+        "level": 3
+      },
+      {
+        "slideId": "slide-thesis",
+        "level": 4
+      },
+      {
+        "slideId": "slide-metrics",
+        "level": 4
+      },
+      {
+        "slideId": "slide-quote",
+        "level": 4
+      },
+      {
+        "slideId": "slide-scope",
+        "level": 4
+      },
+      {
+        "slideId": "slide-process",
+        "level": 4
+      },
+      {
+        "slideId": "slide-timeline",
+        "level": 4
+      },
+      {
+        "slideId": "slide-map",
+        "level": 4
+      },
+      {
+        "slideId": "slide-closing",
+        "level": 5
       }
     ]
   },
-  "design": {
+  "designIntent": {
+    "proposition": "清晰、有边界、可执行的决策沟通",
+    "counterProposition": "不以装饰掩盖未确认事实或来源",
+    "mood": [
+      "克制",
+      "清晰"
+    ],
+    "referenceSignals": [
+      "当前中性业务基线"
+    ],
+    "themeId": "legacy-default",
+    "compositionDiversity": "medium",
+    "motionIntensity": "subtle",
+    "informationDensity": "balanced",
+    "imageryStrategy": "仅使用已批准且本地化的素材",
+    "allowedTechniques": [
+      "结构化排版",
+      "明确来源标签"
+    ],
+    "forbiddenTechniques": [
+      "未署名素材",
+      "整页栅格替代"
+    ],
     "tokenOverrides": {
       "colors": {
         "primary": "#2457E6",
         "accent": "#E97831",
         "background": "#F7F9FF"
       }
+    },
+    "lock": {
+      "themeManifestSha256": "3f239445d42a3bf338c2520ec6b93223bef2659c794c6093a618a08866f8cc4e",
+      "tokenSha256": "21f3f1eeaeb23b51e33395991155fda1a7cf3010ba71fba17bce3f628f71eaaf",
+      "archetypeRegistrySha256": "75555b8f9a44fe4736d60f64250bb2e02385aabdce84865af0ede171ede8a69d",
+      "assetLockSha256": "5212e3edcfbff9b8dc0e1c6ee924c3045415aac202bf71b7544b08695218060f",
+      "rendererVersion": "text-to-html@2.0.0-registry",
+      "canonicalPlanSha256": "3bcebdae8235fbb670c510430883d7b0d7ec36cf711918018ebc68b5b1359c15"
     }
+  },
+  "pagination": {
+    "pageBudgets": [
+      {
+        "slideId": "slide-cover",
+        "maxWords": 400,
+        "maxPrimarySupports": 0,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-thesis",
+        "maxWords": 400,
+        "maxPrimarySupports": 0,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-metrics",
+        "maxWords": 400,
+        "maxPrimarySupports": 3,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-quote",
+        "maxWords": 400,
+        "maxPrimarySupports": 0,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-scope",
+        "maxWords": 400,
+        "maxPrimarySupports": 3,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-process",
+        "maxWords": 400,
+        "maxPrimarySupports": 4,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-timeline",
+        "maxWords": 400,
+        "maxPrimarySupports": 4,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-map",
+        "maxWords": 400,
+        "maxPrimarySupports": 0,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      },
+      {
+        "slideId": "slide-closing",
+        "maxWords": 400,
+        "maxPrimarySupports": 2,
+        "timeSeconds": 100,
+        "mustKeepTogether": [],
+        "canSplit": false,
+        "notesOnly": []
+      }
+    ]
   },
   "sources": [
     {
@@ -95,9 +314,15 @@
   "assets": [
     {
       "id": "asset-system-map",
-      "path": "assets/system-map.svg",
+      "selectedLocator": "assets/system-map.svg",
+      "intendedPurpose": "三个共享目录经过范围筛选、版本治理和责任绑定进入统一知识库的示意图",
       "mime": "image/svg+xml",
-      "rights": "project-owned",
+      "rights": {
+        "status": "project-owned",
+        "spdx": "LicenseRef-Project-Owned",
+        "licenseUrl": "https://example.invalid/licenses/project-owned",
+        "attribution": "Project-owned example asset"
+      },
       "alt": "三个共享目录经过范围筛选、版本治理和责任绑定进入统一知识库的示意图",
       "objectFit": "contain",
       "sourceRef": "source-brief"
@@ -107,32 +332,44 @@
     {
       "id": "slide-cover",
       "order": 1,
-      "type": "cover",
+      "intent": "cover",
+      "layoutArchetype": "cover",
       "title": "企业知识库迁移试点方案",
-      "coreMessage": "先治理再迁移，避免把版本混乱原样搬进新系统",
-      "visual": "标题页，突出试点而非全量迁移",
-      "transition": "从试点目标进入核心判断",
-      "notes": "说明所有数字和引语均来自虚构测试输入，未独立核验。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "先治理再迁移，避免把版本混乱原样搬进新系统",
+      "focalPoint": "标题页，突出试点而非全量迁移",
+      "hierarchy": "title-first",
+      "visualRole": "标题页，突出试点而非全量迁移",
+      "speakerNotes": "说明所有数字和引语均来自虚构测试输入，未独立核验。",
+      "transitionPurpose": "从试点目标进入核心判断",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "subtitle": "先建立唯一批准版本与责任链，再迁移高频在用内容"
       }
     },
     {
       "id": "slide-thesis",
       "order": 2,
-      "type": "statement",
+      "intent": "statement",
+      "layoutArchetype": "statement",
       "title": "真正的迁移风险不是文件数量，而是错误版本继续流通",
-      "coreMessage": "试点首先要解决版本与责任，而不是追求搬运数量",
-      "visual": "单一结论大字",
-      "transition": "用盘点数据说明版本治理的必要性",
-      "notes": "不要把该判断扩展为真实企业结论；它只属于示例输入。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "试点首先要解决版本与责任，而不是追求搬运数量",
+      "focalPoint": "单一结论大字",
+      "hierarchy": "title-first",
+      "visualRole": "单一结论大字",
+      "speakerNotes": "不要把该判断扩展为真实企业结论；它只属于示例输入。",
+      "transitionPurpose": "用盘点数据说明版本治理的必要性",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "statement": {
           "text": "试点的首要目标不是搬运文件数量，而是建立唯一批准版本与责任链。",
           "factStatus": "provided",
@@ -145,16 +382,22 @@
     {
       "id": "slide-metrics",
       "order": 3,
-      "type": "metrics",
+      "intent": "metrics",
+      "layoutArchetype": "metrics",
       "title": "1,240 份活跃文档中，版本歧义已成为可见成本",
-      "coreMessage": "资料规模、目录分散和重复最终版共同构成试点理由",
-      "visual": "三张指标卡，数字均标记为用户提供且未核验",
-      "transition": "数据之后，用团队原话补充体验",
-      "notes": "明确口头说明：这些是虚构输入里的示例数字。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "资料规模、目录分散和重复最终版共同构成试点理由",
+      "focalPoint": "三张指标卡，数字均标记为用户提供且未核验",
+      "hierarchy": "evidence-first",
+      "visualRole": "三张指标卡，数字均标记为用户提供且未核验",
+      "speakerNotes": "明确口头说明：这些是虚构输入里的示例数字。",
+      "transitionPurpose": "数据之后，用团队原话补充体验",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "metrics": [
           {
             "value": "1,240",
@@ -198,16 +441,22 @@
     {
       "id": "slide-quote",
       "order": 4,
-      "type": "quote",
+      "intent": "quote",
+      "layoutArchetype": "quote",
       "title": "团队耗时集中在判断“哪一份还能用”",
-      "coreMessage": "检索问题背后是版本可信度问题",
-      "visual": "克制的引语版式",
-      "transition": "从问题转向试点范围选择",
-      "notes": "引语来自虚构测试输入，不应署名给真实个人。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "检索问题背后是版本可信度问题",
+      "focalPoint": "克制的引语版式",
+      "hierarchy": "title-first",
+      "visualRole": "克制的引语版式",
+      "speakerNotes": "引语来自虚构测试输入，不应署名给真实个人。",
+      "transitionPurpose": "从问题转向试点范围选择",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "quote": {
           "text": "我们最耗时的不是写文档，而是判断哪一份还能用。",
           "factStatus": "provided",
@@ -221,17 +470,23 @@
     {
       "id": "slide-scope",
       "order": 5,
-      "type": "comparison",
+      "intent": "comparison",
+      "layoutArchetype": "comparison",
       "title": "只迁移高频、在用、责任明确的内容，试点才能在十天内闭环",
-      "coreMessage": "明确纳入与暂缓规则可以控制治理复杂度",
-      "visual": "纳入与暂缓双栏对比",
-      "transition": "范围收敛后进入四步实施路径",
-      "notes": "提醒听众：管理员兼任内容负责人仍是待确认假设。",
-      "sourceRefs": [
-        "source-brief",
-        "source-owner-assumption"
-      ],
-      "content": {
+      "takeaway": "明确纳入与暂缓规则可以控制治理复杂度",
+      "focalPoint": "纳入与暂缓双栏对比",
+      "hierarchy": "title-first",
+      "visualRole": "纳入与暂缓双栏对比",
+      "speakerNotes": "提醒听众：管理员兼任内容负责人仍是待确认假设。",
+      "transitionPurpose": "范围收敛后进入四步实施路径",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief",
+          "source-owner-assumption"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "left": {
           "label": "纳入试点",
           "points": [
@@ -289,16 +544,22 @@
     {
       "id": "slide-process",
       "order": 6,
-      "type": "process",
+      "intent": "process",
+      "layoutArchetype": "process",
       "title": "四步路径把范围、版本、责任与验收串成闭环",
-      "coreMessage": "每一步都有明确输入输出，避免边迁移边改口径",
-      "visual": "四个过程模块和锚定连接线",
-      "transition": "把四步路径映射到十天里程碑",
-      "notes": "逐步说明前一步产物如何成为下一步输入。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "每一步都有明确输入输出，避免边迁移边改口径",
+      "focalPoint": "四个过程模块和锚定连接线",
+      "hierarchy": "title-first",
+      "visualRole": "四个过程模块和锚定连接线",
+      "speakerNotes": "逐步说明前一步产物如何成为下一步输入。",
+      "transitionPurpose": "把四步路径映射到十天里程碑",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "steps": [
           {
             "label": "冻结范围",
@@ -346,16 +607,22 @@
     {
       "id": "slide-timeline",
       "order": 7,
-      "type": "timeline",
+      "intent": "timeline",
+      "layoutArchetype": "timeline",
       "title": "十天试点在第 5 天完成治理，第 10 天完成验收",
-      "coreMessage": "治理工作前置，后半程集中迁移与验证",
-      "visual": "四节点时间轴",
-      "transition": "用结构图总结试点如何改变信息流",
-      "notes": "里程碑均来自虚构测试输入。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "治理工作前置，后半程集中迁移与验证",
+      "focalPoint": "四节点时间轴",
+      "hierarchy": "title-first",
+      "visualRole": "四节点时间轴",
+      "speakerNotes": "里程碑均来自虚构测试输入。",
+      "transitionPurpose": "用结构图总结试点如何改变信息流",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "milestones": [
           {
             "when": "第 1–2 天",
@@ -407,16 +674,24 @@
     {
       "id": "slide-map",
       "order": 8,
-      "type": "image",
+      "intent": "image",
+      "layoutArchetype": "image",
       "title": "治理层把三个共享目录收敛为一个可信入口",
-      "coreMessage": "统一知识库的价值来自范围筛选、版本清理和责任绑定",
-      "visual": "本地 SVG 结构图加观察要点",
-      "transition": "结构闭环后，回到需要当场确认的决定",
-      "notes": "图是本 Skill 示例资产，不代表真实系统架构。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "统一知识库的价值来自范围筛选、版本清理和责任绑定",
+      "focalPoint": "本地 SVG 结构图加观察要点",
+      "hierarchy": "visual-first",
+      "visualRole": "本地 SVG 结构图加观察要点",
+      "speakerNotes": "图是本 Skill 示例资产，不代表真实系统架构。",
+      "transitionPurpose": "结构闭环后，回到需要当场确认的决定",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": [
+          "asset-system-map"
+        ]
+      },
+      "slots": {
         "assetId": "asset-system-map",
         "caption": {
           "text": "三个共享目录先经过范围筛选、版本清理和责任绑定，再进入统一知识库。",
@@ -430,16 +705,22 @@
     {
       "id": "slide-closing",
       "order": 9,
-      "type": "closing",
+      "intent": "closing",
+      "layoutArchetype": "closing",
       "title": "今天锁定四项决定，第 1 天即可冻结范围",
-      "coreMessage": "试点启动只等待负责人、范围、权限原则和验收会",
-      "visual": "高对比行动号召",
-      "transition": "结束并进入确认",
-      "notes": "逐项确认，未确认项记录为阻塞，不替听众做决定。",
-      "sourceRefs": [
-        "source-brief"
-      ],
-      "content": {
+      "takeaway": "试点启动只等待负责人、范围、权限原则和验收会",
+      "focalPoint": "高对比行动号召",
+      "hierarchy": "action-first",
+      "visualRole": "高对比行动号召",
+      "speakerNotes": "逐项确认，未确认项记录为阻塞，不替听众做决定。",
+      "transitionPurpose": "结束并进入确认",
+      "evidence": {
+        "sourceRefs": [
+          "source-brief"
+        ],
+        "assetRefs": []
+      },
+      "slots": {
         "action": {
           "text": "今天确认试点负责人、文档范围、权限原则和第 10 天验收会。",
           "factStatus": "provided",
@@ -466,15 +747,33 @@
       }
     }
   ],
-  "hostReview": {
-    "status": "approved",
-    "reviewedAt": "2026-07-30T00:00:00.000Z",
-    "checks": {
-      "positioning": true,
-      "sourceIntegrity": true,
-      "narrative": true,
-      "oneMessagePerSlide": true,
-      "visualIntent": true
+  "review": {
+    "content": {
+      "status": "approved",
+      "reviewedAt": "2026-07-30T00:00:00.000Z",
+      "artifactHashes": {
+        "designIntent": "41373a26450e3714bee3b911f0ba8a9bd09aeae5cce109d863af52da18a7ce3e",
+        "assetLock": "b80ca48cf1bcc18b08f18a884a334049d39d7a3d0d941bcde9ca63ae33263552",
+        "renderer": "c187037cdecdcc4a05c51dab5ab4bb8ba69d41281c160a86a6e5b42efcd4d936"
+      }
+    },
+    "design": {
+      "status": "approved",
+      "reviewedAt": "2026-07-30T00:00:00.000Z",
+      "artifactHashes": {
+        "designIntent": "41373a26450e3714bee3b911f0ba8a9bd09aeae5cce109d863af52da18a7ce3e",
+        "assetLock": "b80ca48cf1bcc18b08f18a884a334049d39d7a3d0d941bcde9ca63ae33263552",
+        "renderer": "c187037cdecdcc4a05c51dab5ab4bb8ba69d41281c160a86a6e5b42efcd4d936"
+      }
+    },
+    "rights": {
+      "status": "approved",
+      "reviewedAt": "2026-07-30T00:00:00.000Z",
+      "artifactHashes": {
+        "designIntent": "41373a26450e3714bee3b911f0ba8a9bd09aeae5cce109d863af52da18a7ce3e",
+        "assetLock": "b80ca48cf1bcc18b08f18a884a334049d39d7a3d0d941bcde9ca63ae33263552",
+        "renderer": "c187037cdecdcc4a05c51dab5ab4bb8ba69d41281c160a86a6e5b42efcd4d936"
+      }
     }
   }
 }

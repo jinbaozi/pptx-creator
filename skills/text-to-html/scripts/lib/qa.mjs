@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
@@ -17,6 +17,17 @@ function finding(code, message, fields = {}) {
 
 function screenshotPath(outputDir, viewportName, order) {
   return join(outputDir, "preview", viewportName, `slide-${String(order).padStart(3, "0")}.png`);
+}
+
+function contactSheetHtml(viewports) {
+  const cards = viewports.flatMap((viewport) => viewport.slides.map((slide) => {
+    const relativeScreenshot = slide.screenshot.replace(/^preview\//, "");
+    return `<figure><img src="${relativeScreenshot}" alt="${viewport.name} ${slide.slideId}"><figcaption>${viewport.name} · ${slide.slideId}</figcaption></figure>`;
+  })).join("\n");
+  return `<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Deck contact sheet</title>
+<style>body{margin:24px;background:#f6f7fb;color:#172033;font:14px Arial,sans-serif}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}figure{margin:0;background:#fff;padding:10px;border:1px solid #d9deea;border-radius:12px}img{display:block;width:100%;height:auto}figcaption{margin-top:8px;color:#5b6475}</style>
+<main>${cards}</main></html>\n`;
 }
 
 async function settlePage(page, timeoutMs) {
@@ -362,34 +373,36 @@ export async function runBrowserQa(outputDir, options = {}) {
   const resolvedOutput = resolve(outputDir);
   const timeoutMs = Math.max(MIN_BROWSER_TIMEOUT_MS, Number(options.timeoutMs) || MIN_BROWSER_TIMEOUT_MS);
   const viewports = options.viewports ?? DEFAULT_VIEWPORTS;
+  const launchBrowser = options.launchBrowser ?? ((launchOptions) => chromium.launch(launchOptions));
   const previewDir = join(resolvedOutput, "preview");
   await rm(previewDir, { recursive: true, force: true });
   await mkdir(previewDir, { recursive: true });
   let browser;
+  let operationError;
   try {
-    browser = await chromium.launch({ headless: true, timeout: timeoutMs });
-  } catch (error) {
-    throw new SkillError("E_BROWSER_UNAVAILABLE", `Cannot launch Chromium: ${error.message}`, { cause: error });
-  }
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  page.setDefaultTimeout(timeoutMs);
-  page.setDefaultNavigationTimeout(timeoutMs);
-  const remoteRequests = [];
-  page.on("request", (request) => {
-    if (/^https?:/i.test(request.url())) remoteRequests.push(request.url());
-  });
-  try {
-    await page.goto(pathToFileURL(join(resolvedOutput, "index.html")).href, { waitUntil: "load", timeout: timeoutMs });
-    await settlePage(page, timeoutMs);
-  } catch (error) {
-    await browser.close();
-    throw new SkillError("E_BROWSER_TIMEOUT", `HTML did not settle within ${timeoutMs}ms: ${error.message}`, { cause: error });
-  }
-  const slideCount = await page.evaluate(() => window.__deck?.slideCount ?? 0);
-  const findings = [];
-  const viewportResults = [];
-  let canonicalSlides = [];
-  for (const viewport of viewports) {
+    try {
+      browser = await launchBrowser({ headless: true, timeout: timeoutMs });
+    } catch (error) {
+      throw new SkillError("E_BROWSER_UNAVAILABLE", `Cannot launch Chromium: ${error.message}`, { cause: error });
+    }
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    page.setDefaultTimeout(timeoutMs);
+    page.setDefaultNavigationTimeout(timeoutMs);
+    const remoteRequests = [];
+    page.on("request", (request) => {
+      if (/^https?:/i.test(request.url())) remoteRequests.push(request.url());
+    });
+    try {
+      await page.goto(pathToFileURL(join(resolvedOutput, "index.html")).href, { waitUntil: "load", timeout: timeoutMs });
+      await settlePage(page, timeoutMs);
+    } catch (error) {
+      throw new SkillError("E_BROWSER_TIMEOUT", `HTML did not settle within ${timeoutMs}ms: ${error.message}`, { cause: error });
+    }
+    const slideCount = await page.evaluate(() => window.__deck?.slideCount ?? 0);
+    const findings = [];
+    const viewportResults = [];
+    let canonicalSlides = [];
+    for (const viewport of viewports) {
     await page.emulateMedia({ media: "screen" });
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await settlePage(page, timeoutMs);
@@ -422,31 +435,45 @@ export async function runBrowserQa(outputDir, options = {}) {
     }
     viewportResults.push({ ...viewport, horizontal, slides: slideResults });
   }
-  const navigationFinding = await checkNavigation(page, slideCount);
-  if (navigationFinding) findings.push(navigationFinding);
-  const print = await checkPrint(page, slideCount);
-  if (!print.passed) findings.push(finding("E_PRINT", "Print stylesheet did not preserve every canonical slide", { details: print }));
-  if (remoteRequests.length > 0) findings.push(finding("E_REMOTE_REQUEST", "Deck requested non-local runtime resources", { details: [...new Set(remoteRequests)] }));
-  await browser.close();
+    const navigationFinding = await checkNavigation(page, slideCount);
+    if (navigationFinding) findings.push(navigationFinding);
+    const print = await checkPrint(page, slideCount);
+    if (!print.passed) findings.push(finding("E_PRINT", "Print stylesheet did not preserve every canonical slide", { details: print }));
+    if (remoteRequests.length > 0) findings.push(finding("E_REMOTE_REQUEST", "Deck requested non-local runtime resources", { details: [...new Set(remoteRequests)] }));
+    const contactSheetPath = join(previewDir, "contact-sheet.html");
+    await writeFile(contactSheetPath, contactSheetHtml(viewportResults), "utf8");
 
-  return {
-    version: "1.0.0",
-    status: findings.length === 0 ? "passed" : "failed",
-    timeoutMs,
-    slideCount,
-    viewports: viewportResults,
-    navigation: { passed: !navigationFinding },
-    print,
-    findings,
-    measurements: canonicalSlides.map((slide) => ({
-      slideId: slide.slideId,
-      order: slide.order,
-      components: slide.components
-    })),
-    summary: {
-      passed: findings.length === 0,
-      errorCount: findings.length,
-      screenshotCount: viewportResults.reduce((total, viewport) => total + viewport.slides.length, 0)
+    return {
+      version: "1.0.0",
+      status: findings.length === 0 ? "passed" : "failed",
+      timeoutMs,
+      slideCount,
+      viewports: viewportResults,
+      navigation: { passed: !navigationFinding },
+      print,
+      findings,
+      contactSheets: [{ path: relative(resolvedOutput, contactSheetPath).replaceAll("\\", "/") }],
+      measurements: canonicalSlides.map((slide) => ({
+        slideId: slide.slideId,
+        order: slide.order,
+        components: slide.components
+      })),
+      summary: {
+        passed: findings.length === 0,
+        errorCount: findings.length,
+        screenshotCount: viewportResults.reduce((total, viewport) => total + viewport.slides.length, 0)
+      }
+    };
+  } catch (error) {
+    operationError = error;
+    throw error;
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        if (!operationError) throw closeError;
+      }
     }
-  };
+  }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@pptx-creator/text-to-html",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "Self-contained standard Skill for producing verified offline HTML slide packages.",

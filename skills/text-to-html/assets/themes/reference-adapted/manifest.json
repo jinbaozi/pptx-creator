@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "id": "reference-adapted",
+  "label": "Reference adapted",
+  "description": "An adapter-only entry that accepts explicit design tokens without importing facts, assets, or branded source material.",
+  "useWhen": ["The Host supplies an explicit, approved token adapter derived from a reference."],
+  "quietConstraints": ["factsImported:false is mandatory", "Use no reference asset unless independently approved and localized."],
+  "antiPatterns": ["Claiming a reference is an official brand asset", "copying a reference layout or text wholesale"],
+  "tokens": "tokens.json",
+  "preview": "preview.svg",
+  "notice": "NOTICE",
+  "adapterOnly": true,
+  "fontFallbacks": ["Arial", "Helvetica", "sans-serif"]
+}

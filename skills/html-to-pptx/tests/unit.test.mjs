@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { parse } from "node-html-parser";
 import { mergeSlideAuditResults } from "../scripts/lib/html-layout-audit.mjs";
 import {
+  convertHtmlToManifest,
   measureContentCoverage,
   planReplicaSlideBackground
 } from "../scripts/lib/html-to-manifest-core.mjs";
@@ -9,6 +13,7 @@ import {
   HtmlToPptxError,
   applyAutomaticRepairs,
   assertNoFullSlideRaster,
+  buildOutputProtocol,
   injectNativeCharts,
   parseArgs,
   suppressDuplicateNestedTextElements,
@@ -58,6 +63,25 @@ describe("public argument and safety contracts", () => {
       role: "background"
     });
     expect(plan.overlays[0].style.gradient.stops.at(-1).transparency).toBe(100);
+
+    const defaultDirection = planReplicaSlideBackground(
+      "linear-gradient(rgb(232, 238, 255), rgb(255, 255, 255) 46%)",
+      "#FFFFFF",
+      { width: 13.333, height: 7.5 }
+    );
+    expect(defaultDirection).toMatchObject({
+      background: {
+        type: "gradient",
+        gradient: {
+          type: "linear",
+          stops: [
+            { color: "#E8EEFF", position: 0 },
+            { color: "#FFFFFF", position: 46 }
+          ]
+        }
+      },
+      unsupported: []
+    });
   });
 
   it("measures semantic content without double-counting containers or notes", () => {
@@ -94,6 +118,114 @@ describe("public argument and safety contracts", () => {
       ratio: 1,
       missing: []
     });
+  });
+
+  it("preserves visible metric status labels with claim-level source refs", async () => {
+    const html = `<section class="pptx-slide" data-slide-id="slide-001" data-title="Metrics">
+      <div data-pptx-id="metric-001" data-pptx-kind="text" data-fact-status="inferred" data-source-ids="source-brief">
+        <span class="status-label">假设</span><span>72%</span>
+      </div>
+    </section>`;
+    const measurements = {
+      viewport: { width: 1280, height: 720 },
+      slides: [{ slideId: "slide-001", slideIndex: 0 }],
+      elements: [{
+        id: "metric-001",
+        slideId: "slide-001",
+        slideIndex: 0,
+        kind: "text",
+        tagName: "div",
+        x: 1,
+        y: 1,
+        w: 2,
+        h: 0.75,
+        px: { x: 96, y: 96, w: 192, h: 72 },
+        text: "假设 72%",
+        visibleText: null,
+        semantics: { sourceIds: ["source-brief"] },
+        style: {
+          color: "#1A1A1A",
+          fontFamily: "Arial",
+          fontSize: 24,
+          fontWeight: 700,
+          fontStyle: "normal",
+          lineHeight: 28,
+          textAlign: "left",
+          verticalAlign: "middle",
+          whiteSpace: "normal"
+        },
+        replica: {}
+      }]
+    };
+    const manifest = convertHtmlToManifest(html, {
+      measurements,
+      forceMeasured: true,
+      designMode: "replica"
+    });
+    const metric = manifest.slides[0].elements.find((element) => element.id === "metric-001");
+    expect(metric).toMatchObject({
+      type: "text",
+      text: expect.stringContaining("假设"),
+      sourceRefs: ["source-brief"]
+    });
+    expect(measureContentCoverage(parse(html).querySelectorAll(".pptx-slide"), manifest.slides)).toMatchObject({
+      ratio: 1,
+      missing: []
+    });
+
+    const root = await mkdtemp(join(tmpdir(), "html-to-pptx-claim-sources-"));
+    const inputPath = join(root, "index.html");
+    await writeFile(inputPath, html);
+    try {
+      const output = await buildOutputProtocol({
+        input: {
+          htmlPath: inputPath,
+          packageManifest: {
+            deck: { id: "deck-001", slides: [{ id: "slide-001", sourceRefs: ["source-brief"] }] },
+            sources: [{
+              id: "source-brief",
+              kind: "user-input",
+              label: "Brief",
+              factStatus: "inferred"
+            }]
+          }
+        },
+        manifest,
+        outputDir: root,
+        fallbacks: [],
+        reportPaths: ["qa-report.json"],
+        designTokens: undefined
+      });
+      const component = output.deck.slides[0].components.find((entry) => entry.id === "metric-001");
+      expect(component?.sourceRefs).toEqual(["source-brief"]);
+      expect(output.sources).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: "source-brief", factStatus: "inferred" })
+      ]));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("suppresses generated text fragments owned by a stable semantic text object", () => {
+    const value = {
+      slides: [{
+        id: "slide-001",
+        elements: [
+          { id: "claim-001", type: "text", text: "假设 试点可由现有项目管理员兼任内容负责人。" },
+          { id: "html-001-001", type: "text", text: "假设" },
+          { id: "html-001-002", type: "text", text: "试点可由现有项目管理员兼任内容负责人。" }
+        ]
+      }]
+    };
+    const suppressions = suppressDuplicateNestedTextElements(value, {
+      elements: [
+        { id: "claim-001", slideIndex: 0, kind: "text", text: "假设 试点可由现有项目管理员兼任内容负责人。", x: 7, y: 4, w: 5, h: 1 },
+        { id: "html-001-001", slideIndex: 0, kind: "text", text: "假设", x: 7, y: 4, w: 0.5, h: 0.4, semantics: { semanticParentId: "claim-001" } },
+        { id: "html-001-002", slideIndex: 0, kind: "text", text: "试点可由现有项目管理员兼任内容负责人。", x: 8, y: 5, w: 4, h: 0.7, semantics: { semanticParentId: "claim-001" } }
+      ]
+    });
+    expect(value.slides[0].elements.map((element) => element.id)).toEqual(["claim-001"]);
+    expect(suppressions.map((entry) => entry.coveredBy)).toEqual(["claim-001", "claim-001"]);
   });
 
   it("merges ordered per-slide browser audits without dropping checks", () => {

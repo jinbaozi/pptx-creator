@@ -30,7 +30,7 @@ describe("V2 explicit Skill composition", () => {
       version: "1.0.0",
       target: {
         consumer: "text-to-html",
-        field: "$.design.tokenOverrides"
+        field: "$.designIntent.tokenOverrides"
       },
       factsImported: false
     });

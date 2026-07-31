@@ -1,0 +1,14 @@
+{
+  "id": "comparison-matrix",
+  "label": "Comparison matrix",
+  "legacyType": "comparison",
+  "description": "A balanced comparison of two labeled alternatives.",
+  "slots": {
+    "required": ["left", "right"],
+    "optional": [],
+    "rules": {
+      "left": { "kind": "group", "minPoints": 1, "maxPoints": 3 },
+      "right": { "kind": "group", "minPoints": 1, "maxPoints": 3 }
+    }
+  }
+}

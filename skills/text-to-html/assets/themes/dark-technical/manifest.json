@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "id": "dark-technical",
+  "label": "Dark technical",
+  "description": "A dark, high-legibility system for architecture, engineering, and technical operating models.",
+  "useWhen": ["The approved design intent explicitly calls for a dark technical system."],
+  "quietConstraints": ["Use dark mode as an explicit design choice, not a topic default."],
+  "antiPatterns": ["Low-contrast blue-on-navy text", "neon decoration without data meaning"],
+  "tokens": "tokens.json",
+  "preview": "preview.svg",
+  "notice": "NOTICE",
+  "fontFallbacks": ["Arial", "Helvetica", "sans-serif"]
+}

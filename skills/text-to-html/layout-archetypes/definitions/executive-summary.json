@@ -1,0 +1,13 @@
+{
+  "id": "executive-summary",
+  "label": "Executive summary",
+  "legacyType": "bullets",
+  "description": "A conclusion supported by no more than three concise points.",
+  "slots": {
+    "required": ["points"],
+    "optional": [],
+    "rules": {
+      "points": { "kind": "claims", "minItems": 1, "maxItems": 3 }
+    }
+  }
+}

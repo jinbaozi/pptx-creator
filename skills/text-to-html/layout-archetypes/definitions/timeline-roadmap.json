@@ -1,0 +1,13 @@
+{
+  "id": "timeline-roadmap",
+  "label": "Timeline roadmap",
+  "legacyType": "timeline",
+  "description": "An ordered roadmap with two to five dated or staged milestones.",
+  "slots": {
+    "required": ["milestones"],
+    "optional": [],
+    "rules": {
+      "milestones": { "kind": "milestones", "minItems": 2, "maxItems": 5 }
+    }
+  }
+}

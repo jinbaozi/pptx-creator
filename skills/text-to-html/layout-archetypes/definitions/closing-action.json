@@ -1,0 +1,14 @@
+{
+  "id": "closing-action",
+  "label": "Closing action",
+  "legacyType": "closing",
+  "description": "A specific next action with an optional concise recap.",
+  "slots": {
+    "required": ["action"],
+    "optional": ["summary"],
+    "rules": {
+      "action": { "kind": "claim" },
+      "summary": { "kind": "claims", "minItems": 0, "maxItems": 3 }
+    }
+  }
+}

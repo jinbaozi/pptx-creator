@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-import { readFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { SkillError, runCli } from "./lib/errors.mjs";
+import { beginQaFinalization, finalizeQaRun, recordQaFailure, writeQaAttempt } from "./lib/finalization.mjs";
 import { validatePlanFile } from "./lib/plan.mjs";
-import { validatePresentationPackage } from "./validate-presentation-package.mjs";
 import { runBrowserQa } from "./lib/qa.mjs";
 import { buildDeck } from "./lib/render.mjs";
-import { parseOptions, readJson, sha256File, writeJson } from "./lib/utils.mjs";
+import { assertSafeOutputDir, parseOptions } from "./lib/utils.mjs";
 
 const REPAIRABLE_CODES = new Set([
   "E_TEXT_OVERFLOW",
@@ -17,61 +16,29 @@ const REPAIRABLE_CODES = new Set([
   "E_CONTRAST"
 ]);
 
-async function finalizePackage(outputDir, qaReport) {
-  const packagePath = join(outputDir, "presentation-package.json");
-  const packageRecord = await readJson(packagePath);
-  const measurements = new Map(qaReport.measurements.map((entry) => [entry.slideId, entry.components]));
-  for (const slide of packageRecord.deck.slides) slide.components = measurements.get(slide.id) ?? [];
-  packageRecord.validation = {
-    status: qaReport.status,
-    reports: [
-      "qa-report.json",
-      ...qaReport.attempts.map((attempt) => attempt.report)
-    ]
+function generationPlan(plan, mode) {
+  return {
+    deckId: plan.deck.id,
+    planVersion: plan.version,
+    mode,
+    review: plan.review,
+    designIntentLock: plan.designIntent.lock,
+    assumptions: plan.assumptions
   };
-  await writeJson(packagePath, packageRecord);
-  validatePresentationPackage(packageRecord);
-  return packageRecord;
 }
 
-async function writeOutputManifest(outputDir, packageRecord, qaReport) {
-  const files = [
-    "index.html",
-    "presentation-plan.json",
-    "presentation-plan.source.json",
-    "deck-manifest.json",
-    "presentation-package.json",
-    "design-tokens.json",
-    "speaker-notes.md",
-    "sources.json",
-    "qa-report.json",
-    "assets/deck.css",
-    "assets/deck.js",
-    "assets/design-tokens.css",
-    ...packageRecord.assets.map((asset) => asset.path),
-    ...qaReport.viewports.flatMap((viewport) => viewport.slides.map((slide) => slide.screenshot))
-  ];
-  const uniqueFiles = [...new Set(files)].sort();
-  const artifacts = [];
-  for (const path of uniqueFiles) {
-    artifacts.push({ path, sha256: await sha256File(join(outputDir, path)) });
+export async function runPipeline(planPath, outputDir, options = {}, runtime = {}) {
+  const mode = options.mode ?? "quality";
+  if (!["quality", "balanced", "draft"].includes(mode)) {
+    const error = new Error("--mode must be quality, balanced, or draft");
+    error.code = "E_USAGE";
+    throw error;
   }
-  const manifest = {
-    version: "1.0.0",
-    producer: { skill: "text-to-html", version: "1.0.0" },
-    status: qaReport.status,
-    entrypoint: "index.html",
-    artifacts
-  };
-  await writeJson(join(outputDir, "output-manifest.json"), manifest);
-  return manifest;
-}
-
-export async function runPipeline(planPath, outputDir, options = {}) {
-  const maxAttempts = Number(options.maxAttempts ?? 3);
+  const maxAllowedAttempts = mode === "quality" ? 3 : (mode === "balanced" ? 2 : 1);
+  const maxAttempts = Number(options.maxAttempts ?? maxAllowedAttempts);
   const timeoutMs = Number(options.timeoutMs ?? 90_000);
-  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 3) {
-    const error = new Error("--max-attempts must be an integer from 1 to 3");
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > maxAllowedAttempts) {
+    const error = new Error(`--max-attempts must be an integer from 1 to ${maxAllowedAttempts} in ${mode} mode`);
     error.code = "E_USAGE";
     throw error;
   }
@@ -80,71 +47,97 @@ export async function runPipeline(planPath, outputDir, options = {}) {
     error.code = "E_USAGE";
     throw error;
   }
-  const validated = await validatePlanFile(planPath);
-  const resolvedOutput = resolve(outputDir);
+  const validated = await validatePlanFile(planPath, { allowUnreviewed: mode === "draft" });
+  const resolvedOutput = assertSafeOutputDir(outputDir);
+  const runQa = runtime.runBrowserQa ?? runBrowserQa;
+  const build = runtime.buildDeck ?? buildDeck;
+  const finalizationOptions = runtime.finalization ?? {};
+  if (mode === "draft") {
+    const built = await build(validated.plan, validated.planPath, resolvedOutput, {
+      repairLevel: 0,
+      allowUnreviewed: true
+    });
+    return {
+      status: "pending",
+      mode,
+      outputDir: resolvedOutput,
+      entrypoint: built.indexPath,
+      slideCount: validated.plan.slides.length,
+      nextActions: ["Host must complete content, design, and rights approvals before quality QA can publish a passed package."]
+    };
+  }
   const attempts = [];
   let finalQa;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const repairLevel = attempt - 1;
-    await buildDeck(validated.plan, validated.planPath, resolvedOutput, { repairLevel });
-    const qa = await runBrowserQa(resolvedOutput, { timeoutMs });
-    const attemptPath = join(resolvedOutput, "qa", `attempt-${String(attempt).padStart(2, "0")}.json`);
-    await writeJson(attemptPath, { ...qa, attempt, repairLevel });
-    attempts.push({
-      attempt,
-      repairLevel,
-      status: qa.status,
-      findingCodes: [...new Set(qa.findings.map((item) => item.code))],
-      report: relative(resolvedOutput, attemptPath).replaceAll("\\", "/")
-    });
-    finalQa = qa;
-    if (qa.status === "passed") break;
-    const repairable = qa.findings.length > 0 && qa.findings.every((item) => REPAIRABLE_CODES.has(item.code));
-    if (!repairable) break;
+  let finalization;
+  try {
+    await beginQaFinalization(resolvedOutput, finalizationOptions);
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const repairLevel = attempt - 1;
+      await build(validated.plan, validated.planPath, resolvedOutput, { repairLevel });
+      const qa = await runQa(resolvedOutput, { timeoutMs });
+      const report = await writeQaAttempt(resolvedOutput, attempt, { ...qa, attempt, repairLevel }, finalizationOptions);
+      attempts.push({
+        attempt,
+        repairLevel,
+        status: qa.status,
+        findingCodes: [...new Set(qa.findings.map((item) => item.code))],
+        report
+      });
+      finalQa = qa;
+      if (qa.status === "passed") break;
+      const repairable = qa.findings.length > 0 && qa.findings.every((item) => REPAIRABLE_CODES.has(item.code));
+      if (!repairable) break;
+    }
+    finalization = await finalizeQaRun(resolvedOutput, {
+      qaReport: { ...finalQa, attempts },
+      attempts,
+      generation: {
+        version: "2.0.0",
+        mode,
+        plan: generationPlan(validated.plan, mode)
+      }
+    }, finalizationOptions);
+  } catch (error) {
+    await recordQaFailure(resolvedOutput, error, {
+      stage: "pipeline",
+      timeoutMs,
+      attempts,
+      generation: {
+        version: "2.0.0",
+        mode,
+        plan: generationPlan(validated.plan, mode)
+      }
+    }, finalizationOptions);
+    throw error;
   }
-  const qaReport = { ...finalQa, attempts };
-  await writeJson(join(resolvedOutput, "qa-report.json"), qaReport);
-  const packageRecord = await finalizePackage(resolvedOutput, qaReport);
-  await writeOutputManifest(resolvedOutput, packageRecord, qaReport);
-  await writeJson(join(resolvedOutput, "generation-report.json"), {
-    version: "1.0.0",
-    status: qaReport.status,
-    plan: {
-      deckId: validated.plan.deck.id,
-      hostReview: validated.plan.hostReview,
-      assumptions: validated.plan.assumptions
-    },
-    attempts,
-    qaReport: "qa-report.json",
-    presentationPackage: "presentation-package.json",
-    outputManifest: "output-manifest.json"
-  });
-  if (qaReport.status !== "passed") {
-    throw new SkillError("E_QA_FAILED", `${qaReport.findings.length} blocking browser finding(s) remain after ${attempts.length} attempt(s)`, {
-      details: { attempts, findings: qaReport.findings }
+  if (finalization.status !== "passed") {
+    throw new SkillError("E_QA_FAILED", `${finalization.qaReport.findings.length} blocking browser finding(s) remain after ${attempts.length} attempt(s)`, {
+      details: { attempts, findings: finalization.qaReport.findings }
     });
   }
   return {
     status: "passed",
+    mode,
     outputDir: resolvedOutput,
     entrypoint: join(resolvedOutput, "index.html"),
-    slideCount: packageRecord.deck.slides.length,
+    slideCount: finalization.packageRecord?.deck.slides.length ?? 0,
     attemptCount: attempts.length,
-    screenshotCount: qaReport.summary.screenshotCount,
-    protocol: `${packageRecord.protocol}@${packageRecord.version}`
+    screenshotCount: finalization.qaReport.summary.screenshotCount,
+    protocol: finalization.packageRecord ? `${finalization.packageRecord.protocol}@${finalization.packageRecord.version}` : null
   };
 }
 
 export async function main(argv = process.argv.slice(2)) {
   const { positional, options } = parseOptions(argv);
   if (positional.length !== 2) {
-    const error = new Error("usage: run-pipeline.mjs <presentation-plan.json> <output-dir> [--max-attempts 3] [--timeout-ms 90000]");
+    const error = new Error("usage: run-pipeline.mjs <presentation-plan.json> <output-dir> [--mode quality|balanced|draft] [--max-attempts 3] [--timeout-ms 90000]");
     error.code = "E_USAGE";
     throw error;
   }
   const result = await runPipeline(positional[0], positional[1], {
     maxAttempts: options["max-attempts"],
-    timeoutMs: options["timeout-ms"]
+    timeoutMs: options["timeout-ms"],
+    mode: options.mode
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

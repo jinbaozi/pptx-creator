@@ -1,34 +1,69 @@
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, join, resolve } from "node:path";
-import { validatePlan } from "./plan.mjs";
+import { dirname, join, resolve } from "node:path";
+import { localizeAssets } from "./assets.mjs";
+import { claimAttrs, claimText, componentAttrs, STATUS_LABELS } from "./component-metadata.mjs";
+import { renderDeckShell, renderSpeakerNotes } from "./deck-shell.mjs";
+import { analyzeNarrative } from "./narrative.mjs";
+import { analyzePagination } from "./pagination.mjs";
+import { canonicalPlanInputSha256, compilePlanForRender, validatePlan } from "./plan.mjs";
 import {
-  assertRegularFileInside,
+  validateDesignIntent,
+  validateProvenanceRecord,
+  validateReviewReport,
+  validateVisualScorecard
+} from "./report-validation.mjs";
+import { buildProvenanceRecord } from "./review.mjs";
+import { buildVisualScorecard } from "./scorecard.mjs";
+import { renderSlotBody } from "./slot-renderers.mjs";
+import { compileTokenCss } from "./token-compiler.mjs";
+import {
   assertSafeOutputDir,
   escapeHtml,
-  mimeFromPath,
-  readJson,
   sha256File,
   skillRoot,
   writeJson
 } from "./utils.mjs";
+import { loadTheme, materializeThemeTokens, themeFingerprints } from "./themes.mjs";
 
-const STATUS_LABELS = {
-  inferred: "假设",
-  unverified: "待核验",
-  placeholder: "占位"
-};
+const TEXT_TO_HTML_EXTENSION = "pptx-creator.text-to-html/v2";
 
-function componentAttrs(id, kind = "text", extra = "") {
-  return `data-pptx-id="${escapeHtml(id)}" data-pptx-kind="${escapeHtml(kind)}"${extra ? ` ${extra}` : ""}`;
+const DEFAULT_PROCESS_GAP = 42;
+const DEFAULT_CANVAS_X = 72;
+
+function finiteNumber(value, fallback) {
+  return Number.isFinite(Number(value)) ? Number(value) : fallback;
 }
 
-function claimText(claim) {
-  const label = STATUS_LABELS[claim.factStatus];
-  return `${label ? `<span class="status-label">${label}</span>` : ""}<span>${escapeHtml(claim.text)}</span>`;
+function svgNumber(value) {
+  return Number(value.toFixed(3)).toString();
 }
 
-function claimAttrs(claim) {
-  return `data-fact-status="${escapeHtml(claim.factStatus)}" data-source-ids="${escapeHtml((claim.sourceRefs ?? []).join(" "))}"`;
+function processConnectorGeometry(stepCount, layout) {
+  const count = Math.max(2, Math.floor(finiteNumber(stepCount, 2)));
+  const width = Math.max(1, finiteNumber(layout?.width, 1));
+  const height = Math.max(1, finiteNumber(layout?.height, 1));
+  const gap = DEFAULT_PROCESS_GAP;
+  const cardWidth = (width - gap * (count - 1)) / count;
+  const centerY = height / 2;
+  return Array.from({ length: count - 1 }, (_, index) => {
+    const startX = (index + 1) * cardWidth + index * gap;
+    const endX = startX + gap;
+    const bendX = startX + (endX - startX) / 2;
+    return {
+      viewBox: `0 0 ${svgNumber(width)} ${svgNumber(height)}`,
+      d: `M ${svgNumber(startX)} ${svgNumber(centerY)} L ${svgNumber(bendX)} ${svgNumber(centerY)} L ${svgNumber(bendX)} ${svgNumber(centerY)} L ${svgNumber(endX)} ${svgNumber(centerY)}`
+    };
+  });
+}
+
+function processLayout(plan, tokens) {
+  const canvasWidth = finiteNumber(plan.deck.size.width, 1280);
+  const canvasHeight = finiteNumber(plan.deck.size.height, 720);
+  const canvasX = finiteNumber(tokens?.space?.canvasX, DEFAULT_CANVAS_X);
+  return {
+    width: Math.max(1, canvasWidth - canvasX * 2),
+    height: Math.max(1, canvasHeight)
+  };
 }
 
 function sourceFooter(plan, slide) {
@@ -100,28 +135,33 @@ function metricsBody(slide) {
   return `<div class="cards-grid ${count === 2 ? "cols-2" : "cols-3"} metrics-grid">${slide.content.metrics.map((metric, index) => `
     <article class="card metric-card" data-qa-box ${componentAttrs(`${slide.id}-metric-card-${index + 1}`, "shape")}>
       <div>
-        <div class="metric-value" data-layout-role="metric" ${componentAttrs(`${slide.id}-metric-value-${index + 1}`, "text", claimAttrs(metric.claim))}>${escapeHtml(metric.value)}</div>
+        <div class="metric-value" data-layout-role="metric" ${componentAttrs(`${slide.id}-metric-value-${index + 1}`, "text", claimAttrs(metric.claim))}>${claimText(metric.claim, metric.value)}</div>
         <div class="metric-label" ${componentAttrs(`${slide.id}-metric-label-${index + 1}`, "text")}>${escapeHtml(metric.label)}</div>
       </div>
       ${metric.detail ? `<p class="metric-detail" ${componentAttrs(`${slide.id}-metric-detail-${index + 1}`, "text")}>${escapeHtml(metric.detail)}</p>` : ""}
     </article>`).join("")}</div>`;
 }
 
-function processBody(slide) {
+function processBody(slide, layout) {
   const cards = slide.content.steps.map((step, index) => `
     <article class="card process-card" data-qa-box ${componentAttrs(`${slide.id}-step-${index + 1}`, "shape")}>
       <span class="process-index" ${componentAttrs(`${slide.id}-step-index-${index + 1}`, "text")}>${index + 1}</span>
       <h2 ${componentAttrs(`${slide.id}-step-label-${index + 1}`, "text")}>${escapeHtml(step.label)}</h2>
       <p class="fact-line" ${componentAttrs(`${slide.id}-step-copy-${index + 1}`, "text", claimAttrs(step.claim))}>${claimText(step.claim)}</p>
     </article>`).join("");
-  const connectors = slide.content.steps.slice(0, -1).map((_, index) => `
+  const connectorGeometry = processConnectorGeometry(slide.content.steps.length, layout);
+  const connectors = slide.content.steps.slice(0, -1).map((_, index) => {
+    const geometry = connectorGeometry[index];
+    return `
       <path data-connector data-source-id="${slide.id}-step-${index + 1}" data-target-id="${slide.id}-step-${index + 2}"
         data-source-anchor="right" data-target-anchor="left" data-connector-route="orthogonal"
         ${componentAttrs(`${slide.id}-connector-${index + 1}`, "line")}
-        fill="none" stroke="var(--color-primary)" stroke-width="4" marker-end="url(#arrow-${slide.id})"></path>`).join("");
+        d="${geometry.d}" fill="none" stroke="var(--color-primary)" stroke-width="4" vector-effect="non-scaling-stroke" marker-end="url(#arrow-${slide.id})"></path>`;
+  }).join("");
+  const viewBox = connectorGeometry[0]?.viewBox ?? `0 0 ${svgNumber(layout.width)} ${svgNumber(layout.height)}`;
   return `<div class="process-wrap">
     <div class="process-grid" style="--step-count:${slide.content.steps.length}">${cards}</div>
-    <svg class="connector-layer" aria-hidden="true">
+    <svg class="connector-layer" viewBox="${viewBox}" preserveAspectRatio="none" aria-hidden="true">
       <defs><marker id="arrow-${slide.id}" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--color-primary)"></path></marker></defs>
       ${connectors}
     </svg>
@@ -148,9 +188,12 @@ function quoteBody(slide) {
 
 function imageBody(slide, assetById) {
   const asset = assetById.get(slide.content.assetId);
+  const objectPosition = asset.focalPoint
+    ? `${Math.round(asset.focalPoint.x * 100)}% ${Math.round(asset.focalPoint.y * 100)}%`
+    : "50% 50%";
   return `<div class="image-layout">
     <figure class="card image-frame" data-qa-box ${componentAttrs(`${slide.id}-image-frame`, "shape")}>
-      <img src="${escapeHtml(asset.outputPath)}" alt="${escapeHtml(asset.alt)}" data-object-fit="${escapeHtml(asset.objectFit ?? "contain")}" style="object-fit:${escapeHtml(asset.objectFit ?? "contain")}" ${componentAttrs(`${slide.id}-image`, "image")}>
+      <img src="${escapeHtml(asset.outputPath)}" alt="${escapeHtml(asset.alt)}" data-object-fit="${escapeHtml(asset.objectFit ?? "contain")}" data-object-position="${escapeHtml(objectPosition)}" style="object-fit:${escapeHtml(asset.objectFit ?? "contain")};object-position:${escapeHtml(objectPosition)}" ${componentAttrs(`${slide.id}-image`, "image")}>
     </figure>
     <article class="card caption-card" data-qa-box ${componentAttrs(`${slide.id}-caption-card`, "shape")}>
       <h2 ${componentAttrs(`${slide.id}-caption-title`, "text")}>观察要点</h2>
@@ -165,21 +208,22 @@ function closingBody(slide) {
       <li class="fact-line" ${componentAttrs(`${slide.id}-summary-${index + 1}`, "text", claimAttrs(claim))}>${claimText(claim)}</li>`).join("")}</ul>` : ""}`;
 }
 
-function renderBody(plan, slide, assetById) {
-  if (slide.type === "cover") return coverBody(plan, slide);
-  if (slide.type === "statement") return statementBody(slide);
-  if (slide.type === "bullets") return bulletsBody(slide);
-  if (slide.type === "comparison") return comparisonBody(slide);
-  if (slide.type === "metrics") return metricsBody(slide);
-  if (slide.type === "process") return processBody(slide);
-  if (slide.type === "timeline") return timelineBody(slide);
-  if (slide.type === "quote") return quoteBody(slide);
-  if (slide.type === "image") return imageBody(slide, assetById);
-  if (slide.type === "closing") return closingBody(slide);
-  return "";
+function renderBody(plan, slide, assetById, layout) {
+  return renderSlotBody(slide, {
+    cover: () => coverBody(plan, slide),
+    statement: () => statementBody(slide),
+    bullets: () => bulletsBody(slide),
+    comparison: () => comparisonBody(slide),
+    metrics: () => metricsBody(slide),
+    process: () => processBody(slide, layout),
+    timeline: () => timelineBody(slide),
+    quote: () => quoteBody(slide),
+    image: () => imageBody(slide, assetById),
+    closing: () => closingBody(slide)
+  });
 }
 
-function renderSlide(plan, slide, assetById) {
+function renderSlide(plan, slide, assetById, layout) {
   const className = `${slide.type}-slide`;
   const footer = sourceFooter(plan, slide);
   const header = slide.type === "cover" ? "" : slideHeader(slide);
@@ -198,7 +242,7 @@ function renderSlide(plan, slide, assetById) {
     <div class="slide-shell">
       ${header}
       <main class="${slide.type === "cover" ? "" : "slide-body"}">
-        ${renderBody(plan, slide, assetById)}
+        ${renderBody(plan, slide, assetById, layout)}
       </main>
       <footer class="slide-footer">
         <span class="source-list" ${componentAttrs(`${slide.id}-sources`, "text", 'data-layout-role="source"')}>${footer ? `来源：${footer}` : ""}</span>
@@ -209,81 +253,112 @@ function renderSlide(plan, slide, assetById) {
   </section>`;
 }
 
-function tokenCss(tokens) {
-  return `:root {
-  --font-display: ${tokens.fonts.display};
-  --font-body: ${tokens.fonts.body};
-  --color-bg: ${tokens.colors.background};
-  --color-surface: ${tokens.colors.surface};
-  --color-text: ${tokens.colors.text};
-  --color-muted: ${tokens.colors.muted};
-  --color-primary: ${tokens.colors.primary};
-  --color-primary-soft: ${tokens.colors.primarySoft};
-  --color-accent: ${tokens.colors.accent};
-  --color-positive: ${tokens.colors.positive};
-  --color-border: ${tokens.colors.border};
-  --title-size: ${tokens.type.title}px;
-  --section-size: ${tokens.type.section}px;
-  --body-size: ${tokens.type.body}px;
-  --label-size: ${tokens.type.label}px;
-  --source-size: ${tokens.type.source}px;
-  --canvas-x: ${tokens.space.canvasX}px;
-  --canvas-y: ${tokens.space.canvasY}px;
-  --gap: ${tokens.space.gap}px;
-}
-`;
+function contentBudgetReport(pagination) {
+  const entries = pagination.pages.map((page) => ({
+    slideId: page.slideId,
+    maxWords: page.maxWords,
+    estimatedUnits: page.contentUnits,
+    maxPrimarySupports: page.maxPrimarySupports,
+    primarySupports: page.primarySupports,
+    timeSeconds: page.timeSeconds,
+    ...(page.continuationOf ? { continuationOf: page.continuationOf } : {}),
+    ...(page.semanticBreak ? { semanticBreak: page.semanticBreak } : {}),
+    withinBudget: page.withinBudget
+  }));
+  return {
+    version: "2.0.0",
+    kind: "text-to-html.content-budget-report",
+    status: pagination.status,
+    briefSeconds: pagination.duration.briefSeconds,
+    plannedSeconds: pagination.duration.plannedSeconds,
+    deltaSeconds: pagination.duration.deltaSeconds,
+    continuations: pagination.continuations,
+    pages: entries,
+    errors: pagination.errors,
+    warnings: pagination.warnings
+  };
 }
 
-function mergeTokens(base, overrides) {
-  const merged = structuredClone(base);
-  for (const [group, values] of Object.entries(overrides ?? {})) {
-    if (!merged[group] || typeof values !== "object" || Array.isArray(values)) continue;
-    for (const [key, value] of Object.entries(values)) {
-      if (Object.hasOwn(merged[group], key)) merged[group][key] = value;
+function licenseReport(assetRecords, theme) {
+  return {
+    version: "2.0.0",
+    status: "reported",
+    notice: "NOTICE",
+    theme: {
+      id: theme.id,
+      manifest: theme.paths.manifest,
+      notice: theme.paths.notice,
+      fingerprints: themeFingerprints(theme)
+    },
+    assets: assetRecords.map((asset) => ({
+      id: asset.id,
+      path: asset.outputPath,
+      sha256: asset.sha256,
+      rights: structuredClone(asset.rights),
+      ...(asset.sourceRef ? { sourceRef: asset.sourceRef } : {})
+    }))
+  };
+}
+
+async function combinedNotice(assetNotice, theme) {
+  const themeNotice = await readFile(join(skillRoot, theme.paths.notice), "utf8");
+  return `${assetNotice.trimEnd()}\n\nTheme: ${theme.id}\nTheme manifest: ${theme.paths.manifest}\nTheme notice: ${theme.paths.notice}\n${themeNotice.trimEnd()}\n`;
+}
+
+function reviewAndProvenance(plan) {
+  const provenance = buildProvenanceRecord({
+    inputPlan: plan,
+    designIntent: plan.designIntent,
+    review: plan.review,
+    assetLedger: plan.assets,
+    renderer: plan.designIntent.lock.rendererVersion
+  });
+  return {
+    provenance,
+    review: {
+      version: "2.0.0",
+      status: provenance.review.status,
+      hashes: provenance.hashes,
+      approvals: provenance.review.approvals,
+      blockers: provenance.review.blockers,
+      invalidations: provenance.review.invalidations
     }
-  }
-  return merged;
+  };
 }
 
-function htmlDocument(plan, repairLevel, assetById) {
-  const slides = plan.slides.map((slide) => renderSlide(plan, slide, assetById)).join("\n");
-  return `<!doctype html>
-<html lang="${escapeHtml(plan.deck.language)}">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="generator" content="@pptx-creator/text-to-html 1.0.0">
-  <title>${escapeHtml(plan.deck.title)}</title>
-  <link rel="stylesheet" href="assets/deck.css">
-  <link rel="stylesheet" href="assets/design-tokens.css">
-</head>
-<body data-repair-level="${repairLevel}">
-  <div class="deck-stage">
-    <div class="pptx-deck" role="region" aria-label="${escapeHtml(plan.deck.title)}">
-      ${slides}
-    </div>
-  </div>
-  <aside class="mobile-reader" aria-label="移动端阅读模式">
-    <h2 class="mobile-reader-heading"></h2>
-    <div class="mobile-reader-content"></div>
-  </aside>
-  <nav class="deck-controls" aria-label="幻灯片导航">
-    <button type="button" data-nav="previous" aria-label="上一页">←</button>
-    <span class="deck-counter" aria-live="polite">1 / ${plan.slides.length}</span>
-    <button type="button" data-nav="next" aria-label="下一页">→</button>
-  </nav>
-  <script src="assets/deck.js"></script>
-</body>
-</html>
-`.replace(/[ \t]+\n/g, "\n");
+async function extensionRecord(outputDir, plan, review) {
+  const paths = {
+    sourcePlan: "presentation-plan.source.json",
+    canonicalPlan: "presentation-plan.json",
+    designIntent: "design-intent.json",
+    contentBudget: "content-budget-report.json",
+    narrative: "narrative-report.json",
+    review: "review-report.json",
+    assetLedger: "asset-ledger.json",
+    license: "license-report.json",
+    provenance: "provenance.json",
+    visualScorecard: "visual-scorecard.json",
+    notice: "NOTICE"
+  };
+  const reports = {};
+  for (const [name, path] of Object.entries(paths)) {
+    reports[name] = { path, sha256: await sha256File(join(outputDir, path)) };
+  }
+  return {
+    version: "2.0.0",
+    plan: {
+      version: plan.version,
+      canonicalInputSha256: canonicalPlanInputSha256(plan),
+      reviewStatus: review.status
+    },
+    reports
+  };
 }
 
-function notesMarkdown(plan) {
-  const lines = [`# ${plan.deck.title} 演讲者备注`, ""];
-  for (const slide of plan.slides) {
-    lines.push(`## ${slide.order}. ${slide.title}`, "", slide.notes, "", `过渡：${slide.transition}`, "");
-  }
-  return `${lines.join("\n").trim()}\n`;
+function htmlDocument(plan, repairLevel, assetById, tokens) {
+  const layout = processLayout(plan, tokens);
+  const slides = plan.slides.map((slide) => renderSlide(plan, slide, assetById, layout)).join("\n");
+  return renderDeckShell(plan, repairLevel, slides);
 }
 
 function sourceIndex(plan) {
@@ -332,7 +407,7 @@ function deckManifest(plan, assetRecords, repairLevel) {
   };
 }
 
-function pendingPackage(plan, assetRecords) {
+function pendingPackage(plan, assetRecords, extension) {
   return {
     protocol: "pptx-creator.presentation-package",
     version: "1.0.0",
@@ -360,7 +435,7 @@ function pendingPackage(plan, assetRecords) {
       path: asset.outputPath,
       mime: asset.mime,
       sha256: asset.sha256,
-      rights: asset.rights,
+      rights: asset.rights.status,
       ...(asset.sourceRef ? { sourceRef: asset.sourceRef } : {})
     })),
     sources: plan.sources.map((source) => ({
@@ -381,8 +456,15 @@ function pendingPackage(plan, assetRecords) {
         "print-css",
         "speaker-notes",
         "source-traceability",
-        "browser-geometry"
+        "browser-geometry",
+        "text-to-html-plan-v2",
+        "asset-provenance",
+        "review-hash-binding",
+        "visual-scorecard"
       ]
+    },
+    extensions: {
+      [TEXT_TO_HTML_EXTENSION]: extension
     }
   };
 }
@@ -390,45 +472,57 @@ function pendingPackage(plan, assetRecords) {
 export async function buildDeck(plan, planPath, outputDir, options = {}) {
   const resolvedOutput = assertSafeOutputDir(outputDir);
   const planDirectory = dirname(resolve(planPath));
-  await validatePlan(plan, { planDirectory });
-  await mkdir(join(resolvedOutput, "assets", "media"), { recursive: true });
+  await validatePlan(plan, { planDirectory, allowUnreviewed: options.allowUnreviewed === true });
+  const renderPlan = compilePlanForRender(plan);
+  await mkdir(join(resolvedOutput, "assets"), { recursive: true });
   await mkdir(join(resolvedOutput, "qa"), { recursive: true });
 
-  const defaultTokens = await readJson(join(skillRoot, "assets", "design-tokens.default.json"));
-  const tokens = mergeTokens(defaultTokens, plan.design?.tokenOverrides);
-  const assetRecords = [];
-  for (const [index, asset] of plan.assets.entries()) {
-    const checked = await assertRegularFileInside(planDirectory, asset.path, `$.assets[${index}].path`);
-    const suffix = extname(checked.normalized).toLowerCase();
-    const outputPath = `assets/media/${asset.id}${suffix}`;
-    await copyFile(checked.path, join(resolvedOutput, outputPath));
-    assetRecords.push({
-      id: asset.id,
-      sourcePath: checked.normalized,
-      outputPath,
-      mime: asset.mime || mimeFromPath(checked.normalized),
-      rights: asset.rights,
-      alt: asset.alt,
-      objectFit: asset.objectFit ?? "contain",
-      ...(asset.sourceRef ? { sourceRef: asset.sourceRef } : {}),
-      sha256: await sha256File(checked.path)
-    });
-  }
+  const theme = loadTheme(plan.designIntent.themeId);
+  const tokens = materializeThemeTokens(theme, plan.designIntent.tokenOverrides);
+  const localized = await localizeAssets({
+    assets: plan.assets,
+    sourceRoot: planDirectory,
+    outputDir: resolvedOutput,
+    networkPolicy: plan.brief.networkPolicy,
+    fetchAsset: options.fetchAsset
+  });
+  const assetRecords = localized.assetRecords;
   const assetById = new Map(assetRecords.map((asset) => [asset.id, asset]));
-  const portablePlan = structuredClone(plan);
-  const outputPathByAsset = new Map(assetRecords.map((asset) => [asset.id, asset.outputPath]));
-  for (const asset of portablePlan.assets) asset.path = outputPathByAsset.get(asset.id);
+  const narrativeDiagnostics = analyzeNarrative(plan);
+  const paginationDiagnostics = analyzePagination(plan);
+  const contentBudget = contentBudgetReport(paginationDiagnostics);
+  const reviewArtifacts = reviewAndProvenance(plan);
+  validateDesignIntent(plan.designIntent);
+  validateReviewReport(reviewArtifacts.review);
+  validateProvenanceRecord(reviewArtifacts.provenance);
+  const pendingScorecard = buildVisualScorecard({
+    qa: { status: "pending", findings: [], viewports: [] },
+    narrative: narrativeDiagnostics,
+    pagination: contentBudget,
+    provenance: reviewArtifacts.provenance
+  });
+  validateVisualScorecard(pendingScorecard);
   await copyFile(join(skillRoot, "assets", "deck.css"), join(resolvedOutput, "assets", "deck.css"));
   await copyFile(join(skillRoot, "assets", "deck.js"), join(resolvedOutput, "assets", "deck.js"));
-  await writeFile(join(resolvedOutput, "assets", "design-tokens.css"), tokenCss(tokens), "utf8");
-  await writeFile(join(resolvedOutput, "index.html"), htmlDocument(plan, options.repairLevel ?? 0, assetById), "utf8");
-  await writeFile(join(resolvedOutput, "speaker-notes.md"), notesMarkdown(plan), "utf8");
-  await writeJson(join(resolvedOutput, "presentation-plan.source.json"), plan);
-  await writeJson(join(resolvedOutput, "presentation-plan.json"), portablePlan);
+  await writeFile(join(resolvedOutput, "assets", "design-tokens.css"), compileTokenCss(tokens), "utf8");
+  await writeFile(join(resolvedOutput, "index.html"), htmlDocument(renderPlan, options.repairLevel ?? 0, assetById, tokens), "utf8");
+  await writeFile(join(resolvedOutput, "speaker-notes.md"), renderSpeakerNotes(renderPlan), "utf8");
+  await copyFile(resolve(planPath), join(resolvedOutput, "presentation-plan.source.json"));
+  await writeJson(join(resolvedOutput, "presentation-plan.json"), plan);
   await writeJson(join(resolvedOutput, "design-tokens.json"), tokens);
-  await writeJson(join(resolvedOutput, "sources.json"), sourceIndex(plan));
-  await writeJson(join(resolvedOutput, "deck-manifest.json"), deckManifest(plan, assetRecords, options.repairLevel ?? 0));
-  await writeJson(join(resolvedOutput, "presentation-package.json"), pendingPackage(plan, assetRecords));
+  await writeJson(join(resolvedOutput, "sources.json"), sourceIndex(renderPlan));
+  await writeJson(join(resolvedOutput, "deck-manifest.json"), deckManifest(renderPlan, assetRecords, options.repairLevel ?? 0));
+  await writeJson(join(resolvedOutput, "design-intent.json"), plan.designIntent);
+  await writeJson(join(resolvedOutput, "content-budget-report.json"), contentBudget);
+  await writeJson(join(resolvedOutput, "narrative-report.json"), narrativeDiagnostics);
+  await writeJson(join(resolvedOutput, "review-report.json"), reviewArtifacts.review);
+  await writeJson(join(resolvedOutput, "asset-ledger.json"), { version: "2.0.0", assets: localized.provenanceLedger });
+  await writeJson(join(resolvedOutput, "license-report.json"), licenseReport(assetRecords, theme));
+  await writeJson(join(resolvedOutput, "provenance.json"), reviewArtifacts.provenance);
+  await writeJson(join(resolvedOutput, "visual-scorecard.json"), pendingScorecard);
+  await writeFile(join(resolvedOutput, "NOTICE"), await combinedNotice(localized.notice, theme), "utf8");
+  const extension = await extensionRecord(resolvedOutput, plan, reviewArtifacts.review);
+  await writeJson(join(resolvedOutput, "presentation-package.json"), pendingPackage(renderPlan, assetRecords, extension));
   await writeJson(join(resolvedOutput, "qa-report.json"), {
     version: "1.0.0",
     status: "pending",
@@ -440,6 +534,7 @@ export async function buildDeck(plan, planPath, outputDir, options = {}) {
     outputDir: resolvedOutput,
     indexPath: join(resolvedOutput, "index.html"),
     assetRecords,
-    tokens
+    tokens,
+    planVersion: plan.version
   };
 }

@@ -1,0 +1,14 @@
+{
+  "id": "quote-story",
+  "label": "Quote story",
+  "legacyType": "quote",
+  "description": "A sourced quotation with a clear attribution.",
+  "slots": {
+    "required": ["quote", "attribution"],
+    "optional": [],
+    "rules": {
+      "quote": { "kind": "claim" },
+      "attribution": { "kind": "string", "maxLength": 120 }
+    }
+  }
+}

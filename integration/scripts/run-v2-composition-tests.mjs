@@ -20,6 +20,10 @@ import {
   SUPPORTED_VERSION,
   validatePresentationPackageFile
 } from "./validate-presentation-package.mjs";
+import {
+  buildDesignLock,
+  buildReviewArtifactHashes
+} from "../../skills/text-to-html/scripts/lib/plan.mjs";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -40,6 +44,7 @@ const fixtures = Object.freeze({
 const DEFAULT_PROCESS_TIMEOUT_MS = 15 * 60 * 1000;
 const MIN_BROWSER_TIMEOUT_MS = 90_000;
 const HEX_COLOR = /^#[0-9A-F]{6}$/i;
+const COMPOSITION_HOST_REVIEWED_AT = "2026-07-31T00:00:00.000Z";
 
 export class V2CompositionError extends Error {
   constructor(code, message, details = {}) {
@@ -52,6 +57,18 @@ export class V2CompositionError extends Error {
 
 function fail(code, message, details = {}) {
   throw new V2CompositionError(code, message, details);
+}
+
+function approveAdaptedCompositionFixture(plan) {
+  plan.designIntent.lock = buildDesignLock(plan);
+  const artifactHashes = buildReviewArtifactHashes(plan);
+  for (const stage of ["content", "design", "rights"]) {
+    plan.review[stage] = {
+      status: "approved",
+      reviewedAt: COMPOSITION_HOST_REVIEWED_AT,
+      artifactHashes: { ...artifactHashes }
+    };
+  }
 }
 
 function portablePath(root, path) {
@@ -277,8 +294,8 @@ export function adaptImageDesignTokens(imageTokens) {
     },
     target: {
       consumer: "text-to-html",
-      planVersion: "1.0.0",
-      field: "$.design.tokenOverrides"
+      planVersion: "2.0.0",
+      field: "$.designIntent.tokenOverrides"
     },
     tokenOverrides,
     mappings: [
@@ -301,7 +318,8 @@ export async function createReferenceStylePlan(imageTokensPath, basePlanPath, ou
   const adaptation = adaptImageDesignTokens(imageTokens);
   const plan = structuredClone(basePlan);
   plan.deck.id = `${plan.deck.id}-reference-style`;
-  plan.design.tokenOverrides = adaptation.tokenOverrides;
+  plan.designIntent.themeId = "reference-adapted";
+  plan.designIntent.tokenOverrides = adaptation.tokenOverrides;
   plan.assumptions = [
     ...plan.assumptions,
     {
@@ -321,6 +339,7 @@ export async function createReferenceStylePlan(imageTokensPath, basePlanPath, ou
       factStatus: "provided"
     }
   ];
+  approveAdaptedCompositionFixture(plan);
   await mkdir(outputDirectory, { recursive: true });
   const copiedTokensPath = join(outputDirectory, "design-tokens.json");
   const planPath = join(outputDirectory, "adapted-presentation-plan.json");

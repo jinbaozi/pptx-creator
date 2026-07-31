@@ -997,10 +997,12 @@ function parseCssLinearGradient(value) {
   if (typeof value !== "string" || !/^linear-gradient\(/i.test(value.trim())) return null;
   const body = value.trim().replace(/^linear-gradient\(/i, "").replace(/\)\s*$/, "");
   const parts = splitCssCommaList(body);
-  if (parts.length < 3) return null;
-  const angle = parseCssGradientAngle(parts[0]);
+  if (parts.length < 2) return null;
+  const firstStop = parseShadowColor(parts[0])
+    || /^transparent(?:\s+\d+(?:\.\d+)?%)?$/i.test(String(parts[0]).trim());
+  const angle = firstStop ? 180 : parseCssGradientAngle(parts[0]);
   if (angle === null) return null;
-  const stops = parseCssGradientStops(parts.slice(1));
+  const stops = parseCssGradientStops(firstStop ? parts : parts.slice(1));
   if (!stops) return null;
   return {
     type: "linear",
@@ -1463,12 +1465,18 @@ function replicaPaintLayerElements(id, measurement) {
 function evidenceFromSemantics(semantics = {}) {
   const kind = String(semantics.evidenceKind ?? "").trim();
   if (!kind) return null;
-  const sourceIds = Array.isArray(semantics.sourceIds) ? semantics.sourceIds.filter(Boolean) : [];
+  const sourceIds = sourceRefsFromSemantics(semantics);
   return {
     kind,
     ...(sourceIds.length > 0 ? { sourceIds } : {}),
     ...(semantics.asOf ? { asOf: semantics.asOf } : {})
   };
+}
+
+function sourceRefsFromSemantics(semantics = {}) {
+  return [...new Set((Array.isArray(semantics.sourceIds) ? semantics.sourceIds : [])
+    .map((value) => String(value).trim())
+    .filter(Boolean))];
 }
 
 function measurementHyperlink(measurement) {
@@ -1506,6 +1514,7 @@ function replicaTextElement(id, measurement, options = {}) {
     ? Number((Number(lineHeight) * lineHeightScale).toFixed(4))
     : undefined;
   const evidence = evidenceFromSemantics(semantics);
+  const sourceRefs = sourceRefsFromSemantics(semantics);
   const hyperlink = measurementHyperlink(measurement);
   const element = {
     type: "text",
@@ -1516,6 +1525,7 @@ function replicaTextElement(id, measurement, options = {}) {
     ...measuredBox(measurement),
     ...(hyperlink ? { hyperlink } : {}),
     ...(evidence ? { evidence } : {}),
+    ...(sourceRefs.length > 0 ? { sourceRefs } : {}),
     ...(semantics.listParentId ? { listParentId: semantics.listParentId } : {}),
     ...(Number.isInteger(semantics.listIndex) && semantics.listIndex >= 0 ? { listIndex: semantics.listIndex } : {}),
     style: {
@@ -2167,8 +2177,8 @@ function applyNodeLayoutSemantics(element, node) {
   const href = anchor?.getAttribute?.("href");
   const tooltip = anchor?.getAttribute?.("title") ?? anchor?.getAttribute?.("data-tooltip");
   const evidenceKind = node.getAttribute("data-evidence-kind");
-  const sourceIds = String(node.getAttribute("data-source-ids") || "")
-    .split(/[\s,]+/).map((value) => value.trim()).filter(Boolean);
+  const sourceIds = [...new Set(String(node.getAttribute("data-source-ids") || "")
+    .split(/[\s,]+/).map((value) => value.trim()).filter(Boolean))];
   const asOf = node.getAttribute("data-as-of");
   return {
     ...element,
@@ -2182,6 +2192,7 @@ function applyNodeLayoutSemantics(element, node) {
     ...(/^https?:\/\//i.test(String(href ?? "")) ? {
       hyperlink: { url: href, ...(tooltip ? { tooltip } : {}) }
     } : {}),
+    ...(sourceIds.length > 0 ? { sourceRefs: sourceIds } : {}),
     ...(evidenceKind ? {
       evidence: {
         kind: evidenceKind,
@@ -2913,7 +2924,11 @@ function buildInputHints(slideNodes, measurements, options = {}) {
 }
 
 function normalizeCoverageText(value) {
-  return String(value ?? "").replace(/^[•·\-]\s*/, "").replace(/\s+/g, " ").trim();
+  return String(value ?? "")
+    .replace(/^[•·\-]\s*/, "")
+    .replace(/\s+/g, " ")
+    .replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "$1")
+    .trim();
 }
 
 function isCoverageHidden(node, slide) {

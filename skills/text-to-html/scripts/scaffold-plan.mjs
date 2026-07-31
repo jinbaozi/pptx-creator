@@ -18,7 +18,7 @@ export async function main(argv = process.argv.slice(2)) {
     status: "draft-created",
     output: resolve(argv[1]),
     slideCount: plan.slides.length,
-    hostReviewRequired: true
+    reviewRequired: true
   }, null, 2)}\n`);
 }
 

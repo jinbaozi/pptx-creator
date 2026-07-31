@@ -1,7 +1,9 @@
 # Quality gates
 
-Completion is transactional: `final.pptx` is published only when every blocking
-gate passes on the same candidate and source evidence.
+Completion is transactional: `final.pptx` and a passed QA report are published
+only when every blocking gate passes on the same candidate and source evidence.
+If finalization fails, the QA report is rewritten as failed and no delivery
+package or output manifest remains.
 
 ## Gate sequence
 

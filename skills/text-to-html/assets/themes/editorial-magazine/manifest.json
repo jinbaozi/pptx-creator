@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "id": "editorial-magazine",
+  "label": "Editorial magazine",
+  "description": "A warm, text-led system for curated narratives and thought leadership.",
+  "useWhen": ["The deck benefits from an editorial narrative and intentional reading rhythm."],
+  "quietConstraints": ["Do not turn evidence into decorative pull quotes."],
+  "antiPatterns": ["Dense dashboard grids", "generic startup gradients"],
+  "tokens": "tokens.json",
+  "preview": "preview.svg",
+  "notice": "NOTICE",
+  "fontFallbacks": ["Georgia", "Times New Roman", "serif", "Arial", "sans-serif"]
+}

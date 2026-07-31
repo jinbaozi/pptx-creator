@@ -1,8 +1,19 @@
 # Browser quality gate
 
+> **Purpose:** Define the automated browser checks and the separate Host acceptance decision for an emitted HTML deck.
+>
+> **Trigger:** Use after a deterministic build produces an output directory, or when diagnosing a failed `qa-report.json`.
+>
+> **Prereqs:** A validated Plan 2.0, an output directory containing `index.html`, and locally installed Chromium through Playwright.
+>
+> **Next:** [review-and-delivery.md](review-and-delivery.md)
+>
+> **Contract:** `qa-report.json` and its preview/attempt evidence must be passed before the package can be accepted.
+
 ## Contents
 
 - Execution
+- Responsibility boundary
 - Viewports
 - Blocking checks
 - Bounded regeneration
@@ -11,6 +22,10 @@
 ## Execution
 
 `scripts/run-pipeline.mjs` launches installed Chromium through Playwright. Browser launch, navigation, and settling use a minimum timeout of 90,000 ms. The page waits for local images, `document.fonts.ready`, two animation frames, and stable slide geometry before measurement.
+
+## Responsibility boundary
+
+The browser gate is deterministic: it measures the emitted package and records findings. The Host decides whether the approved plan is visually and communicatively fit after inspecting the evidence; neither the gate nor a repair attempt approves content, design, rights, or delivery.
 
 ## Viewports
 

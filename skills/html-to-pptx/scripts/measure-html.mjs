@@ -276,6 +276,14 @@ export async function measureHtmlFile(inputPath, options = {}) {
         return null;
       }
 
+      function generatedSemanticParentId(node) {
+        if (node.hasAttribute("data-pptx-id") || node.hasAttribute("data-pptx-type") || node.hasAttribute("data-id") || node.id) {
+          return null;
+        }
+        const parent = node.parentElement?.closest("[data-pptx-kind='text'],[data-pptx-type='text']");
+        return parent?.getAttribute("data-pptx-id") ?? parent?.getAttribute("data-id") ?? parent?.id ?? null;
+      }
+
       function cssRadiusPx(value, rect) {
         const source = String(value || "0").trim();
         const numeric = Number.parseFloat(source);
@@ -519,7 +527,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
 		                return raw !== null && Number.isFinite(value) && value >= 0.5 && value <= 1.5 ? value : null;
 		              })(),
 		              axisDirection: node.getAttribute("data-axis-direction") || null,
-	              semanticParentId: node.getAttribute("data-semantic-parent-id") || null,
+	              semanticParentId: node.getAttribute("data-semantic-parent-id") || generatedSemanticParentId(node),
 	              layoutRegion: node.getAttribute("data-layout-region")
 	                || node.closest("[data-layout-region]")?.getAttribute("data-layout-region")
 	                || null,

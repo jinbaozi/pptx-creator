@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "id": "restrained-business",
+  "label": "Restrained business",
+  "description": "A calm, decision-oriented system for executive updates and proposals.",
+  "useWhen": ["The brief favors a professional, low-noise decision presentation."],
+  "quietConstraints": ["Keep evidence more prominent than decoration."],
+  "antiPatterns": ["Neon gradients", "ornamental icons without semantic purpose"],
+  "tokens": "tokens.json",
+  "preview": "preview.svg",
+  "notice": "NOTICE",
+  "fontFallbacks": ["Arial", "Helvetica", "sans-serif"]
+}

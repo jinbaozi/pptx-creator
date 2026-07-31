@@ -1,0 +1,13 @@
+{
+  "id": "dashboard",
+  "label": "Dashboard",
+  "legacyType": "metrics",
+  "description": "Two or three related metrics that must be read together.",
+  "slots": {
+    "required": ["metrics"],
+    "optional": [],
+    "rules": {
+      "metrics": { "kind": "metrics", "minItems": 2, "maxItems": 3 }
+    }
+  }
+}

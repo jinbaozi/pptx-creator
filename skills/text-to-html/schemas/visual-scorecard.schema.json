@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jinbaozi/pptx-creator/skills/text-to-html/schemas/visual-scorecard/1.0.0",
+  "title": "Text to HTML visual scorecard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "kind", "status", "accepted", "overallScore", "dimensions", "findings", "hardErrors", "probes", "summary"],
+  "properties": {
+    "version": { "const": "1.0.0" },
+    "kind": { "const": "text-to-html.visual-scorecard" },
+    "status": { "enum": ["passed", "attention-required", "failed"] },
+    "accepted": { "type": "boolean" },
+    "overallScore": { "type": "number", "minimum": 0, "maximum": 100 },
+    "dimensions": { "$ref": "#/$defs/dimensions" },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "hardErrors": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "passed", "failed"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingCount", "hardErrorCount", "warningCount", "score"],
+      "properties": {
+        "findingCount": { "type": "integer", "minimum": 0 },
+        "hardErrorCount": { "type": "integer", "minimum": 0 },
+        "warningCount": { "type": "integer", "minimum": 0 },
+        "score": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    }
+  },
+  "$defs": {
+    "dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "findingCount", "errorCount", "warningCount", "hardErrorCount"],
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "findingCount": { "type": "integer", "minimum": 0 },
+        "errorCount": { "type": "integer", "minimum": 0 },
+        "warningCount": { "type": "integer", "minimum": 0 },
+        "hardErrorCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visual", "narrative", "pagination", "provenance"],
+      "properties": {
+        "visual": { "$ref": "#/$defs/dimension" },
+        "narrative": { "$ref": "#/$defs/dimension" },
+        "pagination": { "$ref": "#/$defs/dimension" },
+        "provenance": { "$ref": "#/$defs/dimension" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "code", "severity", "scope", "measured", "expected", "evidencePaths", "confidence", "repairClass", "owner", "source", "hard"],
+      "properties": {
+        "version": { "const": "1.0.0" },
+        "code": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "scope": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "measured": true,
+        "expected": true,
+        "evidencePaths": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 1000 } },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "repairClass": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "owner": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "source": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "hard": { "type": "boolean" }
+      }
+    }
+  }
+}

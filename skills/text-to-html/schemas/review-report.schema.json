@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jinbaozi/pptx-creator/skills/text-to-html/schemas/review-report/2.0.0",
+  "title": "Text to HTML Host review report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "status", "hashes", "approvals", "blockers", "invalidations"],
+  "properties": {
+    "version": { "const": "2.0.0" },
+    "status": { "$ref": "#/$defs/reviewStatus" },
+    "hashes": { "$ref": "#/$defs/provenanceHashes" },
+    "approvals": { "$ref": "#/$defs/approvalMap" },
+    "blockers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/blocker" }
+    },
+    "invalidations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalidation" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "shortText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "approvalKind": {
+      "enum": ["content", "design", "rights"]
+    },
+    "reviewStatus": {
+      "enum": ["required", "approved", "rejected", "invalidated"]
+    },
+    "artifactKind": {
+      "enum": ["designIntent", "assetLock", "renderer"]
+    },
+    "artifactHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["designIntent", "assetLock", "renderer"],
+      "properties": {
+        "designIntent": { "$ref": "#/$defs/sha256" },
+        "assetLock": { "$ref": "#/$defs/sha256" },
+        "renderer": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "provenanceHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputPlan", "designIntent", "review", "assetLedger"],
+      "properties": {
+        "inputPlan": { "$ref": "#/$defs/sha256" },
+        "designIntent": { "$ref": "#/$defs/sha256" },
+        "review": { "$ref": "#/$defs/sha256" },
+        "assetLedger": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifactHashes"],
+      "properties": {
+        "status": { "$ref": "#/$defs/reviewStatus" },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "artifactHashes": { "$ref": "#/$defs/artifactHashes" },
+        "invalidatedBy": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/shortText" }
+        },
+        "changedArtifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactKind" }
+        }
+      }
+    },
+    "approvalMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content", "design", "rights"],
+      "properties": {
+        "content": { "$ref": "#/$defs/approval" },
+        "design": { "$ref": "#/$defs/approval" },
+        "rights": { "$ref": "#/$defs/approval" }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approval", "status"],
+      "properties": {
+        "approval": { "$ref": "#/$defs/approvalKind" },
+        "status": { "$ref": "#/$defs/reviewStatus" },
+        "invalidatedBy": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/shortText" }
+        }
+      }
+    },
+    "invalidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approval", "changedArtifacts", "invalidatedBy"],
+      "properties": {
+        "approval": { "$ref": "#/$defs/approvalKind" },
+        "changedArtifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactKind" }
+        },
+        "invalidatedBy": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/shortText" }
+        }
+      }
+    }
+  }
+}

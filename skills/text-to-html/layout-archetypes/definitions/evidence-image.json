@@ -1,0 +1,14 @@
+{
+  "id": "evidence-image",
+  "label": "Evidence image",
+  "legacyType": "image",
+  "description": "A localized image with an evidence-bearing caption.",
+  "slots": {
+    "required": ["assetId", "caption"],
+    "optional": [],
+    "rules": {
+      "assetId": { "kind": "assetId" },
+      "caption": { "kind": "claim" }
+    }
+  }
+}

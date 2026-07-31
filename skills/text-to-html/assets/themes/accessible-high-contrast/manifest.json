@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "id": "accessible-high-contrast",
+  "label": "Accessible high contrast",
+  "description": "A high-contrast system for projection, low-vision reading, and strict accessibility constraints.",
+  "useWhen": ["The brief names contrast, projection, or accessibility as a primary constraint."],
+  "quietConstraints": ["Preserve large type and strong figure-ground separation."],
+  "antiPatterns": ["Low-contrast muted copy", "color-only distinctions"],
+  "tokens": "tokens.json",
+  "preview": "preview.svg",
+  "notice": "NOTICE",
+  "fontFallbacks": ["Arial", "Helvetica", "sans-serif"]
+}

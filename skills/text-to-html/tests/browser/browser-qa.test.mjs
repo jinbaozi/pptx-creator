@@ -20,6 +20,8 @@ test("minimal example passes every slide at standard, desktop, and mobile viewpo
   assert.deepEqual(report.viewports.map((viewport) => viewport.name), ["standard", "desktop", "mobile"]);
   assert.equal(report.navigation.passed, true);
   assert.equal(report.print.passed, true);
+  assert.deepEqual(report.contactSheets, [{ path: "preview/contact-sheet.html" }]);
+  assert.ok((await readFile(join(output, "preview", "contact-sheet.html"), "utf8")).includes("Deck contact sheet"));
   const packageRecord = JSON.parse(await readFile(join(output, "presentation-package.json"), "utf8"));
   for (const slide of packageRecord.deck.slides) {
     assert.ok(
@@ -46,4 +48,30 @@ test("browser gate blocks source-level text clipping", { timeout: 180_000 }, asy
   const report = await runBrowserQa(output, { timeoutMs: 90_000 });
   assert.equal(report.status, "failed");
   assert.ok(report.findings.some((finding) => finding.code === "E_TEXT_OVERFLOW"));
+});
+
+test("browser QA closes Chromium after a navigation failure", async () => {
+  const output = await mkdtemp(join(tmpdir(), "text-to-html-browser-close-"));
+  let closed = false;
+  const browser = {
+    async newPage() {
+      return {
+        setDefaultTimeout() {},
+        setDefaultNavigationTimeout() {},
+        on() {},
+        async goto() {
+          throw new Error("navigation failure sentinel");
+        }
+      };
+    },
+    async close() {
+      closed = true;
+    }
+  };
+
+  await assert.rejects(
+    () => runBrowserQa(output, { launchBrowser: async () => browser }),
+    (error) => error.code === "E_BROWSER_TIMEOUT"
+  );
+  assert.equal(closed, true);
 });

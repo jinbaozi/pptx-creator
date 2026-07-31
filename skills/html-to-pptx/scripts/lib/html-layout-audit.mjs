@@ -130,6 +130,7 @@ export async function withSettledHtmlPage(inputPath, options, callback) {
   };
   const totalTimeoutMs = options?.totalTimeoutMs ?? HTML_BROWSER_DEFAULTS.totalTimeoutMs;
   const browser = await chromium.launch({ headless: true, timeout: totalTimeoutMs });
+  let operationError = null;
   try {
     const page = await browser.newPage({
       viewport,
@@ -155,8 +156,17 @@ export async function withSettledHtmlPage(inputPath, options, callback) {
     } finally {
       clearTimeout(timeoutId);
     }
+  } catch (error) {
+    operationError = error;
+    throw error;
   } finally {
-    await browser.close();
+    try {
+      await browser.close();
+    } catch (closeError) {
+      // Preserve the actionable navigation/audit error. If browser shutdown
+      // is the only failure, surface it so callers cannot publish a false pass.
+      if (!operationError) throw closeError;
+    }
   }
 }
 
@@ -328,47 +338,63 @@ export async function withTemporarilyVisibleSlide(page, slideIndex, callback) {
     };
   }, slideIndex);
 
+  let callbackError = null;
   try {
     await page.evaluate(async () => {
       if (document.fonts?.ready) await document.fonts.ready;
       await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
     });
     return await callback(state);
+  } catch (error) {
+    callbackError = error;
+    throw error;
   } finally {
-    await page.evaluate(({ snapshots, externalSnapshots }) => {
-      const explicitSlides = [...document.querySelectorAll(".pptx-slide, [data-slide]")];
-      const slides = explicitSlides.length > 0
-        ? explicitSlides
-        : [document.querySelector(".pptx-deck") ?? document.body];
-      const restore = (node, name, value) => {
-        if (value === null) node.removeAttribute(name);
-        else node.setAttribute(name, value);
-      };
-      slides.forEach((slide, index) => {
-        const snapshot = snapshots[index];
-        if (!snapshot) return;
-        restore(slide, "class", snapshot.className);
-        restore(slide, "aria-hidden", snapshot.ariaHidden);
-        restore(slide, "hidden", snapshot.hidden);
-        restore(slide, "data-pptx-audit-visible", snapshot.auditVisible);
-        restore(slide, "style", snapshot.style);
-      });
-      for (const snapshot of externalSnapshots ?? []) {
-        const node = document.querySelector(`[data-pptx-audit-external="${CSS.escape(snapshot.marker)}"]`);
-        if (!node) continue;
-        restore(node, "style", snapshot.style);
-        restore(node, "data-pptx-audit-external", snapshot.previousMarker);
-      }
-    }, state);
-    await page.evaluate(({ snapshots }) => {
-      const explicitSlides = [...document.querySelectorAll(".pptx-slide, [data-slide]")];
-      const slides = explicitSlides.length > 0
-        ? explicitSlides
-        : [document.querySelector(".pptx-deck") ?? document.body];
-      slides.forEach((slide, index) => {
-        if (snapshots[index]?.style === null) slide.removeAttribute("style");
-      });
-    }, state);
+    let restoreError = null;
+    try {
+      await page.evaluate(({ snapshots, externalSnapshots }) => {
+        const explicitSlides = [...document.querySelectorAll(".pptx-slide, [data-slide]")];
+        const slides = explicitSlides.length > 0
+          ? explicitSlides
+          : [document.querySelector(".pptx-deck") ?? document.body];
+        const restore = (node, name, value) => {
+          if (value === null) node.removeAttribute(name);
+          else node.setAttribute(name, value);
+        };
+        slides.forEach((slide, index) => {
+          const snapshot = snapshots[index];
+          if (!snapshot) return;
+          restore(slide, "class", snapshot.className);
+          restore(slide, "aria-hidden", snapshot.ariaHidden);
+          restore(slide, "hidden", snapshot.hidden);
+          restore(slide, "data-pptx-audit-visible", snapshot.auditVisible);
+          restore(slide, "style", snapshot.style);
+        });
+        for (const snapshot of externalSnapshots ?? []) {
+          const node = document.querySelector(`[data-pptx-audit-external="${CSS.escape(snapshot.marker)}"]`);
+          if (!node) continue;
+          restore(node, "style", snapshot.style);
+          restore(node, "data-pptx-audit-external", snapshot.previousMarker);
+        }
+      }, state);
+    } catch (error) {
+      restoreError = error;
+    }
+    try {
+      await page.evaluate(({ snapshots }) => {
+        const explicitSlides = [...document.querySelectorAll(".pptx-slide, [data-slide]")];
+        const slides = explicitSlides.length > 0
+          ? explicitSlides
+          : [document.querySelector(".pptx-deck") ?? document.body];
+        slides.forEach((slide, index) => {
+          if (snapshots[index]?.style === null) slide.removeAttribute("style");
+        });
+      }, state);
+    } catch (error) {
+      restoreError ??= error;
+    }
+    // A failed audit/render callback is more useful than a cleanup failure;
+    // cleanup still runs, while browser shutdown remains guaranteed upstream.
+    if (restoreError && !callbackError) throw restoreError;
   }
 }
 
