@@ -89,10 +89,15 @@ test("HTML package is self-contained and validates against the vendored protocol
       title: "Contract",
       sourceRef: "source-001",
       background: "#FFFFFF",
+      componentInferences: [{ id: "inference-001", role: "table-grid", confidence: 0.9 }],
       objects: [{
         id: "text-001",
         type: "text",
         text: "Contract",
+        runs: [
+          { text: "Con", style: { bold: true, color: "#111111" } },
+          { text: "tract", style: { italic: true, color: "#222222" } }
+        ],
         confidence: 1,
         pixelBox: { x: 64, y: 40, w: 200, h: 30 },
         renderBox: { x: 60, y: 30, w: 350, h: 50 },
@@ -139,6 +144,18 @@ test("HTML package is self-contained and validates against the vendored protocol
         confidence: 0.95,
         pixelBox: { x: 264, y: 180, w: 160, h: 60 },
         z: 6
+      }, {
+        id: "chart-001",
+        type: "chart",
+        confidence: 0.95,
+        pixelBox: { x: 600, y: 240, w: 300, h: 180 },
+        z: 7
+      }, {
+        id: "group-001",
+        type: "group",
+        confidence: 0.92,
+        pixelBox: { x: 940, y: 240, w: 200, h: 180 },
+        z: 8
       }]
     }],
     designTokens: { version: "1.0.0" },
@@ -151,7 +168,7 @@ test("HTML package is self-contained and validates against the vendored protocol
   const result = await buildHtmlPackage(analysisPath, qaPath, join(directory, "html-package"));
   const validated = await validatePresentationPackageFile(result.protocol);
   assert.equal(validated.validationStatus, "passed");
-  assert.equal(validated.componentCount, 6);
+  assert.equal(validated.componentCount, 8);
 
   const html = await readFile(join(directory, "html-package", "index.html"), "utf8");
   assert.match(
@@ -164,7 +181,9 @@ test("HTML package is self-contained and validates against the vendored protocol
     ["connector-001", "shape"],
     ["connector-anchored-001", "line"],
     ["image-001", "image"],
-    ["table-001", "table"]
+    ["table-001", "table"],
+    ["chart-001", "chart"],
+    ["group-001", "group"]
   ]);
   for (const [id, kind] of expectedKinds) {
     assert.match(
@@ -198,4 +217,52 @@ test("HTML package is self-contained and validates against the vendored protocol
   );
   assert.equal(protocolTypes.get("connector-001"), "shape");
   assert.equal(protocolTypes.get("connector-anchored-001"), "connector");
+  assert.deepEqual(protocol.deck.slides[0].components.find((component) => component.id === "text-001").box, {
+    x: 60,
+    y: 30,
+    w: 350,
+    h: 50,
+    unit: "px"
+  });
+  assert.equal(protocol.extensions.imageReconstruction.componentInferences[0].slideId, "slide-001");
+  assert.match(html, /<span style="color:#111111;font-weight:700">Con<\/span>/);
+  assert.match(html, /<span style="color:#222222;font-style:italic">tract<\/span>/);
+});
+
+test("HTML package rejects assets that escape the reconstruction root", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "image-to-pptx-html-path-"));
+  await mkdir(join(directory, "evidence", "reference"), { recursive: true });
+  await writeFile(join(directory, "evidence", "reference", "slide-001.png"), Buffer.from("normalized"));
+  const analysis = {
+    version: "1.0.0",
+    kind: "image-reconstruction-analysis",
+    deck: { id: "deck-001", title: "Path", size: { widthPx: 1280, heightPx: 720 } },
+    sources: [{ id: "source-001", label: "Reference", normalizedPath: "evidence/reference/slide-001.png" }],
+    slides: [{
+      id: "slide-001",
+      order: 1,
+      title: "Path",
+      sourceRef: "source-001",
+      background: "#FFFFFF",
+      componentInferences: [],
+      objects: [{
+        id: "image-001",
+        type: "image",
+        asset: "../outside.png",
+        confidence: 1,
+        pixelBox: { x: 20, y: 20, w: 120, h: 80 },
+        z: 1
+      }]
+    }],
+    designTokens: { version: "1.0.0" },
+    degradations: []
+  };
+  const analysisPath = join(directory, "analysis.json");
+  const qaPath = join(directory, "qa-report.json");
+  await writeFile(analysisPath, JSON.stringify(analysis));
+  await writeFile(qaPath, JSON.stringify({ status: "passed" }));
+  await assert.rejects(
+    buildHtmlPackage(analysisPath, qaPath, join(directory, "html-package")),
+    (error) => error.code === "E_HTML_ASSET_PATH"
+  );
 });

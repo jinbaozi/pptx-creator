@@ -30,7 +30,7 @@ The optional `index.html` carries the same component identities as
   `data-title`, and `data-notes`;
 - use the protocol component ID unchanged in both `data-component-id` and
   `data-pptx-id`;
-- emit `data-pptx-kind="text|shape|table|image"` for those component types;
+- emit `data-pptx-kind="text|shape|table|chart|image|svg|group"` for those component types;
 - expose visually detected, unanchored divider objects as protocol `shape`
   components and `data-pptx-kind="shape"` thin rectangles;
 - reserve protocol `connector`, `data-pptx-kind="line"`, and
@@ -42,6 +42,8 @@ The optional `index.html` carries the same component identities as
   global overlap exemption;
 - reject unknown object kinds or globally duplicated semantic IDs instead of
   emitting a package that a converter would silently omit.
+- use a text object's actual `renderBox` in HTML/protocol geometry and export
+  slide component inferences under the protocol extension block.
 
 These are portable HTML semantics, not imports from another Skill. A consumer
 may ignore them; a compatible converter can use them for stable measurement

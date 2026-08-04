@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { validatePresentationPackage } from "./validate-presentation-package.mjs";
 
@@ -14,8 +14,11 @@ const escapeHtml = (value) => String(value ?? "")
 const digest = async (path) => createHash("sha256").update(await readFile(path)).digest("hex");
 const STABLE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const PPTX_KIND = Object.freeze({
+  chart: "chart",
+  group: "group",
   image: "image",
   shape: "shape",
+  svg: "svg",
   table: "table",
   text: "text"
 });
@@ -31,6 +34,18 @@ function fail(code, message) {
   const error = new Error(message);
   error.code = code;
   throw error;
+}
+
+function localPath(root, candidate, label) {
+  if (typeof candidate !== "string" || !candidate || isAbsolute(candidate)) {
+    fail("E_HTML_ASSET_PATH", `${label} must be a relative package path`);
+  }
+  const resolved = resolve(root, candidate);
+  const rel = relative(root, resolved);
+  if (!rel || rel === "." || rel.startsWith("..") || isAbsolute(rel)) {
+    fail("E_HTML_ASSET_PATH", `${label} escapes the reconstruction package`);
+  }
+  return resolved;
 }
 
 function connectorEndpoints(object) {
@@ -129,17 +144,31 @@ function styleFor(object) {
   const box = visualBox(object);
   const common = `left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px;z-index:${object.z};`;
   if (object.type === "shape") {
-    const radius = object.shape === "ellipse" ? "border-radius:50%;" : "";
-    return `${common}${radius}${object.fill
-      ? `background:${object.color};`
-      : `border:${Math.max(1, object.borderWidthPx ?? 1)}px solid ${object.color};box-sizing:border-box;`}`;
+    const radius = object.shape === "ellipse"
+      ? "border-radius:50%;"
+      : object.shape === "roundRect"
+        ? `border-radius:${Math.max(1, Number(object.radiusPx ?? 12))}px;`
+        : "";
+    const opacity = Number.isFinite(Number(object.opacity)) ? `opacity:${Number(object.opacity)};` : "";
+    const background = object.gradient?.stops?.length
+      ? `background:linear-gradient(${Number(object.gradient.angle ?? 0)}deg,${object.gradient.stops.map((stop) => `${escapeHtml(stop.color)} ${Math.round(Number(stop.position ?? 0) * 100)}%`).join(",")});`
+      : `background:${object.color ?? "transparent"};`;
+    const border = object.fill
+      ? (object.line?.color ? `border:${Math.max(1, Number(object.line.widthPx ?? 1))}px ${escapeHtml(object.line.dash ?? "solid")} ${escapeHtml(object.line.color)};` : "")
+      : `border:${Math.max(1, object.borderWidthPx ?? 1)}px solid ${object.color};box-sizing:border-box;`;
+    return `${common}${radius}${opacity}${object.fill ? background : ""}${border}`;
   }
   if (object.type === "connector") {
     return `${common}background:${object.color};stroke:${object.color};stroke-width:${Math.max(1, object.widthPx ?? object.pixelBox.h ?? 1)};`;
   }
   if (object.type === "text") {
     const style = object.style ?? {};
-    return `${common}font-family:${escapeHtml(style.fontFamily ?? "Arial")};font-size:${style.fontSizePt ?? 16}px;color:${style.color ?? "#172033"};font-weight:${style.bold ? 700 : 400};display:flex;align-items:center;white-space:nowrap;`;
+    const wrap = style.wrap === false ? "nowrap" : "pre-wrap";
+    const alignItems = ({ top: "flex-start", middle: "center", bottom: "flex-end" })[style.valign] ?? "center";
+    return `${common}font-family:${escapeHtml(style.fontFamily ?? "Arial")};font-size:${style.fontSizePt ?? 16}pt;color:${style.color ?? "#172033"};font-weight:${style.bold ? 700 : 400};font-style:${style.italic ? "italic" : "normal"};text-align:${style.align ?? "left"};line-height:${style.lineSpacing ?? 1.0};letter-spacing:${style.charSpacingPt ?? 0}pt;display:flex;align-items:${alignItems};white-space:${wrap};overflow:hidden;transform:rotate(${Number(object.rotation ?? style.rotation ?? 0)}deg);transform-origin:center;`;
+  }
+  if (object.type === "image") {
+    return `${common}object-fit:${object.crop ? "cover" : "fill"};opacity:${Number(object.opacity ?? 1)};transform:rotate(${Number(object.rotation ?? 0)}deg);transform-origin:center;`;
   }
   return common;
 }
@@ -151,9 +180,30 @@ function componentType(object) {
   return ({
     shape: "shape",
     image: "image",
+    svg: "svg",
     text: "text",
-    table: "table"
+    table: "table",
+    chart: "chart",
+    group: "group"
   })[object.type] ?? "unknown";
+}
+
+function richTextHtml(object) {
+  const runs = Array.isArray(object.runs) && object.runs.length
+    ? object.runs
+    : [{ text: object.text ?? "", style: object.style ?? {} }];
+  return runs.map((run) => {
+    const style = run.style ?? {};
+    const css = [
+      style.fontFamily ? `font-family:${escapeHtml(style.fontFamily)}` : "",
+      Number.isFinite(Number(style.fontSizePt)) ? `font-size:${Number(style.fontSizePt)}pt` : "",
+      style.color ? `color:${escapeHtml(style.color)}` : "",
+      style.bold ? "font-weight:700" : "",
+      style.italic ? "font-style:italic" : "",
+      style.underline ? "text-decoration:underline" : ""
+    ].filter(Boolean).join(";");
+    return `<span${css ? ` style="${css}"` : ""}>${escapeHtml(run.text)}</span>`;
+  }).join("");
 }
 
 export async function buildHtmlPackage(analysisPath, qaPath, outputDir) {
@@ -169,7 +219,7 @@ export async function buildHtmlPackage(analysisPath, qaPath, outputDir) {
   for (const slide of analysis.slides) {
     for (const object of slide.objects.filter((item) => item.type === "image")) {
       if (assetMap.has(object.asset)) continue;
-      const source = resolve(packageRoot, object.asset);
+      const source = localPath(packageRoot, object.asset, `${object.id}.asset`);
       const name = `${slide.id}-${basename(source)}`;
       const target = join(out, "assets", name);
       await copyFile(source, target);
@@ -188,7 +238,7 @@ export async function buildHtmlPackage(analysisPath, qaPath, outputDir) {
   }
   const sources = [];
   for (const source of analysis.sources) {
-    const normalized = resolve(packageRoot, source.normalizedPath);
+    const normalized = localPath(packageRoot, source.normalizedPath, `${source.id}.normalizedPath`);
     const name = `${source.id}.png`;
     await copyFile(normalized, join(out, "sources", name));
     sources.push({
@@ -223,7 +273,7 @@ export async function buildHtmlPackage(analysisPath, qaPath, outputDir) {
         ] : []),
         `style="${styleFor(object)}"`
       ].join(" ");
-      if (object.type === "text") return `<div ${attrs}>${escapeHtml(object.text)}</div>`;
+      if (object.type === "text") return `<div ${attrs}>${richTextHtml(object)}</div>`;
       if (object.type === "image") {
         const record = assetMap.get(object.asset);
         return `<img ${attrs} src="${escapeHtml(record.path)}" alt="Bounded source region: ${escapeHtml(object.reason)}">`;
@@ -292,7 +342,7 @@ addEventListener('keydown',event=>{if(['ArrowRight','PageDown',' '].includes(eve
         components: slide.objects.map((object) => ({
           id: object.id,
           type: componentType(object),
-          box: { ...object.pixelBox, unit: "px" },
+          box: { ...visualBox(object), unit: "px" },
           z: object.z,
           editableIntent: object.type !== "image",
           sourceRefs: [slide.sourceRef],
@@ -316,7 +366,13 @@ addEventListener('keydown',event=>{if(['ArrowRight','PageDown',' '].includes(eve
     })),
     compatibility: {
       minReaderVersion: "1.0.0",
-      features: ["image-reconstruction", "component-confidence", "design-tokens", "source-lineage"]
+      features: ["image-reconstruction", "component-confidence", "design-tokens", "source-lineage", "rich-scene-ir"]
+    },
+    extensions: {
+      imageReconstruction: {
+        componentInferences: analysis.slides.flatMap((slide) =>
+          (slide.componentInferences ?? []).map((inference) => ({ slideId: slide.id, ...inference })))
+      }
     }
   };
   const summary = validatePresentationPackage(protocol);

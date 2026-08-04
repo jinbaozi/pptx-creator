@@ -20,11 +20,20 @@ guess text.
 
 Do not silently correct OCR. A human may approve a correction by editing `analysis.json` and recording the source decision, but automated runs must stay source-faithful.
 
+Record Tesseract OSD orientation/script as advisory evidence. Keep source pixels
+and coordinates unchanged unless a caller explicitly approves a rotation. Retain
+word/line polygons, paragraph IDs, reading order, requested languages, and the
+recognition pass so downstream calibration can distinguish observation from
+inference.
+
 ## Charts and tables
 
 - Rebuild a table as a native table only when a closed grid and cell assignment are both reliable.
 - Rebuild a chart as native data only when the actual numeric labels or a supplied data source determine the series.
 - If only bar heights, line positions, or pie angles are visible, use editable shapes and mark the component role as inferred. Do not synthesize a hidden dataset.
+- Keep deterministic `componentCandidates` for unresolved table grids and
+  geometry-only charts with `data: null`. A candidate is not a native object
+  until its recoverability contract is satisfied.
 - If a plot cannot be separated reliably, retain only its bounded plot area as a local crop.
 
 ## Branding and unreadable regions

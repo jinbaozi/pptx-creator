@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { build } from "../scripts/image-to-pptx.mjs";
@@ -29,6 +29,15 @@ test("replica-golden calibration clears the unchanged 0.90 bbox IoU gate", { ski
   assert.equal(qa.editability.wholeSlideRasterCount, 0);
   assert.equal(qa.degradations.length, 1);
   assert.equal((await validateOutput(output)).deliveryStatus, "passed");
+  const analysisPath = join(output, "analysis.json");
+  const originalAnalysis = await readFile(analysisPath, "utf8");
+  const unknownAnalysis = JSON.parse(originalAnalysis);
+  unknownAnalysis.slides[0].unexpectedSceneField = true;
+  await writeFile(analysisPath, JSON.stringify(unknownAnalysis));
+  await assert.rejects(validateOutput(output), (error) => error.code === "E_SCHEMA");
+  await writeFile(analysisPath, originalAnalysis);
+  await writeFile(join(output, "preview", "slide-1.png"), Buffer.from("tampered-preview"));
+  await assert.rejects(validateOutput(output), (error) => error.code === "E_CONTRACT");
 });
 
 test("two ordered images become one two-slide native-first PPTX", { skip: !enabled, timeout: 180_000 }, async () => {

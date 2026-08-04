@@ -14,19 +14,31 @@ Every candidate is rendered through LibreOffice and compared to the normalized r
 | editability | Level `>= 3` |
 | all raster area share | `<= 0.65` |
 
-The gate also blocks page-count/size mismatch, missing fonts that remove text, undeclared raster content, any whole-slide raster, off-slide objects, and a local worst-region omission.
+The OCR gate combines independent page-level and source-bound region OCR: region
+OCR recovers small labels, while a token-evidence comparison still charges
+missing or extra global text. Page-level reading-order noise does not erase
+region evidence. The gate also blocks page-count/size mismatch, missing fonts
+that remove text, undeclared raster content, any whole-slide raster, off-slide
+objects, and a local worst-region omission.
 
 ## Bounded repair
 
-Perform at most three attempts. Match rendered OCR lines to source lines by normalized text, then:
+Perform at most three attempts. Match rendered OCR lines to source lines by normalized text and classify text, shape, image, background, and z-order regions, then:
 
 1. translate the text box by the measured glyph-box displacement;
 2. scale font size from measured width and height ratios;
 3. enlarge only the text container required to prevent wrapping;
 4. clamp each move and scale to a conservative bound;
-5. render and measure again.
+5. adjust bounded shape/image geometry, safe color/background evidence, or one
+   z-order step only when local source-color measurement (or explicit layer
+   order evidence) identifies that category; ambiguous geometry remains
+   diagnostic-only and is not applied;
+6. render and measure again.
 
-Keep every attempt under `reports/attempt-N/`. Accept only a strictly improved candidate. Thresholds never change during repair. If the gate is still red, publish `failure.json` and exit `2`.
+Keep every attempt under `reports/attempt-N/`. Thresholds never change. The loop
+may traverse one bounded Pareto step when a hard metric improves materially but
+another OCR metric fluctuates; only the best or fully accepted candidate may be
+published. If the gate is still red, publish `failure.json` and exit `2`.
 
 ## Stable errors
 

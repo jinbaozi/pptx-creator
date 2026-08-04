@@ -58,6 +58,13 @@ html-package/                 optional
 
 `run.json` binds the accepted PPTX, preview, analysis, QA, sources, and optional HTML package by relative path and digest. A failed run keeps `failed-candidate.pptx`, `qa-report.json`, and `failure.json`, but never publishes `final.pptx`.
 
+`analysis.json` also carries `componentCandidates`, `layoutGroups`,
+`layerAnalysis`, and `sceneLayerGraph`. `reports/visual-report.json` carries
+per-region/object diagnostics plus global, localized, and merged OCR evidence.
+`reports/render-report.json` binds preview pages to the exact final/failed PPTX
+digest. Any schema, path, digest, protocol, or lineage failure removes complete
+delivery markers and leaves `failure.json` plus attempt evidence.
+
 ## Exit codes
 
 - `0`: blocking quality gate passed;

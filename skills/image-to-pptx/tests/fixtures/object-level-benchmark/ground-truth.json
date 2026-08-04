@@ -1,0 +1,851 @@
+{
+  "version": "1.0.0",
+  "kind": "image-to-pptx-object-ground-truth",
+  "id": "image-to-pptx-object-level-v1",
+  "source": "reference.png",
+  "size": {
+    "width": 1280,
+    "height": 720,
+    "unit": "px"
+  },
+  "coordinateSpace": "top-left-pixel",
+  "objects": [
+    {
+      "id": "header-band",
+      "type": "shape",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "w": 1280,
+        "h": 112,
+        "unit": "px"
+      },
+      "z": 0,
+      "text": null,
+      "style": {
+        "shape": "rect",
+        "fill": true,
+        "color": "#12263A",
+        "opacity": 1.0
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "shape",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": false,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "header-title",
+      "type": "text",
+      "box": {
+        "x": 64,
+        "y": 34,
+        "w": 620,
+        "h": 42,
+        "unit": "px"
+      },
+      "z": 4,
+      "text": "OBJECT-LEVEL RECONSTRUCTION BENCHMARK",
+      "style": {
+        "fontFamily": "Arial",
+        "fontSizePt": 30,
+        "bold": true,
+        "lineCount": 1
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "text",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "text"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "copy-card",
+      "type": "shape",
+      "box": {
+        "x": 64,
+        "y": 192,
+        "w": 446,
+        "h": 242,
+        "unit": "px"
+      },
+      "z": 0,
+      "text": null,
+      "style": {
+        "shape": "roundRect",
+        "fill": true,
+        "color": "#FFFFFF",
+        "borderColor": "#CAD5E2",
+        "opacity": 1.0
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "shape",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "multiline-copy",
+      "type": "text",
+      "box": {
+        "x": 92,
+        "y": 232,
+        "w": 300,
+        "h": 78,
+        "unit": "px"
+      },
+      "z": 2,
+      "text": "Multi-line text block\nremains source-bound",
+      "style": {
+        "fontFamily": "Arial",
+        "fontSizePt": 24,
+        "bold": false,
+        "lineCount": 2,
+        "lineHeightPt": 30
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "text",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "text"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "icon-star",
+      "type": "icon",
+      "box": {
+        "x": 416,
+        "y": 245,
+        "w": 60,
+        "h": 60,
+        "unit": "px"
+      },
+      "z": 3,
+      "text": null,
+      "style": {
+        "iconKind": "star",
+        "fill": true,
+        "color": "#F6C85F",
+        "opacity": 1.0
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 0.98,
+        "renderedAs": "native-shape",
+        "reason": "simple visible vector glyph"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "rotated-badge",
+      "type": "shape",
+      "box": {
+        "x": 500,
+        "y": 132,
+        "w": 232,
+        "h": 104,
+        "unit": "px"
+      },
+      "z": 2,
+      "text": null,
+      "style": {
+        "shape": "roundRect",
+        "fill": true,
+        "color": "#E76F51",
+        "opacity": 0.62,
+        "rotationDeg": 12
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 0.93,
+        "renderedAs": "native-shape",
+        "reason": "rotation and alpha are explicit visual attributes"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "rotated-label",
+      "type": "text",
+      "box": {
+        "x": 526,
+        "y": 164,
+        "w": 182,
+        "h": 34,
+        "unit": "px"
+      },
+      "z": 3,
+      "text": "ROTATED 12°",
+      "style": {
+        "fontFamily": "Arial",
+        "fontSizePt": 18,
+        "bold": true,
+        "lineCount": 1,
+        "rotationDeg": 12
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "text",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "text"
+        ],
+        "required": false,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "chart-panel",
+      "type": "shape",
+      "box": {
+        "x": 545,
+        "y": 198,
+        "w": 671,
+        "h": 312,
+        "unit": "px"
+      },
+      "z": 0,
+      "text": null,
+      "style": {
+        "shape": "roundRect",
+        "fill": true,
+        "color": "#FFFFFF",
+        "borderColor": "#D8E1EA",
+        "opacity": 1.0
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "shape",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "chart-title",
+      "type": "text",
+      "box": {
+        "x": 620,
+        "y": 218,
+        "w": 330,
+        "h": 30,
+        "unit": "px"
+      },
+      "z": 2,
+      "text": "VISIBLE BAR GEOMETRY",
+      "style": {
+        "fontFamily": "Arial",
+        "fontSizePt": 18,
+        "bold": true,
+        "lineCount": 1
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "text",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "text"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "retention-chart",
+      "type": "chart",
+      "box": {
+        "x": 620,
+        "y": 258,
+        "w": 540,
+        "h": 210,
+        "unit": "px"
+      },
+      "z": 1,
+      "text": null,
+      "style": {
+        "chartType": "bar",
+        "dataPolicy": "visible-geometry-only"
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "partial-native",
+        "confidence": 0.9,
+        "renderedAs": "native-shapes",
+        "reason": "bar heights are visible; numeric dataset is not supplied"
+      },
+      "match": {
+        "types": [
+          "shape",
+          "connector",
+          "text"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "bar-q1",
+      "type": "shape",
+      "box": {
+        "x": 662,
+        "y": 354,
+        "w": 58,
+        "h": 86,
+        "unit": "px"
+      },
+      "z": 2,
+      "text": null,
+      "style": {
+        "shape": "rect",
+        "fill": true,
+        "color": "#4C78A8",
+        "opacity": 1.0
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": [
+          "retention-chart"
+        ]
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "shape",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "bar-q2",
+      "type": "shape",
+      "box": {
+        "x": 762,
+        "y": 316,
+        "w": 58,
+        "h": 124,
+        "unit": "px"
+      },
+      "z": 2,
+      "text": null,
+      "style": {
+        "shape": "rect",
+        "fill": true,
+        "color": "#59A14F",
+        "opacity": 1.0
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": [
+          "retention-chart"
+        ]
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "shape",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "bar-q3",
+      "type": "shape",
+      "box": {
+        "x": 862,
+        "y": 286,
+        "w": 58,
+        "h": 154,
+        "unit": "px"
+      },
+      "z": 2,
+      "text": null,
+      "style": {
+        "shape": "rect",
+        "fill": true,
+        "color": "#F28E2B",
+        "opacity": 1.0
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": [
+          "retention-chart"
+        ]
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "shape",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "bar-q4",
+      "type": "shape",
+      "box": {
+        "x": 962,
+        "y": 324,
+        "w": 58,
+        "h": 116,
+        "unit": "px"
+      },
+      "z": 2,
+      "text": null,
+      "style": {
+        "shape": "rect",
+        "fill": true,
+        "color": "#E15759",
+        "opacity": 1.0
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": [
+          "retention-chart"
+        ]
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "shape",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "chart-overlay",
+      "type": "shape",
+      "box": {
+        "x": 1002,
+        "y": 300,
+        "w": 148,
+        "h": 106,
+        "unit": "px"
+      },
+      "z": 4,
+      "text": null,
+      "style": {
+        "shape": "rect",
+        "fill": true,
+        "color": "#F6C85F",
+        "opacity": 0.32,
+        "transparency": 68
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [
+          "bar-q4",
+          "retention-chart"
+        ],
+        "occludes": [
+          "bar-q4"
+        ],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 0.88,
+        "renderedAs": "native-shape",
+        "reason": "bounded translucent overlay"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "table-panel",
+      "type": "shape",
+      "box": {
+        "x": 64,
+        "y": 486,
+        "w": 446,
+        "h": 194,
+        "unit": "px"
+      },
+      "z": 0,
+      "text": null,
+      "style": {
+        "shape": "roundRect",
+        "fill": true,
+        "color": "#FFFFFF",
+        "borderColor": "#CAD5E2",
+        "opacity": 1.0
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "shape",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "region-table",
+      "type": "table",
+      "box": {
+        "x": 82,
+        "y": 508,
+        "w": 410,
+        "h": 150,
+        "unit": "px"
+      },
+      "z": 1,
+      "text": "Region | Share | Delta\nNorth | 42% | +8\nSouth | 31% | +3\nWest | 27% | -2",
+      "style": {
+        "columns": 3,
+        "rows": 4,
+        "headerRows": 1,
+        "dataPolicy": "visible-cell-text-only"
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "partial-native",
+        "confidence": 0.87,
+        "renderedAs": "native-table",
+        "reason": "closed grid and visible cell text are present"
+      },
+      "match": {
+        "types": [
+          "table",
+          "shape",
+          "connector",
+          "text"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "table-header",
+      "type": "text",
+      "box": {
+        "x": 98,
+        "y": 516,
+        "w": 350,
+        "h": 24,
+        "unit": "px"
+      },
+      "z": 2,
+      "text": "REGION   SHARE   DELTA",
+      "style": {
+        "fontFamily": "Arial",
+        "fontSizePt": 14,
+        "bold": true,
+        "lineCount": 1
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "text",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "text"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "table-values",
+      "type": "text",
+      "box": {
+        "x": 98,
+        "y": 546,
+        "w": 350,
+        "h": 90,
+        "unit": "px"
+      },
+      "z": 2,
+      "text": "North     42%      +8\nSouth     31%      +3\nWest      27%      -2",
+      "style": {
+        "fontFamily": "Arial",
+        "fontSizePt": 14,
+        "bold": false,
+        "lineCount": 3,
+        "lineHeightPt": 24
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "text",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "text"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "overlap-badge",
+      "type": "shape",
+      "box": {
+        "x": 366,
+        "y": 364,
+        "w": 154,
+        "h": 56,
+        "unit": "px"
+      },
+      "z": 5,
+      "text": null,
+      "style": {
+        "shape": "roundRect",
+        "fill": true,
+        "color": "#12263A",
+        "opacity": 0.9
+      },
+      "relations": {
+        "contains": [
+          "overlap-label"
+        ],
+        "overlaps": [
+          "copy-card"
+        ],
+        "occludes": [
+          "copy-card"
+        ],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "shape",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "shape"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    },
+    {
+      "id": "overlap-label",
+      "type": "text",
+      "box": {
+        "x": 388,
+        "y": 378,
+        "w": 112,
+        "h": 26,
+        "unit": "px"
+      },
+      "z": 6,
+      "text": "OVERLAP",
+      "style": {
+        "fontFamily": "Arial",
+        "fontSizePt": 16,
+        "bold": true,
+        "lineCount": 1,
+        "color": "#FFFFFF"
+      },
+      "relations": {
+        "contains": [],
+        "overlaps": [
+          "overlap-badge"
+        ],
+        "occludes": [],
+        "anchors": []
+      },
+      "recoverability": {
+        "status": "native",
+        "confidence": 1.0,
+        "renderedAs": "text",
+        "reason": "visible geometry is deterministic"
+      },
+      "match": {
+        "types": [
+          "text"
+        ],
+        "required": true,
+        "minIoU": 0.15
+      }
+    }
+  ],
+  "acceptance": {
+    "requiredObjectRecall": 0.68,
+    "requiredRegionIoU": 0.15,
+    "wholeSlideRasterAllowed": false,
+    "notes": "Semantic chart/table/icon records may match observable native shapes, connectors, and text; hidden numeric data is never required."
+  }
+}

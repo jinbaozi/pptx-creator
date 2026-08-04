@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jinbaozi/pptx-creator/skills/image-to-pptx/schemas/analysis/1.0.0",
-  "title": "Image reconstruction analysis",
+  "title": "Image reconstruction analysis scene IR",
+  "description": "Strict, source-bound scene IR. Rich object attributes are optional so existing 1.0.0 analyzer output remains valid.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,37 +21,823 @@
     "version": { "const": "1.0.0" },
     "kind": { "const": "image-reconstruction-analysis" },
     "generator": { "const": "image-to-pptx" },
-    "deck": {
-      "type": "object",
-      "required": ["id", "title", "size"]
-    },
-    "ocr": {
-      "type": "object",
-      "required": ["engine", "version", "langs", "threshold", "policy"]
-    },
+    "deck": { "$ref": "#/$defs/deck" },
+    "ocr": { "$ref": "#/$defs/ocr" },
     "sources": {
       "type": "array",
       "minItems": 1,
-      "items": {
-        "type": "object",
-        "required": ["id", "kind", "path", "sha256", "normalizedPath", "normalizedSha256"]
-      }
+      "items": { "$ref": "#/$defs/source" }
     },
     "slides": {
       "type": "array",
       "minItems": 1,
-      "items": {
-        "type": "object",
-        "required": ["id", "order", "title", "sourceRef", "background", "sizePx", "objects", "degradations"]
+      "items": { "$ref": "#/$defs/slide" }
+    },
+    "designTokens": { "$ref": "#/$defs/designTokens" },
+    "degradations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/degradation" }
+    },
+    "editabilityTarget": { "$ref": "#/$defs/editabilityTarget" }
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "hexColor": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "finiteNumber": { "type": "number" },
+    "positiveNumber": { "type": "number", "exclusiveMinimum": 0 },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "pixelBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0 },
+        "y": { "type": "number", "minimum": 0 },
+        "w": { "type": "number", "exclusiveMinimum": 0 },
+        "h": { "type": "number", "exclusiveMinimum": 0 },
+        "unit": { "const": "px" }
       }
     },
-    "designTokens": { "type": "object" },
-    "degradations": { "type": "array" },
+    "sizePx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "sizeIn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "deck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "size"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "title": { "type": "string", "minLength": 1 },
+        "size": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["widthPx", "heightPx", "widthIn", "heightIn"],
+          "properties": {
+            "widthPx": { "type": "number", "exclusiveMinimum": 0 },
+            "heightPx": { "type": "number", "exclusiveMinimum": 0 },
+            "widthIn": { "type": "number", "exclusiveMinimum": 0 },
+            "heightIn": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
+      }
+    },
+    "ocr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "version", "langs", "threshold", "policy"],
+      "properties": {
+        "engine": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "langs": { "type": "string", "minLength": 1 },
+        "languages": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "requestedLanguages": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "languagePacks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "languageMetadata": { "$ref": "#/$defs/languageMetadata" },
+        "availableLanguages": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "threshold": { "$ref": "#/$defs/confidence" },
+        "policy": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "path", "sha256", "normalizedPath", "normalizedSha256"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "kind": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "factStatus": { "enum": ["provided", "observed", "recognized", "inferred", "unknown"] },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "originalSize": { "$ref": "#/$defs/sizePx" },
+        "normalizedPath": { "type": "string", "minLength": 1 },
+        "normalizedSha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "normalizedSize": { "$ref": "#/$defs/sizePx" }
+      }
+    },
+    "paletteEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hex", "share"],
+      "properties": {
+        "hex": { "$ref": "#/$defs/hexColor" },
+        "share": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "componentInference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "confidence", "renderedAs", "factStatus"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "renderedAs": { "type": "string", "minLength": 1 },
+        "factStatus": { "enum": ["provided", "observed", "recognized", "inferred", "unknown"] },
+        "note": { "type": "string" },
+        "color": { "$ref": "#/$defs/hexColor" },
+        "candidateRef": { "$ref": "#/$defs/stableId" },
+        "dataStatus": { "enum": ["geometry-only", "not-recovered", "recovered", "unknown"] }
+      }
+    },
+    "languageMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "ocrLanguageString", "detectionStatus", "detectionSource"],
+      "properties": {
+        "requested": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "ocrLanguageString": { "type": "string", "minLength": 1 },
+        "detectedScript": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "detectedScriptConfidence": { "anyOf": [{ "type": "number", "minimum": 0, "maximum": 100 }, { "type": "null" }] },
+        "detectionStatus": { "type": "string", "minLength": 1 },
+        "detectionSource": { "type": "string", "minLength": 1 }
+      }
+    },
+    "orientation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "engine", "orientationDegrees", "rotateDegrees", "orientationConfidence", "script", "scriptConfidence", "source"],
+      "properties": {
+        "status": { "enum": ["ok", "unavailable"] },
+        "engine": { "type": "string", "minLength": 1 },
+        "orientationDegrees": { "anyOf": [{ "type": "number", "minimum": 0, "maximum": 360 }, { "type": "null" }] },
+        "rotateDegrees": { "anyOf": [{ "type": "number", "minimum": 0, "maximum": 360 }, { "type": "null" }] },
+        "orientationConfidence": { "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] },
+        "script": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "scriptConfidence": { "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] },
+        "source": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string" }
+      }
+    },
+    "polygon": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["x", "y"],
+        "properties": {
+          "x": { "type": "number", "minimum": 0 },
+          "y": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "relationSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contains": { "type": "array", "items": { "$ref": "#/$defs/stableId" } },
+        "overlaps": { "type": "array", "items": { "$ref": "#/$defs/stableId" } },
+        "occludes": { "type": "array", "items": { "$ref": "#/$defs/stableId" } },
+        "anchors": { "type": "array", "items": { "$ref": "#/$defs/stableId" } }
+      }
+    },
+    "recoverability": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["status", "confidence", "renderedAs", "reason"],
+          "properties": {
+            "status": {},
+            "confidence": {},
+            "renderedAs": {},
+            "reason": {}
+          }
+        },
+        { "required": ["sourceData"], "properties": { "sourceData": { "const": true } } }
+      ],
+      "properties": {
+        "status": { "enum": ["native", "partial-native", "local-raster", "not-observed", "unknown"] },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "renderedAs": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "nativeAlternativesAttempted": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "sourceData": { "type": "boolean" }
+      }
+    },
+    "gradientStop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "color"],
+      "properties": {
+        "position": { "type": "number", "minimum": 0, "maximum": 100 },
+        "color": { "$ref": "#/$defs/hexColor" },
+        "transparency": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "gradient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "stops"],
+      "properties": {
+        "type": { "enum": ["linear", "radial"] },
+        "angle": { "type": "number", "minimum": -360, "maximum": 360 },
+        "shape": { "enum": ["rect", "circle"] },
+        "stops": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/gradientStop" }
+        }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rotationDeg": { "type": "number", "minimum": -360, "maximum": 360 },
+        "scaleX": { "type": "number", "exclusiveMinimum": 0 },
+        "scaleY": { "type": "number", "exclusiveMinimum": 0 },
+        "origin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number", "minimum": 0 },
+            "y": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "objectBase": {
+      "type": "object",
+      "required": ["id", "type", "pixelBox", "confidence", "z", "factStatus"],
+      "propertyNames": {
+        "enum": [
+          "id", "type", "pixelBox", "polygon", "confidence", "z", "factStatus", "objectRef", "readingOrder", "readingOrderSource", "languages", "languageSource", "orientation", "layoutGroupRef", "rotationDeg", "rotation", "rotate", "opacity", "transparency", "transform", "semanticRole", "sourceRef", "sourceRefs", "sourceSha256", "relations", "recoverability", "sourceData", "metadata", "notes", "colorTolerancePx", "colorDistance", "shape", "fill", "color", "borderWidthPx", "borderColor", "fillOpacity", "blendMode", "gradient", "shadow", "line", "rectRadius", "radius", "widthPx", "direction", "sourceId", "targetId", "connector", "route", "beginArrowType", "endArrowType", "text", "renderBox", "style", "runs", "paragraphs", "paragraph", "recognitionPass", "lineCount", "asset", "src", "path", "reason", "mime", "crop", "sizing", "rounding", "imageShape", "altText", "rows", "headers", "sections", "headerRows", "columns", "colW", "rowH", "margin", "fillColor", "textColor", "fontFamily", "fontSizePt", "chartType", "chartKind", "kind", "series", "data", "chartData", "categories", "dataPolicy", "legend", "axis", "options", "iconKind", "pathData", "filled", "children"
+        ]
+      },
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "type": "string" },
+        "pixelBox": { "$ref": "#/$defs/pixelBox" },
+        "polygon": { "$ref": "#/$defs/polygon" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "z": { "type": "integer", "minimum": 0 },
+        "factStatus": { "enum": ["provided", "observed", "recognized", "inferred", "unknown"] },
+        "objectRef": { "$ref": "#/$defs/stableId" },
+        "readingOrder": { "type": "integer", "minimum": 1 },
+        "readingOrderSource": { "type": "string", "minLength": 1 },
+        "languages": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "languageSource": { "type": "string", "minLength": 1 },
+        "orientation": { "$ref": "#/$defs/orientation" },
+        "layoutGroupRef": { "$ref": "#/$defs/stableId" },
+        "rotationDeg": { "type": "number", "minimum": -360, "maximum": 360 },
+        "rotation": { "type": "number", "minimum": -360, "maximum": 360 },
+        "rotate": { "type": "number", "minimum": -360, "maximum": 360 },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "transparency": { "type": "number", "minimum": 0, "maximum": 100 },
+        "transform": { "$ref": "#/$defs/transform" },
+        "semanticRole": { "type": "string", "minLength": 1 },
+        "sourceRefs": { "type": "array", "items": { "$ref": "#/$defs/stableId" } },
+        "relations": { "$ref": "#/$defs/relationSet" },
+        "recoverability": {
+          "anyOf": [
+            { "$ref": "#/$defs/recoverability" },
+            { "const": true }
+          ]
+        },
+        "sourceData": { "type": "boolean" },
+        "sourceRef": { "$ref": "#/$defs/stableId" },
+        "sourceSha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "metadata": { "type": "object" },
+        "notes": { "type": "string" },
+        "style": { "type": "object" },
+        "gradient": { "$ref": "#/$defs/gradient" },
+        "shadow": { "type": "object" },
+        "line": { "type": "object" }
+      }
+    },
+    "shape": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "type": "object",
+          "required": ["type", "shape", "fill", "color", "borderWidthPx"],
+          "properties": {
+            "type": { "const": "shape" },
+            "shape": {
+              "enum": [
+                "rect", "roundRect", "ellipse", "line", "bentConnector2", "bentConnector3", "bentConnector4", "bentConnector5",
+                "curvedConnector2", "curvedConnector3", "curvedConnector4", "curvedConnector5", "triangle", "diamond", "hexagon",
+                "parallelogram", "trapezoid", "rightArrow", "leftArrow", "upArrow", "downArrow", "plus", "star5", "star6",
+                "cloud", "heart", "arc", "blockArc", "pie", "pieWedge", "donut", "frame", "can", "cube", "chevron"
+              ]
+            },
+            "fill": { "type": "boolean" },
+            "color": { "$ref": "#/$defs/hexColor" },
+            "borderWidthPx": { "type": "number", "minimum": 0 },
+            "borderColor": { "$ref": "#/$defs/hexColor" },
+            "fillOpacity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "blendMode": { "enum": ["normal", "multiply", "screen", "overlay", "darken", "lighten"] }
+          }
+        }
+      ]
+    },
+    "connector": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "type": "object",
+          "required": ["type", "color", "widthPx", "direction"],
+          "properties": {
+            "type": { "const": "connector" },
+            "color": { "$ref": "#/$defs/hexColor" },
+            "widthPx": { "type": "number", "exclusiveMinimum": 0 },
+            "direction": { "enum": ["horizontal", "vertical", "diagonal"] },
+            "sourceId": { "$ref": "#/$defs/stableId" },
+            "targetId": { "$ref": "#/$defs/stableId" },
+            "connector": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sourceId", "targetId"],
+              "properties": {
+                "sourceId": { "$ref": "#/$defs/stableId" },
+                "targetId": { "$ref": "#/$defs/stableId" }
+              }
+            },
+            "beginArrowType": { "type": "string", "minLength": 1 },
+            "endArrowType": { "type": "string", "minLength": 1 }
+          },
+          "dependentRequired": {
+            "sourceId": ["targetId"],
+            "targetId": ["sourceId"]
+          }
+        }
+      ]
+    },
+    "textStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fontFamily", "fontSizePt", "color", "bold", "charSpacingPt"],
+      "properties": {
+        "fontFamily": { "type": "string", "minLength": 1 },
+        "fontSizePt": { "type": "number", "exclusiveMinimum": 0 },
+        "color": { "$ref": "#/$defs/hexColor" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "charSpacingPt": { "type": "number" },
+        "lineHeightPt": { "type": "number", "exclusiveMinimum": 0 },
+        "lineCount": { "type": "integer", "minimum": 1 },
+        "align": { "enum": ["left", "center", "right", "justify"] },
+        "valign": { "enum": ["top", "mid", "middle", "bottom"] },
+        "wrap": { "type": "boolean" },
+        "maxLines": { "type": "integer", "minimum": 1 },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "transparency": { "type": "number", "minimum": 0, "maximum": 100 },
+        "underline": { "anyOf": [{ "type": "boolean" }, { "type": "object" }] },
+        "strike": { "type": "boolean" },
+        "margin": { "anyOf": [{ "type": "number" }, { "type": "array", "items": { "type": "number" } }] },
+        "lineSpacingPt": { "type": "number" },
+        "lineSpacingMultiple": { "type": "number" },
+        "paraSpaceAfterPt": { "type": "number" },
+        "paraSpaceBeforePt": { "type": "number" },
+        "indentLevel": { "type": "number" },
+        "rtlMode": { "type": "boolean" },
+        "rtl": { "type": "boolean" },
+        "vert": { "type": "string" },
+        "rotationDeg": { "type": "number", "minimum": -360, "maximum": 360 },
+        "rotation": { "type": "number", "minimum": -360, "maximum": 360 },
+        "rotate": { "type": "number", "minimum": -360, "maximum": 360 },
+        "flipH": { "type": "boolean" },
+        "flipV": { "type": "boolean" },
+        "fit": { "type": "string" },
+        "shadow": { "type": "object" },
+        "fill": { "type": "object" },
+        "line": { "type": "object" },
+        "gradient": { "$ref": "#/$defs/gradient" }
+      }
+    },
+    "textRun": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string" },
+        "style": { "type": "object" },
+        "fontFamily": { "type": "string" },
+        "fontSizePt": { "type": "number", "exclusiveMinimum": 0 },
+        "color": { "$ref": "#/$defs/hexColor" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "underline": { "anyOf": [{ "type": "boolean" }, { "type": "object" }] },
+        "breakLine": { "type": "boolean" }
+      }
+    },
+    "textParagraph": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "text": { "type": "string" },
+        "runs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/textRun" } },
+        "align": { "enum": ["left", "center", "right", "justify"] },
+        "valign": { "enum": ["top", "mid", "middle", "bottom"] }
+      },
+      "anyOf": [
+        { "required": ["text"], "properties": { "text": {} } },
+        { "required": ["runs"], "properties": { "runs": {} } }
+      ]
+    },
+    "text": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "type": "object",
+          "required": ["type", "text", "renderBox", "style"],
+          "properties": {
+            "type": { "const": "text" },
+            "text": { "type": "string", "minLength": 1 },
+            "renderBox": { "$ref": "#/$defs/pixelBox" },
+            "style": { "$ref": "#/$defs/textStyle" },
+            "runs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/textRun" } },
+            "paragraphs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/textParagraph" } },
+            "paragraph": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/textParagraph" } },
+            "recognitionPass": { "type": "string", "minLength": 1 },
+            "lineCount": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "image": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "type": "object",
+          "required": ["type", "asset", "reason"],
+          "properties": {
+            "type": { "const": "image" },
+            "asset": { "type": "string", "minLength": 1 },
+            "reason": { "type": "string", "minLength": 1 },
+            "mime": { "enum": ["image/png", "image/jpeg", "image/webp", "image/svg+xml"] },
+            "crop": { "$ref": "#/$defs/imageSizing" },
+            "sizing": { "$ref": "#/$defs/imageSizing" },
+            "rounding": { "type": "boolean" },
+            "imageShape": { "enum": ["rect", "ellipse"] },
+            "altText": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "imageSizing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["crop", "cover", "contain"] },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "type": "number" },
+        "h": { "type": "number" }
+      }
+    },
+    "table": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "type": "object",
+          "required": ["type", "rows"],
+          "properties": {
+            "type": { "const": "table" },
+            "rows": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "null" }] }
+              }
+            },
+            "headerRows": { "type": "integer", "minimum": 0 },
+            "columns": { "type": "integer", "minimum": 1 },
+            "color": { "$ref": "#/$defs/hexColor" },
+            "fillColor": { "$ref": "#/$defs/hexColor" },
+            "textColor": { "$ref": "#/$defs/hexColor" },
+            "fontFamily": { "type": "string", "minLength": 1 },
+            "fontSizePt": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
+      ]
+    },
+    "chartSeries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "label": { "type": "string" },
+        "color": { "$ref": "#/$defs/hexColor" },
+        "values": {
+          "type": "array",
+          "items": { "anyOf": [{ "type": "number" }, { "type": "null" }] }
+        },
+        "factStatus": { "enum": ["provided", "observed", "recognized", "inferred", "unknown"] }
+      }
+    },
+    "nativeChartSeries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "labels", "values"],
+      "properties": {
+        "name": { "type": "string" },
+        "labels": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "values": { "type": "array", "minItems": 1, "items": { "type": "number" } }
+      }
+    },
+    "chart": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "type": "object",
+          "required": ["type", "chartType", "series", "dataPolicy"],
+          "allOf": [
+            {
+              "if": {
+                "properties": { "dataPolicy": { "const": "source-provided" } },
+                "required": ["dataPolicy"]
+              },
+              "then": {
+                "required": ["sourceData", "sourceRef", "sourceSha256", "data"],
+                "properties": {
+                  "sourceData": { "const": true },
+                  "sourceRef": { "$ref": "#/$defs/stableId" },
+                  "sourceSha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+                  "data": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nativeChartSeries" } }
+                }
+              }
+            }
+          ],
+          "properties": {
+            "type": { "const": "chart" },
+            "chartType": { "enum": ["bar", "line", "area", "pie", "scatter", "unknown"] },
+            "series": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/chartSeries" } },
+            "categories": { "type": "array", "items": { "type": "string" } },
+            "dataPolicy": { "enum": ["visible-geometry-only", "source-provided", "unknown"] },
+            "legend": { "type": "boolean" },
+            "axis": { "type": "object" },
+            "kind": { "type": "string", "minLength": 1 },
+            "sourceData": { "type": "boolean" },
+            "sourceRef": { "$ref": "#/$defs/stableId" },
+            "sourceSha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+            "data": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nativeChartSeries" } },
+            "chartData": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nativeChartSeries" } },
+            "options": { "type": "object" }
+          }
+        }
+      ]
+    },
+    "icon": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "type": "object",
+          "required": ["type", "iconKind", "color"],
+          "properties": {
+            "type": { "const": "icon" },
+            "iconKind": { "type": "string", "minLength": 1 },
+            "color": { "$ref": "#/$defs/hexColor" },
+            "pathData": { "type": "string", "minLength": 1 },
+            "filled": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "group": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "type": "object",
+          "required": ["type", "children"],
+          "properties": {
+            "type": { "const": "group" },
+            "children": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "anyOf": [
+                  { "$ref": "#/$defs/stableId" },
+                  { "$ref": "#/$defs/object" }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "componentCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "objectType", "pixelBox", "memberIds", "confidence", "factStatus"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "enum": ["table", "chart"] },
+        "objectType": { "enum": ["table", "chart"] },
+        "pixelBox": { "$ref": "#/$defs/pixelBox" },
+        "memberIds": { "type": "array", "items": { "$ref": "#/$defs/stableId" } },
+        "rows": { "type": "integer", "minimum": 1 },
+        "columns": { "type": "integer", "minimum": 1 },
+        "closedGrid": { "type": "boolean" },
+        "cellAssignment": { "type": "string", "minLength": 1 },
+        "chartKind": { "enum": ["bar", "line", "area", "pie", "scatter", "unknown"] },
+        "series": { "anyOf": [{ "type": "array", "items": { "$ref": "#/$defs/chartSeries" } }, { "type": "null" }] },
+        "values": { "anyOf": [{ "type": "array", "items": { "anyOf": [{ "type": "number" }, { "type": "null" }] } }, { "type": "null" }] },
+        "data": { "anyOf": [{ "type": "array" }, { "type": "object" }, { "type": "null" }] },
+        "dataStatus": { "enum": ["geometry-only", "not-recovered", "recovered", "unknown"] },
+        "nativeObjectType": { "type": "string", "minLength": 1 },
+        "nativeEligible": { "type": "boolean" },
+        "renderedAs": { "type": "string", "minLength": 1 },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "factStatus": { "enum": ["provided", "observed", "recognized", "inferred", "unknown"] },
+        "provenance": { "type": "string", "minLength": 1 },
+        "note": { "type": "string" }
+      }
+    },
+    "layoutGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "pixelBox", "memberIds", "readingOrder", "confidence", "factStatus", "provenance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "role": { "type": "string", "minLength": 1 },
+        "pixelBox": { "$ref": "#/$defs/pixelBox" },
+        "memberIds": { "type": "array", "items": { "$ref": "#/$defs/stableId" } },
+        "readingOrder": { "type": "integer", "minimum": 1 },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "factStatus": { "enum": ["provided", "observed", "recognized", "inferred", "unknown"] },
+        "provenance": { "type": "string", "minLength": 1 }
+      }
+    },
+    "object": {
+      "oneOf": [
+        { "$ref": "#/$defs/shape" },
+        { "$ref": "#/$defs/connector" },
+        { "$ref": "#/$defs/text" },
+        { "$ref": "#/$defs/image" },
+        { "$ref": "#/$defs/table" },
+        { "$ref": "#/$defs/chart" },
+        { "$ref": "#/$defs/icon" },
+        { "$ref": "#/$defs/group" }
+      ]
+    },
+    "slide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "order", "title", "sourceRef", "background", "sizePx", "objects", "degradations"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "order": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "sourceRef": { "$ref": "#/$defs/stableId" },
+        "background": { "$ref": "#/$defs/hexColor" },
+        "palette": { "type": "array", "items": { "$ref": "#/$defs/paletteEntry" } },
+        "colorAnalysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method", "tolerancePx", "distance"],
+          "properties": {
+            "method": { "type": "string", "minLength": 1 },
+            "tolerancePx": { "type": "number", "minimum": 0 },
+            "distance": { "type": "string", "minLength": 1 }
+          }
+        },
+        "orientation": { "$ref": "#/$defs/orientation" },
+        "languageMetadata": { "$ref": "#/$defs/languageMetadata" },
+        "sizePx": { "$ref": "#/$defs/sizePx" },
+        "objects": { "type": "array", "items": { "$ref": "#/$defs/object" } },
+        "componentInferences": { "type": "array", "items": { "$ref": "#/$defs/componentInference" } },
+        "componentCandidates": { "type": "array", "items": { "$ref": "#/$defs/componentCandidate" } },
+        "layoutGroups": { "type": "array", "items": { "$ref": "#/$defs/layoutGroup" } },
+        "layerAnalysis": {
+          "type": "object",
+          "required": ["version", "kind", "background", "mask", "components", "occlusionEdges", "stableOrder", "provenance"],
+          "properties": {
+            "version": { "const": "1.0.0" },
+            "kind": { "const": "image-layer-analysis" },
+            "background": { "type": "object" },
+            "mask": { "type": "object" },
+            "components": { "type": "array", "items": { "type": "object" } },
+            "layers": { "type": "array", "items": { "type": "object" } },
+            "occlusionEdges": { "type": "array", "items": { "type": "object" } },
+            "stableOrder": { "type": "array", "items": { "$ref": "#/$defs/stableId" } },
+            "findings": { "type": "array", "items": { "type": "object" } },
+            "repairs": { "type": "array", "items": { "type": "object" } },
+            "degradations": { "type": "array", "items": { "type": "object" } },
+            "provenance": { "type": "object" }
+          }
+        },
+        "sceneLayerGraph": {
+          "type": "object",
+          "required": ["layers", "occlusionEdges", "stableOrder", "findings", "stable"],
+          "properties": {
+            "layers": { "type": "array", "items": { "type": "object" } },
+            "occlusionEdges": { "type": "array", "items": { "type": "object" } },
+            "stableOrder": { "type": "array", "items": { "$ref": "#/$defs/stableId" } },
+            "findings": { "type": "array", "items": { "type": "object" } },
+            "stable": { "type": "boolean" }
+          }
+        },
+        "annotation": { "type": "string", "minLength": 1 },
+        "degradations": { "type": "array", "items": { "$ref": "#/$defs/degradation" } }
+      }
+    },
+    "degradation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "slideId", "componentId", "reason", "editabilityImpact", "nativeAlternativesAttempted"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "slideId": { "$ref": "#/$defs/stableId" },
+        "componentId": { "$ref": "#/$defs/stableId" },
+        "reason": { "type": "string", "minLength": 1 },
+        "editabilityImpact": { "enum": ["non-editable-region", "partial-editability", "unknown"] },
+        "nativeAlternativesAttempted": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "designTokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "source", "colors", "typography", "page"],
+      "properties": {
+        "version": { "const": "1.0.0" },
+        "source": { "type": "string", "minLength": 1 },
+        "colors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["background", "primary", "palette"],
+          "properties": {
+            "background": { "$ref": "#/$defs/hexColor" },
+            "primary": { "$ref": "#/$defs/hexColor" },
+            "palette": { "type": "array", "items": { "$ref": "#/$defs/hexColor" } }
+          }
+        },
+        "typography": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["primary", "fallbacks"],
+          "properties": {
+            "primary": { "type": "string", "minLength": 1 },
+            "fallbacks": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["widthPx", "heightPx", "widthIn", "heightIn"],
+          "properties": {
+            "widthPx": { "type": "number", "exclusiveMinimum": 0 },
+            "heightPx": { "type": "number", "exclusiveMinimum": 0 },
+            "widthIn": { "type": "number", "exclusiveMinimum": 0 },
+            "heightIn": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
+      }
+    },
     "editabilityTarget": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["minimumLevel", "wholeSlideRasterAllowed"],
       "properties": {
-        "minimumLevel": { "minimum": 3 },
+        "minimumLevel": { "type": "integer", "minimum": 3, "maximum": 5 },
         "wholeSlideRasterAllowed": { "const": false }
       }
     }

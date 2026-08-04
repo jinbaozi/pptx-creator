@@ -32,12 +32,16 @@ try:
 except ImportError:  # pragma: no cover - exercised by doctor/error tests
     pytesseract = None
 
+from layer_recovery import analyze_layers, infer_layers
+
 VERSION = "1.0.0"
 MAX_ENCODED_BYTES = 50 * 1024 * 1024
 MAX_PIXELS = 16_000_000
 MAX_SIDE = 8192
 CANONICAL_WIDTH_PX = 1280
 SLIDE_WIDTH_IN = 13.333
+COLOR_TOLERANCE = 10
+LAYOUT_GROUP_GAP_PX = 18
 
 
 class AnalysisError(ValueError):
@@ -82,6 +86,22 @@ class Box:
 
     def as_dict(self) -> dict[str, int]:
         return {"x": self.x, "y": self.y, "w": self.w, "h": self.h}
+
+
+def box_polygon(box: Box) -> list[dict[str, int]]:
+    """Return a clockwise quadrilateral for consumers that need precise bounds.
+
+    Tesseract's data API exposes axis-aligned boxes only.  We retain the original
+    rectangle and make that limitation explicit by emitting its four corners as a
+    polygon instead of pretending to know a tighter glyph outline.
+    """
+
+    return [
+        {"x": box.x, "y": box.y},
+        {"x": box.right, "y": box.y},
+        {"x": box.right, "y": box.bottom},
+        {"x": box.x, "y": box.bottom},
+    ]
 
 
 def sha256(path: Path) -> str:
@@ -136,7 +156,95 @@ def validate_ocr_runtime(langs: str) -> dict[str, Any]:
         "engine": "tesseract",
         "version": version,
         "langs": langs,
+        "requestedLanguages": [item for item in langs.split("+") if item],
         "availableLanguages": sorted(available),
+        "languagePacks": sorted(available),
+    }
+
+
+def parse_osd(payload: str) -> dict[str, Any]:
+    values: dict[str, str] = {}
+    for line in payload.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        values[key.strip().lower().replace(" ", "_")] = value.strip()
+
+    def integer(name: str, default: int = 0) -> int:
+        try:
+            return int(float(values.get(name, default)))
+        except (TypeError, ValueError):
+            return default
+
+    def number(name: str) -> float | None:
+        try:
+            return round(float(values[name]), 4)
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    orientation = integer("orientation_in_degrees") % 360
+    rotate = integer("rotate") % 360
+    return {
+        "status": "ok",
+        "engine": "tesseract-osd",
+        "orientationDegrees": orientation,
+        "rotateDegrees": rotate,
+        "orientationConfidence": number("orientation_confidence"),
+        "script": values.get("script") or None,
+        "scriptConfidence": number("script_confidence"),
+        "source": "pytesseract.image_to_osd",
+    }
+
+
+def orientation_metadata(image: Image.Image) -> dict[str, Any]:
+    """Read orientation/script evidence without making an irreversible correction.
+
+    OSD is advisory: coordinates and pixels stay in the normalized source frame,
+    while the detected correction angle is recorded for downstream consumers.
+    A missing or low-text OSD result is reported as unavailable rather than
+    treated as a confident default.
+    """
+
+    assert pytesseract is not None
+    try:
+        payload = pytesseract.image_to_osd(image, config="--psm 0")
+    except Exception as error:  # pragma: no cover - depends on local OSD data
+        return {
+            "status": "unavailable",
+            "engine": "tesseract-osd",
+            "orientationDegrees": None,
+            "rotateDegrees": None,
+            "orientationConfidence": None,
+            "script": None,
+            "scriptConfidence": None,
+            "source": "pytesseract.image_to_osd",
+            "reason": str(error),
+        }
+    try:
+        return parse_osd(payload)
+    except Exception as error:  # pragma: no cover - defensive parser boundary
+        return {
+            "status": "unavailable",
+            "engine": "tesseract-osd",
+            "orientationDegrees": None,
+            "rotateDegrees": None,
+            "orientationConfidence": None,
+            "script": None,
+            "scriptConfidence": None,
+            "source": "pytesseract.image_to_osd",
+            "reason": f"invalid OSD payload: {error}",
+        }
+
+
+def language_metadata(langs: str, orientation: dict[str, Any]) -> dict[str, Any]:
+    requested = [item for item in langs.split("+") if item]
+    return {
+        "requested": requested,
+        "ocrLanguageString": langs,
+        "detectedScript": orientation.get("script"),
+        "detectedScriptConfidence": orientation.get("scriptConfidence"),
+        "detectionStatus": orientation.get("status", "unavailable"),
+        "detectionSource": orientation.get("source"),
     }
 
 
@@ -233,8 +341,20 @@ def ocr_lines(
     image: Image.Image,
     langs: str,
     threshold: float,
+    orientation: dict[str, Any] | None = None,
+    language_info: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     assert pytesseract is not None
+    orientation = orientation or {
+        "status": "unavailable",
+        "orientationDegrees": None,
+        "rotateDegrees": None,
+        "script": None,
+        "scriptConfidence": None,
+    }
+    language_info = language_info or language_metadata(langs, orientation)
+    requested_languages = list(language_info.get("requested", []))
+
     def recognize_pass(
         source: Image.Image,
         pass_name: str,
@@ -264,13 +384,21 @@ def ocr_lines(
                 continue
             if box.w <= 0 or box.h <= 0:
                 continue
+            block = int(payload.get("block_num", [0] * count)[index])
+            paragraph = int(payload.get("par_num", [0] * count)[index])
+            line_number = int(payload.get("line_num", [0] * count)[index])
             word = {
                 "text": text,
                 "confidence": round(confidence, 4),
                 "pixelBox": box.as_dict(),
-                "block": int(payload.get("block_num", [0] * count)[index]),
-                "paragraph": int(payload.get("par_num", [0] * count)[index]),
-                "line": int(payload.get("line_num", [0] * count)[index]),
+                "polygon": box_polygon(box),
+                "block": block,
+                "paragraph": paragraph,
+                "line": line_number,
+                "paragraphId": f"{block}:{paragraph}",
+                "languages": requested_languages,
+                "languageSource": "requested-tesseract-language-packs",
+                "orientation": orientation,
                 "recognitionPass": pass_name,
             }
             pass_words.append(word)
@@ -290,12 +418,23 @@ def ocr_lines(
             ) / total_weight
             text = " ".join(item["text"] for item in values)
             box = Box(x, y, right - x, bottom - y)
+            first = values[0]
             pass_lines.append(
                 (
                     {
                         "text": text,
                         "confidence": round(confidence, 4),
                         "pixelBox": box.as_dict(),
+                        "polygon": box_polygon(box),
+                        "block": first["block"],
+                        "paragraph": first["paragraph"],
+                        "line": first["line"],
+                        "paragraphId": first["paragraphId"],
+                        "wordCount": len(values),
+                        "multiline": False,
+                        "languages": requested_languages,
+                        "languageSource": "requested-tesseract-language-packs",
+                        "orientation": orientation,
                         "disposition": (
                             "editable-text" if confidence >= threshold else "local-crop"
                         ),
@@ -333,12 +472,43 @@ def ocr_lines(
         accepted_boxes.append(box)
 
     lines.sort(key=lambda item: (item["pixelBox"]["y"], item["pixelBox"]["x"]))
+    for order, line in enumerate(lines, 1):
+        line["readingOrder"] = order
+        line["lineBreakAfter"] = order < len(lines)
+        line["multiline"] = len(lines) > 1
+        line["readingOrderSource"] = "tesseract-block-paragraph-line-yx"
+        bounds = Box(**line["pixelBox"])
+        # Keep a polygon on every line even when a caller supplies synthetic OCR
+        # data.  It is an axis-aligned evidence polygon, not a guessed glyph hull.
+        line["polygon"] = box_polygon(bounds)
+    words.sort(
+        key=lambda item: (
+            item["pixelBox"]["y"],
+            item["pixelBox"]["x"],
+            item.get("block", 0),
+            item.get("paragraph", 0),
+            item.get("line", 0),
+        )
+    )
+    for order, word in enumerate(words, 1):
+        word["readingOrder"] = order
+        word["readingOrderSource"] = "tesseract-word-yx"
     return words, lines
 
 
 def exact_color_components(
-    image: Image.Image, background: tuple[int, int, int]
+    image: Image.Image,
+    background: tuple[int, int, int],
+    tolerance: int = COLOR_TOLERANCE,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Extract flat components while joining anti-aliased near-colors.
+
+    The old exact-RGB flood fill fragmented screenshots at every antialiased
+    edge.  A bounded seed-color tolerance keeps this deterministic and avoids a
+    transitive color chain that could swallow an entire gradient or photo.
+    """
+
+    tolerance = max(0, int(tolerance))
     width, height = image.size
     pixels = image.load()
     seen = bytearray(width * height)
@@ -357,11 +527,17 @@ def exact_color_components(
             count = 0
             min_x = max_x = x
             min_y = max_y = y
+            sample_colors: Counter[tuple[int, int, int]] = Counter()
             while stack:
                 current = stack.pop()
                 px = current % width
                 py = current // width
                 count += 1
+                pixel_color = pixels[px, py]
+                # Keep the color summary bounded for high-entropy photos while
+                # preserving a useful dominant fill for native reconstruction.
+                if len(sample_colors) < 512 or pixel_color in sample_colors:
+                    sample_colors[pixel_color] += 1
                 min_x = min(min_x, px)
                 max_x = max(max_x, px)
                 min_y = min(min_y, py)
@@ -370,23 +546,36 @@ def exact_color_components(
                     if nx < 0 or ny < 0 or nx >= width or ny >= height:
                         continue
                     neighbor = ny * width + nx
-                    if not seen[neighbor] and pixels[nx, ny] == color:
+                    neighbor_color = pixels[nx, ny]
+                    close = (
+                        neighbor_color == color
+                        if tolerance == 0
+                        else color_distance(neighbor_color, color) <= tolerance
+                    )
+                    if not seen[neighbor] and close:
                         seen[neighbor] = 1
                         stack.append(neighbor)
             if count < minimum:
                 continue
             box = Box(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
             fill_ratio = count / max(1, box.area)
+            representative = sample_colors.most_common(1)[0][0] if sample_colors else color
             spans_page = (
                 (box.w >= width * 0.90 and box.h >= height * 0.90)
                 or box.area >= width * height * 0.80
             )
-            if spans_page or (color == background and box.area >= width * height * 0.70):
+            if spans_page or (
+                color_distance(representative, background) <= max(1, tolerance)
+                and box.area >= width * height * 0.70
+            ):
                 continue
             base = {
                 "pixelBox": box.as_dict(),
-                "color": rgb_hex(color),
+                "polygon": box_polygon(box),
+                "color": rgb_hex(representative),
                 "confidence": round(fill_ratio, 4),
+                "colorTolerancePx": tolerance,
+                "colorDistance": "rgb-euclidean-seed",
             }
             if (box.w >= width * 0.20 and box.h <= 6) or (
                 box.h >= height * 0.20 and box.w <= 6
@@ -403,7 +592,7 @@ def exact_color_components(
             if box.w < 8 or box.h < 8:
                 continue
             if (
-                (box.w >= width * 0.08 and box.h >= height * 0.025)
+                (box.w >= width * 0.04 and box.h >= height * 0.02)
                 or (box.w <= 16 and box.h >= height * 0.12)
                 or (box.h <= 16 and box.w >= width * 0.12)
             ) and fill_ratio >= 0.90:
@@ -489,9 +678,14 @@ def overlaps(left: Box, right: Box, threshold: float = 0.5) -> bool:
 
 
 def component_inferences(
-    shapes: list[dict[str, Any]], connectors: list[dict[str, Any]]
+    shapes: list[dict[str, Any]],
+    connectors: list[dict[str, Any]],
+    candidates: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
+    candidates = candidates or []
+    table_candidate = next((item for item in candidates if item.get("type") == "table"), None)
+    chart_candidate = next((item for item in candidates if item.get("type") == "chart"), None)
     horizontal = [
         item
         for item in connectors
@@ -509,6 +703,7 @@ def component_inferences(
                 "confidence": 0.82,
                 "renderedAs": "native-shapes-and-connectors",
                 "factStatus": "inferred",
+                **({"candidateRef": table_candidate["id"]} if table_candidate else {}),
             }
         )
     by_color: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -533,9 +728,427 @@ def component_inferences(
                     "factStatus": "inferred",
                     "note": "No synthetic chart data was created; visible bars remain editable shapes.",
                     "color": color,
+                    **({"candidateRef": chart_candidate["id"]} if chart_candidate else {}),
                 }
             )
             break
+    if chart_candidate and not any(item.get("role") == "bar-chart" for item in result):
+        result.append(
+            {
+                "role": "bar-chart",
+                "confidence": chart_candidate["confidence"],
+                "renderedAs": "native-shapes",
+                "factStatus": "inferred",
+                "candidateRef": chart_candidate["id"],
+                "dataStatus": "geometry-only",
+                "note": "No synthetic chart data was created; visible bars remain editable shapes.",
+            }
+        )
+    if table_candidate and not any(item.get("role") == "table-grid" for item in result):
+        result.append(
+            {
+                "role": "table-grid",
+                "confidence": table_candidate["confidence"],
+                "renderedAs": "native-shapes-and-connectors",
+                "factStatus": "inferred",
+                "candidateRef": table_candidate["id"],
+                "dataStatus": "not-recovered",
+            }
+        )
+    return result
+
+
+def _box_from_item(item: dict[str, Any]) -> Box:
+    return Box(**item["pixelBox"])
+
+
+def _interval_overlap(left: int, right: int, other_left: int, other_right: int) -> int:
+    return max(0, min(right, other_right) - max(left, other_left))
+
+
+def _union_box(items: Iterable[dict[str, Any]]) -> Box:
+    boxes = [_box_from_item(item) for item in items]
+    if not boxes:
+        return Box(0, 0, 1, 1)
+    left = min(item.x for item in boxes)
+    top = min(item.y for item in boxes)
+    right = max(item.right for item in boxes)
+    bottom = max(item.bottom for item in boxes)
+    return Box(left, top, right - left, bottom - top)
+
+
+def _boxes_close(left: Box, right: Box, gap: int) -> bool:
+    if overlaps(left, right, 0.01):
+        return True
+    return not (
+        left.right + gap < right.x
+        or right.right + gap < left.x
+        or left.bottom + gap < right.y
+        or right.bottom + gap < left.y
+    )
+
+
+def _group_positions(values: list[int], tolerance: int = 2) -> list[int]:
+    if not values:
+        return []
+    groups: list[list[int]] = [[values[0]]]
+    for value in values[1:]:
+        if value - groups[-1][-1] <= tolerance:
+            groups[-1].append(value)
+        else:
+            groups.append([value])
+    return [round(sum(group) / len(group)) for group in groups]
+
+
+def _longest_true_run(values: list[bool]) -> int:
+    longest = current = 0
+    for value in values:
+        current = current + 1 if value else 0
+        longest = max(longest, current)
+    return longest
+
+
+def _pixel_grid_positions(
+    image: Image.Image,
+    background: tuple[int, int, int],
+) -> tuple[list[int], list[int], tuple[int, int, int, int] | None]:
+    """Find repeated long dark runs for grids that merged at intersections."""
+
+    width, height = image.size
+    pixels = image.load()
+    threshold = 28
+    horizontal_rows: list[int] = []
+    horizontal_bounds: list[tuple[int, int]] = []
+    for y in range(height):
+        mask = [color_distance(pixels[x, y], background) > threshold for x in range(width)]
+        if _longest_true_run(mask) < max(20, round(width * 0.25)):
+            continue
+        runs: list[tuple[int, int]] = []
+        start: int | None = None
+        for x, active in enumerate(mask + [False]):
+            if active and start is None:
+                start = x
+            elif not active and start is not None:
+                runs.append((start, x))
+                start = None
+        longest = max(runs, key=lambda value: value[1] - value[0], default=(0, 0))
+        if longest[1] - longest[0] >= width * 0.25:
+            horizontal_rows.append(y)
+            horizontal_bounds.append(longest)
+    vertical_columns: list[int] = []
+    vertical_bounds: list[tuple[int, int]] = []
+    for x in range(width):
+        mask = [color_distance(pixels[x, y], background) > threshold for y in range(height)]
+        if _longest_true_run(mask) < max(20, round(height * 0.25)):
+            continue
+        runs = []
+        start = None
+        for y, active in enumerate(mask + [False]):
+            if active and start is None:
+                start = y
+            elif not active and start is not None:
+                runs.append((start, y))
+                start = None
+        longest = max(runs, key=lambda value: value[1] - value[0], default=(0, 0))
+        if longest[1] - longest[0] >= height * 0.25:
+            vertical_columns.append(x)
+            vertical_bounds.append(longest)
+    rows = _group_positions(horizontal_rows)
+    columns = _group_positions(vertical_columns)
+    if len(rows) < 2 or len(columns) < 2:
+        return [], [], None
+    # Use the grouped line centers for the outer edge.  Run bounds can stop at
+    # an intersection, especially when a grid was split into many components.
+    left = columns[0]
+    right = columns[-1] + 2
+    top = rows[0]
+    bottom = rows[-1] + 2
+    bounds = (left, top, max(1, right - left), max(1, bottom - top))
+    return rows, columns, bounds
+
+
+def component_candidates(
+    objects: list[dict[str, Any]],
+    width: int,
+    height: int,
+    image: Image.Image | None = None,
+    background: tuple[int, int, int] | None = None,
+) -> list[dict[str, Any]]:
+    """Emit conservative table/chart candidates without fabricating datasets."""
+
+    candidates: list[dict[str, Any]] = []
+    connectors = [item for item in objects if item.get("type") == "connector"]
+    horizontal = [
+        item
+        for item in connectors
+        if item.get("direction") == "horizontal" and item["pixelBox"]["w"] >= width * 0.08
+    ]
+    vertical = [
+        item
+        for item in connectors
+        if item.get("direction") == "vertical" and item["pixelBox"]["h"] >= height * 0.08
+    ]
+    if len(horizontal) >= 2 and len(vertical) >= 2:
+        h_sorted = sorted(horizontal, key=lambda item: item["pixelBox"]["y"])
+        v_sorted = sorted(vertical, key=lambda item: item["pixelBox"]["x"])
+        grid_left = min(item["pixelBox"]["x"] for item in v_sorted)
+        grid_right = max(item["pixelBox"]["x"] + item["pixelBox"]["w"] for item in v_sorted)
+        grid_top = min(item["pixelBox"]["y"] for item in h_sorted)
+        grid_bottom = max(item["pixelBox"]["y"] + item["pixelBox"]["h"] for item in h_sorted)
+        grid_width = max(1, grid_right - grid_left)
+        grid_height = max(1, grid_bottom - grid_top)
+        horizontal_coverage = min(
+            _interval_overlap(
+                item["pixelBox"]["x"],
+                item["pixelBox"]["x"] + item["pixelBox"]["w"],
+                grid_left,
+                grid_right,
+            )
+            / grid_width
+            for item in h_sorted
+        )
+        vertical_coverage = min(
+            _interval_overlap(
+                item["pixelBox"]["y"],
+                item["pixelBox"]["y"] + item["pixelBox"]["h"],
+                grid_top,
+                grid_bottom,
+            )
+            / grid_height
+            for item in v_sorted
+        )
+        if horizontal_coverage >= 0.75 and vertical_coverage >= 0.75:
+            grid_items = h_sorted + v_sorted
+            confidence = round(0.65 + 0.2 * min(horizontal_coverage, vertical_coverage), 4)
+            candidates.append(
+                {
+                    "id": "table-candidate-001",
+                    "type": "table",
+                    "objectType": "table",
+                    "pixelBox": Box(grid_left, grid_top, grid_width, grid_height).as_dict(),
+                    "memberIds": [item["id"] for item in grid_items],
+                    "rows": max(1, len(h_sorted) - 1),
+                    "columns": max(1, len(v_sorted) - 1),
+                    "closedGrid": True,
+                    "cellAssignment": "unresolved",
+                    "dataStatus": "not-recovered",
+                    "data": None,
+                    "nativeObjectType": "table",
+                    "nativeEligible": False,
+                    "renderedAs": "native-shapes-and-connectors",
+                    "confidence": confidence,
+                    "factStatus": "inferred",
+                    "provenance": "visible-grid-geometry-only",
+                }
+            )
+    if not any(item.get("type") == "table" for item in candidates) and image is not None:
+        rows, columns, bounds = _pixel_grid_positions(
+            image,
+            background or edge_background(image),
+        )
+        if bounds is not None:
+            left, top, grid_width, grid_height = bounds
+            # A page frame alone is not a useful table candidate; require at
+            # least one interior row and column and keep the region bounded.
+            if (
+                len(rows) >= 3
+                and len(columns) >= 3
+                and grid_width * grid_height < width * height * 0.85
+            ):
+                nearby = [
+                    item
+                    for item in connectors
+                    if item["pixelBox"]["x"] <= left + 4
+                    or item["pixelBox"]["y"] <= top + 4
+                ]
+                candidates.append(
+                    {
+                        "id": "table-candidate-001",
+                        "type": "table",
+                        "objectType": "table",
+                        "pixelBox": {
+                            "x": left,
+                            "y": top,
+                            "w": grid_width,
+                            "h": grid_height,
+                        },
+                        "memberIds": [item["id"] for item in nearby],
+                        "rows": max(1, len(rows) - 1),
+                        "columns": max(1, len(columns) - 1),
+                        "closedGrid": True,
+                        "cellAssignment": "unresolved",
+                        "dataStatus": "not-recovered",
+                        "data": None,
+                        "nativeObjectType": "table",
+                        "nativeEligible": False,
+                        "renderedAs": "native-shapes-and-connectors",
+                        "confidence": 0.76,
+                        "factStatus": "inferred",
+                        "provenance": "pixel-grid-scan",
+                    }
+                )
+
+    # A chart candidate is geometry-only unless visible labels or a supplied
+    # source establish actual values.  The output deliberately keeps data null.
+    table_boxes = [
+        _box_from_item(item)
+        for item in candidates
+        if item.get("type") == "table"
+    ]
+    filled = [
+        item
+        for item in objects
+        if item.get("type") == "shape"
+        and item.get("fill")
+        and item["pixelBox"]["w"] >= max(8, round(width * 0.018))
+        and item["pixelBox"]["h"] >= max(16, round(height * 0.05))
+        and item["pixelBox"]["w"] <= width * 0.25
+        and item["pixelBox"]["h"] <= height * 0.85
+        and not any(overlaps(_box_from_item(item), table, 0.60) for table in table_boxes)
+    ]
+    chart_groups: list[list[dict[str, Any]]] = []
+    baseline_tolerance = max(5, round(height * 0.02))
+    # Bars often use a different fill per series/category.  Group by shared
+    # baseline and spacing rather than exact RGB so palette variation does not
+    # hide an otherwise visible chart.
+    for item in sorted(filled, key=lambda value: value["pixelBox"]["x"]):
+        bottom = item["pixelBox"]["y"] + item["pixelBox"]["h"]
+        target_group = next(
+            (
+                values
+                for values in chart_groups
+                if abs(
+                    bottom
+                    - sum(
+                        value["pixelBox"]["y"] + value["pixelBox"]["h"] for value in values
+                    )
+                    / len(values)
+                )
+                <= baseline_tolerance
+            ),
+            None,
+        )
+        if target_group is None:
+            chart_groups.append([item])
+        else:
+            target_group.append(item)
+    chart_groups = [values for values in chart_groups if len(values) >= 3]
+    chart_groups = [
+        values
+        for values in chart_groups
+        if len(
+            {
+                round(item["pixelBox"]["x"] + item["pixelBox"]["w"] / 2)
+                for item in values
+            }
+        )
+        >= 3
+    ]
+    if chart_groups:
+        bars = max(chart_groups, key=len)
+        box = _union_box(bars)
+        candidates.append(
+            {
+                "id": f"chart-candidate-{len([item for item in candidates if item['type'] == 'chart']) + 1:03d}",
+                "type": "chart",
+                "objectType": "chart",
+                "chartKind": "bar",
+                "pixelBox": box.as_dict(),
+                "memberIds": [item["id"] for item in bars],
+                "series": None,
+                "values": None,
+                "data": None,
+                "dataStatus": "geometry-only",
+                "nativeObjectType": "shape",
+                "nativeEligible": False,
+                "renderedAs": "native-shapes",
+                "confidence": round(min(0.9, 0.55 + len(bars) * 0.06), 4),
+                "factStatus": "inferred",
+                "provenance": "visible-bar-geometry-only",
+                "note": "No synthetic chart data was created; visible bars remain editable shapes.",
+            }
+        )
+    return candidates
+
+
+def layout_groups(
+    objects: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    width: int,
+    height: int,
+    gap: int = LAYOUT_GROUP_GAP_PX,
+) -> list[dict[str, Any]]:
+    """Group nearby native objects for downstream layout-aware consumers."""
+
+    eligible = [
+        item
+        for item in objects
+        if item.get("type") in {"shape", "connector", "text", "table"}
+        and not (
+            item.get("type") == "shape"
+            and _box_from_item(item).area >= width * height * 0.60
+        )
+    ]
+    if not eligible:
+        return []
+    parent = list(range(len(eligible)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        root_left, root_right = find(left), find(right)
+        if root_left != root_right:
+            parent[root_right] = root_left
+
+    for index, left in enumerate(eligible):
+        for other_index in range(index + 1, len(eligible)):
+            right = eligible[other_index]
+            if _boxes_close(_box_from_item(left), _box_from_item(right), gap):
+                union(index, other_index)
+
+    grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for index, item in enumerate(eligible):
+        grouped[find(index)].append(item)
+    candidate_roles = {
+        member_id: candidate["type"]
+        for candidate in candidates
+        for member_id in candidate.get("memberIds", [])
+    }
+    result: list[dict[str, Any]] = []
+    ordered_groups = sorted(
+        grouped.values(),
+        key=lambda values: (
+            min(item["pixelBox"]["y"] for item in values),
+            min(item["pixelBox"]["x"] for item in values),
+        ),
+    )
+    for number, values in enumerate(ordered_groups, 1):
+        box = _union_box(values)
+        roles = [candidate_roles.get(item["id"]) for item in values if item["id"] in candidate_roles]
+        role = roles[0] if roles else (
+            "text-block" if any(item.get("type") == "text" for item in values) else "native-group"
+        )
+        member_ids = [item["id"] for item in sorted(values, key=lambda item: item.get("z", 0))]
+        confidence = round(min(float(item.get("confidence", 1.0)) for item in values), 4)
+        group_id = f"layout-group-{number:03d}"
+        for item in values:
+            item["layoutGroupRef"] = group_id
+        result.append(
+            {
+                "id": group_id,
+                "role": role,
+                "pixelBox": box.as_dict(),
+                "memberIds": member_ids,
+                "readingOrder": number,
+                "confidence": confidence,
+                "factStatus": "inferred",
+                "provenance": "deterministic-box-proximity",
+            }
+        )
     return result
 
 
@@ -568,10 +1181,14 @@ def analyze_slide(
     normalized.save(normalized_path)
     background = edge_background(normalized)
     palette = dominant_palette(normalized)
-    words, lines = ocr_lines(normalized, langs, threshold)
-    shapes, connectors = exact_color_components(normalized, background)
+    orientation = orientation_metadata(normalized)
+    language_info = language_metadata(langs, orientation)
+    words, lines = ocr_lines(normalized, langs, threshold, orientation, language_info)
+    shapes, connectors = exact_color_components(normalized, background, COLOR_TOLERANCE)
     residuals = hot_regions(normalized)
     slide_id = f"slide-{slide_index:03d}"
+    source_id = f"source-{slide_index:03d}"
+    source_digest = sha256(source)
     objects: list[dict[str, Any]] = []
     degradations: list[dict[str, Any]] = []
     z = 0
@@ -616,6 +1233,7 @@ def analyze_slide(
             {
                 **item,
                 "id": object_id,
+                "polygon": box_polygon(box),
                 "asset": relative(crop_path, root),
                 "z": z,
                 "factStatus": "observed",
@@ -643,6 +1261,8 @@ def analyze_slide(
     for number, line in enumerate(lines, 1):
         target_box = Box(**line["pixelBox"])
         object_id = f"{slide_id}-text-{number:03d}"
+        line["id"] = object_id
+        line["objectRef"] = object_id
         if sum(character.isalnum() for character in line["text"]) < 2:
             line["disposition"] = "ignored-nonsemantic-glyph"
             continue
@@ -669,7 +1289,11 @@ def analyze_slide(
                     "confidence": line["confidence"],
                     "recognitionPass": line.get("recognitionPass", "primary"),
                     "pixelBox": target_box.as_dict(),
+                    "polygon": box_polygon(target_box),
                     "renderBox": render_box.as_dict(),
+                    "readingOrder": line.get("readingOrder", number),
+                    "languages": line.get("languages", language_info["requested"]),
+                    "orientation": orientation,
                     "style": {
                         "fontFamily": "Arial",
                         "fontSizePt": round(max(7.0, target_box.h * 1.04), 3),
@@ -697,7 +1321,11 @@ def analyze_slide(
                         "type": "image",
                         "asset": asset,
                         "pixelBox": crop_box.as_dict(),
+                        "polygon": box_polygon(crop_box),
                         "confidence": line["confidence"],
+                        "readingOrder": line.get("readingOrder", number),
+                        "languages": line.get("languages", language_info["requested"]),
+                        "orientation": orientation,
                         "reason": "low-confidence-ocr",
                         "z": z,
                         "factStatus": "recognized",
@@ -717,6 +1345,37 @@ def analyze_slide(
                 }
             )
 
+    candidates = component_candidates(
+        objects,
+        target_width,
+        target_height,
+        normalized,
+        background,
+    )
+    for candidate in candidates:
+        candidate["id"] = f"{slide_id}-{candidate['id']}"
+    inferences = component_inferences(shapes, connectors, candidates)
+    groups = layout_groups(objects, candidates, target_width, target_height)
+    scene_layers = infer_layers(objects, image_size=target_size)
+    stable_z = {
+        object_id: index
+        for index, object_id in enumerate(scene_layers["stableOrder"])
+    }
+    for object_record in objects:
+        if object_record["id"] in stable_z:
+            object_record["z"] = stable_z[object_record["id"]]
+    objects.sort(key=lambda item: (item["z"], item["id"]))
+    pixel_layers = analyze_layers(
+        normalized,
+        text_boxes=[line["pixelBox"] for line in lines],
+        background=background,
+        tolerance=COLOR_TOLERANCE,
+        min_component_area=max(4, round(target_width * target_height * 0.00002)),
+        repair=False,
+        source_ref=source_id,
+        source_sha256=source_digest,
+    )
+
     annotated = normalized.copy()
     draw = ImageDraw.Draw(annotated)
     for line in low_lines:
@@ -727,12 +1386,12 @@ def analyze_slide(
     annotated.save(annotation_path)
 
     source_record = {
-        "id": f"source-{slide_index:03d}",
+        "id": source_id,
         "kind": "user-image",
         "label": source.name,
         "factStatus": "provided",
         "path": relative(source, root),
-        "sha256": sha256(source),
+        "sha256": source_digest,
         "bytes": source.stat().st_size,
         "originalSize": {"width": original.width, "height": original.height},
         "normalizedPath": relative(normalized_path, root),
@@ -754,9 +1413,20 @@ def analyze_slide(
         "sourceRef": source_record["id"],
         "background": rgb_hex(background),
         "palette": palette,
+        "colorAnalysis": {
+            "method": "tolerant-connected-components",
+            "tolerancePx": COLOR_TOLERANCE,
+            "distance": "rgb-euclidean-seed",
+        },
+        "orientation": orientation,
+        "languageMetadata": language_info,
         "sizePx": {"width": target_width, "height": target_height},
         "objects": objects,
-        "componentInferences": component_inferences(shapes, connectors),
+        "componentInferences": inferences,
+        "componentCandidates": candidates,
+        "layoutGroups": groups,
+        "layerAnalysis": pixel_layers,
+        "sceneLayerGraph": scene_layers,
         "annotation": relative(annotation_path, root),
         "degradations": degradations,
     }
@@ -765,6 +1435,10 @@ def analyze_slide(
         "sourceRef": source_record["id"],
         "status": "ok",
         "threshold": threshold,
+        "langs": langs,
+        "languages": language_info["requested"],
+        "languageMetadata": language_info,
+        "orientation": orientation,
         "words": words,
         "lines": lines,
         "lowConfidenceCount": len(low_lines),
@@ -852,6 +1526,7 @@ def build_analysis(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
         "ocr": {
             **runtime,
             "threshold": args.ocr_threshold,
+            "languages": runtime["requestedLanguages"],
             "policy": "visible text only; below-threshold text remains a local crop",
         },
         "sources": sources,
@@ -869,6 +1544,16 @@ def build_analysis(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
             "lineCount": sum(len(item["lines"]) for item in ocr_slides),
             "lowConfidenceCount": sum(item["lowConfidenceCount"] for item in ocr_slides),
             "unverifiedTextCount": sum(item["lowConfidenceCount"] for item in ocr_slides),
+            "orientationStatus": Counter(
+                item["orientation"].get("status", "unavailable") for item in ocr_slides
+            ),
+            "scripts": sorted(
+                {
+                    item["orientation"].get("script")
+                    for item in ocr_slides
+                    if item["orientation"].get("script")
+                }
+            ),
         },
     }
     return analysis, ocr_report

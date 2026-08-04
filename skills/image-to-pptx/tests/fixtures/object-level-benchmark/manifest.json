@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "kind": "image-to-pptx-object-benchmark",
+  "id": "image-to-pptx-object-level-v1",
+  "fixture": {
+    "image": "reference.png",
+    "groundTruth": "ground-truth.json",
+    "size": {
+      "width": 1280,
+      "height": 720,
+      "unit": "px"
+    }
+  },
+  "generator": "scripts/generate_examples.py",
+  "deterministic": {
+    "network": false,
+    "model": null,
+    "seed": 0
+  },
+  "evaluation": {
+    "requiredObjectRecall": 0.68,
+    "requiredRegionIoU": 0.15,
+    "wholeSlideRasterAllowed": false,
+    "notes": "Semantic chart/table/icon records may match observable native shapes, connectors, and text; hidden numeric data is never required."
+  }
+}

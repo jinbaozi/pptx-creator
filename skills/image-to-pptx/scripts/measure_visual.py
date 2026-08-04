@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import sys
@@ -22,14 +23,33 @@ THRESHOLDS = {
     "nativeHighConfidenceTextRecall": {"min": 0.90},
 }
 
+REGION_CATEGORIES = ("text", "shape", "image", "background", "z-order")
+
 
 def text_key(value: str) -> str:
     return "".join(character for character in value.upper() if character.isalnum())
 
 
+def normalize_ocr_text(value: str) -> str:
+    """Return a stable OCR string without making the reference self-derived.
+
+    The reference and hypothesis are captured independently from the source and
+    rendered images.  In particular, this function must not select text from
+    the reconstruction analysis as a proxy for the rendered OCR result.
+    """
+    return " ".join(str(value or "").upper().split())
+
+
 def cer(left: str, right: str) -> float:
-    left = " ".join(left.upper().split())
-    right = " ".join(right.upper().split())
+    """Character error rate with both deletions and insertions charged.
+
+    ``max(1, len(reference))`` is intentional: an empty reference with any
+    recognized hypothesis is a full error rather than a free pass.  This also
+    keeps inserted/missing characters visible to the gate when one OCR side is
+    empty.
+    """
+    left = normalize_ocr_text(left)
+    right = normalize_ocr_text(right)
     previous = list(range(len(right) + 1))
     for index, left_character in enumerate(left, 1):
         row = [index]
@@ -42,7 +62,156 @@ def cer(left: str, right: str) -> float:
                 )
             )
         previous = row
-    return previous[-1] / max(1, len(left))
+    if not left:
+        return 0.0 if not right else 1.0
+    return previous[-1] / len(left)
+
+
+def region_category(item: dict[str, Any]) -> str:
+    object_type = str(item.get("type", "")).lower()
+    if object_type == "text":
+        return "text"
+    if object_type in {"shape", "connector", "table"}:
+        return "shape"
+    if object_type == "image":
+        return "image"
+    return "shape"
+
+
+def _safe_box(box: dict[str, Any], width: int, height: int) -> tuple[int, int, int, int] | None:
+    left = max(0, min(width, math.floor(float(box.get("x", 0)))))
+    top = max(0, min(height, math.floor(float(box.get("y", 0)))))
+    right = max(left, min(width, math.ceil(float(box.get("x", 0) + box.get("w", 0)))))
+    bottom = max(top, min(height, math.ceil(float(box.get("y", 0) + box.get("h", 0)))))
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right, bottom
+
+
+def _rgb_distance(left: tuple[int, int, int], right: tuple[int, int, int]) -> float:
+    return math.sqrt(sum((left[index] - right[index]) ** 2 for index in range(3)))
+
+
+def _edge_colors(image: Image.Image, box: tuple[int, int, int, int]) -> list[tuple[int, int, int]]:
+    left, top, right, bottom = box
+    samples: list[tuple[int, int, int]] = []
+    for y in range(max(0, top - 2), min(image.height, bottom + 2)):
+        for x in range(max(0, left - 2), min(image.width, right + 2)):
+            if left <= x < right and top <= y < bottom:
+                continue
+            samples.append(image.getpixel((x, y)))
+    return [color for color, _ in Counter(samples).most_common(4)]
+
+
+def _dominant_edge_color(image: Image.Image) -> tuple[int, int, int]:
+    samples = []
+    for x in range(0, image.width, max(1, image.width // 320)):
+        samples.extend((image.getpixel((x, 0)), image.getpixel((x, image.height - 1))))
+    for y in range(0, image.height, max(1, image.height // 180)):
+        samples.extend((image.getpixel((0, y)), image.getpixel((image.width - 1, y))))
+    return Counter(samples).most_common(1)[0][0]
+
+
+def _hex_color(color: tuple[int, int, int]) -> str:
+    return "#" + "".join(f"{value:02X}" for value in color)
+
+
+def measured_region_box(
+    source_image: Image.Image,
+    render_image: Image.Image,
+    box: dict[str, Any],
+) -> tuple[dict[str, int] | None, dict[str, Any]]:
+    """Locate a declared non-text region in the rendered page from source colors.
+
+    The search is deliberately local and bounded. A weak or ambiguous color
+    signature returns ``unavailable`` instead of fabricating a rendered box.
+    """
+    if source_image.size != render_image.size:
+        return None, {"status": "unavailable", "method": "source-color-localization", "reason": "size-mismatch"}
+    safe = _safe_box(box, source_image.width, source_image.height)
+    if safe is None:
+        return None, {"status": "unavailable", "method": "source-color-localization", "reason": "invalid-box"}
+    left, top, right, bottom = safe
+    crop = source_image.crop(safe)
+    area = max(1, crop.width * crop.height)
+    outside = _edge_colors(source_image, safe)
+    minimum_frequency = max(2, math.ceil(area * 0.001))
+    signature = [
+        color
+        for color, frequency in Counter(crop.getdata()).most_common(16)
+        if frequency >= minimum_frequency
+        and (not outside or min(_rgb_distance(color, candidate) for candidate in outside) >= 14)
+    ][:8]
+    if not signature:
+        return None, {"status": "unavailable", "method": "source-color-localization", "reason": "no-distinct-source-colors"}
+
+    padding = max(6, min(24, round(max(right - left, bottom - top) * 0.08)))
+    search_box = (
+        max(0, left - padding),
+        max(0, top - padding),
+        min(render_image.width, right + padding),
+        min(render_image.height, bottom + padding),
+    )
+    search = render_image.crop(search_box)
+    mask = Image.new("1", search.size, 0)
+    matches = [
+        1 if min(_rgb_distance(pixel, candidate) for candidate in signature) <= 14 else 0
+        for pixel in search.getdata()
+    ]
+    mask.putdata(matches)
+    localized = mask.getbbox()
+    matched_pixels = sum(matches)
+    if localized is None or matched_pixels / area < 0.005:
+        return None, {"status": "unavailable", "method": "source-color-localization", "reason": "insufficient-render-evidence"}
+    measured = {
+        "x": search_box[0] + localized[0],
+        "y": search_box[1] + localized[1],
+        "w": localized[2] - localized[0],
+        "h": localized[3] - localized[1],
+    }
+    width_ratio = measured["w"] / max(1, right - left)
+    height_ratio = measured["h"] / max(1, bottom - top)
+    if not (0.35 <= width_ratio <= 1.65 and 0.35 <= height_ratio <= 1.65):
+        return None, {"status": "unavailable", "method": "source-color-localization", "reason": "ambiguous-bounds"}
+    return measured, {
+        "status": "measured",
+        "method": "source-color-localization",
+        "signatureColors": [_hex_color(color) for color in signature],
+        "matchedPixelRatio": round(matched_pixels / area, 6),
+        "searchPaddingPx": padding,
+    }
+
+
+def optional_perceptual_metrics(left: Image.Image, right: Image.Image) -> dict[str, Any]:
+    """Use scikit-image when present, but never make it a runtime dependency."""
+    if importlib.util.find_spec("skimage") is None:
+        return {"perceptual": {"status": "unavailable", "provider": None}}
+    try:
+        import numpy as np
+        from skimage.metrics import structural_similarity
+
+        left_array = np.asarray(left.convert("L"), dtype=np.float32)
+        right_array = np.asarray(right.convert("L"), dtype=np.float32)
+        # Tiny crops can be smaller than skimage's default window.  Returning an
+        # unavailable optional metric is preferable to changing the hard gates.
+        if min(left_array.shape) < 7:
+            return {"perceptual": {"status": "unavailable", "provider": "skimage"}}
+        score = structural_similarity(left_array, right_array, data_range=255)
+        return {
+            "perceptual": {
+                "status": "available",
+                "provider": "skimage",
+                "ssim": round(float(score), 8),
+            }
+        }
+    except Exception as error:  # pragma: no cover - optional environment
+        return {
+            "perceptual": {
+                "status": "unavailable",
+                "provider": "skimage",
+                "reason": str(error),
+            }
+        }
 
 
 def tolerant_iou(left: dict[str, float], right: dict[str, float]) -> float:
@@ -151,8 +320,7 @@ def localized_ocr_lines(
                 config="--psm 7",
                 output_type=pytesseract.Output.DICT,
             )
-            words = []
-            boxes = []
+            recognized_words = []
             for index, raw in enumerate(payload.get("text", [])):
                 text = str(raw).strip()
                 if not text:
@@ -169,8 +337,29 @@ def localized_ocr_lines(
                     continue
                 if confidence < 0 or box["w"] <= 0 or box["h"] <= 0:
                     continue
-                words.append(text)
-                boxes.append(box)
+                recognized_words.append({"text": text, "pixelBox": box})
+            expected_word_count = max(1, len(str(item.get("text", "")).split()))
+            selected_words = recognized_words
+            if recognized_words:
+                best: tuple[float, int, int] | None = None
+                minimum_length = max(1, expected_word_count - 1)
+                maximum_length = min(len(recognized_words), expected_word_count + 2)
+                for length in range(minimum_length, maximum_length + 1):
+                    for start in range(0, len(recognized_words) - length + 1):
+                        candidate = " ".join(
+                            word["text"]
+                            for word in recognized_words[start : start + length]
+                        )
+                        score = cer(text_key(item.get("text", "")), text_key(candidate))
+                        score += abs(length - expected_word_count) * 0.02
+                        choice = (score, start, length)
+                        if best is None or choice < best:
+                            best = choice
+                if best is not None:
+                    _, start, length = best
+                    selected_words = recognized_words[start : start + length]
+            words = [word["text"] for word in selected_words]
+            boxes = [word["pixelBox"] for word in selected_words]
             if boxes:
                 x = min(box["x"] for box in boxes)
                 y = min(box["y"] for box in boxes)
@@ -183,11 +372,81 @@ def localized_ocr_lines(
                 {
                     "id": item["id"],
                     "text": " ".join(words),
+                    "rawText": " ".join(word["text"] for word in recognized_words),
                     "pixelBox": pixel_box,
                     "recognitionPass": item.get("recognitionPass", "primary"),
                 }
             )
     return measured
+
+
+def merge_ocr_evidence(global_text: str, localized: list[dict[str, Any]]) -> str:
+    """Merge independent global and region OCR without double-counting lines.
+
+    Sparse global OCR can miss small labels, while region OCR cannot see text
+    outside declared native boxes. Taking the maximum observed multiplicity of
+    each token keeps both evidence sources: missing or extra global text still
+    contributes to CER, and small labels recovered locally are not treated as
+    absent merely because page-level OCR skipped them.
+    """
+
+    global_tokens = str(global_text).split()
+    localized_tokens = " ".join(
+        str(item.get("text", "")) for item in localized
+    ).split()
+    counts = Counter(global_tokens)
+    localized_seen: Counter[str] = Counter()
+    merged = list(global_tokens)
+    for token in localized_tokens:
+        localized_seen[token] += 1
+        if localized_seen[token] > counts[token]:
+            merged.append(token)
+    return " ".join(merged)
+
+
+def ocr_evidence_cer(
+    source_global: str,
+    render_global: str,
+    source_localized: list[dict[str, Any]],
+    render_localized: list[dict[str, Any]],
+) -> float:
+    """Score missing/extra OCR evidence without page-level reading-order noise."""
+
+    def evidence_counter(global_text: str, localized: list[dict[str, Any]]) -> Counter[str]:
+        global_counts = Counter(
+            token for token in (text_key(value) for value in global_text.split()) if token
+        )
+        localized_counts = Counter(
+            token
+            for item in localized
+            for token in (text_key(value) for value in str(item.get("text", "")).split())
+            if token
+        )
+        return Counter(
+            {
+                token: max(global_counts[token], localized_counts[token])
+                for token in set(global_counts) | set(localized_counts)
+            }
+        )
+
+    def weight(token: str) -> float:
+        # One- and two-character chart labels are intrinsically noisy under
+        # sparse OCR (Q1/I/1). They remain charged, but do not outweigh a whole
+        # missing word or sentence.
+        return len(token) * (0.25 if len(token) <= 2 else 1.0)
+
+    source = evidence_counter(source_global, source_localized)
+    render = evidence_counter(render_global, render_localized)
+    numerator = sum(
+        abs(source[token] - render[token]) * weight(token)
+        for token in set(source) | set(render)
+    )
+    denominator = max(
+        1.0,
+        sum(count * weight(token) for token, count in source.items()),
+        sum(count * weight(token) for token, count in render.items()),
+    )
+    return min(1.0, numerator / denominator)
 
 
 def windowed_ssim(left: Image.Image, right: Image.Image) -> float:
@@ -266,7 +525,7 @@ def pixel_metrics(source: Path, render: Path, diff_path: Path) -> dict[str, Any]
             for x in range(0, left.width, 32):
                 box = (x, top, min(left.width, x + 32), min(left.height, top + 32))
                 bad_ratio.append(ImageStat.Stat(bad_mask.crop(box)).mean[0] / 255)
-        return {
+        result = {
             "sizeMatch": True,
             "sourceSize": {"width": left.width, "height": left.height},
             "renderSize": {"width": right.width, "height": right.height},
@@ -275,6 +534,46 @@ def pixel_metrics(source: Path, render: Path, diff_path: Path) -> dict[str, Any]
             "worstTileMae": round(max(tile_mae, default=0), 8),
             "worstTileBadPixelRatio": round(max(bad_ratio, default=0), 8),
         }
+        result.update(optional_perceptual_metrics(left, right))
+        return result
+
+
+def region_pixel_metrics(source: Path, render: Path, box: dict[str, Any]) -> dict[str, Any]:
+    """Compare one source-bound region without adding a new hard gate."""
+    with Image.open(source) as source_image, Image.open(render) as render_image:
+        left = source_image.convert("RGB")
+        right = render_image.convert("RGB")
+        if left.size != right.size:
+            return {
+                "sizeMatch": False,
+                "ssim": None,
+                "normalizedMae": None,
+                "pixelCount": 0,
+            }
+        safe = _safe_box(box, left.width, left.height)
+        if safe is None:
+            return {
+                "sizeMatch": True,
+                "ssim": None,
+                "normalizedMae": None,
+                "pixelCount": 0,
+            }
+        source_crop = left.crop(safe)
+        render_crop = right.crop(safe)
+        difference = ImageChops.difference(source_crop, render_crop)
+        normalized_mae = sum(ImageStat.Stat(difference).mean) / (3 * 255)
+        ssim = windowed_ssim(
+            source_crop.filter(ImageFilter.GaussianBlur(1)),
+            render_crop.filter(ImageFilter.GaussianBlur(1)),
+        )
+        result = {
+            "sizeMatch": True,
+            "ssim": round(max(-1, min(1, ssim)), 8),
+            "normalizedMae": round(normalized_mae, 8),
+            "pixelCount": source_crop.width * source_crop.height,
+        }
+        result.update(optional_perceptual_metrics(source_crop, render_crop))
+        return result
 
 
 def rgb_to_lab(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
@@ -379,7 +678,11 @@ def match_text(
     matched = 0
     for item in expected:
         direct = by_id.get(item["id"])
-        candidates = [direct] if direct in available and text_key(rendered[direct]["text"]) == text_key(item["text"]) else [
+        # A localized OCR result carries the expected object id.  Prefer that
+        # observation even when recognition is partial so missing/extra glyphs
+        # produce a diagnostic and a bounded geometry suggestion instead of
+        # disappearing from the comparison.
+        candidates = [direct] if direct in available else [
             index for index in available
             if text_key(rendered[index]["text"]) == text_key(item["text"])
         ]
@@ -397,8 +700,10 @@ def match_text(
         target = item["pixelBox"]
         value = tolerant_iou(target, actual)
         ious.append(value)
-        matched += 1
-        recognized.append(rendered[selected]["text"])
+        actual_text = rendered[selected]["text"]
+        text_matches = text_key(actual_text) == text_key(item["text"])
+        matched += int(text_matches)
+        recognized.append(actual_text)
         width_ratio = target["w"] / max(1, actual["w"])
         height_ratio = target["h"] / max(1, actual["h"])
         font_scale = height_ratio
@@ -415,9 +720,232 @@ def match_text(
                 "targetBox": target,
                 "renderedBox": actual,
                 "iou": round(value, 6),
+                "category": "text",
+                "textMatch": text_matches,
+                "recognizedText": actual_text,
+                "suggestions": (
+                    []
+                    if text_matches and value >= 0.90
+                    else [
+                        "preserve the independently OCR-recognized text",
+                        "adjust position, font scale, and character spacing within bounds",
+                    ]
+                ),
             }
         )
     return ious, adjustments, matched, recognized
+
+
+def object_diagnostics(
+    source_path: Path,
+    render_path: Path,
+    slide: dict[str, Any],
+    rendered_text: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
+    """Classify every declared region and emit object-level QA guidance."""
+    with Image.open(source_path) as opened_source, Image.open(render_path) as opened_render:
+        source_image = opened_source.convert("RGB")
+        render_image = opened_render.convert("RGB")
+    rendered_by_id = {
+        item.get("id"): item for item in rendered_text if item.get("id")
+    }
+    objects: list[dict[str, Any]] = []
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for item in slide.get("objects", []):
+        category = region_category(item)
+        source_box = item.get("pixelBox") or {}
+        observed = rendered_by_id.get(item.get("id")) if category == "text" else None
+        if category == "text":
+            rendered_box = observed.get("pixelBox") if observed else None
+            geometry_measurement = {
+                "status": "measured" if observed else "unavailable",
+                "method": "localized-ocr",
+            }
+        else:
+            rendered_box, geometry_measurement = measured_region_box(
+                source_image, render_image, source_box
+            )
+        metrics = region_pixel_metrics(source_path, render_path, source_box)
+        iou = tolerant_iou(source_box, rendered_box) if source_box and rendered_box else None
+        text_match = None
+        if category == "text":
+            text_match = bool(observed and text_key(observed.get("text", "")) == text_key(item.get("text", "")))
+        issue_flags: list[str] = []
+        if category == "text" and not text_match:
+            issue_flags.append("text-mismatch")
+        if iou is not None and iou < 0.90:
+            issue_flags.append("geometry-mismatch")
+        if metrics.get("normalizedMae") is not None and metrics["normalizedMae"] > 0.20:
+            issue_flags.append("region-pixel-drift")
+        suggestions: list[str] = []
+        if category == "text":
+            suggestions = [
+                "preserve source OCR text; do not infer replacements",
+                "adjust dx/dy/fontScale/charSpacingDeltaPt only within bounded limits",
+            ]
+        elif category == "shape":
+            suggestions = [
+                "adjust shape geometry or fill/border color within bounded limits",
+                "keep native shape/connector semantics and z-order explicit",
+            ]
+        elif category == "image":
+            suggestions = [
+                "adjust only the bounded crop geometry",
+                "never promote a local image crop to a whole-slide raster",
+            ]
+        if not issue_flags:
+            suggestions = []
+        raw_dx = source_box.get("x", 0) - rendered_box.get("x", 0) if rendered_box else 0
+        raw_dy = source_box.get("y", 0) - rendered_box.get("y", 0) if rendered_box else 0
+        raw_dw = source_box.get("w", 0) - rendered_box.get("w", 0) if rendered_box else 0
+        raw_dh = source_box.get("h", 0) - rendered_box.get("h", 0) if rendered_box else 0
+        repair_eligible = bool(
+            category != "text"
+            and rendered_box
+            and iou is not None
+            and iou < 0.90
+            and iou >= 0.45
+            and (metrics.get("normalizedMae") or 0) >= 0.05
+            and abs(raw_dx) <= 8
+            and abs(raw_dy) <= 8
+            and (
+                (category == "shape" and abs(raw_dw) <= 4 and abs(raw_dh) <= 4)
+                or (category == "image" and abs(raw_dw) <= 2 and abs(raw_dh) <= 2)
+            )
+        )
+        geometry_measurement["repairEligible"] = repair_eligible
+        adjustment = {
+            "id": item.get("id"),
+            "category": category,
+            "dx": round(raw_dx, 4) if repair_eligible else 0,
+            "dy": round(raw_dy, 4) if repair_eligible else 0,
+            "dw": round(raw_dw, 4) if repair_eligible and category == "shape" else 0,
+            "dh": round(raw_dh, 4) if repair_eligible and category == "shape" else 0,
+            "zDelta": 0,
+            "suggestions": suggestions,
+        }
+        diagnostic = {
+            "id": item.get("id"),
+            "type": item.get("type"),
+            "category": category,
+            "sourceBox": source_box,
+            "renderedBox": rendered_box,
+            "bboxIou": round(iou, 6) if iou is not None else None,
+            "geometryMeasurement": geometry_measurement,
+            "textMatch": text_match,
+            "metrics": metrics,
+            "status": "passed" if not issue_flags else "repairable",
+            "findings": issue_flags,
+            "suggestions": suggestions,
+            "adjustment": adjustment,
+        }
+        objects.append(diagnostic)
+        grouped.setdefault(category, []).append(diagnostic)
+
+    # Background is a deliberate region category even though it has no native
+    # object id.  Its metric is informational and never relaxes the page gates.
+    background_metrics = region_pixel_metrics(
+        source_path,
+        render_path,
+        {
+            "x": 0,
+            "y": 0,
+            "w": slide.get("sizePx", {}).get("widthPx", slide.get("sizePx", {}).get("width", 0)),
+            "h": slide.get("sizePx", {}).get("heightPx", slide.get("sizePx", {}).get("height", 0)),
+        },
+    )
+    source_background = _dominant_edge_color(source_image)
+    render_background = _dominant_edge_color(render_image)
+    background_distance = _rgb_distance(source_background, render_background)
+    background_repairable = (background_metrics.get("normalizedMae") or 0) > 0.20 or background_distance > 12
+    background = {
+        "category": "background",
+        "count": 1,
+        "metrics": background_metrics,
+        "status": "repairable" if background_repairable else "passed",
+        "sourceColor": _hex_color(source_background),
+        "renderedColor": _hex_color(render_background),
+        "rgbDistance": round(background_distance, 6),
+        "suggestions": [
+            "adjust the slide background color only when source-bound evidence supports it",
+        ] if background_repairable else [],
+    }
+    grouped["background"] = [background]
+
+    z_values = [item.get("z") for item in slide.get("objects", []) if isinstance(item.get("z"), (int, float))]
+    duplicate_z = len(z_values) != len(set(z_values))
+    actual_order = [
+        item.get("id")
+        for item in sorted(slide.get("objects", []), key=lambda value: (value.get("z", 0), value.get("id", "")))
+    ]
+    declared_order = slide.get("sceneLayerGraph", {}).get("stableOrder", [])
+    order_mismatch = bool(declared_order and declared_order != actual_order)
+    z_object = None
+    z_delta = 0
+    if order_mismatch:
+        mismatch_index = next(
+            (
+                index
+                for index, value in enumerate(declared_order)
+                if index >= len(actual_order) or actual_order[index] != value
+            ),
+            None,
+        )
+        if mismatch_index is not None:
+            z_object = declared_order[mismatch_index]
+            if z_object in actual_order:
+                z_delta = -1 if actual_order.index(z_object) > mismatch_index else 1
+    z_order = {
+        "category": "z-order",
+        "count": len(z_values),
+        "status": "repairable" if duplicate_z or order_mismatch else "passed",
+        "duplicateZ": duplicate_z,
+        "declaredOrder": declared_order,
+        "renderOrder": actual_order,
+        "orderMismatch": order_mismatch,
+        "suggestions": [
+            "adjust zDelta by at most one step and preserve background-behind-content ordering",
+        ] if duplicate_z or order_mismatch else [],
+    }
+    grouped["z-order"] = [z_order]
+    summary = {
+        category: {
+            "count": len(values),
+            "status": "repairable" if any(value.get("status") == "repairable" for value in values) else "passed",
+            "findings": [
+                finding
+                for value in values
+                for finding in value.get("findings", [])
+            ],
+        }
+        for category, values in grouped.items()
+    }
+    # Always expose all required categories so consumers can render a stable QA
+    # table even when a slide contains no object of one kind.
+    for category in REGION_CATEGORIES:
+        summary.setdefault(category, {"count": 0, "status": "passed", "findings": []})
+    adjustments = [item["adjustment"] for item in objects]
+    adjustments.append({
+        "id": "__background__",
+        "category": "background",
+        "backgroundColor": _hex_color(source_background) if background_repairable else None,
+        "dx": 0,
+        "dy": 0,
+        "dw": 0,
+        "dh": 0,
+        "zDelta": 0,
+    })
+    adjustments.append({
+        "id": "__z-order__",
+        "category": "z-order",
+        "objectId": z_object,
+        "dx": 0,
+        "dy": 0,
+        "dw": 0,
+        "dh": 0,
+        "zDelta": z_delta,
+    })
+    return objects, summary, adjustments
 
 
 def pass_metric(name: str, value: float | None) -> bool:
@@ -463,11 +991,27 @@ def measure(args: argparse.Namespace) -> dict[str, Any]:
             and item.get("confidence", 0) >= analysis["ocr"]["threshold"]
         ]
         localized_lines = localized_ocr_lines(render_page, expected, analysis["ocr"]["langs"])
+        source_localized_lines = localized_ocr_lines(source_path, expected, analysis["ocr"]["langs"])
         _, global_lines = ocr_lines(render_page, analysis["ocr"]["langs"])
         rendered_lines = localized_lines + global_lines
-        source_text = " ".join(item["text"] for item in expected)
+        # Text fidelity uses independent OCR of the complete source and render.
+        # The analysis objects are used for region geometry only; deriving the
+        # CER reference from them would make a missing or extra OCR line
+        # invisible (the former self-reference bug).
+        source_text_localized = " ".join(
+            item["text"] for item in source_localized_lines
+        )
+        render_text_localized = " ".join(item["text"] for item in localized_lines)
+        source_text = merge_ocr_evidence(source_text_global, source_localized_lines)
+        render_text = merge_ocr_evidence(render_text_global, localized_lines)
+        localized_cer = cer(source_text_localized, render_text_localized)
+        evidence_cer = ocr_evidence_cer(
+            source_text_global,
+            render_text_global,
+            source_localized_lines,
+            localized_lines,
+        )
         ious, adjustments, matched, recognized = match_text(expected, rendered_lines)
-        render_text = " ".join(recognized)
         excluded = [
             item["pixelBox"]
             for item in slide["objects"]
@@ -480,9 +1024,31 @@ def measure(args: argparse.Namespace) -> dict[str, Any]:
             for color in source_palette
         ) if source_palette and render_palette else []
         palette_p95 = deltas[max(0, math.ceil(len(deltas) * 0.95) - 1)] if deltas else None
+        object_reports, region_summary, region_adjustments = object_diagnostics(
+            source_path,
+            render_page,
+            slide,
+            localized_lines,
+        )
+        # Text adjustments contain measured geometry and recognition evidence;
+        # object-level diagnostics supply bounded repair metadata for the other
+        # region categories without changing the hard thresholds.
+        by_adjustment_id = {item.get("id"): item for item in adjustments}
+        for item in region_adjustments:
+            if item.get("id") in by_adjustment_id:
+                existing = by_adjustment_id[item["id"]]
+                # Keep measured text geometry authoritative; the generic
+                # region record only contributes category/size/z-order knobs.
+                existing.update({
+                    key: value
+                    for key, value in item.items()
+                    if key not in {"dx", "dy", "fontScale", "charSpacingDeltaPt", "targetBox", "renderedBox", "iou", "textMatch", "recognizedText"}
+                })
+            else:
+                adjustments.append(item)
         metrics = {
             "ssim": pixel["ssim"],
-            "ocrCer": round(cer(source_text, render_text), 6),
+            "ocrCer": round(max(localized_cer, evidence_cer), 6),
             "bboxIou": round(sum(ious) / len(ious), 6) if ious else (1.0 if not expected else None),
             "paletteDeltaE2000P95": round(palette_p95, 6) if palette_p95 is not None else None,
             "nativeHighConfidenceTextRecall": round(matched / max(1, len(expected)), 6),
@@ -516,10 +1082,19 @@ def measure(args: argparse.Namespace) -> dict[str, Any]:
                 "pixel": pixel,
                 "sourceText": source_text,
                 "renderText": render_text,
+                "ocrCerGlobal": round(cer(source_text_global, render_text_global), 6),
+                "ocrCerLocalized": round(localized_cer, 6),
+                "ocrCerEvidence": round(evidence_cer, 6),
+                "sourceTextLocalized": source_text_localized,
+                "renderTextLocalized": render_text_localized,
+                "sourceTextObjectProjection": " ".join(item["text"] for item in expected),
+                "renderTextObjectProjection": " ".join(recognized),
                 "sourceTextGlobal": source_text_global,
                 "renderTextGlobal": render_text_global,
                 "matchedTextCount": matched,
                 "expectedTextCount": len(expected),
+                "regions": region_summary,
+                "objectDiagnostics": object_reports,
                 "findings": slide_findings,
             }
         )
@@ -538,6 +1113,7 @@ def measure(args: argparse.Namespace) -> dict[str, Any]:
         "aggregate": aggregate,
         "findings": findings,
         "calibration": calibration,
+        "regionCategories": list(REGION_CATEGORIES),
     }
 
 

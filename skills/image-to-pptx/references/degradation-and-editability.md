@@ -35,3 +35,16 @@ Typical reasons are `low-confidence-ocr`, `high-local-color-complexity`, `photo`
 ## Connectors
 
 Use native line objects for reliable lines. Preserve direction only when arrowheads are visible. Geometry checks require endpoints inside the slide and reject zero-length or off-slide connectors. Pixel evidence alone cannot prove semantic node attachment; record such attachment as inferred.
+
+## Masks, background, and layers
+
+Use Alpha when present; otherwise derive a foreground mask from deterministic
+edge-background distance with a recorded tolerance. Infer occlusion only from
+explicit z-order, containment, text overlap, or bounded overlap evidence, and
+emit a stable back-to-front order with confidence/reason fields.
+
+Background repair may fill only small enclosed, flat, non-text holes using a
+local median color and digest-bound provenance. Leave text-overlapping, large,
+edge-touching, high-variance, or over-budget holes unchanged and report the
+fail-closed reason. Do not run generative inpainting or download a segmentation
+model silently.
