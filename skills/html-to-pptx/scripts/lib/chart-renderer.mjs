@@ -183,9 +183,79 @@ function expandStackedBar(element) {
 }
 
 function expandGroupedBar(element) {
-  // Grouped bars are visually the same primitive shape stack as stackedBar
-  // when expanded to shape/text, so reuse the implementation.
-  return expandStackedBar(element);
+  const elements = [];
+  const data = Array.isArray(element.data) ? element.data : [];
+  const style = element.style ?? {};
+  const palette = resolvePalette(element);
+  const showValues = style.showValues !== false;
+  const pointKeys = semanticKeys(data, "point");
+
+  const seriesNames = [];
+  for (const point of data) {
+    for (const name of Object.keys(numericSeries(point.series))) {
+      if (!seriesNames.includes(name)) seriesNames.push(name);
+    }
+  }
+  const seriesKeys = semanticKeys(seriesNames, "series");
+  const maxValue = Math.max(
+    1,
+    ...data.flatMap((point) => {
+      const series = numericSeries(point.series);
+      return seriesNames.map((name) => series[name] || 0);
+    })
+  );
+
+  const gap = Math.min(0.12, element.w / Math.max(data.length * 4, 1));
+  const labelHeight = Math.min(0.32, element.h * 0.18);
+  const valueHeight = showValues ? Math.min(0.26, element.h * 0.14) : 0;
+  const chartHeight = Math.max(0.2, element.h - labelHeight - valueHeight - 0.1);
+  const groupWidth = Math.max(0.08, (element.w - gap * (data.length - 1)) / Math.max(data.length, 1));
+  const innerGap = seriesNames.length > 1
+    ? Math.min(0.04, element.w / Math.max(data.length * seriesNames.length * 8, 1))
+    : 0;
+  const barWidth = Math.max(
+    0.08,
+    (groupWidth - innerGap * Math.max(seriesNames.length - 1, 0)) / Math.max(seriesNames.length, 1)
+  );
+
+  data.forEach((point, index) => {
+    const series = numericSeries(point.series);
+    const groupX = element.x + index * (groupWidth + gap);
+    const baselineY = element.y + valueHeight + chartHeight;
+    seriesNames.forEach((name, seriesIndex) => {
+      const value = series[name] || 0;
+      const barHeight = value > 0 ? Math.max(0.02, (value / maxValue) * chartHeight) : 0.02;
+      const color = offsetColor(palette[seriesIndex % palette.length], seriesIndex, seriesNames.length);
+      pushShape(elements, element, `point-${pointKeys[index]}__series-${seriesKeys[seriesIndex]}__segment`, "rect",
+        groupX + seriesIndex * (barWidth + innerGap), baselineY - barHeight, barWidth, barHeight, {
+          backgroundColor: color,
+          borderColor: color
+        });
+    });
+    pushText(elements, element, `point-${pointKeys[index]}__label`, String(point.label ?? ""), groupX, baselineY + 0.05, groupWidth, labelHeight, {
+      align: "center",
+      color: style.labelColor
+    });
+  });
+
+  if (style.showLegend !== false) {
+    const legendY = element.y + element.h - Math.min(0.24, labelHeight);
+    let cursorX = element.x;
+    seriesNames.forEach((name, index) => {
+      const color = offsetColor(palette[index % palette.length], index, seriesNames.length);
+      pushShape(elements, element, `series-${seriesKeys[index]}__legend-segment`, "rect", cursorX, legendY + 0.04, 0.12, 0.12, {
+        backgroundColor: color,
+        borderColor: color
+      });
+      pushText(elements, element, `series-${seriesKeys[index]}__legend-label`, String(name), cursorX + 0.16, legendY, 0.8, 0.2, {
+        align: "left",
+        color: style.labelColor
+      });
+      cursorX += 1.0;
+    });
+  }
+
+  return elements;
 }
 
 function expandHorizontalBar(element) {
@@ -290,8 +360,66 @@ function expandSparkline(element) {
   return elements;
 }
 
+export function isNativeChartElement(element) {
+  const mode = element?.renderMode ?? element?.style?.renderMode ?? element?.mode;
+  return ["native", "semantic", "semantic-first"].includes(String(mode ?? "").trim().toLowerCase());
+}
+
+function nativeSeriesData(element) {
+  const data = Array.isArray(element?.data) ? element.data : [];
+  const kind = element.kind;
+  if (kind === "horizontalBar") {
+    return [{
+      name: element.style?.seriesName ?? "Value",
+      labels: data.map((point) => String(point?.label ?? "")),
+      values: data.map((point) => Number(point?.value) || 0)
+    }];
+  }
+  const seriesNames = [];
+  for (const point of data) {
+    for (const name of Object.keys(numericSeries(point?.series))) {
+      if (!seriesNames.includes(name)) seriesNames.push(name);
+    }
+  }
+  const labels = data.map((point) => String(point?.label ?? ""));
+  return seriesNames.map((name) => ({
+    name: String(name),
+    labels,
+    values: data.map((point) => numericSeries(point?.series)[name] || 0)
+  }));
+}
+
+export function nativeChartSpec(element) {
+  if (!element || element.type !== "chart" || !isNativeChartElement(element)) return null;
+  if (!["groupedBar", "stackedBar", "horizontalBar"].includes(element.kind)) {
+    throw new Error(`native chart mode does not support ${String(element.kind ?? "missing")}; use fidelity-first primitives`);
+  }
+  const style = element.style ?? {};
+  const palette = resolvePalette(element).map((color) => String(color).replace(/^#/, ""));
+  return {
+    type: "bar",
+    data: nativeSeriesData(element),
+    options: {
+      x: element.x,
+      y: element.y,
+      w: element.w,
+      h: element.h,
+      ...(element.id ? { objectName: element.id } : {}),
+      barDir: element.kind === "horizontalBar" ? "bar" : "col",
+      barGrouping: element.kind === "stackedBar" ? "stacked" : "clustered",
+      ...(palette.length > 0 ? { chartColors: palette } : {}),
+      showLegend: style.showLegend !== false,
+      showValue: style.showValues !== false,
+      ...(style.showTitle ? { showTitle: true, title: String(style.title ?? element.title ?? "") } : {}),
+      ...(style.catAxisLabelFontSize ? { catAxisLabelFontSize: Number(style.catAxisLabelFontSize) } : {}),
+      ...(style.valAxisLabelFontSize ? { valAxisLabelFontSize: Number(style.valAxisLabelFontSize) } : {})
+    }
+  };
+}
+
 export function expandChartElement(element) {
   if (!element || element.type !== "chart") return [element];
+  if (isNativeChartElement(element)) return [element];
   const kind = element.kind;
   if (!SUPPORTED_KINDS.has(kind)) {
     throw new Error(`unsupported chart kind ${String(kind ?? "missing")}; expected ${[...SUPPORTED_KINDS].join(",")}`);

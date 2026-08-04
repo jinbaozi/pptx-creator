@@ -56,6 +56,8 @@ const PROTOCOL_VERSION = "1.0.0";
 const MIN_BROWSER_TIMEOUT_MS = 90_000;
 const MAX_REPAIR_ATTEMPTS = 3;
 const DEFAULT_VISUAL_THRESHOLD = 48;
+const MIN_EDITABILITY_LEVEL = 3;
+const MIN_NATIVE_COVERAGE = 0.90;
 const PROTOCOL_FILENAMES = [
   "presentation-package.json",
   "deck-manifest.json"
@@ -552,6 +554,7 @@ export function injectNativeCharts(html, manifest, measurements) {
       type: "chart",
       id,
       kind: spec.kind,
+      ...(spec.renderMode || spec.mode || spec.style?.renderMode ? { renderMode: spec.renderMode ?? spec.mode ?? spec.style?.renderMode } : {}),
       data: spec.data,
       style: spec.style ?? {},
       x: Number(measurement.x),
@@ -1044,6 +1047,13 @@ async function compareDeck(sourceDir, renderDir, outputPath, threshold) {
   if (processError && !report?.summary) {
     fail("E_VISUAL_COMPARE", `visual comparison failed: ${processError.stderr || processError.message}`);
   }
+  if (report?.summary?.sizeMatch === false) {
+    fail(
+      "E_VISUAL_SIZE_MISMATCH",
+      "source and rendered slide image dimensions must match exactly",
+      report.summary
+    );
+  }
   return report;
 }
 
@@ -1065,15 +1075,59 @@ function editabilityReport(intermediate, manifest, fallbacks) {
     table: 0,
     croppedAsset: 0
   };
-  const level = editableLevel(counters);
-  const nativeCoverage = countFallbackCoverage(manifest, fallbacks);
+  const zeroCounters = () => ({ text: 0, shape: 0, image: 0, table: 0, croppedAsset: 0 });
+  const fallbackForSlide = (slide, slideIndex) => fallbacks.filter((fallback) =>
+    fallback.slideId === slide.id || Number(fallback.slideIndex) === slideIndex
+  );
+  const countersForSlide = (slide, slideIndex) => {
+    if (Array.isArray(intermediate?.countersBySlide) && intermediate.countersBySlide[slideIndex]) {
+      return { ...zeroCounters(), ...intermediate.countersBySlide[slideIndex] };
+    }
+    return (slide.elements ?? []).reduce((result, element) => {
+      const key = element.type === "cropped-asset" ? "croppedAsset" : element.type;
+      if (Object.prototype.hasOwnProperty.call(result, key)) result[key] += 1;
+      return result;
+    }, zeroCounters());
+  };
+  const slideArea = Number(manifest.deck.size.width) * Number(manifest.deck.size.height);
+  const perSlide = manifest.slides.map((slide, slideIndex) => {
+    const slideFallbacks = fallbackForSlide(slide, slideIndex);
+    const fallbackArea = slideFallbacks.reduce(
+      (sum, fallback) => sum + Number(fallback.box?.w ?? 0) * Number(fallback.box?.h ?? 0),
+      0
+    );
+    const nativeCoverage = Number(Math.max(0, 1 - fallbackArea / slideArea).toFixed(4));
+    const slideCounters = countersForSlide(slide, slideIndex);
+    const level = editableLevel(slideCounters);
+    return {
+      slideIndex,
+      slideId: slide.id,
+      level,
+      targetLevel: 4,
+      nativeCoverage,
+      passed: level >= MIN_EDITABILITY_LEVEL && nativeCoverage >= MIN_NATIVE_COVERAGE,
+      counters: slideCounters,
+      rasterizedRegions: slideFallbacks
+    };
+  });
+  const level = perSlide.length ? Math.min(...perSlide.map((slide) => slide.level)) : editableLevel(counters);
+  const nativeCoverage = perSlide.length
+    ? Math.min(...perSlide.map((slide) => slide.nativeCoverage))
+    : countFallbackCoverage(manifest, fallbacks);
   return {
     version: "1.0.0",
     level,
     targetLevel: 4,
-    passed: level >= 3 && nativeCoverage >= 0.9,
+    passed: perSlide.length
+      ? perSlide.every((slide) => slide.passed)
+      : level >= MIN_EDITABILITY_LEVEL && nativeCoverage >= MIN_NATIVE_COVERAGE,
     nativeCoverage,
     counters,
+    thresholds: {
+      minimumLevel: MIN_EDITABILITY_LEVEL,
+      minimumNativeCoverage: MIN_NATIVE_COVERAGE
+    },
+    perSlide,
     editable: [
       "text",
       "shapes",
@@ -1416,6 +1470,9 @@ function qaMarkdown(qa) {
     `- HTML critical findings: ${qa.gates.htmlLayout.criticalCount}`,
     `- PPTX geometry critical findings: ${qa.gates.pptxGeometry.criticalCount}`,
     `- Visual max mean channel difference: ${qa.gates.visual.maxMeanAbsChannelDiff}`,
+    `- Visual minimum SSIM: ${qa.gates.visual.minimumSsim}`,
+    `- Visual maximum normalized MAE: ${qa.gates.visual.maximumNormalizedMae}`,
+    `- Visual worst tile: ${qa.gates.visual.worstTile ? JSON.stringify(qa.gates.visual.worstTile) : "none"}`,
     `- Editability level: ${qa.gates.editability.level}`,
     `- Native coverage: ${qa.gates.editability.nativeCoverage}`,
     "",
@@ -1433,6 +1490,13 @@ function editableMarkdown(report) {
     `- Level: ${report.level}`,
     `- Native coverage: ${report.nativeCoverage}`,
     `- Local raster regions: ${report.rasterizedRegions.length}`,
+    `- Minimum level gate: ${report.thresholds?.minimumLevel ?? 3}`,
+    `- Minimum native coverage gate: ${report.thresholds?.minimumNativeCoverage ?? 0.9}`,
+    "",
+    "Per-slide evidence:",
+    ...(report.perSlide ?? []).map((slide) =>
+      `- ${slide.slideId}: level ${slide.level}, native coverage ${slide.nativeCoverage}, passed ${slide.passed}`
+    ),
     "",
     "Editable object families:",
     ...report.editable.map((item) => `- ${item}`),
@@ -1726,7 +1790,9 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         editability: {
           level: editability.level,
           nativeCoverage: editability.nativeCoverage,
-          passed: editability.passed
+          passed: editability.passed,
+          thresholds: editability.thresholds,
+          perSlide: editability.perSlide
         },
         repairs: []
       };
@@ -1838,7 +1904,9 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         editability: {
           level: success.editability.level,
           nativeCoverage: success.editability.nativeCoverage,
-          passed: success.editability.passed
+          passed: success.editability.passed,
+          thresholds: success.editability.thresholds,
+          perSlide: success.editability.perSlide
         },
         fullSlideRaster: { forbidden: true, violations: 0 }
       },

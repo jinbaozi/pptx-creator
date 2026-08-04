@@ -21,6 +21,7 @@ import {
   validateManifestContract
 } from "../scripts/convert.mjs";
 import { connectorMetadata } from "../scripts/lib/connector-resolver.mjs";
+import { expandChartElement } from "../scripts/lib/chart-renderer.mjs";
 
 function manifest() {
   return {
@@ -305,6 +306,54 @@ describe("public argument and safety contracts", () => {
       x: 1,
       w: 4
     });
+  });
+
+  it("keeps grouped bars side by side while stacked bars share each point x", () => {
+    const base = {
+      type: "chart",
+      id: "chart-001",
+      x: 1,
+      y: 1,
+      w: 6,
+      h: 4,
+      data: [
+        { label: "A", series: { first: 2, second: 4 } },
+        { label: "B", series: { first: 3, second: 1 } }
+      ],
+      style: { showLegend: false }
+    };
+    const grouped = expandChartElement({ ...base, kind: "groupedBar" });
+    const stacked = expandChartElement({ ...base, kind: "stackedBar" });
+    const groupedBars = grouped.filter((entry) => entry.type === "shape");
+    const stackedBars = stacked.filter((entry) => entry.type === "shape");
+
+    expect(groupedBars).toHaveLength(4);
+    expect(stackedBars).toHaveLength(4);
+    expect(groupedBars[0].x).toBeLessThan(groupedBars[1].x);
+    expect(groupedBars[0].y + groupedBars[0].h).toBeCloseTo(groupedBars[1].y + groupedBars[1].h);
+    expect(stackedBars[0].x).toBeCloseTo(stackedBars[1].x);
+    expect(groupedBars[0].w).toBeLessThan(stackedBars[0].w);
+    expect(groupedBars[2].x).toBeGreaterThan(groupedBars[1].x);
+  });
+
+  it("keeps grouped geometry finite for empty, zero, and malformed series values", () => {
+    const elements = expandChartElement({
+      type: "chart",
+      kind: "groupedBar",
+      id: "chart-edge",
+      x: 0,
+      y: 0,
+      w: 0,
+      h: 0,
+      data: [
+        { label: "A", series: { first: 0, second: "not-a-number" } },
+        { label: "B", series: null }
+      ],
+      style: { showLegend: false }
+    });
+
+    expect(elements.length).toBeGreaterThan(0);
+    expect(elements.every((entry) => [entry.x, entry.y, entry.w, entry.h].every(Number.isFinite))).toBe(true);
   });
 
   it("requires V2 connector metadata on the connector object", () => {

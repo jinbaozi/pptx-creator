@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import JSZip from "jszip";
 import pptxgen from "pptxgenjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
-import { expandChartElement } from "./lib/chart-renderer.mjs";
+import { expandChartElement, nativeChartSpec } from "./lib/chart-renderer.mjs";
 import { expandDiagramElement } from "./lib/diagram-compiler.mjs";
 
 const SHAPES = { rect: "rect", roundRect: "roundRect", ellipse: "ellipse" };
@@ -143,6 +143,17 @@ function shadowOptions(shadow) {
 }
 
 function applyElementRotation(options, element) {
+  const transform = element?.transform
+    ?? element?.style?.transformData
+    ?? element?.style?.transform;
+  if (transform && typeof transform === "object" && transform.supported !== false) {
+    const transformRotate = Number(transform.rotate);
+    if (!Number.isFinite(Number(options.rotate)) && Number.isFinite(transformRotate) && Math.abs(transformRotate) > 0.01) {
+      options.rotate = transformRotate;
+    }
+    if (transform.flipH) options.flipH = true;
+    if (transform.flipV) options.flipV = true;
+  }
   const rotate = Number(element.rotate);
   if (Number.isFinite(rotate) && Math.abs(rotate) > 0.01) options.rotate = rotate;
   return options;
@@ -195,6 +206,37 @@ function hyperlinkOptions(element) {
   };
 }
 
+function richRunOptions(run, design, language, fallbackText = "") {
+  const source = run && typeof run === "object" ? run : {};
+  const style = resolveValue(source.style ?? source, design.tokens);
+  const decoration = style.decoration && typeof style.decoration === "object" ? style.decoration : {};
+  const fontWeight = Number(style.fontWeight ?? style.weight);
+  const options = {
+    fontFace: primaryFontFamily(style.fontFamily ?? design.tokens.typography.body.fontFamily, "Arial", fallbackText),
+    ...(Number.isFinite(Number(style.fontSize)) ? { fontSize: Number(style.fontSize) } : {}),
+    ...(Number.isFinite(fontWeight) ? { bold: fontWeight >= 700 } : {}),
+    ...(style.fontStyle ? { italic: ["italic", "oblique"].includes(String(style.fontStyle).toLowerCase()) } : {}),
+    ...(style.color ? { color: hex(style.color, design.tokens.colors.text) } : {}),
+    ...(style.transparency !== undefined ? { transparency: Number(style.transparency) } : {}),
+    ...(decoration.underline ? { underline: decoration.underline } : style.underline ? { underline: style.underline } : {}),
+    ...(decoration.strike ? { strike: decoration.strike } : style.strike ? { strike: style.strike } : {}),
+    ...(style.hyperlink ? { hyperlink: hyperlinkOptions(style) } : source.hyperlink ? { hyperlink: hyperlinkOptions(source) } : {}),
+    ...(style.breakLine ? { breakLine: true } : {})
+  };
+  return options;
+}
+
+function richTextRuns(element, design, language) {
+  if (!Array.isArray(element?.runs) || element.runs.length === 0) return null;
+  return element.runs
+    .map((run) => {
+      const text = typeof run === "string" ? run : String(run?.text ?? "");
+      if (!text) return null;
+      return { text, options: richRunOptions(run, design, language, text) };
+    })
+    .filter(Boolean);
+}
+
 function addText(slide, element, design, language) {
   const opts = applyElementRotation({
     x: element.x,
@@ -206,7 +248,7 @@ function addText(slide, element, design, language) {
   if (element.id) opts.objectName = element.id;
   const hyperlink = hyperlinkOptions(element);
   if (hyperlink) opts.hyperlink = hyperlink;
-  slide.addText(element.text ?? "", opts);
+  slide.addText(richTextRuns(element, design, language) ?? element.text ?? "", opts);
 }
 
 function addShape(slide, element, design) {
@@ -525,7 +567,7 @@ function addNormalizedLineShape(slide, options, shapeType = "line") {
 function addLine(slide, element, design) {
   const style = resolveValue(element.style ?? {}, design.tokens);
   const shapeType = element.connector?.route === "orthogonal" ? "bentConnector3" : "line";
-  addNormalizedLineShape(slide, {
+  addNormalizedLineShape(slide, applyElementRotation({
     ...(element.id ? { objectName: element.id } : {}),
     x: element.x,
     y: element.y,
@@ -540,43 +582,135 @@ function addLine(slide, element, design) {
       dashType: style.dashType,
       transparency: style.transparency
     }
-  }, shapeType);
+  }, element), shapeType);
 }
 
 function addTable(slide, element, design) {
   const style = resolveValue(element.style ?? {}, design.tokens);
   const headerStyle = resolveValue(design.tokens.components?.["table-header"] ?? {}, design.tokens);
   const headerTypography = resolveValue(headerStyle.typography ?? {}, design.tokens);
-  const tableRows = [];
-  if (Array.isArray(element.headers) && element.headers.length > 0) {
-    tableRows.push(
-      element.headers.map((cell) => ({
-        text: String(cell),
-        options: {
-          fill: { color: hex(headerStyle.backgroundColor, design.tokens.colors.surfaceAlt) },
-          color: hex(headerStyle.textColor ?? headerStyle.color, design.tokens.colors.primary),
-          fontFace: headerTypography.fontFamily ?? design.tokens.typography.body.fontFamily,
-          fontSize: headerTypography.fontSize ?? style.fontSize ?? design.tokens.typography.body.fontSize,
-          bold: Boolean((headerTypography.fontWeight ?? 400) >= 700),
-          align: "center",
-          valign: "middle"
+  const cellBorder = (cellStyle, side) => {
+    const color = cellStyle?.[`${side}Color`] ?? cellStyle?.borderColor ?? style.borderColor ?? design.tokens.colors.border;
+    const width = Number(cellStyle?.[`${side}Width`] ?? cellStyle?.borderWidth ?? style.borderWidth ?? 1);
+    const borderStyle = String(cellStyle?.[`${side}Style`] ?? cellStyle?.borderStyle ?? "solid").toLowerCase();
+    return {
+      color: hex(color, design.tokens.colors.border),
+      pt: Number.isFinite(width) ? width * 0.75 : 1,
+      type: borderStyle === "none" || borderStyle === "hidden" ? "none" : borderStyle === "dashed" ? "dash" : "solid"
+    };
+  };
+  const cellOptions = (cell, sectionType) => {
+    const source = cell && typeof cell === "object" ? cell : { text: String(cell ?? "") };
+    const cellStyle = resolveValue(source.style ?? {}, design.tokens);
+    const explicit = resolveValue(source.options ?? {}, design.tokens);
+    const padding = cellStyle.padding ?? cellStyle.margin;
+    const paddingValues = Array.isArray(padding)
+      ? padding.map((value) => Number(value) / 72)
+      : [cellStyle.paddingTop, cellStyle.paddingRight, cellStyle.paddingBottom, cellStyle.paddingLeft]
+        .map((value) => Number(value) / 72)
+        .map((value) => Number.isFinite(value) ? value : null);
+    const options = {
+      ...explicit,
+      ...(source.colspan > 1 ? { colspan: Number(source.colspan) } : {}),
+      ...(source.rowspan > 1 ? { rowspan: Number(source.rowspan) } : {}),
+      fill: explicit.fill ?? (cellStyle.backgroundColor || cellStyle.fill
+        ? {
+          color: hex(cellStyle.backgroundColor ?? cellStyle.fill, design.tokens.colors.surface),
+          ...(Number.isFinite(Number(cellStyle.backgroundTransparency)) ? { transparency: Number(cellStyle.backgroundTransparency) } : {})
         }
+        : sectionType === "thead"
+          ? { color: hex(headerStyle.backgroundColor, design.tokens.colors.surfaceAlt) }
+          : undefined),
+      color: explicit.color ?? (cellStyle.color ? hex(cellStyle.color, design.tokens.colors.text) : sectionType === "thead"
+        ? hex(headerStyle.textColor ?? headerStyle.color, design.tokens.colors.primary)
+        : undefined),
+      fontFace: explicit.fontFace ?? (cellStyle.fontFamily ? primaryFontFamily(cellStyle.fontFamily) : sectionType === "thead"
+        ? headerTypography.fontFamily ?? design.tokens.typography.body.fontFamily
+        : design.tokens.typography.body.fontFamily),
+      fontSize: explicit.fontSize ?? (Number(cellStyle.fontSize) || (sectionType === "thead"
+        ? headerTypography.fontSize ?? style.fontSize ?? design.tokens.typography.body.fontSize
+        : style.fontSize ?? design.tokens.typography.body.fontSize)),
+      ...(cellStyle.fontWeight !== undefined ? { bold: Number(cellStyle.fontWeight) >= 700 } : sectionType === "thead" ? { bold: Boolean((headerTypography.fontWeight ?? 400) >= 700) } : {}),
+      ...(cellStyle.fontStyle ? { italic: ["italic", "oblique"].includes(String(cellStyle.fontStyle).toLowerCase()) } : {}),
+      ...(cellStyle.textAlign ? { align: String(cellStyle.textAlign).toLowerCase() === "start" ? "left" : String(cellStyle.textAlign).toLowerCase() === "end" ? "right" : cellStyle.textAlign } : sectionType === "thead" ? { align: "center" } : {}),
+      ...(cellStyle.verticalAlign ? { valign: ["middle", "center"].includes(String(cellStyle.verticalAlign).toLowerCase()) ? "middle" : ["bottom", "text-bottom"].includes(String(cellStyle.verticalAlign).toLowerCase()) ? "bottom" : "top" } : sectionType === "thead" ? { valign: "middle" } : {}),
+      ...(paddingValues.every((value) => value !== null) && paddingValues.some((value) => value > 0) ? { margin: paddingValues } : {}),
+      ...(cellStyle.borderColor || cellStyle.borderWidth || cellStyle.borderTopColor || cellStyle.borderRightColor || cellStyle.borderBottomColor || cellStyle.borderLeftColor
+        ? { border: ["Top", "Right", "Bottom", "Left"].map((side) => cellBorder(cellStyle, `border${side}`)) }
+        : {})
+    };
+    const hyperlink = source.hyperlink ?? (source.href ? { url: source.href } : null);
+    if (hyperlink?.url) options.hyperlink = hyperlink;
+    return options;
+  };
+  const toPptxCell = (cell, sectionType) => {
+    const source = cell && typeof cell === "object" ? cell : { text: String(cell ?? "") };
+    const runs = Array.isArray(source.runs) && source.runs.length > 0
+      ? source.runs.map((run) => ({
+        text: String(run?.text ?? ""),
+        options: richRunOptions(run, design, design.language ?? "en-US", String(run?.text ?? ""))
       }))
-    );
+      : null;
+    return {
+      text: runs ?? String(source.text ?? ""),
+      options: cellOptions(source, sectionType)
+    };
+  };
+  const tableRows = [];
+  if (Array.isArray(element.sections) && element.sections.length > 0) {
+    for (const section of element.sections) {
+      for (const row of section.rows ?? []) tableRows.push((row.cells ?? []).map((cell) => toPptxCell(cell, section.type)));
+    }
+  } else {
+    if (Array.isArray(element.headers) && element.headers.length > 0) {
+      tableRows.push(element.headers.map((cell) => toPptxCell({ text: String(cell) }, "thead")));
+    }
+    tableRows.push(...(element.rows ?? []).map((row) => (row ?? []).map((cell) => toPptxCell(cell, "tbody"))));
   }
-  tableRows.push(...(element.rows ?? []));
+  if (tableRows.length === 0) tableRows.push([{ text: "", options: {} }]);
   slide.addTable(tableRows, {
     ...(element.id ? { objectName: element.id } : {}),
     x: element.x,
     y: element.y,
     w: element.w,
     h: element.h,
+    ...(Array.isArray(element.colW) && element.colW.length > 0 ? { colW: element.colW } : {}),
+    ...(Array.isArray(element.rowH) && element.rowH.length > 0 ? { rowH: element.rowH } : {}),
     border: { color: hex(style.borderColor, design.tokens.colors.border), pt: Number(style.borderWidth ?? 1) },
     color: hex(style.color, design.tokens.colors.text),
     fontFace: design.tokens.typography.body.fontFamily,
     fontSize: style.fontSize ?? design.tokens.typography.body.fontSize,
     fill: { color: hex(style.fill, design.tokens.colors.background) }
   });
+  if (element.caption) {
+    const captionRuns = Array.isArray(element.captionRuns) && element.captionRuns.length > 0
+      ? element.captionRuns.map((run) => ({ text: String(run?.text ?? ""), options: richRunOptions(run, design, design.language ?? "en-US", String(run?.text ?? "")) }))
+      : null;
+    const captionBox = element.captionBox ?? {
+      x: element.x,
+      y: Math.max(0, Number(element.y) - 0.28),
+      w: element.w,
+      h: 0.22
+    };
+    slide.addText(captionRuns ?? String(element.caption), {
+      x: captionBox.x,
+      y: captionBox.y,
+      w: captionBox.w,
+      h: captionBox.h,
+      ...(element.id ? { objectName: `${element.id}__caption` } : {}),
+      fontFace: design.tokens.typography.caption.fontFamily,
+      fontSize: design.tokens.typography.caption.fontSize,
+      color: hex(design.tokens.colors.textMuted, design.tokens.colors.text),
+      margin: 0,
+      valign: "middle"
+    });
+  }
+}
+
+function addNativeChart(slide, element) {
+  const spec = nativeChartSpec(element);
+  if (!spec) throw new Error(`chart ${element?.id ?? "unknown"} is not a native chart`);
+  slide.addChart(spec.type, spec.data, spec.options);
 }
 
 function addIcon(slide, element, design) {
@@ -740,14 +874,21 @@ function renderElement(slide, element, design, baseDir, counters, manifestAssets
     addLine(slide, element, design);
   } else if (element.type === "image") {
     counters.image += 1;
+    if (element.vectorPreserved === true || element.mediaKind === "svg") counters.vectorPreserved = (counters.vectorPreserved ?? 0) + 1;
     addImage(slide, element, baseDir);
   } else if (element.type === "cropped-asset") {
     counters.croppedAsset = (counters.croppedAsset ?? 0) + 1;
+    if (element.replicaFallback?.kind === "raster" || element.replicaFallback?.kind === "raster-fallback") {
+      counters.rasterFallback = (counters.rasterFallback ?? 0) + 1;
+    }
     counters.image += 1;
     addCroppedAsset(slide, element, baseDir, manifestAssets);
   } else if (element.type === "table") {
     counters.table += 1;
     addTable(slide, element, design);
+  } else if (element.type === "chart") {
+    counters.chart = (counters.chart ?? 0) + 1;
+    addNativeChart(slide, element);
   } else if (element.type === "icon") {
     const added = addIcon(slide, element, design);
     counters.text += added.text;
@@ -757,9 +898,14 @@ function renderElement(slide, element, design, baseDir, counters, manifestAssets
 
 export function editableLevel(counters) {
   const { text, shape, image, table } = counters;
+  const chart = counters.chart ?? 0;
+  const vectorPreserved = counters.vectorPreserved ?? 0;
   const croppedAsset = counters.croppedAsset ?? 0;
-  const effectiveImage = image + croppedAsset;
-  const nativeShapes = shape + table;
+  // `image` includes vector media in the renderer, while callers may provide
+  // only the explicit vector counter. Count the asset once, but never call a
+  // vector-preserved SVG fully native/editable.
+  const effectiveImage = Math.max(image ?? 0, vectorPreserved) + croppedAsset;
+  const nativeShapes = shape + table + chart;
 
   // Level 1: raster fallback — images present but no editable text
   if (effectiveImage > 0 && text === 0) return 1;
@@ -785,9 +931,11 @@ function aggregateCounters(countersBySlide) {
       acc.image += item.image ?? 0;
       acc.table += item.table ?? 0;
       acc.croppedAsset += item.croppedAsset ?? 0;
+      acc.vectorPreserved += item.vectorPreserved ?? 0;
+      acc.rasterFallback += item.rasterFallback ?? 0;
       return acc;
     },
-    { text: 0, shape: 0, image: 0, table: 0, croppedAsset: 0 }
+    { text: 0, shape: 0, image: 0, table: 0, croppedAsset: 0, vectorPreserved: 0, rasterFallback: 0 }
   );
 }
 
@@ -846,7 +994,7 @@ async function main() {
     if (typeof sourceSlide.notes === "string" && sourceSlide.notes.trim()) {
       slide.addNotes(sourceSlide.notes);
     }
-    const counters = { text: 0, shape: 0, image: 0, table: 0 };
+    const counters = { text: 0, shape: 0, image: 0, table: 0, vectorPreserved: 0, rasterFallback: 0 };
     addBackground(slide, sourceSlide.background, manifest, design, baseDir);
     backgroundGradientPatches.push(sourceSlide.background?.type === "gradient" ? sourceSlide.background.gradient : null);
     const renderableElements = expandRenderableElements(sourceSlide.elements ?? []);

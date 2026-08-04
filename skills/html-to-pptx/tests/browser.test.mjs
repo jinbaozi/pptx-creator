@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -9,6 +9,7 @@ import {
 } from "../scripts/lib/html-layout-audit.mjs";
 import { measureHtmlFile } from "../scripts/measure-html.mjs";
 import { applyLocalizedFallbacks } from "../scripts/convert.mjs";
+import { convertHtmlToManifest } from "../scripts/lib/html-to-manifest-core.mjs";
 
 const browserIt = process.env.PLAYWRIGHT_RUN === "1" ? it : it.skip;
 const example = resolve("examples/minimal/index.html");
@@ -71,6 +72,99 @@ describe("real Chromium source validation", () => {
       const measured = await measureHtmlFile(input, { replica: true, totalTimeoutMs: 90_000 });
       const fragments = measured.elements.filter((element) => /^html-/.test(element.id) && element.kind === "text");
       expect(fragments.map((element) => element.semantics.semanticParentId)).toEqual(["claim-001", "claim-001"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  browserIt("captures stacking, inline lines, native 2D transforms, ancestor opacity, and local compositing fallbacks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "html-to-pptx-browser-semantics-"));
+    const input = join(root, "index.html");
+    await writeFile(input, `<!doctype html><html><head><style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body, .pptx-slide { margin: 0; width: 1280px; height: 720px; }
+      .pptx-slide { position: relative; overflow: hidden; background: white; isolation: isolate; }
+      .stack-root { position: absolute; left: 40px; top: 32px; width: 460px; height: 150px; z-index: 2; }
+      .stack-back, .stack-front { position: absolute; width: 180px; height: 80px; }
+      .stack-back { left: 0; top: 0; z-index: 1; background: #91A7FF; }
+      .stack-front { left: 30px; top: 20px; z-index: 3; background: #FF9F1C; }
+      .ancestor { position: absolute; left: 40px; top: 220px; opacity: .5; }
+      .opaque-child { width: 180px; height: 60px; opacity: .4; background: #2457E6; }
+      .multiline { position: absolute; left: 300px; top: 220px; width: 170px; font: 18px/1.25 Arial, sans-serif; }
+      .native-transform { position: absolute; left: 600px; top: 120px; width: 120px; height: 80px; background: #34D399; transform: translate(12px, 8px) rotate(30deg) scale(-1, .8); transform-origin: 18px 10px; }
+      .unsupported-transform { position: absolute; left: 800px; top: 120px; width: 120px; height: 80px; background: #EF4444; transform: skewX(12deg); }
+      .unsupported-compositing { position: absolute; left: 1000px; top: 120px; width: 120px; height: 80px; background: #A855F7; isolation: isolate; }
+    </style></head><body>
+      <section class="pptx-slide" data-slide-id="slide-001">
+        <div id="stack-root" class="stack-root">
+          <div id="stack-back" class="stack-back" data-pptx-kind="shape"></div>
+          <div id="stack-front" class="stack-front" data-pptx-kind="shape"></div>
+        </div>
+        <div class="ancestor"><div id="opaque-child" class="opaque-child" data-pptx-kind="shape"></div></div>
+        <p id="claim" data-pptx-kind="text" class="multiline"><span>line one wraps across the inline fragment boundary and line two remains visible.</span></p>
+        <div id="native-transform" class="native-transform" data-pptx-kind="shape"></div>
+        <div id="unsupported-transform" class="unsupported-transform" data-pptx-kind="shape"></div>
+        <div id="unsupported-compositing" class="unsupported-compositing" data-pptx-kind="shape"></div>
+      </section>
+    </body></html>`);
+    try {
+      const measured = await measureHtmlFile(input, { replica: true, totalTimeoutMs: 90_000 });
+      const byId = new Map(measured.elements.map((element) => [element.id, element]));
+      expect(measured.slides[0].replica).toMatchObject({ hasUnsupportedEffects: false });
+      expect(measured.slides[0].replica.unsupportedCompositing).toBeUndefined();
+      const back = byId.get("stack-back");
+      const front = byId.get("stack-front");
+      expect(back?.paintOrder).toEqual(expect.any(Number));
+      expect(front?.paintOrder).toEqual(expect.any(Number));
+      expect(front.paintOrder).toBeGreaterThan(back.paintOrder);
+      expect(front.stackingContextPath).toEqual(expect.arrayContaining(["stack-root"]));
+
+      const lines = measured.elements.filter((element) => element.semantics?.semanticParentId === "claim");
+      expect(lines.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(lines.map((element) => element.text)).size).toBe(lines.length);
+      expect(lines.every((element) => /-line-\d+$/.test(element.id))).toBe(true);
+
+      const opaque = byId.get("opaque-child");
+      expect(opaque.style.effectiveOpacity).toBeCloseTo(.2, 3);
+      expect(opaque.replica.effectiveOpacity).toBeCloseTo(.2, 3);
+
+      const nativeTransform = byId.get("native-transform");
+      expect(nativeTransform.style.transformData).toMatchObject({
+        supported: true,
+        matrix: expect.arrayContaining([expect.any(Number)]),
+        transformOrigin: { raw: expect.any(String) }
+      });
+      expect(nativeTransform.style.transformData.flipV).toBe(true);
+
+      const unsupportedTransform = byId.get("unsupported-transform");
+      expect(unsupportedTransform.replica).toMatchObject({
+        hasUnsupportedEffects: true,
+        unsupportedCompositing: { transformFallback: "skew-transform" }
+      });
+      expect(byId.get("unsupported-compositing")?.replica).toMatchObject({
+        hasUnsupportedEffects: true,
+        unsupportedCompositing: { isolation: "isolate" }
+      });
+
+      const manifest = convertHtmlToManifest(await readFile(input, "utf8"), {
+        measurements: measured,
+        designMode: "replica"
+      });
+      const ids = manifest.slides[0].elements.map((element) => element.id);
+      expect(ids.indexOf("stack-back")).toBeLessThan(ids.indexOf("stack-front"));
+      expect(manifest.slides[0].elements.find((element) => element.id === "native-transform")).toMatchObject({
+        transform: { supported: true, flipV: true }
+      });
+      expect(manifest.slides[0].replicaUnsupportedEffects).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          elementId: "unsupported-compositing",
+          isolation: "isolate"
+        }),
+        expect.objectContaining({
+          elementId: "unsupported-transform",
+          transformFallback: "skew-transform"
+        })
+      ]));
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -15,7 +15,8 @@ model, so support is intentionally bounded and every fallback is explicit.
 | Single outer `box-shadow` | Native shape shadow | Unsupported multi-shadow syntax is a local fallback |
 | Single `drop-shadow(...)` filter | Native shadow | Other filter functions are not native |
 | `<img>` and CSS background images | Native image objects | `cover`, `contain`, object position, crop, opacity, and local assets are supported |
-| Simple SVG `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, and `text` | Native shapes, lines, and text | Simple line-like paths are converted; complex paths are not guaranteed |
+| Safe SVG `rect`, `circle`, `ellipse`, `line`, stroke-only `polyline`/`polygon`, simple paths, and `text` | Native editable shapes, lines, and text | Safe group `translate`/`scale`/`rotate`, inherited paint, and opacity are materialized; filled/curved paths remain vector media |
+| Self-contained complex SVG without filters, masks, scripts, or external references | SVG vector image (`ppt/media/*.svg`) | The manifest records `vectorPreserved: true`; this is an editable-slide asset but not an editable SVG object |
 | Semantic SVG connectors | Native lines with arrowheads | Declare `data-pptx-kind="line"`, `data-pptx-id`, and source/target IDs |
 | HTML tables | Native editable tables | Cell text, fills, borders, alignment, and header styling are retained within the supported model |
 | `data-pptx-chart` marker | Native editable chart primitives | Supported kinds: `stackedBar`, `groupedBar`, `horizontalBar`, `kpiGroup`, and `sparkline` |
@@ -35,11 +36,17 @@ The following effects may require a crop of only the affected region:
 - `clip-path` or masks;
 - unsupported background-image syntax;
 - browser visual content without a stable native mapping;
-- complex SVG or canvas-like visual regions.
+- unsafe SVG effects (filters, masks, clipping/compositing, scripts, or external/path-traversal references).
 
-Each crop becomes a `cropped-asset` element and an entry in
+Each raster crop becomes a `cropped-asset` element and an entry in
 `fallback-ledger.json` containing the slide, component, geometry, reason, and
 editability impact. The native coverage gate requires at least `0.90`.
+
+Safe complex SVG is not rasterized: it remains an SVG media part and is
+counted separately as `vectorPreserved` in renderer counters. PPTX may include
+the Office-required PNG compatibility blip alongside the SVG; the SVG
+relationship remains authoritative and the region is never treated as a
+full-slide raster fallback.
 
 The converter rejects a fallback that covers the full slide or effectively
 matches slide geometry. It never uses an entire slide screenshot as the editable
@@ -52,7 +59,8 @@ delivery.
   downloaded, content-sniffed, size-limited, and localized.
 - Video, audio, canvas animation, WebGL, CSS blend modes, complex filters,
   arbitrary SVG paths, and pseudo-element-only content do not have complete
-  native mappings.
+  native mappings. Unsafe SVGs are explicitly routed to local raster fallback;
+  self-contained complex SVGs use vector preservation instead.
 - Browser font metrics and Office font metrics can differ. Read
   `font-and-office.md` and inspect `font-report.json`.
 - PowerPoint has no direct equivalent for arbitrary DOM clipping, CSS

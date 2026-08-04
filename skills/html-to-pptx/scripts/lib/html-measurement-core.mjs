@@ -22,6 +22,52 @@ export function convertMeasurementPxToInches(pxBox, viewport, slideSize = SLIDE_
   };
 }
 
+function normalizeTableMetadata(table, viewport, slideSize) {
+  if (!table || typeof table !== "object") return null;
+  const normalizeBox = (box) => box && typeof box === "object" && ["x", "y", "w", "h"].every((key) => Number.isFinite(Number(box[key])))
+    ? convertMeasurementPxToInches(box, viewport, slideSize)
+    : box;
+  const normalizeCell = (cell) => {
+    if (!cell || typeof cell !== "object") return cell;
+    return {
+      ...cell,
+      ...(cell.px ? { inches: normalizeBox(cell.px) } : {}),
+      ...(Array.isArray(cell.runs) ? { runs: cell.runs.map((run) => ({ ...run })) } : {})
+    };
+  };
+  const sections = Array.isArray(table.sections)
+    ? table.sections.map((section) => ({
+      ...section,
+      rows: Array.isArray(section.rows)
+        ? section.rows.map((row) => ({
+          ...row,
+          ...(row.px ? { inches: normalizeBox(row.px) } : {}),
+          cells: Array.isArray(row.cells) ? row.cells.map(normalizeCell) : []
+        }))
+        : []
+    }))
+    : [];
+  const columns = Array.isArray(table.columnsPx)
+    ? table.columnsPx.map((value) => pxToInches(Number(value), viewport.width, slideSize.width))
+    : Array.isArray(table.colW) ? table.colW.map(Number) : undefined;
+  const rowHeights = Array.isArray(table.rowHeightsPx)
+    ? table.rowHeightsPx.map((value) => pxToInches(Number(value), viewport.height, slideSize.height))
+    : Array.isArray(table.rowH) ? table.rowH.map(Number) : undefined;
+  return {
+    ...table,
+    ...(sections.length > 0 ? { sections } : {}),
+    ...(columns ? { columns } : {}),
+    ...(rowHeights ? { rowHeights } : {}),
+    ...(table.caption ? {
+      caption: {
+        ...table.caption,
+        ...(table.caption.px ? { inches: normalizeBox(table.caption.px) } : {}),
+        ...(Array.isArray(table.caption.runs) ? { runs: table.caption.runs.map((run) => ({ ...run })) } : {})
+      }
+    } : {})
+  };
+}
+
 export function buildMeasurementLookup(measurements) {
   const lookup = new Map();
   for (const element of measurements?.elements ?? []) {
@@ -75,8 +121,24 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
         w: inches.w,
         h: inches.h,
         px: element.px,
+        ...(Number.isFinite(Number(element.paintOrder)) ? { paintOrder: Number(element.paintOrder) } : {}),
+        ...(element.stackingContext !== undefined ? { stackingContext: Boolean(element.stackingContext) } : {}),
+        ...(Array.isArray(element.stackingContextPath) ? { stackingContextPath: [...element.stackingContextPath] } : {}),
         text: element.text ?? "",
         visibleText: typeof element.visibleText === "string" ? element.visibleText : null,
+        ...(Array.isArray(element.runs) ? { runs: element.runs.map((run) => ({ ...run })) } : {}),
+        ...(element.table ? { table: normalizeTableMetadata(element.table, viewport, slideSize) } : {}),
+        ...(element.svg && typeof element.svg === "object" ? {
+          svg: {
+            ...element.svg,
+            ...(Array.isArray(element.svg.nodes) ? {
+              nodes: element.svg.nodes.map((node) => ({
+                ...node,
+                ...(node.style && typeof node.style === "object" ? { style: { ...node.style } } : {})
+              }))
+            } : {})
+          }
+        } : {}),
         src: element.src ?? null,
         href: element.href ?? null,
         hyperlinkTooltip: element.hyperlinkTooltip ?? null,
@@ -94,6 +156,9 @@ export function normalizeMeasuredSlides(rawSlides = []) {
     ...(slide.slideId ? { slideId: slide.slideId } : {}),
     slideIndex: Number.isInteger(slide.slideIndex) ? slide.slideIndex : index,
     selector: slide.selector ?? null,
+    ...(Number.isFinite(Number(slide.paintOrder)) ? { paintOrder: Number(slide.paintOrder) } : {}),
+    ...(slide.stackingContext !== undefined ? { stackingContext: Boolean(slide.stackingContext) } : {}),
+    ...(Array.isArray(slide.stackingContextPath) ? { stackingContextPath: [...slide.stackingContextPath] } : {}),
     style: slide.style && typeof slide.style === "object" ? slide.style : {},
     replica: slide.replica && typeof slide.replica === "object" ? slide.replica : {}
   }));

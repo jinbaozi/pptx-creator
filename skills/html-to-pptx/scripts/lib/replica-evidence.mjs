@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import JSZip from "jszip";
 import { runPython } from "./python-utils.mjs";
 import { primaryFontFamily } from "../render-pptx.mjs";
@@ -187,6 +188,31 @@ export async function evaluateMeasuredReplicaEvidence(raw = {}, measuredBundle =
 const metric = (value) => ({ status: "available", value });
 const unavailable = (reason) => ({ status: "unavailable", value: null, reason });
 
+async function comparePixelDirectories(sourceDir, renderDir) {
+  const temporary = await mkdtemp(join(tmpdir(), "html-to-pptx-compare-"));
+  const output = join(temporary, "visual-comparison.json");
+  try {
+    try {
+      await runPython([
+        join(PACKAGE_ROOT, "scripts", "compare-deck.py"),
+        sourceDir,
+        renderDir,
+        output
+      ], { cwd: PACKAGE_ROOT });
+    } catch {
+      // A failed comparator still writes a report for threshold or size
+      // failures. Read it below so callers can retain the blocking evidence.
+    }
+    try {
+      return JSON.parse(await readFile(output, "utf8"));
+    } catch {
+      return null;
+    }
+  } finally {
+    await rm(temporary, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 function xmlDecode(value = "") {
   return value.replaceAll("&quot;", '"').replaceAll("&apos;", "'").replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">");
 }
@@ -276,24 +302,48 @@ export async function measureHtmlReplicaEvidence(raw, { sourceArtifactPath, rend
     return verifyReplicaEvidence(raw);
   }
   const mapped = await inspectPptxObjects(pptxPath, manifest, measurements);
+  const pixelReport = await comparePixelDirectories(sourceArtifactPath, renderArtifactPath);
   const pages = [];
   const measurementFindings = [];
   for (let index = 0; index < boundSourcePaths.length; index += 1) {
     const sourcePageDigest = await digestArtifact(boundSourcePaths[index]);
     const renderPageDigest = await digestArtifact(boundRenderPaths[index]);
     if (sourcePageDigest.sha256 === renderPageDigest.sha256) measurementFindings.push(`candidate-reference-alias: slide ${index + 1}`);
-    const pixel = JSON.parse((await runPython([join(PACKAGE_ROOT, "scripts/measure-replica.py"), boundSourcePaths[index], boundRenderPaths[index]], { cwd: PACKAGE_ROOT })).stdout);
-    const structural={bboxP95Drift:mapped[index].bboxP95Drift,bboxMaxDrift:mapped[index].bboxMaxDrift,fontMapping:mapped[index].fontMapping,colorMapping:mapped[index].colorMapping,nativeObjectRecall:mapped[index].nativeObjectRecall,nativeTextRecall:mapped[index].nativeTextRecall};
-    const fidelity = pixel.sizeMatch ? {
+    const pixel = pixelReport?.slides?.[index] ?? null;
+    if (!pixel) measurementFindings.push(`pixel-comparison-unavailable: slide ${index + 1}`);
+    const mappedPage = mapped[index] ?? {};
+    const structural={
+      bboxP95Drift: mappedPage.bboxP95Drift ?? unavailable("pptx-object-inspection-unavailable"),
+      bboxMaxDrift: mappedPage.bboxMaxDrift ?? unavailable("pptx-object-inspection-unavailable"),
+      fontMapping: mappedPage.fontMapping ?? unavailable("pptx-object-inspection-unavailable"),
+      colorMapping: mappedPage.colorMapping ?? unavailable("pptx-object-inspection-unavailable"),
+      nativeObjectRecall: mappedPage.nativeObjectRecall ?? unavailable("pptx-object-inspection-unavailable"),
+      nativeTextRecall: mappedPage.nativeTextRecall ?? unavailable("pptx-object-inspection-unavailable")
+    };
+    const fidelity = pixel?.sizeMatch ? {
       ssim: metric(pixel.ssim), normalizedMae: metric(pixel.normalizedMae), ...structural
     } : {
       ssim: unavailable("source-render-size-mismatch"), normalizedMae: unavailable("source-render-size-mismatch"), ...structural
     };
-    if (!pixel.sizeMatch) measurementFindings.push(`source-render-size-mismatch: slide ${index + 1}`);
-    if (isCatastrophicLocalDifference(pixel)) {
+    if (!pixel?.sizeMatch) measurementFindings.push(`source-render-size-mismatch: slide ${index + 1}`);
+    if (pixel && isCatastrophicLocalDifference(pixel)) {
       measurementFindings.push(`worst-region-omission: slide ${index + 1} tile MAE ${pixel.worstTileMae}; bad-pixel ratio ${pixel.worstTileBadPixelRatio}`);
     }
-    pages.push({ ...raw.perSlide[index], slideIndex: index, fidelity });
+    pages.push({
+      ...(raw.perSlide?.[index] ?? {}),
+      slideIndex: index,
+      fidelity,
+      pixel: pixel
+        ? {
+            ssim: pixel.ssim,
+            normalizedMae: pixel.normalizedMae,
+            worstTile: pixel.worstTile ?? null,
+            worstTileMae: pixel.worstTileMae ?? null,
+            worstTileBadPixelRatio: pixel.worstTileBadPixelRatio ?? null,
+            sizeMatch: pixel.sizeMatch === true
+          }
+        : null
+    });
   }
   const aggregateFidelity = {};
   const policy = POLICIES[raw.route] ?? POLICIES.html;
@@ -334,6 +384,7 @@ export async function measureImageReplicaEvidence(raw, { sourceArtifactPath, ren
   };
   const sources=await pagesWithin(sourceArtifactPath), renders=await pagesWithin(renderArtifactPath);
   if (!planPath || !pptxPath || !manifest || sources.length===0 || sources.length!==renders.length) return verifyReplicaEvidence(raw);
+  const pixelReport = await comparePixelDirectories(sourceArtifactPath, renderArtifactPath);
   const plan=JSON.parse(await readFile(resolve(planPath),"utf8"));
   const planSourceDigest=await digestArtifact(sources[0]);
   const analysisDigest=plan.analysisPath?await digestArtifact(plan.analysisPath).catch(()=>null):null;
@@ -359,9 +410,13 @@ export async function measureImageReplicaEvidence(raw, { sourceArtifactPath, ren
   for (let i=0;i<sources.length;i+=1) {
     const sd=await digestArtifact(sources[i]), rd=await digestArtifact(renders[i]);
     if(sd.sha256===rd.sha256) findings.push(`candidate-reference-alias: slide ${i+1}`);
-    const measured=JSON.parse((await runPython([join(PACKAGE_ROOT,"scripts/measure-image-replica.py"),sources[i],renders[i],planPath],{cwd:PACKAGE_ROOT})).stdout);
-    sizes.push({source:measured.sourceSize,render:measured.renderSize});
-    if(measured.sizeMatch===false) findings.push(`source-render-size-mismatch: slide ${i+1}`);
+    const measuredReport = pixelReport?.slides?.[i] ?? null;
+    const measured = measuredReport ?? {};
+    sizes.push({
+      source: measured.referenceSize ?? { width: mapping.widthIn * pxX, height: mapping.heightIn * pxY },
+      render: measured.candidateSize ?? { width: mapping.widthIn * pxX, height: mapping.heightIn * pxY }
+    });
+    if(measuredReport?.sizeMatch===false || !measuredReport) findings.push(`source-render-size-mismatch: slide ${i+1}`);
     const available=(value,reason)=>Number.isFinite(value)?metric(value):unavailable(reason);
     if(isCatastrophicLocalDifference(measured)) findings.push(`worst-region-omission: slide ${i+1} tile MAE ${measured.worstTileMae}; bad-pixel ratio ${measured.worstTileBadPixelRatio}`);
     const ooxmlRecall=mapped[i]?.nativeTextRecall?.status==="available"?mapped[i].nativeTextRecall.value:0;
@@ -370,7 +425,7 @@ export async function measureImageReplicaEvidence(raw, { sourceArtifactPath, ren
     if(mapped[i]?.nativeObjectRecall?.value<1) findings.push(`native-object-ooxml-mismatch: slide ${i+1}`);
     const fallbacks=plan.objects.filter((item)=>item.kind==="cropped-asset").map((item)=>({kind:"raster",fullSlide:false,reason:item.reason??"low-confidence-or-complex-region",bbox:{x:item.inchBox.x,y:item.inchBox.y,width:item.inchBox.w,height:item.inchBox.h},zOrder:item.zOrder,nativeAlternativesAttempted:["editable-text","native-shape","native-line"]}));
     checkFallbacks(fallbacks,`perSlide[${i}].fallbacks`,findings,{width:mapping.widthIn,height:mapping.heightIn});
-    const fidelity={ssim:available(measured.ssim,"source-render-size-mismatch"),ocrCer:available(measured.ocrCer,"ocr-unavailable"),bboxIou:available(measured.bboxIou,"no-matched-text-boxes"),paletteDeltaE2000P95:available(measured.paletteDeltaE2000P95,"palette-unavailable"),nativeHighConfidenceTextRecall:available(nativeRecall,"ocr-or-ooxml-unavailable")};
+    const fidelity={ssim:available(measured.ssim,"source-render-size-mismatch"),ocrCer:unavailable("ocr-unavailable"),bboxIou:unavailable("no-matched-text-boxes"),paletteDeltaE2000P95:unavailable("palette-unavailable"),nativeHighConfidenceTextRecall:available(nativeRecall,"ocr-or-ooxml-unavailable")};
     const rasterArea=plan.objects.filter((item)=>item.kind==="cropped-asset").reduce((sum,item)=>sum+item.inchBox.w*item.inchBox.h,0); const nativeCoverage=Math.max(0,Math.min(1,1-rasterArea/(mapping.widthIn*mapping.heightIn)));
     pages.push({slideIndex:i,fidelity,nativeCoverage:metric(nativeCoverage),editability:{level:ooxmlRecall===1&&mapped[i]?.nativeObjectRecall?.value===1?4:2},fallbacks});
   }

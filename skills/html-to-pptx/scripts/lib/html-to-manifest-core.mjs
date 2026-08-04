@@ -298,29 +298,161 @@ function replicaTableStyle(style = {}) {
   return tableStyle;
 }
 
-function tableElement(id, tableNode, box, measuredStyle = null) {
+function parseInlineStyle(node) {
+  const style = {};
+  const raw = String(node?.getAttribute?.("style") ?? "");
+  for (const declaration of raw.split(";")) {
+    const separator = declaration.indexOf(":");
+    if (separator < 0) continue;
+    const key = declaration.slice(0, separator).trim().replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+    const value = declaration.slice(separator + 1).trim();
+    if (key && value) style[key] = value;
+  }
+  return style;
+}
+
+function cssLengthToPoints(value, fallback = null) {
+  const source = String(value ?? "").trim().toLowerCase();
+  const number = Number.parseFloat(source);
+  if (!Number.isFinite(number)) return fallback;
+  if (source.endsWith("pt")) return number;
+  if (source.endsWith("in")) return number * 72;
+  return number * 0.75;
+}
+
+function nodeRichRuns(node, inherited = {}) {
+  if (!node) return [];
+  const runs = [];
+  const walk = (current, parentStyle) => {
+    for (const child of current.childNodes ?? []) {
+      if (child.nodeType === 3) {
+        const text = String(child.text ?? "").replace(/\r\n?/g, "\n").replace(/[ \t\f\v]+/g, " ");
+        if (!text || !text.trim()) continue;
+        runs.push({
+          text,
+          ...(parentStyle.fontFamily ? { fontFamily: parentStyle.fontFamily } : {}),
+          ...(parentStyle.fontSize ? { fontSize: parentStyle.fontSize } : {}),
+          ...(parentStyle.fontWeight ? { fontWeight: parentStyle.fontWeight } : {}),
+          ...(parentStyle.fontStyle ? { fontStyle: parentStyle.fontStyle } : {}),
+          ...(parentStyle.color ? { color: parentStyle.color } : {}),
+          ...(parentStyle.decoration ? { decoration: parentStyle.decoration } : {}),
+          ...(parentStyle.hyperlink ? { hyperlink: parentStyle.hyperlink } : {})
+        });
+      } else if (String(child.tagName ?? "").toLowerCase() === "br") {
+        runs.push({ text: "\n", ...parentStyle });
+      } else if (child.tagName) {
+        const tagName = String(child.tagName).toLowerCase();
+        if (child.hasAttribute?.("data-pptx-kind") || child.hasAttribute?.("data-pptx-type")
+          || child.hasAttribute?.("data-pptx-id") || child.hasAttribute?.("data-id")) continue;
+        const inline = parseInlineStyle(child);
+        const style = { ...parentStyle };
+        if (inline.fontFamily) style.fontFamily = inline.fontFamily.replace(/^['"]|['"]$/g, "");
+        if (inline.fontSize) style.fontSize = cssLengthToPoints(inline.fontSize, style.fontSize);
+        if (inline.fontWeight) style.fontWeight = Number.parseInt(inline.fontWeight, 10) || (/bold|bolder/i.test(inline.fontWeight) ? 700 : style.fontWeight);
+        if (inline.fontStyle) style.fontStyle = inline.fontStyle;
+        if (inline.color) style.color = inline.color;
+        if (inline.textDecoration) {
+          const decoration = {};
+          if (/underline/i.test(inline.textDecoration)) decoration.underline = { style: "sng" };
+          if (/line-through/i.test(inline.textDecoration)) decoration.strike = "sngStrike";
+          style.decoration = decoration;
+        }
+        const href = child.getAttribute?.("href");
+        if (href && /^https?:\/\//i.test(href)) style.hyperlink = { url: href };
+        if (tagName === "strong" || tagName === "b") style.fontWeight = 700;
+        if (tagName === "em" || tagName === "i") style.fontStyle = "italic";
+        if (tagName === "u") style.decoration = { ...(style.decoration ?? {}), underline: { style: "sng" } };
+        walk(child, style);
+      }
+    }
+  };
+  walk(node, inherited);
+  if (runs.length > 0) {
+    runs[0].text = runs[0].text.replace(/^\s+/, "");
+    runs.at(-1).text = runs.at(-1).text.replace(/\s+$/, "");
+  }
+  return runs.filter((run) => run.text);
+}
+
+function tableCellManifest(cell, measuredCell = null, sectionType = "tbody") {
+  const sourceText = measuredCell?.text ?? textContent(cell);
+  const runs = measuredCell?.runs?.length ? measuredCell.runs.map((run) => ({ ...run })) : nodeRichRuns(cell);
+  const sourceStyle = measuredCell?.style ?? parseInlineStyle(cell);
+  const colspan = Math.max(1, Number(measuredCell?.colspan ?? cell?.getAttribute?.("colspan") ?? 1) || 1);
+  const rowspan = Math.max(1, Number(measuredCell?.rowspan ?? cell?.getAttribute?.("rowspan") ?? 1) || 1);
+  const href = measuredCell?.href ?? cell?.getAttribute?.("href") ?? cell?.querySelector?.("a[href]")?.getAttribute?.("href");
+  const hyperlink = /^https?:\/\//i.test(String(href ?? ""))
+    ? { url: href, ...(measuredCell?.hyperlinkTooltip ? { tooltip: measuredCell.hyperlinkTooltip } : {}) }
+    : null;
+  const style = {
+    ...sourceStyle,
+    ...(sectionType === "thead" && sourceStyle.backgroundColor === undefined ? { backgroundColor: "{colors.surfaceAlt}" } : {})
+  };
+  return {
+    text: sourceText,
+    ...(runs.length > 0 ? { runs } : {}),
+    ...(colspan > 1 ? { colspan } : {}),
+    ...(rowspan > 1 ? { rowspan } : {}),
+    ...(hyperlink ? { hyperlink } : {}),
+    style,
+    ...(measuredCell?.inches ? { box: { ...measuredCell.inches } } : {})
+  };
+}
+
+function tableSectionsFromNode(tableNode, measuredTable = null) {
+  const measuredSections = Array.isArray(measuredTable?.sections) ? measuredTable.sections : [];
+  const sections = [];
+  const children = (tableNode?.childNodes ?? []).filter((child) => child?.tagName);
+  for (const child of children) {
+    const type = String(child.tagName ?? "").toLowerCase();
+    if (!["thead", "tbody", "tfoot"].includes(type)) continue;
+    const measured = measuredSections.find((section) => section.type === type && !sections.some((entry) => entry.type === type));
+    const rows = [...(child.childNodes ?? [])].filter((row) => String(row.tagName ?? "").toLowerCase() === "tr");
+    sections.push({
+      type,
+      rows: rows.map((row, rowIndex) => {
+        const measuredRow = measured?.rows?.[rowIndex];
+        const cells = [...(row.childNodes ?? [])].filter((cell) => ["th", "td"].includes(String(cell.tagName ?? "").toLowerCase()));
+        return {
+          ...(measuredRow?.inches ? { box: { ...measuredRow.inches } } : {}),
+          cells: cells.map((cell, cellIndex) => tableCellManifest(cell, measuredRow?.cells?.[cellIndex], type))
+        };
+      })
+    });
+  }
+  const directRows = [...children].filter((row) => String(row.tagName ?? "").toLowerCase() === "tr");
+  if (directRows.length > 0) {
+    const measured = measuredSections.find((section) => section.type === "tbody");
+    sections.push({
+      type: "tbody",
+      rows: directRows.map((row, rowIndex) => {
+        const measuredRow = measured?.rows?.[rowIndex];
+        const cells = [...(row.childNodes ?? [])].filter((cell) => ["th", "td"].includes(String(cell.tagName ?? "").toLowerCase()));
+        return {
+          ...(measuredRow?.inches ? { box: { ...measuredRow.inches } } : {}),
+          cells: cells.map((cell, cellIndex) => tableCellManifest(cell, measuredRow?.cells?.[cellIndex], "tbody"))
+        };
+      })
+    });
+  }
+  return sections;
+}
+
+function tableElement(id, tableNode, box, measuredStyle = null, measuredMeasurement = null) {
+  const measuredTable = measuredMeasurement?.table ?? (measuredStyle?.sections ? measuredStyle : null);
+  const sections = tableSectionsFromNode(tableNode, measuredTable);
   const headers = [];
   const rows = [];
-  const thead = tableNode.querySelector("thead");
-  const tbody = tableNode.querySelector("tbody");
-  if (thead) {
-    const headerCells = thead.querySelectorAll("th");
-    if (headerCells.length > 0) {
-      headers.push(...headerCells.map((cell) => textContent(cell)));
-    } else {
-      const rowCells = thead.querySelectorAll("td");
-      if (rowCells.length > 0) headers.push(...rowCells.map((cell) => textContent(cell)));
+  const richRows = [];
+  for (const section of sections) {
+    for (const row of section.rows) {
+      const cells = row.cells ?? [];
+      richRows.push({ section: section.type, cells });
+      if (section.type === "thead") headers.push(...cells.map((cell) => cell.text));
+      else if (section.type === "tbody" || section.type === "tfoot") rows.push(cells.map((cell) => cell.text));
     }
   }
-  const bodyRows = tbody ? tbody.querySelectorAll("tr") : tableNode.querySelectorAll("tr");
-  for (const row of bodyRows) {
-    const cells = row.querySelectorAll("td");
-    if (cells.length === 0) continue;
-    rows.push(cells.map((cell) => textContent(cell)));
-  }
-  if (headers.length === 0 && rows.length > 0) {
-    headers.push(...rows.shift());
-  }
+  if (headers.length === 0 && rows.length > 0) headers.push(...rows.shift());
   const element = {
     type: "table",
     id,
@@ -329,9 +461,23 @@ function tableElement(id, tableNode, box, measuredStyle = null) {
     w: box.w,
     h: box.h,
     rows,
+    sections,
+    richRows,
     style: measuredStyle ? replicaTableStyle(measuredStyle) : replicaTableStyle()
   };
   if (headers.length > 0) element.headers = headers;
+  const captionNode = tableNode?.querySelector?.("caption");
+  const measuredCaption = measuredTable?.caption;
+  if (captionNode || measuredCaption?.text) {
+    element.caption = measuredCaption?.text ?? textContent(captionNode);
+    const captionRuns = measuredCaption?.runs?.length ? measuredCaption.runs : nodeRichRuns(captionNode);
+    if (captionRuns?.length > 0) element.captionRuns = captionRuns;
+    if (measuredCaption?.inches) element.captionBox = { ...measuredCaption.inches };
+  }
+  const colW = measuredTable?.columns ?? measuredTable?.colW;
+  const rowH = measuredTable?.rowHeights ?? measuredTable?.rowH;
+  if (Array.isArray(colW) && colW.length > 0) element.colW = colW.map(Number).filter(Number.isFinite);
+  if (Array.isArray(rowH) && rowH.length > 0) element.rowH = rowH.map(Number).filter(Number.isFinite);
   return element;
 }
 
@@ -494,8 +640,28 @@ function replicaRotate(style) {
 }
 
 function applyReplicaRotation(element, style) {
+  const transformData = style?.transformData;
+  if (transformData && typeof transformData === "object") {
+    // Keep the complete browser matrix/origin in the manifest for audit and
+    // downstream consumers.  Native PowerPoint geometry can express the
+    // orthogonal 2D subset; unsupported shear/3D transforms are routed to the
+    // localized fallback gate instead of being silently flattened.
+    element.transform = {
+      ...transformData,
+      ...(Array.isArray(transformData.matrix) ? { matrix: [...transformData.matrix] } : {}),
+      ...(transformData.transformOrigin && typeof transformData.transformOrigin === "object"
+        ? { transformOrigin: { ...transformData.transformOrigin } }
+        : {})
+    };
+    if (transformData.supported !== false) {
+      const rotate = Number(transformData.rotate);
+      if (Number.isFinite(rotate) && Math.abs(rotate) > 0.01) element.rotate = Math.round(rotate * 100) / 100;
+      if (transformData.flipH) element.flipH = true;
+      if (transformData.flipV) element.flipV = true;
+    }
+  }
   const rotate = replicaRotate(style);
-  if (rotate !== null) element.rotate = rotate;
+  if (rotate !== null && element.rotate === undefined) element.rotate = rotate;
   return element;
 }
 
@@ -505,7 +671,10 @@ function clamp01(value) {
 
 function cssCombinedTransparency(style, ...transparencyKeys) {
   let alpha = 1;
-  const opacity = Number(style.opacity);
+  // Measurement computes the product of all ancestor opacities. Prefer that
+  // value when present so child paint layers do not double-count the local
+  // opacity; legacy measurement documents continue to use style.opacity.
+  const opacity = Number(style.effectiveOpacity ?? style.opacity);
   if (Number.isFinite(opacity)) alpha *= clamp01(opacity);
   for (const key of transparencyKeys) {
     const transparency = Number(style[key]);
@@ -1259,14 +1428,23 @@ function replicaUnsupportedEffect(measurement, style) {
   const supportedBackgroundImage = backgroundImageSrc && replicaBackgroundImagePlanForSrc(backgroundImageSrc, style, measuredBox(measurement));
   const unsupportedBackgroundImage = backgroundImage && !supportedGradient && !supportedBackgroundImage ? backgroundImage : null;
   const unsupportedFilter = measurement.replica.filter && !parseCssDropShadowFilter(measurement.replica.filter) ? measurement.replica.filter : null;
-  if (!unsupportedFilter && !measurement.replica.backdropFilter && !measurement.replica.clipPath && !unsupportedBackgroundImage && !measurement.replica.unsupportedVisual) return null;
+  const unsupportedCompositing = measurement.replica.unsupportedCompositing ?? {};
+  const unsupportedTransform = unsupportedCompositing.transformFallback ?? (style.transformData?.supported === false ? style.transformData.fallback : null);
+  if (!unsupportedFilter && !measurement.replica.backdropFilter && !measurement.replica.clipPath && !unsupportedBackgroundImage && !measurement.replica.unsupportedVisual
+    && !unsupportedCompositing.blendMode && !unsupportedCompositing.isolation && !unsupportedCompositing.maskImage
+    && !unsupportedCompositing.maskComposite && !unsupportedTransform) return null;
   return {
     elementId: measurement.id,
     filter: unsupportedFilter,
     backdropFilter: measurement.replica.backdropFilter ?? null,
     clipPath: measurement.replica.clipPath ?? null,
-    backgroundImage: unsupportedBackgroundImage
-    ,unsupportedVisual: measurement.replica.unsupportedVisual ?? null
+    backgroundImage: unsupportedBackgroundImage,
+    unsupportedVisual: measurement.replica.unsupportedVisual ?? null,
+    blendMode: unsupportedCompositing.blendMode ?? null,
+    isolation: unsupportedCompositing.isolation ?? null,
+    maskImage: unsupportedCompositing.maskImage ?? null,
+    maskComposite: unsupportedCompositing.maskComposite ?? null,
+    transformFallback: unsupportedTransform
   };
 }
 
@@ -1492,7 +1670,32 @@ function measurementWithSourceText(measurement, node) {
   if (!measurement || typeof measurement !== "object") return measurement;
   if ((typeof measurement.visibleText === "string" && measurement.visibleText)
     || (typeof measurement.text === "string" && measurement.text)) return measurement;
-  return { ...measurement, text: textContent(node) };
+  return { ...measurement, text: textContent(node), ...(node ? { runs: nodeRichRuns(node) } : {}) };
+}
+
+function replicaTextRuns(measurement, style) {
+  if (!Array.isArray(measurement?.runs) || measurement.runs.length === 0) return [];
+  const runs = measurement.runs.map((run) => {
+    const source = typeof run === "string" ? { text: run } : run ?? {};
+    const text = applyTextTransform(source.text ?? "", style.textTransform);
+    if (!text) return null;
+    const decoration = source.decoration && typeof source.decoration === "object" ? source.decoration : null;
+    return {
+      text,
+      ...(source.fontFamily ? { fontFamily: source.fontFamily } : {}),
+      ...(Number.isFinite(Number(source.fontSize)) ? { fontSize: Number(source.fontSize) } : {}),
+      ...(Number.isFinite(Number(source.fontWeight)) ? { fontWeight: Number(source.fontWeight) } : {}),
+      ...(source.fontStyle ? { fontStyle: source.fontStyle } : {}),
+      ...(source.color ? { color: source.color } : {}),
+      ...(decoration ? { decoration: { ...decoration } } : {}),
+      ...(source.hyperlink ? { hyperlink: { ...source.hyperlink } } : {})
+    };
+  }).filter(Boolean);
+  if (runs.length > 0) {
+    runs[0].text = runs[0].text.replace(/^\s+/, "");
+    runs.at(-1).text = runs.at(-1).text.replace(/\s+$/, "");
+  }
+  return runs.filter((run) => run.text);
 }
 
 function replicaTextElement(id, measurement, options = {}) {
@@ -1516,12 +1719,14 @@ function replicaTextElement(id, measurement, options = {}) {
   const evidence = evidenceFromSemantics(semantics);
   const sourceRefs = sourceRefsFromSemantics(semantics);
   const hyperlink = measurementHyperlink(measurement);
+  const runs = replicaTextRuns(measurement, style);
   const element = {
     type: "text",
     id,
     ...(tagName === "th" && !semantics.role ? { role: "table-header" } : {}),
     ...(Number.isInteger(semantics.maxLines) ? { maxLines: semantics.maxLines } : {}),
     text,
+    ...(runs.length > 0 ? { runs } : {}),
     ...measuredBox(measurement),
     ...(hyperlink ? { hyperlink } : {}),
     ...(evidence ? { evidence } : {}),
@@ -1895,6 +2100,393 @@ function svgPathLineElements(slideNode) {
   return elements;
 }
 
+// SVG is deliberately handled as a small, auditable subset.  A geometry that
+// cannot be represented without guessing is kept as an SVG media part; an SVG
+// with effects or references that could execute/load content is routed through
+// the existing localized raster fallback gate.
+function svgStyleDeclarations(node) {
+  const style = {};
+  const raw = String(node?.getAttribute?.("style") ?? "");
+  for (const declaration of raw.split(";")) {
+    const separator = declaration.indexOf(":");
+    if (separator < 0) continue;
+    const key = declaration.slice(0, separator).trim().toLowerCase();
+    const value = declaration.slice(separator + 1).trim();
+    if (key && value) style[key] = value;
+  }
+  return style;
+}
+
+function svgAttributeOrStyle(node, name, inherited = null) {
+  const declarations = svgStyleDeclarations(node);
+  const styleValue = declarations[name] ?? declarations[name.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)];
+  const attributeValue = node?.getAttribute?.(name);
+  return styleValue ?? attributeValue ?? inherited;
+}
+
+function svgColor(value, fallback = null) {
+  const source = String(value ?? "").trim();
+  if (!source || source.toLowerCase() === "none" || source.toLowerCase() === "transparent") return null;
+  if (source.toLowerCase() === "currentcolor") return fallback;
+  const normalized = normalizeHex(source);
+  if (normalized) return normalized;
+  const rgb = source.match(/^rgba?\(\s*(\d+)\s*[, ]\s*(\d+)\s*[, ]\s*(\d+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/i);
+  if (rgb) {
+    const channels = rgb.slice(1, 4).map((channel) => Math.max(0, Math.min(255, Number(channel))));
+    return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+  }
+  const named = {
+    black: "#000000", white: "#FFFFFF", red: "#FF0000", green: "#008000", blue: "#0000FF",
+    yellow: "#FFFF00", gray: "#808080", grey: "#808080", orange: "#FFA500", purple: "#800080"
+  };
+  return named[source.toLowerCase()] ?? fallback;
+}
+
+function svgOpacity(value, fallback = 1) {
+  const number = Number.parseFloat(String(value ?? ""));
+  return Number.isFinite(number) ? clamp01(number) : fallback;
+}
+
+function svgNodeStyle(node, inherited = {}, metadataNode = null) {
+  const computed = metadataNode?.style && typeof metadataNode.style === "object" ? metadataNode.style : {};
+  const fill = svgColor(svgAttributeOrStyle(node, "fill", computed.fill ?? inherited.fill), inherited.fill ?? "#000000");
+  const stroke = svgColor(svgAttributeOrStyle(node, "stroke", computed.stroke ?? inherited.stroke), inherited.stroke);
+  const ancestorOpacity = inherited.opacity ?? 1;
+  const ownOpacity = svgOpacity(svgAttributeOrStyle(node, "opacity", computed.opacity ?? 1), 1);
+  const fillOpacity = svgOpacity(Number.isFinite(Number(computed.fillOpacity))
+    ? computed.fillOpacity
+    : svgAttributeOrStyle(node, "fill-opacity", inherited.fillOpacity ?? 1), inherited.fillOpacity ?? 1);
+  const strokeOpacity = svgOpacity(Number.isFinite(Number(computed.strokeOpacity))
+    ? computed.strokeOpacity
+    : svgAttributeOrStyle(node, "stroke-opacity", inherited.strokeOpacity ?? 1), inherited.strokeOpacity ?? 1);
+  const fontSize = Number.parseFloat(String(svgAttributeOrStyle(node, "font-size", computed.fontSize ?? inherited.fontSize ?? 16)));
+  const strokeWidth = Number.parseFloat(String(svgAttributeOrStyle(node, "stroke-width", computed.strokeWidth ?? inherited.strokeWidth ?? 1)));
+  return {
+    ...inherited,
+    fill,
+    stroke,
+    fillOpacity: fillOpacity * ownOpacity * ancestorOpacity,
+    strokeOpacity: strokeOpacity * ownOpacity * ancestorOpacity,
+    opacity: ownOpacity * ancestorOpacity,
+    strokeWidth: Number.isFinite(strokeWidth) && strokeWidth > 0 ? strokeWidth : 0,
+    fontFamily: svgAttributeOrStyle(node, "font-family", computed.fontFamily ?? inherited.fontFamily ?? "Arial"),
+    fontSize: Number.isFinite(fontSize) && fontSize > 0 ? fontSize : (inherited.fontSize ?? 16),
+    fontWeight: svgAttributeOrStyle(node, "font-weight", computed.fontWeight ?? inherited.fontWeight ?? 400),
+    fontStyle: svgAttributeOrStyle(node, "font-style", computed.fontStyle ?? inherited.fontStyle ?? "normal"),
+    textAnchor: svgAttributeOrStyle(node, "text-anchor", computed.textAnchor ?? inherited.textAnchor ?? "start"),
+    textDecoration: svgAttributeOrStyle(node, "text-decoration", computed.textDecoration ?? inherited.textDecoration ?? "none")
+  };
+}
+
+function svgMatrixIdentity() {
+  return [1, 0, 0, 1, 0, 0];
+}
+
+function svgMatrixMultiply(left, right) {
+  const [a, b, c, d, e, f] = left;
+  const [g, h, i, j, k, l] = right;
+  return [
+    a * g + c * h,
+    b * g + d * h,
+    a * i + c * j,
+    b * i + d * j,
+    a * k + c * l + e,
+    b * k + d * l + f
+  ];
+}
+
+function svgTransformMatrix(value) {
+  const source = String(value ?? "").trim();
+  if (!source || source === "none") return svgMatrixIdentity();
+  const matrixMatch = source.match(/^matrix\(\s*([-+\d.e]+)[, ]+([-+\d.e]+)[, ]+([-+\d.e]+)[, ]+([-+\d.e]+)[, ]+([-+\d.e]+)[, ]+([-+\d.e]+)\s*\)$/i);
+  if (matrixMatch) {
+    const matrix = matrixMatch.slice(1).map(Number);
+    return matrix.every(Number.isFinite) ? matrix : null;
+  }
+  let matrix = svgMatrixIdentity();
+  const matches = [...source.matchAll(/(translate|scale|rotate)\s*\(([^)]*)\)/gi)];
+  if (matches.length === 0 || matches.map((match) => match[0]).join("").replace(/\s+/g, "") !== source.replace(/\s+/g, "")) return null;
+  for (const match of matches) {
+    const command = match[1].toLowerCase();
+    const values = match[2].split(/[\s,]+/).filter(Boolean).map(Number);
+    if (values.some((value) => !Number.isFinite(value))) return null;
+    let next = svgMatrixIdentity();
+    if (command === "translate") {
+      if (values.length < 1 || values.length > 2) return null;
+      next = [1, 0, 0, 1, values[0], values[1] ?? 0];
+    } else if (command === "scale") {
+      if (values.length < 1 || values.length > 2) return null;
+      next = [values[0], 0, 0, values[1] ?? values[0], 0, 0];
+    } else if (command === "rotate") {
+      if (![1, 3].includes(values.length)) return null;
+      const angle = values[0] * Math.PI / 180;
+      const rotation = [Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), 0, 0];
+      if (values.length === 3) {
+        const [cx, cy] = values.slice(1);
+        next = svgMatrixMultiply(svgMatrixMultiply([1, 0, 0, 1, cx, cy], rotation), [1, 0, 0, 1, -cx, -cy]);
+      } else next = rotation;
+    }
+    matrix = svgMatrixMultiply(matrix, next);
+  }
+  return matrix;
+}
+
+function svgTransformAngle(matrix) {
+  if (!Array.isArray(matrix) || matrix.length !== 6) return 0;
+  const [a, b, c, d] = matrix;
+  const scaleX = Math.hypot(a, b);
+  const determinant = a * d - b * c;
+  const orthogonality = scaleX > 0 ? (a * c + b * d) / scaleX : 0;
+  if (!Number.isFinite(scaleX) || !Number.isFinite(determinant) || Math.abs(orthogonality) > 0.0005) return null;
+  const angle = Math.atan2(b, a) * 180 / Math.PI;
+  return Math.round(angle * 100) / 100;
+}
+
+function svgTransformPoint(matrix, point) {
+  return {
+    x: matrix[0] * point.x + matrix[2] * point.y + matrix[4],
+    y: matrix[1] * point.x + matrix[3] * point.y + matrix[5]
+  };
+}
+
+function svgTransformedBounds(points, svgBox, viewBox) {
+  const mapped = points.map((point) => svgBoxToSlideBox(svgBox, viewBox, { x: point.x, y: point.y, w: 0, h: 0 }));
+  const xs = mapped.map((point) => point.x);
+  const ys = mapped.map((point) => point.y);
+  return {
+    points: mapped,
+    box: {
+      x: Math.min(...xs),
+      y: Math.min(...ys),
+      w: Math.max(0.001, Math.max(...xs) - Math.min(...xs)),
+      h: Math.max(0.001, Math.max(...ys) - Math.min(...ys))
+    }
+  };
+}
+
+function svgNativeStyle(style, isLine = false) {
+  const transparency = Math.round((1 - (isLine ? style.strokeOpacity : style.fillOpacity)) * 100);
+  const result = isLine
+    ? { color: style.stroke ?? "#000000", width: Math.max(0.25, style.strokeWidth * 0.75) }
+    : {
+      fill: style.fill ?? "#000000",
+      backgroundColor: style.fill ?? "#000000",
+      transparency: style.fill ? transparency : 100,
+      borderColor: style.stroke ?? style.fill ?? "#000000",
+      borderWidth: style.stroke ? Math.max(0.25, style.strokeWidth * 0.75) : 0
+    };
+  if (transparency > 0) result.transparency = transparency;
+  return result;
+}
+
+function svgPathPoints(value) {
+  const source = String(value ?? "").trim();
+  if (!source) return null;
+  const matches = [...source.matchAll(/([MmLlHhVvZz])|(-?\d*\.?\d+(?:e[-+]?\d+)?)/gi)];
+  if (matches.length === 0 || matches.map((match) => match[0]).join("").replace(/[\s,]+/g, "") !== source.replace(/[\s,]+/g, "")) return null;
+  let command = null;
+  let cursor = { x: 0, y: 0 };
+  let start = null;
+  const points = [];
+  let index = 0;
+  while (index < matches.length) {
+    if (matches[index][1]) {
+      command = matches[index][1];
+      index += 1;
+    }
+    if (!command) return null;
+    const relative = command === command.toLowerCase();
+    const upper = command.toUpperCase();
+    if (upper === "Z") {
+      if (start) points.push({ ...start, close: true });
+      cursor = start ?? cursor;
+      command = null;
+      continue;
+    }
+    const first = Number(matches[index][2]);
+    const second = Number(matches[index + 1]?.[2]);
+    if (!Number.isFinite(first)) return null;
+    let point;
+    if (upper === "H") point = { x: relative ? cursor.x + first : first, y: cursor.y };
+    else if (upper === "V") point = { x: cursor.x, y: relative ? cursor.y + first : first };
+    else {
+      if (!Number.isFinite(second)) return null;
+      point = { x: relative ? cursor.x + first : first, y: relative ? cursor.y + second : second };
+    }
+    cursor = point;
+    if (!start) start = { ...point };
+    points.push(point);
+    index += upper === "H" || upper === "V" ? 1 : 2;
+  }
+  return points.length >= 2 ? points : null;
+}
+
+function svgSourceSafety(source) {
+  const value = String(source ?? "");
+  const reasons = new Set();
+  if (!value.trim()) reasons.add("missing-svg-source");
+  if (/<\s*(?:script|foreignObject|iframe|object|embed|filter|mask|clipPath|animate|animateMotion|animateTransform|set)\b/i.test(value)) reasons.add("unsupported-compositing");
+  if (/<\s*(?:image|use)\b[^>]*(?:href|xlink:href|src)\s*=\s*["'](?!#|data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,)[^"']+/i.test(value)) reasons.add("external-reference");
+  if (/(?:filter|mask|clip-path)\s*=\s*["'][^"']*["']/i.test(value) || /\b(?:filter|mask|clip-path)\s*:/i.test(value)) reasons.add("unsupported-compositing");
+  if (/@import\b|url\(\s*(['"]?)(?:https?:|file:|\/|\.\.?\/)/i.test(value)) reasons.add("external-reference");
+  if (/\bon[a-z]+\s*=|javascript:/i.test(value)) reasons.add("script-reference");
+  return [...reasons].sort();
+}
+
+function svgClassification(node, measurement) {
+  if (!node || String(node.tagName ?? "").toLowerCase() !== "svg") return null;
+  const metadata = measurement?.svg && typeof measurement.svg === "object" ? measurement.svg : {};
+  const source = String(metadata.source ?? node.toString?.() ?? "");
+  const safety = svgSourceSafety(source);
+  if (safety.length > 0) return { mode: "raster-fallback", reasons: safety, source };
+  const mode = ["native", "vector-preserved", "raster-fallback"].includes(metadata.mode)
+    ? metadata.mode
+    : "vector-preserved";
+  return { mode, reasons: Array.isArray(metadata.reasons) ? metadata.reasons : [], source, metadata };
+}
+
+function unsafeSvgAssetSource(src) {
+  const value = String(src ?? "").trim();
+  if (!value) return "missing-image-src";
+  if (/^(?:https?:|file:)/i.test(value)) return "external-reference";
+  if (value.split(/[?#]/, 1)[0].split(/[\\/]+/).includes("..")) return "path-traversal";
+  return null;
+}
+
+function svgImageMetadata(src) {
+  const value = String(src ?? "").trim();
+  const isSvg = /^data:image\/svg\+xml(?:;base64)?,/i.test(value) || /\.svg(?:[?#].*)?$/i.test(value);
+  return isSvg ? { vectorPreserved: true, mediaKind: "svg", vectorSource: "local-svg" } : {};
+}
+
+function svgVectorImageElement(id, measurement, classification) {
+  const source = classification?.source;
+  if (!source || classification.mode === "raster-fallback") return null;
+  const src = `data:image/svg+xml;base64,${Buffer.from(source, "utf8").toString("base64")}`;
+  return {
+    type: "image",
+    id,
+    src,
+    ...measuredBox(measurement),
+    vectorPreserved: true,
+    mediaKind: "svg",
+    vectorSource: "inline-svg",
+    alt: id,
+    ...(cssCombinedTransparency(cssStyle(measurement)) !== null
+      ? { transparency: cssCombinedTransparency(cssStyle(measurement)) }
+      : {})
+  };
+}
+
+function svgNativeElements(node, measurement, classification) {
+  if (!node || classification?.mode !== "native") return [];
+  const svgBox = measuredBox(measurement);
+  const viewBox = parseSvgViewBox(node);
+  if (!viewBox) return [];
+  const metadataNodes = classification.metadata?.nodes ?? [];
+  let ordinal = 0;
+  const native = [];
+  const walk = (current, inheritedStyle, inheritedMatrix) => {
+    const tag = String(current.tagName ?? "").toLowerCase();
+    const metadataNode = metadataNodes.find((entry) => entry.index === ordinal) ?? null;
+    ordinal += 1;
+    const style = svgNodeStyle(current, inheritedStyle, metadataNode);
+    const localMatrix = svgTransformMatrix(current.getAttribute?.("transform") ?? metadataNode?.computedTransform);
+    if (!localMatrix) return false;
+    const matrix = svgMatrixMultiply(inheritedMatrix, localMatrix);
+    if (["svg", "g", "defs", "style", "title", "desc"].includes(tag)) {
+      for (const child of current.childNodes ?? []) {
+        if (child?.tagName && !walk(child, style, matrix)) return false;
+      }
+      return true;
+    }
+    const baseId = current.getAttribute?.("id") ?? current.getAttribute?.("data-id") ?? `${measurement.id}-svg-${ordinal}`;
+    const angle = svgTransformAngle(matrix);
+    if (angle === null) return false;
+    const point = (x, y) => svgTransformPoint(matrix, { x, y });
+    const addLine = (start, end, suffix = "") => {
+      const mapped = svgTransformedBounds([start, end], svgBox, viewBox);
+      const line = lineElement(`${baseId}${suffix}`, {
+        x: mapped.points[0].x,
+        y: mapped.points[0].y,
+        w: roundInches(mapped.points[1].x - mapped.points[0].x),
+        h: roundInches(mapped.points[1].y - mapped.points[0].y)
+      }, true);
+      line.style = svgNativeStyle(style, true);
+      native.push(line);
+    };
+    if (tag === "line") {
+      addLine(point(parseSvgNumber(current.getAttribute("x1")) ?? 0, parseSvgNumber(current.getAttribute("y1")) ?? 0), point(parseSvgNumber(current.getAttribute("x2")) ?? 0, parseSvgNumber(current.getAttribute("y2")) ?? 0));
+      return true;
+    }
+    if (["polyline", "polygon"].includes(tag)) {
+      const points = parseSvgPoints(current.getAttribute("points"));
+      if (points.length < 2) return false;
+      const transformed = points.map(({ x, y }) => point(x, y));
+      const isClosed = tag === "polygon";
+      if (style.fill && style.fill !== "none" && isClosed) return false;
+      for (let index = 0; index < transformed.length - (isClosed ? 0 : 1); index += 1) {
+        addLine(transformed[index], transformed[(index + 1) % transformed.length], `-segment-${index + 1}`);
+      }
+      return true;
+    }
+    if (["circle", "ellipse", "rect"].includes(tag)) {
+      const x = parseSvgNumber(current.getAttribute("x")) ?? 0;
+      const y = parseSvgNumber(current.getAttribute("y")) ?? 0;
+      const width = tag === "circle" ? (parseSvgNumber(current.getAttribute("r")) ?? 0) * 2 : tag === "ellipse" ? (parseSvgNumber(current.getAttribute("rx")) ?? 0) * 2 : parseSvgNumber(current.getAttribute("width")) ?? 0;
+      const height = tag === "circle" ? (parseSvgNumber(current.getAttribute("r")) ?? 0) * 2 : tag === "ellipse" ? (parseSvgNumber(current.getAttribute("ry")) ?? 0) * 2 : parseSvgNumber(current.getAttribute("height")) ?? 0;
+      if (!(width > 0 && height > 0)) return false;
+      const corners = [point(x, y), point(x + width, y), point(x + width, y + height), point(x, y + height)];
+      const mapped = svgTransformedBounds(corners, svgBox, viewBox);
+      native.push({
+        type: "shape",
+        id: baseId,
+        shape: tag === "rect" && ((parseSvgNumber(current.getAttribute("rx")) ?? 0) > 0 || (parseSvgNumber(current.getAttribute("ry")) ?? 0) > 0) ? "roundRect" : tag === "rect" ? "rect" : "ellipse",
+        ...mapped.box,
+        ...(Math.abs(angle) > 0.01 ? { rotate: angle } : {}),
+        style: svgNativeStyle(style)
+      });
+      return true;
+    }
+    if (tag === "path") {
+      const points = svgPathPoints(current.getAttribute("d"));
+      if (!points || points.length < 2) return false;
+      const transformed = points.filter((entry) => !entry.close).map(({ x, y }) => point(x, y));
+      const closed = points.some((entry) => entry.close);
+      if (style.fill && closed) return false;
+      for (let index = 0; index < transformed.length - 1; index += 1) addLine(transformed[index], transformed[index + 1], `-segment-${index + 1}`);
+      if (closed) addLine(transformed.at(-1), transformed[0], "-segment-close");
+      return true;
+    }
+    if (tag === "text") {
+      const text = String(current.text ?? current.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (!text) return true;
+      const x = parseSvgNumber(current.getAttribute("x")) ?? 0;
+      const baseline = parseSvgNumber(current.getAttribute("y")) ?? style.fontSize;
+      const anchor = String(style.textAnchor ?? "start").toLowerCase();
+      const textWidth = Math.max(style.fontSize, text.length * style.fontSize * 0.58);
+      const localX = anchor === "middle" ? x - textWidth / 2 : anchor === "end" ? x - textWidth : x;
+      const mapped = svgTransformedBounds([point(localX, baseline - style.fontSize), point(localX + textWidth, baseline + style.fontSize * 0.2)], svgBox, viewBox);
+      const textStyle = {
+        color: style.fill ?? "#000000",
+        fontSize: Math.round(style.fontSize * (svgBox.h / viewBox.h) * 72 * 100) / 100,
+        fontFamily: String(style.fontFamily ?? "Arial").replace(/^['"]|['"]$/g, ""),
+        fontWeight: /bold|bolder/i.test(String(style.fontWeight)) || Number(style.fontWeight) >= 700 ? 700 : Number(style.fontWeight) || 400,
+        italic: /italic|oblique/i.test(String(style.fontStyle)),
+        margin: 0,
+        ...(anchor === "middle" ? { align: "center" } : anchor === "end" ? { align: "right" } : {}),
+        ...(style.textDecoration && /underline/i.test(String(style.textDecoration)) ? { underline: { style: "sng" } } : {}),
+        ...(style.fill ? { transparency: Math.round((1 - style.fillOpacity) * 100) } : {})
+      };
+      native.push({ type: "text", id: baseId, text, ...mapped.box, ...(Math.abs(angle) > 0.01 ? { rotate: angle } : {}), style: textStyle });
+      return true;
+    }
+    return false;
+  };
+  const success = walk(node, {}, svgMatrixIdentity());
+  return success ? native : [];
+}
+
 export function layoutCards(cards, cols, startY, slideHeight) {
   const colCount = Math.max(1, cols);
   const gap = 0.45;
@@ -2222,7 +2814,11 @@ function convertKindElement(node, lookup, options = {}) {
           textContent(node),
           coords,
           node.getAttribute("data-typography") ?? "body",
-          node.getAttribute("data-color") ?? "{colors.text}"
+          node.getAttribute("data-color") ?? "{colors.text}",
+          (() => {
+            const runs = nodeRichRuns(node);
+            return runs.length > 0 ? { runs } : {};
+          })()
         ), node)
     ];
   }
@@ -2233,7 +2829,7 @@ function convertKindElement(node, lookup, options = {}) {
     return cardInnerElements(node, coords, id);
   }
   if (kind === "table") {
-    return [applyNodeLayoutSemantics(tableElement(id, node, coords), node)];
+    return [applyNodeLayoutSemantics(tableElement(id, node, coords, null, lookup?.get(id)), node)];
   }
   if (kind === "line") {
     const tag = String(node.tagName ?? "").toLowerCase();
@@ -2260,11 +2856,19 @@ function convertMeasuredSlide(slideNode, lookup, slideId, options = {}) {
     const pptxType = node.getAttribute("data-pptx-type");
     const id = node.getAttribute("data-id") ?? nextId(pptxType);
     if (pptxType === "text") {
-      elements.push(applyNodeLayoutSemantics(textElement(id, textContent(node), coords, node.getAttribute("data-typography") ?? "body"), node));
+      const runs = nodeRichRuns(node);
+      elements.push(applyNodeLayoutSemantics(textElement(
+        id,
+        textContent(node),
+        coords,
+        node.getAttribute("data-typography") ?? "body",
+        "{colors.text}",
+        runs.length > 0 ? { runs } : {}
+      ), node));
     } else if (pptxType === "shape") {
       elements.push(applyNodeLayoutSemantics(shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}"), node));
     } else if (pptxType === "table") {
-      elements.push(tableElement(id, node, coords));
+      elements.push(tableElement(id, node, coords, null, lookup?.get(id)));
     } else if (pptxType === "line") {
       elements.push(lineElement(id, coords, node.getAttribute("data-connector") !== undefined, node));
     } else if (pptxType === "image") {
@@ -2325,14 +2929,18 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
     (slideMeasurement.replica.filter ||
       slideMeasurement.replica.backdropFilter ||
       slideMeasurement.replica.clipPath ||
-      unsupportedSlideBackgroundImage)
+      unsupportedSlideBackgroundImage ||
+      slideMeasurement.replica.unsupportedCompositing)
   ) {
     unsupportedEffects.push({
       elementId: "__slide-background",
       filter: slideMeasurement.replica.filter ?? null,
       backdropFilter: slideMeasurement.replica.backdropFilter ?? null,
       clipPath: slideMeasurement.replica.clipPath ?? null,
-      backgroundImage: unsupportedSlideBackgroundImage
+      backgroundImage: unsupportedSlideBackgroundImage,
+      ...(slideMeasurement.replica.unsupportedCompositing
+        ? { unsupportedCompositing: slideMeasurement.replica.unsupportedCompositing }
+        : {})
     });
   }
 
@@ -2355,11 +2963,22 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
           : {}),
         ...(evidenceFromSemantics(semantics) ? { evidence: evidenceFromSemantics(semantics) } : {})
       };
+      if (measurement.transform && typeof measurement.transform === "object") {
+        measuredElement.transform = {
+          ...measurement.transform,
+          ...(Array.isArray(measurement.transform.matrix) ? { matrix: [...measurement.transform.matrix] } : {}),
+          ...(measurement.transform.transformOrigin && typeof measurement.transform.transformOrigin === "object"
+            ? { transformOrigin: { ...measurement.transform.transformOrigin } }
+            : {})
+        };
+      }
       const sourceNode = findNodeByMeasurementId(slideNode, measurement.id);
       return sourceNode ? applyNodeLayoutSemantics(measuredElement, sourceNode) : measuredElement;
     });
     layers.push({
       zIndex: replicaZIndex(measurement),
+      paintOrder: Number.isFinite(Number(measurement.paintOrder)) ? Number(measurement.paintOrder) : null,
+      stackingContextPath: Array.isArray(measurement.stackingContextPath) ? measurement.stackingContextPath : [],
       measurementIndex,
       elements: normalized
     });
@@ -2388,6 +3007,10 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
       continue;
     }
     const style = cssStyle(measurement);
+    const sourceNode = findNodeByMeasurementId(slideNode, measurement.id);
+    const svgInfo = kind === "shape" && String(measurement.tagName ?? "").toLowerCase() === "svg"
+      ? svgClassification(sourceNode, measurement)
+      : null;
 
     const unsupportedEffect = replicaUnsupportedEffect(measurement, style);
     if (unsupportedEffect) unsupportedEffects.push(unsupportedEffect);
@@ -2397,6 +3020,24 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
         boxShadow: style.boxShadow,
         reason: "unsupported-box-shadow"
       });
+    }
+
+    if (svgInfo && svgInfo.mode !== "raster-fallback") {
+      const nativeElements = svgNativeElements(sourceNode, measurement, svgInfo);
+      if (nativeElements.length > 0) {
+        addLayer(measurement, measurementIndex, nativeElements);
+        coveredMeasurementIds.add(measurement.id);
+        continue;
+      }
+      const vectorElement = svgVectorImageElement(measurement.id, measurement, {
+        ...svgInfo,
+        mode: "vector-preserved"
+      });
+      if (vectorElement) {
+        addLayer(measurement, measurementIndex, vectorElement);
+        coveredMeasurementIds.add(measurement.id);
+        continue;
+      }
     }
 
     if (kind === "shape") {
@@ -2431,7 +3072,14 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
       coveredMeasurementIds.add(measurement.id);
     } else if (kind === "image") {
       if (measurement.src) {
-        addLayer(measurement, measurementIndex, replicaImageLayerElements(measurement, box));
+        const unsafeSource = unsafeSvgAssetSource(measurement.src);
+        if (unsafeSource) {
+          unsupportedEffects.push({ elementId: measurement.id, unsupportedVisual: unsafeSource, reason: unsafeSource });
+        }
+        const imageLayers = replicaImageLayerElements(measurement, box).map((element) => element.type === "image"
+          ? { ...element, ...svgImageMetadata(measurement.src) }
+          : element);
+        addLayer(measurement, measurementIndex, imageLayers);
         coveredMeasurementIds.add(measurement.id);
       } else {
         droppedElements.push({
@@ -2443,7 +3091,7 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
     } else if (kind === "table") {
       const tableNode = findNodeByMeasurementId(slideNode, measurement.id);
       if (tableNode) {
-        addLayer(measurement, measurementIndex, tableElement(measurement.id, tableNode, box, style));
+        addLayer(measurement, measurementIndex, tableElement(measurement.id, tableNode, box, style, measurement));
         coveredMeasurementIds.add(measurement.id);
       } else {
         droppedElements.push({
@@ -2454,7 +3102,7 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
       }
     } else if (kind === "line") {
       const lineNode = findNodeByMeasurementId(slideNode, measurement.id);
-      const line = lineElement(measurement.id, box, true, lineNode);
+      const line = applyReplicaRotation(lineElement(measurement.id, box, true, lineNode), style);
       line.style = {
         ...line.style,
         color: line.style?.color ?? style.borderColor ?? style.backgroundColor ?? style.color ?? "{colors.border}",
@@ -2478,7 +3126,18 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
   const elements = [
     ...slideBackgroundPlan.overlays,
     ...layers
-    .sort((a, b) => a.zIndex - b.zIndex || a.measurementIndex - b.measurementIndex)
+    .sort((a, b) => {
+      const aPaint = Number.isFinite(a.paintOrder) ? a.paintOrder : null;
+      const bPaint = Number.isFinite(b.paintOrder) ? b.paintOrder : null;
+      if (aPaint !== null || bPaint !== null) {
+        if (aPaint === null) return -1;
+        if (bPaint === null) return 1;
+        if (aPaint !== bPaint) return aPaint - bPaint;
+      }
+      const aContext = a.stackingContextPath.join("/");
+      const bContext = b.stackingContextPath.join("/");
+      return aContext.localeCompare(bContext) || a.zIndex - b.zIndex || a.measurementIndex - b.measurementIndex;
+    })
     .flatMap((layer) => layer.elements)
   ];
 

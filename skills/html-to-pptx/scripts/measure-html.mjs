@@ -20,6 +20,111 @@ function fail(message) {
   process.exit(1);
 }
 
+/**
+ * Chromium's DOMSnapshot is the only browser-owned source for paint order and
+ * stacking-context boundaries.  It is intentionally best-effort: WebKit,
+ * Firefox, older Chromium builds, and restricted CDP sessions all fall back to
+ * the deterministic DOM/z-index ordering already used by the converter.
+ */
+async function captureDomSnapshotMetadata(page) {
+  try {
+    const client = await page.context().newCDPSession(page);
+    try {
+      const snapshot = await client.send("DOMSnapshot.captureSnapshot", {
+        computedStyles: ["opacity", "transform", "transform-origin", "z-index"],
+        includePaintOrder: true,
+        includeDOMRects: true
+      });
+      const strings = Array.isArray(snapshot?.strings) ? snapshot.strings : [];
+      const documents = Array.isArray(snapshot?.documents) ? snapshot.documents : [];
+      const byId = {};
+      let layoutCount = 0;
+      const stringAt = (index) => (Number.isInteger(index) ? strings[index] ?? "" : "");
+      const attributesFor = (nodes, index) => {
+        const raw = nodes?.attributes?.[index];
+        if (!Array.isArray(raw)) return {};
+        const attributes = {};
+        for (let offset = 0; offset + 1 < raw.length; offset += 2) {
+          attributes[stringAt(raw[offset])] = stringAt(raw[offset + 1]);
+        }
+        return attributes;
+      };
+      const nodeNameFor = (nodes, index) => stringAt(nodes?.nodeName?.[index]).toLowerCase();
+
+      for (const document of documents) {
+        const nodes = document?.nodes ?? {};
+        const parentIndex = Array.isArray(nodes.parentIndex) ? nodes.parentIndex : [];
+        const layout = document?.layout ?? {};
+        const layoutNodeIndexes = Array.isArray(layout.nodeIndex) ? layout.nodeIndex : [];
+        const paintOrders = Array.isArray(layout.paintOrders) ? layout.paintOrders : [];
+        const stackingIndexes = new Set(layout.stackingContexts?.index ?? []);
+        const layoutByDomNode = new Map();
+        for (let index = 0; index < layoutNodeIndexes.length; index += 1) {
+          layoutByDomNode.set(layoutNodeIndexes[index], index);
+        }
+
+        const ownStableId = (nodeIndex) => {
+          const attributes = attributesFor(nodes, nodeIndex);
+          return attributes["data-pptx-id"] || attributes["data-id"] || attributes.id || null;
+        };
+        const nearestStableId = (nodeIndex) => {
+          let cursor = nodeIndex;
+          while (Number.isInteger(cursor) && cursor >= 0) {
+            const stableId = ownStableId(cursor);
+            if (stableId) return stableId;
+            cursor = parentIndex[cursor];
+          }
+          return null;
+        };
+        const stackingPathFor = (nodeIndex) => {
+          const path = [];
+          let cursor = nodeIndex;
+          while (Number.isInteger(cursor) && cursor >= 0) {
+            const layoutIndex = layoutByDomNode.get(cursor);
+            if (Number.isInteger(layoutIndex) && stackingIndexes.has(layoutIndex)) {
+              path.unshift(nearestStableId(cursor) || `dom-${cursor}`);
+            }
+            cursor = parentIndex[cursor];
+          }
+          return path;
+        };
+
+        for (let layoutIndex = 0; layoutIndex < layoutNodeIndexes.length; layoutIndex += 1) {
+          const nodeIndex = layoutNodeIndexes[layoutIndex];
+          const stableId = nearestStableId(nodeIndex);
+          if (!stableId) continue;
+          const paintOrder = Number(paintOrders[layoutIndex]);
+          const metadata = {
+            source: "cdp-dom-snapshot",
+            nodeName: nodeNameFor(nodes, nodeIndex),
+            ...(Number.isFinite(paintOrder) ? { paintOrder } : {}),
+            stackingContext: stackingIndexes.has(layoutIndex),
+            stackingContextPath: stackingPathFor(nodeIndex)
+          };
+          // A stable element ID can own several layout nodes (e.g. text and
+          // its generated inline fragments). Keep the highest paint order so
+          // the manifest remains deterministic and reflects the topmost paint.
+          const previous = byId[stableId];
+          if (!previous || (metadata.paintOrder ?? -Infinity) >= (previous.paintOrder ?? -Infinity)) {
+            byId[stableId] = metadata;
+          }
+          layoutCount += 1;
+        }
+      }
+      return {
+        available: true,
+        source: "cdp-dom-snapshot",
+        layoutCount,
+        byId
+      };
+    } finally {
+      await client.detach().catch(() => {});
+    }
+  } catch {
+    return { available: false, source: "dom-evaluation-fallback", byId: {} };
+  }
+}
+
 function parseArgs(argv) {
   const args = {
     viewportWidth: DEFAULT_VIEWPORT.width,
@@ -80,8 +185,9 @@ export async function measureHtmlFile(inputPath, options = {}) {
     networkEnabled: false,
     totalTimeoutMs: options.totalTimeoutMs
   }, async (page) => {
-    const measureVisibleSlide = (visibleSlideIndex) =>
-      page.evaluate(({ measureSelector, replicaMode, visibleSlideIndex }) => {
+    const measureVisibleSlide = async (visibleSlideIndex) => {
+      const domSnapshot = await captureDomSnapshotMetadata(page);
+      return page.evaluate(({ measureSelector, replicaMode, visibleSlideIndex, domSnapshot }) => {
       function parseCssColor(value) {
         if (!value || value === "transparent") return null;
         if (String(value).startsWith("#")) return value;
@@ -133,6 +239,145 @@ export async function measureHtmlFile(inputPath, options = {}) {
         }
       }
 
+      function roundNumber(value, digits = 4) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return null;
+        const factor = 10 ** digits;
+        return Math.round(number * factor) / factor;
+      }
+
+      function parseTransformOrigin(value) {
+        const parts = String(value || "0 0").trim().split(/\s+/).map((part) => Number.parseFloat(part));
+        return {
+          x: roundNumber(parts[0] ?? 0, 3) ?? 0,
+          y: roundNumber(parts[1] ?? 0, 3) ?? 0,
+          z: roundNumber(parts[2] ?? 0, 3) ?? 0,
+          raw: String(value || "0 0")
+        };
+      }
+
+      function cssTransformData(style) {
+        const raw = style?.transform;
+        if (!raw || raw === "none") return null;
+        try {
+          const matrix = new DOMMatrixReadOnly(raw);
+          const values = [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].map((value) => roundNumber(value));
+          const has3d = matrix.is2D === false
+            || [matrix.m13, matrix.m14, matrix.m23, matrix.m24, matrix.m31, matrix.m32, matrix.m34, matrix.m43]
+              .some((value) => Number.isFinite(Number(value)) && Math.abs(Number(value)) > 0.0001)
+            || Math.abs(Number(matrix.m33 ?? 1) - 1) > 0.0001
+            || Math.abs(Number(matrix.m44 ?? 1) - 1) > 0.0001;
+          const [a, b, c, d, e, f] = values.map((value) => Number(value ?? 0));
+          const matrix3d = [
+            matrix.m11, matrix.m12, matrix.m13, matrix.m14,
+            matrix.m21, matrix.m22, matrix.m23, matrix.m24,
+            matrix.m31, matrix.m32, matrix.m33, matrix.m34,
+            matrix.m41, matrix.m42, matrix.m43, matrix.m44
+          ].map((value) => roundNumber(value));
+          const scaleX = Math.hypot(a, b);
+          const determinant = a * d - b * c;
+          const rotate = scaleX > 0 ? (Math.atan2(b, a) * 180) / Math.PI : 0;
+          const orthogonality = scaleX > 0 ? (a * c + b * d) / scaleX : 0;
+          const unsupported = has3d || Math.abs(orthogonality) > 0.0005;
+          const scaleY = scaleX > 0 ? determinant / scaleX : Math.hypot(c, d);
+          const transformOrigin = parseTransformOrigin(style.transformOrigin);
+          return {
+            raw,
+            matrix: values,
+            matrix3d,
+            is2D: !has3d,
+            transformOrigin,
+            translateX: roundNumber(e),
+            translateY: roundNumber(f),
+            scaleX: roundNumber(scaleX),
+            scaleY: roundNumber(Math.abs(scaleY)),
+            rotate: roundNumber(rotate, 2),
+            flipH: false,
+            flipV: scaleY < 0,
+            supported: !unsupported,
+            fallback: unsupported ? (has3d ? "3d-transform" : "skew-transform") : null
+          };
+        } catch {
+          return {
+            raw,
+            supported: false,
+            fallback: "invalid-transform",
+            transformOrigin: parseTransformOrigin(style.transformOrigin)
+          };
+        }
+      }
+
+      function effectiveOpacityFor(node) {
+        let alpha = 1;
+        let cursor = node;
+        while (cursor && cursor.nodeType === Node.ELEMENT_NODE) {
+          const value = Number.parseFloat(window.getComputedStyle(cursor).opacity || "1");
+          if (Number.isFinite(value)) alpha *= Math.max(0, Math.min(1, value));
+          cursor = cursor.parentElement;
+        }
+        return Math.round(alpha * 10000) / 10000;
+      }
+
+      function unsupportedCompositing(style, transformData, options = {}) {
+        const blendMode = style?.mixBlendMode && style.mixBlendMode !== "normal" ? style.mixBlendMode : null;
+        // A slide root commonly establishes its own stacking context with
+        // `isolation:isolate`; this is a container boundary, not an effect
+        // requiring a full-slide raster fallback. Keep the same property on
+        // ordinary elements unsupported so their local fallback remains.
+        const isolation = style?.isolation && style.isolation !== "auto"
+          && !(options.slideRoot === true && style.isolation === "isolate")
+          ? style.isolation
+          : null;
+        const maskImage = style?.maskImage && style.maskImage !== "none" ? style.maskImage : null;
+        const maskComposite = style?.maskComposite && style.maskComposite !== "add" ? style.maskComposite : null;
+        return {
+          blendMode,
+          isolation,
+          maskImage,
+          maskComposite,
+          transformFallback: transformData?.supported === false ? transformData.fallback : null
+        };
+      }
+
+      function hasUnsupportedCompositing(compositing) {
+        return Object.values(compositing ?? {}).some(Boolean);
+      }
+
+      function replicaEffects(style, unsupportedVisual, node, options = {}) {
+        const transformData = cssTransformData(style);
+        const compositing = unsupportedCompositing(style, transformData, options);
+        const effectiveOpacity = effectiveOpacityFor(node);
+        return {
+          hasUnsupportedEffects:
+            style.filter !== "none" ||
+            style.backdropFilter !== "none" ||
+            style.clipPath !== "none" ||
+            style.backgroundImage !== "none" ||
+            unsupportedVisual !== null ||
+            hasUnsupportedCompositing(compositing),
+          unsupportedVisual,
+          filter: style.filter === "none" ? null : style.filter,
+          backdropFilter: style.backdropFilter === "none" ? null : style.backdropFilter,
+          clipPath: style.clipPath === "none" ? null : style.clipPath,
+          backgroundImage: style.backgroundImage === "none" ? null : style.backgroundImage,
+          effectiveOpacity,
+          ...(hasUnsupportedCompositing(compositing) ? { unsupportedCompositing: compositing } : {})
+        };
+      }
+
+      function domSnapshotMetadata(node) {
+        const snapshot = domSnapshot?.byId ?? {};
+        let cursor = node;
+        while (cursor && cursor !== document.documentElement) {
+          const stableId = cursor.getAttribute?.("data-pptx-id")
+            || cursor.getAttribute?.("data-id")
+            || cursor.id;
+          if (stableId && snapshot[stableId]) return snapshot[stableId];
+          cursor = cursor.parentElement;
+        }
+        return null;
+      }
+
       function isVisible(node) {
         const style = window.getComputedStyle(node);
         const rect = node.getBoundingClientRect();
@@ -144,7 +389,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
           ((rect.width > 0 && rect.height > 0) || visibleGeometry) &&
           style.display !== "none" &&
           style.visibility !== "hidden" &&
-          Number.parseFloat(style.opacity || "1") > 0.01
+          effectiveOpacityFor(node) > 0.01
         );
       }
 
@@ -187,6 +432,140 @@ export async function measureHtmlFile(inputPath, options = {}) {
             || child.matches("[data-connector][data-pptx-kind='line']"));
       }
 
+      function svgReference(value) {
+        const source = String(value ?? "").trim();
+        if (!source) return null;
+        const urlMatches = [...source.matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/gi)].map((match) => match[2]);
+        const href = source;
+        const refs = urlMatches.length > 0 ? urlMatches : [href];
+        for (const ref of refs) {
+          const valueRef = String(ref ?? "").trim();
+          if (!valueRef || valueRef.startsWith("#")) continue;
+          if (/^data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,/i.test(valueRef)) continue;
+          return valueRef;
+        }
+        return null;
+      }
+
+      function svgTransformSafe(value) {
+        const source = String(value ?? "").trim();
+        if (!source || source === "none") return true;
+        const matrix = source.match(/^matrix\(\s*([-+\d.e]+)[, ]+([-+\d.e]+)[, ]+([-+\d.e]+)[, ]+([-+\d.e]+)[, ]+([-+\d.e]+)[, ]+([-+\d.e]+)\s*\)$/i);
+        if (matrix) {
+          const [a, b, c, d] = matrix.slice(1, 5).map(Number);
+          const scaleX = Math.hypot(a, b);
+          return scaleX > 0 && Math.abs((a * c + b * d) / scaleX) <= 0.0005;
+        }
+        const tokens = [...source.matchAll(/([a-z]+)\s*\(([^)]*)\)/gi)];
+        if (tokens.length === 0 || tokens.map((match) => match[0]).join("").replace(/\s+/g, "") !== source.replace(/\s+/g, "")) return false;
+        return tokens.every((match) => ["translate", "scale", "rotate"].includes(match[1].toLowerCase()));
+      }
+
+      function serializeSvgWithComputedStyles(node) {
+        const clone = node.cloneNode(true);
+        const sourceNodes = [node, ...node.querySelectorAll("*")];
+        const clonedNodes = [clone, ...clone.querySelectorAll("*")];
+        const properties = ["fill", "fill-opacity", "stroke", "stroke-opacity", "stroke-width", "opacity", "font-family", "font-size", "font-weight", "font-style", "text-anchor", "text-decoration"];
+        sourceNodes.forEach((source, index) => {
+          const target = clonedNodes[index];
+          if (!target) return;
+          const computed = window.getComputedStyle(source);
+          for (const property of properties) {
+            const value = String(computed.getPropertyValue(property) ?? "").trim();
+            if (value) target.setAttribute(property, value);
+          }
+          target.removeAttribute("class");
+          target.removeAttribute("style");
+          const transform = source.getAttribute("transform");
+          if (transform) target.setAttribute("transform", transform);
+        });
+        return String(clone.outerHTML ?? "");
+      }
+
+      function svgInspection(node) {
+        if (!node || node.tagName?.toLowerCase() !== "svg") return null;
+        const allowedNative = new Set(["svg", "g", "rect", "circle", "ellipse", "line", "polyline", "polygon", "path", "text", "tspan", "title", "desc", "defs", "style"]);
+        const nativePath = /^\s*(?:[Mm]\s*-?[\d.]+[ ,]+-?[\d.]+\s*(?:[LlHhVv]\s*-?[\d.]+(?:[ ,]+-?[\d.]+)?\s*)*(?:[Zz]\s*)?)$/;
+        const nodes = [node, ...node.querySelectorAll("*")];
+        const unsafeReasons = new Set();
+        let native = true;
+        const serializedNodes = [];
+        nodes.forEach((child, index) => {
+          const tag = String(child.tagName ?? "").toLowerCase();
+          const computed = window.getComputedStyle(child);
+          const computedFilter = [computed.filter, computed.mask, computed.maskImage, computed.clipPath]
+            .map((value) => String(value ?? "").trim())
+            .find((value) => value && value !== "none");
+          if (["filter", "mask", "clippath", "foreignobject", "script", "iframe", "object", "embed", "animate", "animatemotion", "animatetransform", "set"].includes(tag)
+            || computedFilter) unsafeReasons.add(computedFilter ? "unsupported-compositing" : `${tag}-paint`);
+          if (!allowedNative.has(tag)) native = false;
+          if (["tspan", "defs", "style"].includes(tag)) native = false;
+          if (tag === "path") {
+            const d = String(child.getAttribute("d") ?? "");
+            const fill = String(computed.fill ?? child.getAttribute("fill") ?? "none").toLowerCase();
+            if (!nativePath.test(d) || fill !== "none") native = false;
+          }
+          if (tag === "polyline" || tag === "polygon") {
+            native = native && Boolean(String(child.getAttribute("points") ?? "").trim());
+            if (tag === "polygon" && String(computed.fill ?? child.getAttribute("fill") ?? "none").toLowerCase() !== "none") native = false;
+          }
+          const declaredTransform = child.getAttribute("transform");
+          if (!svgTransformSafe(declaredTransform || computed.transform)) native = false;
+          for (const attribute of [...child.attributes]) {
+            const name = String(attribute.name ?? "").toLowerCase();
+            const value = String(attribute.value ?? "");
+            if (name.startsWith("on") || /^javascript:/i.test(value)) unsafeReasons.add("script-reference");
+            if (["href", "xlink:href", "src", "filter", "mask", "clip-path", "fill", "stroke"].includes(name)) {
+              const ref = ["href", "xlink:href", "src"].includes(name)
+                ? svgReference(value)
+                : /^url\(/i.test(value) ? svgReference(value) : null;
+              if (ref) unsafeReasons.add(ref.startsWith("#") ? "internal-reference" : "external-reference");
+              if (name === "filter" || name === "mask" || name === "clip-path") unsafeReasons.add("unsupported-compositing");
+            }
+            if (/\b(?:filter|mask|clip-path)\s*:/i.test(value)) unsafeReasons.add("unsupported-compositing");
+          }
+          const inlineCss = String(child.getAttribute("style") ?? "");
+          if (/@import\b|url\(\s*(['"]?)(?:https?:|file:|\/|\.\.?\/)/i.test(inlineCss)) unsafeReasons.add("external-reference");
+          if (tag === "style" && /@import\b|url\(\s*(['"]?)(?:https?:|file:|\/|\.\.?\/)/i.test(String(child.textContent ?? ""))) unsafeReasons.add("external-reference");
+          const style = {
+            fill: rgbaToHex(computed.fill),
+            fillTransparency: rgbaToTransparency(computed.fill),
+            fillOpacity: Number.parseFloat(computed.fillOpacity || "1"),
+            stroke: rgbaToHex(computed.stroke),
+            strokeTransparency: rgbaToTransparency(computed.stroke),
+            strokeOpacity: Number.parseFloat(computed.strokeOpacity || "1"),
+            strokeWidth: pxToPt(computed.strokeWidth),
+            opacity: Number.parseFloat(computed.opacity || "1"),
+            fontFamily: computed.fontFamily,
+            fontSize: pxToPt(computed.fontSize),
+            fontWeight: Number.parseInt(computed.fontWeight, 10) || 400,
+            fontStyle: computed.fontStyle,
+            textAnchor: computed.textAnchor,
+            textDecoration: computed.textDecorationLine
+          };
+          serializedNodes.push({
+            index,
+            tag,
+            id: child.getAttribute("id") || child.getAttribute("data-id") || null,
+            text: tag === "text" ? String(child.textContent ?? "") : null,
+            style,
+            transform: child.getAttribute("transform") || null,
+            computedTransform: computed.transform === "none" ? null : computed.transform
+          });
+        });
+        const source = serializeSvgWithComputedStyles(node);
+        const mode = unsafeReasons.size > 0
+          ? "raster-fallback"
+          : native ? "native" : "vector-preserved";
+        return {
+          mode,
+          safe: unsafeReasons.size === 0,
+          reasons: [...unsafeReasons].sort(),
+          source,
+          nodes: serializedNodes
+        };
+      }
+
       function ownsReplicaFallback(node) {
         const tagName = node?.tagName?.toLowerCase();
         if (!tagName) return false;
@@ -201,15 +580,228 @@ export async function measureHtmlFile(inputPath, options = {}) {
           || pseudoVisible
           || style.filter !== "none"
           || style.backdropFilter !== "none"
-          || style.clipPath !== "none";
+          || style.clipPath !== "none"
+          || style.mixBlendMode !== "normal"
+          || style.isolation !== "auto"
+          || style.maskImage !== "none";
       }
 
-	      function directTextNodes(node) {
+      function directTextNodes(node) {
 	        return [...node.childNodes]
 	          .filter((child) => child.nodeType === Node.TEXT_NODE)
 	          .map((child) => ({ node: child, text: child.textContent.replace(/\s+/g, " ").trim() }))
 	          .filter((entry) => entry.text);
-	      }
+      }
+
+      function normalizeRunText(value) {
+        return String(value ?? "")
+          .replace(/\r\n?/g, "\n")
+          .replace(/[ \t\f\v]+/g, " ")
+          .replace(/\n{3,}/g, "\n\n");
+      }
+
+      function runDecoration(style) {
+        const line = String(style?.textDecorationLine ?? "").trim().toLowerCase();
+        const decoration = {};
+        if (/\bunderline\b/.test(line)) decoration.underline = { style: "sng" };
+        if (/\bline-through\b/.test(line)) decoration.strike = "sngStrike";
+        return Object.keys(decoration).length > 0 ? decoration : null;
+      }
+
+      function runStyleFor(node) {
+        const owner = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+        const style = owner ? window.getComputedStyle(owner) : window.getComputedStyle(document.body);
+        const rect = owner?.getBoundingClientRect?.() ?? null;
+        const computed = computedStyleFor(style, rect, owner ? effectiveOpacityFor(owner) : null);
+        const anchor = owner?.closest?.("a[href]");
+        const href = String(anchor?.getAttribute("href") ?? "").trim();
+        const hyperlink = /^https?:\/\//i.test(href)
+          ? { url: href, ...(anchor?.getAttribute("title") || anchor?.getAttribute("data-tooltip")
+            ? { tooltip: anchor.getAttribute("title") || anchor.getAttribute("data-tooltip") }
+            : {}) }
+          : null;
+        return {
+          fontFamily: computed.fontFamily,
+          fontSize: computed.fontSize,
+          fontWeight: computed.fontWeight,
+          fontStyle: computed.fontStyle,
+          color: computed.webkitTextFillColor ?? computed.color,
+          decoration: runDecoration(style),
+          ...(hyperlink ? { hyperlink } : {})
+        };
+      }
+
+      function collectRichTextRuns(node) {
+        if (!node || node.nodeType !== Node.ELEMENT_NODE) return [];
+        const runs = [];
+        const walk = (current) => {
+          for (const child of current.childNodes ?? []) {
+            if (child.nodeType === Node.TEXT_NODE) {
+              const text = normalizeRunText(child.textContent);
+              if (!text || !text.trim()) continue;
+              runs.push({ text, ...runStyleFor(child) });
+            } else if (child.nodeType === Node.ELEMENT_NODE) {
+              const tagName = child.tagName.toLowerCase();
+              if (tagName === "br") {
+                runs.push({ text: "\n", ...runStyleFor(child) });
+                continue;
+              }
+              // A nested semantic marker owns its own text object. Do not
+              // duplicate it inside the enclosing explicit text run list.
+              if (child !== node && (child.hasAttribute("data-pptx-kind") || child.hasAttribute("data-pptx-type")
+                || child.hasAttribute("data-pptx-id") || child.hasAttribute("data-id"))) continue;
+              walk(child);
+            }
+          }
+        };
+        walk(node);
+        if (runs.length > 0) {
+          runs[0].text = runs[0].text.replace(/^\s+/, "");
+          const last = runs.at(-1);
+          last.text = last.text.replace(/\s+$/, "");
+        }
+        return runs.filter((run) => run.text);
+      }
+
+      function tableCellRows(section) {
+        return [...(section?.children ?? [])].filter((child) => child.tagName?.toLowerCase() === "tr");
+      }
+
+      function tableCellMeta(cell, slideRect) {
+        const rect = cell.getBoundingClientRect();
+        const style = window.getComputedStyle(cell);
+        const runs = collectRichTextRuns(cell);
+        const text = normalizeTextNodeContent(cell.innerText ?? cell.textContent ?? "", style.whiteSpace);
+        const anchor = cell.matches?.("a[href]") ? cell : cell.querySelector?.("a[href]");
+        const colspan = Math.max(1, Number.parseInt(cell.getAttribute("colspan") ?? "1", 10) || 1);
+        const rowspan = Math.max(1, Number.parseInt(cell.getAttribute("rowspan") ?? "1", 10) || 1);
+        return {
+          tagName: cell.tagName.toLowerCase(),
+          text,
+          ...(runs.length > 0 ? { runs } : {}),
+          colspan,
+          rowspan,
+          href: anchor?.getAttribute("href") ?? null,
+          hyperlinkTooltip: anchor?.getAttribute("title") || anchor?.getAttribute("data-tooltip") || null,
+          style: computedStyleFor(style, rect, effectiveOpacityFor(cell)),
+          px: {
+            x: rect.left - slideRect.left,
+            y: rect.top - slideRect.top,
+            w: rect.width,
+            h: rect.height
+          }
+        };
+      }
+
+      function collectTableMeta(table, tableRect, slideRect) {
+        const sections = [];
+        const directRows = [];
+        for (const child of table.children ?? []) {
+          const tagName = child.tagName.toLowerCase();
+          if (["thead", "tbody", "tfoot"].includes(tagName)) {
+            const rows = tableCellRows(child).map((row) => ({
+              px: (() => { const rect = row.getBoundingClientRect(); return { x: rect.left - slideRect.left, y: rect.top - slideRect.top, w: rect.width, h: rect.height }; })(),
+              cells: [...row.children].filter((cell) => ["th", "td"].includes(cell.tagName.toLowerCase()))
+                .map((cell) => tableCellMeta(cell, slideRect))
+            }));
+            sections.push({ type: tagName, rows });
+          } else if (tagName === "tr") {
+            directRows.push(child);
+          }
+        }
+        if (directRows.length > 0) {
+          sections.push({
+            type: "tbody",
+            rows: directRows.map((row) => ({
+              px: (() => { const rect = row.getBoundingClientRect(); return { x: rect.left - slideRect.left, y: rect.top - slideRect.top, w: rect.width, h: rect.height }; })(),
+              cells: [...row.children].filter((cell) => ["th", "td"].includes(cell.tagName.toLowerCase()))
+                .map((cell) => tableCellMeta(cell, slideRect))
+            }))
+          });
+        }
+        const rows = sections.flatMap((section) => section.rows);
+        const maxColumns = Math.max(1, ...rows.map((row) => row.cells.reduce((sum, cell) => sum + cell.colspan, 0)));
+        const columnWidths = Array.from({ length: maxColumns }, () => 0);
+        for (const row of rows) {
+          let cursor = 0;
+          for (const cell of row.cells) {
+            const each = Number(cell.px.w) / Math.max(1, cell.colspan);
+            for (let index = 0; index < cell.colspan && cursor + index < columnWidths.length; index += 1) {
+              columnWidths[cursor + index] = Math.max(columnWidths[cursor + index], each);
+            }
+            cursor += cell.colspan;
+          }
+        }
+        const sum = columnWidths.reduce((total, value) => total + value, 0);
+        if (sum > 0 && tableRect.width > 0) {
+          const scale = tableRect.width / sum;
+          for (let index = 0; index < columnWidths.length; index += 1) columnWidths[index] *= scale;
+        }
+        const captionNode = [...table.children ?? []].find((child) => child.tagName?.toLowerCase() === "caption");
+        const caption = captionNode ? (() => {
+          const rect = captionNode.getBoundingClientRect();
+          return {
+            text: normalizeTextNodeContent(captionNode.innerText ?? captionNode.textContent ?? "", window.getComputedStyle(captionNode).whiteSpace),
+            runs: collectRichTextRuns(captionNode),
+            px: { x: rect.left - slideRect.left, y: rect.top - slideRect.top, w: rect.width, h: rect.height }
+          };
+        })() : null;
+        return {
+          sections,
+          columnsPx: columnWidths,
+          rowHeightsPx: rows.map((row) => row.px.h),
+          ...(caption ? { caption } : {})
+        };
+      }
+
+      function inlineTextLineFragments(textNode, style) {
+        const raw = String(textNode?.textContent ?? "");
+        if (!raw.trim()) return [];
+        const range = document.createRange();
+        const lines = [];
+        const lineForRect = (rect) => {
+          const top = Math.round(rect.top * 10) / 10;
+          const bottom = Math.round(rect.bottom * 10) / 10;
+          let line = lines.find((candidate) => Math.abs(candidate.top - top) <= 1.5 && Math.abs(candidate.bottom - bottom) <= 2);
+          if (!line) {
+            line = { top, bottom, left: rect.left, right: rect.right, start: null, end: null };
+            lines.push(line);
+          }
+          line.left = Math.min(line.left, rect.left);
+          line.right = Math.max(line.right, rect.right);
+          return line;
+        };
+        try {
+          for (let index = 0; index < raw.length; index += 1) {
+            range.setStart(textNode, index);
+            range.setEnd(textNode, index + 1);
+            const rect = [...range.getClientRects()].find((candidate) => candidate.width > 0 && candidate.height > 0);
+            if (!rect) continue;
+            const line = lineForRect(rect);
+            if (line.start === null) line.start = index;
+            line.end = index + 1;
+          }
+        } finally {
+          range.detach();
+        }
+        return lines
+          .filter((line) => line.start !== null && line.end > line.start)
+          .sort((left, right) => left.top - right.top || left.left - right.left)
+          .map((line, index) => {
+            const text = normalizeTextNodeContent(raw.slice(line.start, line.end), style?.whiteSpace);
+            return {
+              index,
+              text,
+              rect: {
+                left: line.left,
+                top: line.top,
+                width: Math.max(0, line.right - line.left),
+                height: Math.max(0, line.bottom - line.top)
+              }
+            };
+          })
+          .filter((line) => line.text);
+      }
 
 	      function renderedEllipsisText(node, style, text) {
 	        if (
@@ -255,8 +847,11 @@ export async function measureHtmlFile(inputPath, options = {}) {
           Number.parseFloat(style.borderLeftWidth || "0")
         ];
         const outlineWidth = Number.parseFloat(style.outlineWidth || "0") || 0;
+        const background = parseCssColor(style.backgroundColor);
+        const hasOpaqueBackground = typeof background === "string"
+          || (background && Number(background.transparency ?? 0) < 100);
         return (
-          Boolean(rgbaToHex(style.backgroundColor)) ||
+          Boolean(hasOpaqueBackground) ||
           style.backgroundImage !== "none" ||
           borderWidths.some((width) => width > 0) ||
           (outlineWidth > 0 && style.outlineStyle !== "none" && style.outlineStyle !== "hidden") ||
@@ -265,7 +860,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
       }
 
       function inferKind(node, style) {
-        const explicit = node.getAttribute("data-pptx-kind");
+        const explicit = node.getAttribute("data-pptx-kind") || node.getAttribute("data-pptx-type");
         if (explicit) return explicit;
         const tag = node.tagName.toLowerCase();
         if (tag === "img") return "image";
@@ -295,11 +890,12 @@ export async function measureHtmlFile(inputPath, options = {}) {
         return numeric;
       }
 
-      function computedStyleFor(style, rect = null) {
+      function computedStyleFor(style, rect = null, effectiveOpacity = null) {
         const fontSize = pxToPt(style.fontSize);
         const lineHeight = style.lineHeight === "normal"
           ? Math.round((fontSize ?? 0) * 1.2 * 100) / 100
           : pxToPt(style.lineHeight);
+        const transformData = cssTransformData(style);
         return {
           color: rgbaToHex(style.color),
           colorTransparency: rgbaToTransparency(style.color),
@@ -340,6 +936,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
           borderBottomRightRadius: cssRadiusPx(style.borderBottomRightRadius, rect),
           borderBottomLeftRadius: cssRadiusPx(style.borderBottomLeftRadius, rect),
           opacity: Number.parseFloat(style.opacity || "1"),
+          ...(Number.isFinite(Number(effectiveOpacity)) ? { effectiveOpacity: Number(effectiveOpacity) } : {}),
           fontFamily: style.fontFamily,
           fontSize,
           fontWeight: Number.parseInt(style.fontWeight, 10) || 400,
@@ -376,7 +973,13 @@ export async function measureHtmlFile(inputPath, options = {}) {
           boxShadow: style.boxShadow === "none" ? null : style.boxShadow,
           textShadow: style.textShadow === "none" ? null : style.textShadow,
           transform: style.transform === "none" ? null : style.transform,
+          transformOrigin: style.transformOrigin === "none" ? null : style.transformOrigin,
+          ...(transformData ? { transformData } : {}),
           rotate: cssRotationDegrees(style.transform),
+          mixBlendMode: style.mixBlendMode,
+          isolation: style.isolation,
+          maskImage: style.maskImage,
+          maskComposite: style.maskComposite,
           objectFit: style.objectFit,
           objectPosition: style.objectPosition
         };
@@ -397,22 +1000,18 @@ export async function measureHtmlFile(inputPath, options = {}) {
         const slideRect = slide.getBoundingClientRect();
         const slideStyle = window.getComputedStyle(slide);
         const slideId = slide.getAttribute("data-slide-id") || slide.id || `slide-${String(slideIndex + 1).padStart(3, "0")}`;
+        const slideMeta = domSnapshotMetadata(slide);
         rawSlides.push({
           slideId,
           slideIndex,
           selector: slide.id ? `#${slide.id}` : slide.matches(".pptx-slide") ? ".pptx-slide" : slide.tagName.toLowerCase(),
-          style: computedStyleFor(slideStyle, slideRect),
-          replica: {
-            hasUnsupportedEffects:
-              slideStyle.filter !== "none" ||
-              slideStyle.backdropFilter !== "none" ||
-              slideStyle.clipPath !== "none" ||
-              slideStyle.backgroundImage !== "none",
-            filter: slideStyle.filter === "none" ? null : slideStyle.filter,
-            backdropFilter: slideStyle.backdropFilter === "none" ? null : slideStyle.backdropFilter,
-            clipPath: slideStyle.clipPath === "none" ? null : slideStyle.clipPath,
-            backgroundImage: slideStyle.backgroundImage === "none" ? null : slideStyle.backgroundImage
-          }
+          style: computedStyleFor(slideStyle, slideRect, effectiveOpacityFor(slide)),
+          ...(slideMeta ? {
+            paintOrder: slideMeta.paintOrder ?? null,
+            stackingContext: Boolean(slideMeta.stackingContext),
+            stackingContextPath: slideMeta.stackingContextPath ?? []
+          } : {}),
+          replica: replicaEffects(slideStyle, null, slide, { slideRoot: true })
         });
         const nodes = [...slide.querySelectorAll(measureSelector)];
         nodes.forEach((node, nodeIndex) => {
@@ -429,73 +1028,85 @@ export async function measureHtmlFile(inputPath, options = {}) {
           const generatedId = `html-${String(slideIndex + 1).padStart(3, "0")}-${String(nodeIndex + 1).padStart(3, "0")}`;
           const id = node.getAttribute("data-pptx-id") || node.getAttribute("data-id") || node.id || generatedId;
           const tagName = node.tagName.toLowerCase();
+          const nodeMeta = domSnapshotMetadata(node) ?? slideMeta;
           const before = window.getComputedStyle(node, "::before");
           const after = window.getComputedStyle(node, "::after");
           const pseudoVisible = [before, after].some((pseudo) => pseudo.content && !["none", "normal", '""', "''"].includes(pseudo.content) && pseudo.display !== "none" && pseudo.visibility !== "hidden");
           const semanticConnectorSvg = isSemanticConnectorSvg(node);
+          const svg = tagName === "svg" ? svgInspection(node) : null;
           const unsupportedVisual = tagName === "canvas"
             ? "canvas-paint"
-            : tagName === "svg" && !semanticConnectorSvg
+            : tagName === "svg" && !semanticConnectorSvg && svg?.mode === "raster-fallback"
               ? "svg-paint"
               : pseudoVisible ? "pseudo-element-paint" : null;
-          const pushDirectTextFragments = () => {
-            if (!replicaMode || !hasVisibleChildElements(node)) return;
+          const pushInlineTextFragments = (allowLeaf = false) => {
+            if (!replicaMode || (!hasVisibleChildElements(node) && !allowLeaf)) return false;
+            let pushed = false;
             directTextNodes(node).forEach((entry, textIndex) => {
-              const range = document.createRange();
-              range.selectNodeContents(entry.node);
-              const textRect = range.getBoundingClientRect();
-              range.detach();
-              if (textRect.width <= 0 || textRect.height <= 0) return;
-              raw.push({
-                id: `${id}-text-${textIndex + 1}`,
-                slideId,
-                kind: "text",
-                slideIndex,
-                tagName,
-                selector: node.id ? `#${node.id}::text(${textIndex + 1})` : `[data-pptx-id="${id}"]::text(${textIndex + 1})`,
-                text: entry.text,
-                src: null,
-                style: computedStyleFor(style, textRect),
-                replica: {
-                  hasUnsupportedEffects:
-                    style.filter !== "none" ||
-                    style.backdropFilter !== "none" ||
-                    style.clipPath !== "none" ||
-                    style.backgroundImage !== "none",
-                  filter: style.filter === "none" ? null : style.filter,
-                  backdropFilter: style.backdropFilter === "none" ? null : style.backdropFilter,
-                  clipPath: style.clipPath === "none" ? null : style.clipPath,
-                  backgroundImage: style.backgroundImage === "none" ? null : style.backgroundImage
-                },
-                px: {
-                  x: textRect.left - slideRect.left,
-                  y: textRect.top - slideRect.top,
-                  w: textRect.width,
-                  h: textRect.height
-                }
+              const lineFragments = inlineTextLineFragments(entry.node, style);
+              lineFragments.forEach((fragment) => {
+                const textRect = fragment.rect;
+                if (textRect.width <= 0 || textRect.height <= 0) return;
+                pushed = true;
+                raw.push({
+                  id: `${id}-text-${textIndex + 1}-line-${fragment.index + 1}`,
+                  slideId,
+                  kind: "text",
+                  slideIndex,
+                  tagName,
+                  selector: node.id ? `#${node.id}::text(${textIndex + 1})::line(${fragment.index + 1})` : `[data-pptx-id="${id}"]::text(${textIndex + 1})::line(${fragment.index + 1})`,
+                  text: fragment.text,
+                  src: null,
+                  semantics: {
+                    semanticParentId: node.getAttribute("data-semantic-parent-id") || generatedSemanticParentId(node)
+                  },
+                  ...(nodeMeta ? {
+                    paintOrder: nodeMeta.paintOrder ?? null,
+                    stackingContext: Boolean(nodeMeta.stackingContext),
+                    stackingContextPath: nodeMeta.stackingContextPath ?? []
+                  } : {}),
+                  style: computedStyleFor(style, textRect, effectiveOpacityFor(node)),
+                  replica: replicaEffects(style, null, node),
+                  px: {
+                    x: textRect.left - slideRect.left,
+                    y: textRect.top - slideRect.top,
+                    w: textRect.width,
+                    h: textRect.height
+                  }
+                });
               });
             });
+            return pushed;
           };
           if (semanticConnectorSvg) return;
-          const kind = inferKind(node, style) ?? (unsupportedVisual ? "shape" : null);
+          const kind = inferKind(node, style) ?? (svg ? "shape" : unsupportedVisual ? "shape" : null);
           if (!kind) {
-            pushDirectTextFragments();
+            pushInlineTextFragments();
             return;
           }
-	          const text = directText(node, style)
-	            || (node.getAttribute("data-pptx-kind") === "text"
-	              ? normalizeTextNodeContent(node.innerText, style.whiteSpace)
-	              : "");
-	          if (kind === "text" && !text) return;
-	          const visibleText = kind === "text" ? renderedEllipsisText(node, style, text) : null;
-	          const anchor = node.matches?.("a[href]") ? node : node.querySelector?.("a[href]") || node.closest?.("a[href]");
+          const isExplicitText = node.hasAttribute("data-pptx-kind") || node.hasAttribute("data-pptx-type") || node.hasAttribute("data-pptx-id") || node.hasAttribute("data-id") || Boolean(node.id);
+          const hasInlineChildren = [...node.children].some((child) => child.tagName.toLowerCase() !== "br");
+          const text = isExplicitText && hasInlineChildren
+            ? normalizeTextNodeContent(node.innerText, style.whiteSpace)
+            : directText(node, style)
+              || (node.getAttribute("data-pptx-kind") === "text"
+                ? normalizeTextNodeContent(node.innerText, style.whiteSpace)
+                : "");
+          if (kind === "text" && !text) return;
+          const visibleText = kind === "text" ? renderedEllipsisText(node, style, text) : null;
+	          if (kind === "text" && !isExplicitText && !hasPaint(style) && pushInlineTextFragments(true)) return;
+          const anchor = kind === "table"
+            ? null
+            : node.matches?.("a[href]") ? node : node.querySelector?.("a[href]") || node.closest?.("a[href]");
 	          const list = node.closest?.("ul,ol");
 	          const listNodes = list ? [...slide.querySelectorAll("ul,ol")] : [];
 	          const listParentId = list
 	            ? list.getAttribute("data-pptx-id") || list.getAttribute("data-id") || list.id || `${slideId}-list-${listNodes.indexOf(list) + 1}`
 	            : null;
-	          const listIndex = list && node.tagName.toLowerCase() === "li" ? [...list.children].indexOf(node) : null;
-	          raw.push({
+          const listIndex = list && node.tagName.toLowerCase() === "li" ? [...list.children].indexOf(node) : null;
+          const richRuns = kind === "text" && isExplicitText ? collectRichTextRuns(node) : [];
+          const tableMeta = kind === "table" ? collectTableMeta(node, rect, slideRect) : null;
+          raw.push({
 	            id,
 	            slideId,
 	            kind,
@@ -544,21 +1155,17 @@ export async function measureHtmlFile(inputPath, options = {}) {
 	                .filter(Boolean),
 	              asOf: node.getAttribute("data-as-of") || null
 	            },
-	            ...(kind === "image" ? { naturalWidth: node.naturalWidth || null, naturalHeight: node.naturalHeight || null } : {}),
-	            style: computedStyleFor(style, rect),
-            replica: {
-              hasUnsupportedEffects:
-                style.filter !== "none" ||
-                style.backdropFilter !== "none" ||
-                style.clipPath !== "none" ||
-                style.backgroundImage !== "none" ||
-                unsupportedVisual !== null,
-              unsupportedVisual,
-              filter: style.filter === "none" ? null : style.filter,
-              backdropFilter: style.backdropFilter === "none" ? null : style.backdropFilter,
-              clipPath: style.clipPath === "none" ? null : style.clipPath,
-              backgroundImage: style.backgroundImage === "none" ? null : style.backgroundImage
-            },
+            ...(kind === "image" ? { naturalWidth: node.naturalWidth || null, naturalHeight: node.naturalHeight || null } : {}),
+            ...(richRuns.length > 0 ? { runs: richRuns } : {}),
+            ...(tableMeta ? { table: tableMeta } : {}),
+	            ...(svg ? { svg } : {}),
+	            ...(nodeMeta ? {
+              paintOrder: nodeMeta.paintOrder ?? null,
+              stackingContext: Boolean(nodeMeta.stackingContext),
+              stackingContextPath: nodeMeta.stackingContextPath ?? []
+            } : {}),
+	            style: computedStyleFor(style, rect, effectiveOpacityFor(node)),
+            replica: replicaEffects(style, unsupportedVisual, node),
             px: {
               x: rect.left - slideRect.left,
               y: rect.top - slideRect.top,
@@ -567,7 +1174,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
             }
           });
 
-          if (kind !== "text") pushDirectTextFragments();
+          if (kind !== "text") pushInlineTextFragments();
         });
       });
 
@@ -575,8 +1182,10 @@ export async function measureHtmlFile(inputPath, options = {}) {
     }, {
       measureSelector: replica ? "*" : selector,
       replicaMode: replica,
-      visibleSlideIndex
+      visibleSlideIndex,
+      domSnapshot
     });
+    };
 
     const slideCount = await countConvertibleSlides(page);
     const measuredSlides = [];
