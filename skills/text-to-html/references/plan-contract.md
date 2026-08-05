@@ -121,7 +121,7 @@ Every approval binds the current `designIntent`, asset lock, and renderer hashes
 
 In addition to the rendered HTML, notes, sources, and core presentation package, an output package contains:
 
-- `design-intent.json` and `design-tokens.json`;
+- `design-intent.json`, `design-profile.json`, and `design-tokens.json`;
 - `content-budget-report.json` and `narrative-report.json`;
 - `review-report.json` and `provenance.json`;
 - `asset-ledger.json`, `license-report.json`, and `NOTICE`;

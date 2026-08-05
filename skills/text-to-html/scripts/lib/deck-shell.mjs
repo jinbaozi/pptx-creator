@@ -1,6 +1,6 @@
 import { escapeHtml } from "./utils.mjs";
 
-export function renderDeckShell(plan, repairLevel, slides) {
+export function renderDeckShell(plan, repairLevel, slides, policy = {}) {
   return `<!doctype html>
 <html lang="${escapeHtml(plan.deck.language)}">
 <head>
@@ -11,7 +11,7 @@ export function renderDeckShell(plan, repairLevel, slides) {
   <link rel="stylesheet" href="assets/deck.css">
   <link rel="stylesheet" href="assets/design-tokens.css">
 </head>
-<body data-repair-level="${repairLevel}">
+<body data-repair-level="${repairLevel}" data-density="${escapeHtml(policy.renderControls?.informationDensity ?? "balanced")}" data-motion="${escapeHtml(policy.renderControls?.dataMotion ?? "none")}" data-max-consecutive-family="${escapeHtml(policy.renderControls?.maxConsecutiveFamily ?? 2)}" data-design-policy-sha256="${escapeHtml(policy.sha256 ?? "")}">
   <div class="deck-stage">
     <div class="pptx-deck" role="region" aria-label="${escapeHtml(plan.deck.title)}">
       ${slides}

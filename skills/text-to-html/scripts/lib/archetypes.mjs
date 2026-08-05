@@ -36,7 +36,8 @@ const REQUIRED_IDS = Object.freeze([
   "table-chart-diagram",
   "timeline-roadmap"
 ]);
-const SLOT_KINDS = new Set(["string", "claim", "claims", "group", "metrics", "steps", "milestones", "assetId"]);
+const SLOT_KINDS = new Set(["string", "claim", "claims", "group", "metrics", "steps", "milestones", "assetId", "table", "chart"]);
+const CHART_KINDS = new Set(["stackedBar", "groupedBar", "horizontalBar", "kpiGroup", "sparkline"]);
 
 function registryFail(message, path, details) {
   fail("E_ARCHETYPE_REGISTRY", message, { path, ...(details === undefined ? {} : { details }) });
@@ -342,6 +343,48 @@ function validateSteps(value, path, rule) {
   }
 }
 
+function validateTable(value, path) {
+  requirePlainObject(value, path);
+  const columns = requireArray(value.columns, `${path}.columns`, { minItems: 1, maxItems: 8 });
+  for (const [index, column] of columns.entries()) requireNonEmptyString(column, `${path}.columns[${index}]`, "E_LAYOUT_CONTENT", 80);
+  const rows = requireArray(value.rows, `${path}.rows`, { minItems: 1, maxItems: 12 });
+  for (const [index, row] of rows.entries()) {
+    const rowPath = `${path}.rows[${index}]`;
+    requirePlainObject(row, rowPath);
+    requireNonEmptyString(row.label, `${rowPath}.label`, "E_LAYOUT_CONTENT", 80);
+    const cells = requireArray(row.values, `${rowPath}.values`, { minItems: columns.length, maxItems: columns.length });
+    for (const [cellIndex, cell] of cells.entries()) validateClaim(cell, `${rowPath}.values[${cellIndex}]`);
+  }
+}
+
+function validateChart(value, path) {
+  requirePlainObject(value, path);
+  requireNonEmptyString(value.kind, `${path}.kind`);
+  if (!CHART_KINDS.has(value.kind)) fail("E_LAYOUT_CONTENT", `${path}.kind is unsupported`, { path: `${path}.kind` });
+  const data = requireArray(value.data, `${path}.data`, { minItems: 1, maxItems: 24 });
+  for (const [index, point] of data.entries()) {
+    const pointPath = `${path}.data[${index}]`;
+    requirePlainObject(point, pointPath);
+    requireNonEmptyString(point.label, `${pointPath}.label`, "E_LAYOUT_CONTENT", 80);
+    if (["stackedBar", "groupedBar"].includes(value.kind)) {
+      requirePlainObject(point.series, `${pointPath}.series`);
+      const series = Object.entries(point.series);
+      if (series.length < 1 || series.length > 6) {
+        fail("E_LAYOUT_CONTENT", `${pointPath}.series must contain 1 to 6 values`, { path: `${pointPath}.series` });
+      }
+      for (const [name, seriesValue] of series) {
+        requireNonEmptyString(name, `${pointPath}.series key`);
+        if (typeof seriesValue !== "number" || !Number.isFinite(seriesValue)) {
+          fail("E_LAYOUT_CONTENT", `${pointPath}.series.${name} must be a finite number`, { path: `${pointPath}.series.${name}` });
+        }
+      }
+    } else if (typeof point.value !== "number" || !Number.isFinite(point.value)) {
+      fail("E_LAYOUT_CONTENT", `${pointPath}.value must be a finite number`, { path: `${pointPath}.value` });
+    }
+    validateClaim(point.claim, `${pointPath}.claim`);
+  }
+}
+
 function validateMilestones(value, path, rule) {
   const milestones = requireArray(value, path, rule);
   for (const [index, milestone] of milestones.entries()) {
@@ -365,6 +408,8 @@ function validateSlot(value, path, rule) {
   if (rule.kind === "metrics") return validateMetrics(value, path, rule);
   if (rule.kind === "steps") return validateSteps(value, path, rule);
   if (rule.kind === "milestones") return validateMilestones(value, path, rule);
+  if (rule.kind === "table") return validateTable(value, path);
+  if (rule.kind === "chart") return validateChart(value, path);
   if (rule.kind === "assetId") {
     const assetId = requireNonEmptyString(value, path);
     if (!ASSET_ID.test(assetId)) fail("E_LAYOUT_CONTENT", `${path} must be a stable asset identifier`, { path });

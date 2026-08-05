@@ -276,6 +276,52 @@
       "required": ["when", "label", "claim"],
       "properties": { "when": { "$ref": "#/$defs/shortText" }, "label": { "$ref": "#/$defs/shortText" }, "claim": { "$ref": "#/$defs/claim" } }
     },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["columns", "rows"],
+      "properties": {
+        "columns": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/shortText" } },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "values"],
+            "properties": {
+              "label": { "$ref": "#/$defs/shortText" },
+              "values": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/claim" } }
+            }
+          }
+        }
+      }
+    },
+    "chartPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "claim"],
+      "properties": {
+        "label": { "$ref": "#/$defs/shortText" },
+        "value": { "type": "number" },
+        "series": { "type": "object", "minProperties": 1, "maxProperties": 6, "additionalProperties": { "type": "number" } },
+        "claim": { "$ref": "#/$defs/claim" }
+      },
+      "oneOf": [
+        { "required": ["value"], "properties": { "value": { "type": "number" } }, "not": { "required": ["series"], "properties": { "series": {} } } },
+        { "required": ["series"], "properties": { "series": { "type": "object" } }, "not": { "required": ["value"], "properties": { "value": {} } } }
+      ]
+    },
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "data"],
+      "properties": {
+        "kind": { "enum": ["stackedBar", "groupedBar", "horizontalBar", "kpiGroup", "sparkline"] },
+        "data": { "type": "array", "minItems": 1, "maxItems": 24, "items": { "$ref": "#/$defs/chartPoint" } }
+      }
+    },
     "slots": {
       "type": "object",
       "additionalProperties": false,
@@ -292,6 +338,8 @@
         "attribution": { "$ref": "#/$defs/shortText" },
         "assetId": { "$ref": "#/$defs/id" },
         "caption": { "$ref": "#/$defs/claim" },
+        "table": { "$ref": "#/$defs/table" },
+        "chart": { "$ref": "#/$defs/chart" },
         "action": { "$ref": "#/$defs/claim" },
         "summary": { "type": "array", "items": { "$ref": "#/$defs/claim" } }
       }

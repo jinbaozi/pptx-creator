@@ -24,13 +24,11 @@ test("minimal example passes every slide at standard, desktop, and mobile viewpo
   assert.ok((await readFile(join(output, "preview", "contact-sheet.html"), "utf8")).includes("Deck contact sheet"));
   const packageRecord = JSON.parse(await readFile(join(output, "presentation-package.json"), "utf8"));
   for (const slide of packageRecord.deck.slides) {
-    assert.ok(
-      slide.components.some((component) =>
-        component.id === `${slide.id}-decor-orb`
-        && component.type === "shape"
-        && component.editableIntent === true),
-      `${slide.id} should expose an editable decoration shape`
-    );
+    const hasOrb = slide.components.some((component) =>
+      component.id === `${slide.id}-decor-orb`
+      && component.type === "shape"
+      && component.editableIntent === true);
+    assert.equal(hasOrb, ["slide-cover", "slide-closing"].includes(slide.id), `${slide.id} decoration policy drifted`);
   }
 });
 

@@ -75,6 +75,28 @@
       "slots": { "assetId": "decision-table", "caption": { "text": "The table compares the approved options." } }
     },
     {
+      "id": "table-chart-diagram",
+      "slots": {
+        "table": {
+          "columns": ["Before", "After"],
+          "rows": [
+            { "label": "Owner", "values": [{ "text": "Shared", "factStatus": "provided", "sourceRefs": ["source-brief"] }, { "text": "Named", "factStatus": "provided", "sourceRefs": ["source-brief"] }] }
+          ]
+        },
+        "caption": { "text": "The table compares the approved options." }
+      }
+    },
+    {
+      "id": "table-chart-diagram",
+      "slots": {
+        "chart": {
+          "kind": "horizontalBar",
+          "data": [{ "label": "Pilot", "value": 42, "claim": { "text": "The pilot reaches the approved cohort.", "factStatus": "provided", "sourceRefs": ["source-brief"] } }]
+        },
+        "caption": { "text": "The chart shows the approved pilot signal." }
+      }
+    },
+    {
       "id": "closing-action",
       "slots": { "action": { "text": "Approve the accountable pilot owner today." }, "summary": [{ "text": "Start with one source." }] }
     }

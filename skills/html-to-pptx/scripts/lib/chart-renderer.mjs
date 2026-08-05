@@ -10,6 +10,21 @@ const SUPPORTED_KINDS = new Set([
   "sparkline"
 ]);
 
+function resolveDesignValue(value, tokens) {
+  if (typeof value === "string") {
+    const match = value.match(/^\{([^}]+)\}$/);
+    if (!match) return value;
+    let cursor = tokens;
+    for (const part of match[1].split(".")) cursor = cursor?.[part];
+    return cursor === undefined ? value : cursor;
+  }
+  if (Array.isArray(value)) return value.map((item) => resolveDesignValue(item, tokens));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolveDesignValue(item, tokens)]));
+  }
+  return value;
+}
+
 function normalizeSemanticKey(value) {
   return String(value ?? "")
     .normalize("NFKC")
@@ -389,16 +404,17 @@ function nativeSeriesData(element) {
   }));
 }
 
-export function nativeChartSpec(element) {
+export function nativeChartSpec(element, designTokens = {}) {
   if (!element || element.type !== "chart" || !isNativeChartElement(element)) return null;
   if (!["groupedBar", "stackedBar", "horizontalBar"].includes(element.kind)) {
     throw new Error(`native chart mode does not support ${String(element.kind ?? "missing")}; use fidelity-first primitives`);
   }
-  const style = element.style ?? {};
-  const palette = resolvePalette(element).map((color) => String(color).replace(/^#/, ""));
+  const style = resolveDesignValue(element.style ?? {}, designTokens);
+  const resolvedElement = { ...element, style };
+  const palette = resolvePalette(resolvedElement).map((color) => String(color).replace(/^#/, ""));
   return {
     type: "bar",
-    data: nativeSeriesData(element),
+    data: nativeSeriesData(resolvedElement),
     options: {
       x: element.x,
       y: element.y,

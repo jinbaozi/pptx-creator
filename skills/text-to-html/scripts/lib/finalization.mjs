@@ -172,7 +172,13 @@ async function buildScorecard(outputDir, qaReport, io) {
   if (!narrative || !pagination || !provenance) {
     throw new SkillError("E_SCORECARD_INPUT", "Cannot score a delivery without narrative, pagination, and provenance reports");
   }
-  return buildVisualScorecard({ qa: qaReport, narrative, pagination, provenance });
+  return buildVisualScorecard({
+    qa: qaReport,
+    narrative,
+    pagination,
+    provenance,
+    probes: qaReport.visualProbes?.probes ?? []
+  });
 }
 
 async function writeVisualScorecard(outputDir, qaReport, io) {
@@ -330,6 +336,7 @@ function expectedOutputArtifacts(outputDir, packageRecord, context = {}) {
     "asset-ledger.json",
     "license-report.json",
     "provenance.json",
+    "design-profile.json",
     VISUAL_SCORECARD_PATH,
     "NOTICE",
     "speaker-notes.md",

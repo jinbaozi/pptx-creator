@@ -707,8 +707,8 @@ function addTable(slide, element, design) {
   }
 }
 
-function addNativeChart(slide, element) {
-  const spec = nativeChartSpec(element);
+function addNativeChart(slide, element, design) {
+  const spec = nativeChartSpec(element, design.chartTokens ?? design.tokens);
   if (!spec) throw new Error(`chart ${element?.id ?? "unknown"} is not a native chart`);
   slide.addChart(spec.type, spec.data, spec.options);
 }
@@ -888,7 +888,7 @@ function renderElement(slide, element, design, baseDir, counters, manifestAssets
     addTable(slide, element, design);
   } else if (element.type === "chart") {
     counters.chart = (counters.chart ?? 0) + 1;
-    addNativeChart(slide, element);
+    addNativeChart(slide, element, design);
   } else if (element.type === "icon") {
     const added = addIcon(slide, element, design);
     counters.text += added.text;
@@ -969,7 +969,21 @@ async function main() {
   const outputDir = dirname(outputPath);
   const baseDir = dirname(manifestPath);
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  const design = await parseDesignFile(resolve(baseDir, manifest.designSystem.source));
+  const baseSource = /\.json$/i.test(String(manifest.designSystem?.source ?? ""))
+    ? "design-system/DESIGN.md"
+    : manifest.designSystem.source;
+  const baseDesign = await parseDesignFile(resolve(baseDir, baseSource));
+  const design = manifest.designSystem?.tokens
+    ? {
+      ...baseDesign,
+      tokens: {
+        ...baseDesign.tokens,
+        colors: { ...baseDesign.tokens.colors, ...(manifest.designSystem.tokens.colors ?? {}) }
+      },
+      chartTokens: manifest.designSystem.tokens,
+      name: manifest.designSystem.name ?? baseDesign.name
+    }
+    : baseDesign;
   await mkdir(outputDir, { recursive: true });
 
   const pptx = new pptxgen();

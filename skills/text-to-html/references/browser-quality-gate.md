@@ -52,6 +52,8 @@ The report blocks:
 - keyboard navigation or direct page-jump failure;
 - print mode that hides a slide, changes its canonical size, shows notes/controls, or omits page breaks.
 
+The report also records non-blocking visual probes for layout-family repetition, decoration saturation, nested cards, and source truncation. These probes are measured evidence for the Host; they do not replace the Host's full-size visual acceptance decision.
+
 Intentional overlap is pair-scoped with `data-allow-overlap-with`. It never exempts clipping, bounds, text fit, or connector errors.
 
 ## Bounded regeneration

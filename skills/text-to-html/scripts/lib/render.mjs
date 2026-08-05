@@ -14,6 +14,7 @@ import {
 } from "./report-validation.mjs";
 import { buildProvenanceRecord } from "./review.mjs";
 import { buildVisualScorecard } from "./scorecard.mjs";
+import { buildLayoutVariantPlan } from "./layout-variants.mjs";
 import { renderSlotBody } from "./slot-renderers.mjs";
 import { compileTokenCss } from "./token-compiler.mjs";
 import {
@@ -75,10 +76,10 @@ function sourceFooter(plan, slide) {
     .join(" · ");
 }
 
-function slideHeader(slide) {
+function slideHeader(slide, variant = {}) {
   return `
     <header>
-      <div class="eyebrow">${escapeHtml(slide.type)}</div>
+      ${variant.showEyebrow === false ? "" : `<div class="eyebrow">${escapeHtml(slide.type)}</div>`}
       <h1 class="slide-title" ${componentAttrs(`${slide.id}-title`, "text", 'data-max-lines="2"')}>${escapeHtml(slide.title)}</h1>
       <p class="slide-kicker" ${componentAttrs(`${slide.id}-message`, "text")}>${escapeHtml(slide.coreMessage)}</p>
     </header>`;
@@ -202,6 +203,80 @@ function imageBody(slide, assetById) {
   </div>`;
 }
 
+function structuredCaption(slide) {
+  return `<article class="card caption-card structured-caption" data-qa-box ${componentAttrs(`${slide.id}-caption-card`, "shape")}>
+      <h2 ${componentAttrs(`${slide.id}-caption-title`, "text")}>观察要点</h2>
+      <p class="fact-line" ${componentAttrs(`${slide.id}-caption`, "text", claimAttrs(slide.content.caption))}>${claimText(slide.content.caption)}</p>
+    </article>`;
+}
+
+function tableBody(slide) {
+  const table = slide.content.table;
+  const headers = table.columns.map((column) => `<th scope="col">${escapeHtml(column)}</th>`).join("");
+  const rows = table.rows.map((row, rowIndex) => `<tr>
+      <th scope="row">${escapeHtml(row.label)}</th>
+      ${row.values.map((claim, cellIndex) => `<td class="fact-line" ${componentAttrs(`${slide.id}-table-${rowIndex + 1}-${cellIndex + 1}`, "text", claimAttrs(claim))}>${claimText(claim)}</td>`).join("")}
+    </tr>`).join("");
+  const sourceIds = [...new Set(table.rows.flatMap((row) => row.values.flatMap((claim) => claim.sourceRefs ?? [])))].join(" ");
+  return `<div class="structured-visual-layout table-visual-layout">
+    <table class="card data-table" data-qa-box ${componentAttrs(`${slide.id}-table`, "table", `data-source-ids="${escapeHtml(sourceIds)}"`)}>
+      <thead><tr><th scope="col">指标</th>${headers}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${structuredCaption(slide)}
+  </div>`;
+}
+
+function chartBody(slide) {
+  const chart = slide.content.chart;
+  const nativeKinds = new Set(["stackedBar", "groupedBar", "horizontalBar"]);
+  const renderMode = nativeKinds.has(chart.kind) ? "semantic-first" : "fidelity-first";
+  const data = chart.data.map((point) => ({
+    label: point.label,
+    ...(point.series ? { series: point.series } : { value: point.value })
+  }));
+  const spec = {
+    kind: chart.kind,
+    renderMode,
+    data,
+    style: {
+      palette: ["{colors.primary}", "{colors.accent}", "{colors.positive}"],
+      showLegend: false,
+      showValues: true,
+      labelColor: "{colors.textMuted}"
+    }
+  };
+  const sourceIds = [...new Set(chart.data.flatMap((point) => point.claim.sourceRefs ?? []))].join(" ");
+  const label = `${chart.kind}：${chart.data.map((point) => `${point.label} ${point.series ? Object.values(point.series).join("/") : point.value}`).join("，")}`;
+  const values = chart.data.map((point) => Number(point.value ?? Math.max(...Object.values(point.series ?? {}), 0)) || 0);
+  const maximum = Math.max(1, ...values);
+  const preview = chart.kind === "horizontalBar"
+    ? `<div class="chart-preview-plot" aria-hidden="true">
+        ${chart.data.map((point, index) => {
+          const width = Math.max(0, Math.min(100, (values[index] / maximum) * 100));
+          return `<div class="chart-preview-row">
+            <span class="chart-preview-label" ${componentAttrs(`${slide.id}-chart-label-${index + 1}`, "text")}>${escapeHtml(point.label)}</span>
+            <span class="chart-preview-bar-track"><span class="chart-preview-bar" style="width:${width.toFixed(2)}%" ${componentAttrs(`${slide.id}-chart-bar-${index + 1}`, "shape")}></span></span>
+            <span class="chart-preview-value" ${componentAttrs(`${slide.id}-chart-value-${index + 1}`, "text")}>${escapeHtml(String(point.value))}</span>
+          </div>`;
+        }).join("")}
+        <span class="chart-preview-axis" ${componentAttrs(`${slide.id}-chart-axis`, "text")}>0　5　10　15　20　25　30　35　40　45</span>
+      </div>`
+    : "";
+  return `<div class="structured-visual-layout chart-visual-layout">
+    <div class="native-chart${preview ? " has-chart-preview" : ""}" data-qa-box ${componentAttrs(`${slide.id}-chart`, "chart", `data-pptx-chart="${escapeHtml(JSON.stringify(spec))}" data-chart-label="${escapeHtml(label)}" data-source-ids="${escapeHtml(sourceIds)}" aria-label="${escapeHtml(label)}"`)}>${preview}</div>
+    ${structuredCaption(slide)}
+  </div>`;
+}
+
+function visualBody(slide, assetById) {
+  if (slide.layoutArchetype === "table-chart-diagram") {
+    if (slide.content.table) return tableBody(slide);
+    if (slide.content.chart) return chartBody(slide);
+  }
+  return imageBody(slide, assetById);
+}
+
 function closingBody(slide) {
   return `<div class="closing-action fact-line" ${componentAttrs(`${slide.id}-action`, "text", claimAttrs(slide.content.action))}>${claimText(slide.content.action)}</div>
     ${slide.content.summary?.length ? `<ul class="compact-list" style="margin-top:30px">${slide.content.summary.map((claim, index) => `
@@ -218,17 +293,20 @@ function renderBody(plan, slide, assetById, layout) {
     process: () => processBody(slide, layout),
     timeline: () => timelineBody(slide),
     quote: () => quoteBody(slide),
-    image: () => imageBody(slide, assetById),
+    image: () => visualBody(slide, assetById),
     closing: () => closingBody(slide)
   });
 }
 
-function renderSlide(plan, slide, assetById, layout) {
-  const className = `${slide.type}-slide`;
+function renderSlide(plan, slide, assetById, layout, variant = {}) {
+  const density = plan.design?.policy?.renderControls?.informationDensity ?? "balanced";
+  const className = `${slide.type}-slide variant-${variant.id ?? slide.type} density-${density}`;
   const footer = sourceFooter(plan, slide);
-  const header = slide.type === "cover" ? "" : slideHeader(slide);
+  const header = slide.type === "cover" ? "" : slideHeader(slide, variant);
   const decorations = [
-    `<div class="slide-decoration slide-decor-orb" ${componentAttrs(`${slide.id}-decor-orb`, "shape", 'data-layout-role="decoration" aria-hidden="true"')}></div>`,
+    ...(slide.type === "cover" || slide.type === "closing" || variant.ambientDecoration
+      ? [`<div class="slide-decoration slide-decor-orb" ${componentAttrs(`${slide.id}-decor-orb`, "shape", 'data-layout-role="decoration" aria-hidden="true"')}></div>`]
+      : []),
     ...(slide.type === "cover"
       ? [`<div class="slide-decoration slide-decor-rule" ${componentAttrs(`${slide.id}-decor-rule`, "shape", 'data-layout-role="decoration" aria-hidden="true"')}></div>`]
       : []),
@@ -237,7 +315,7 @@ function renderSlide(plan, slide, assetById, layout) {
       : [])
   ].join("\n    ");
   return `
-  <section class="pptx-slide ${className}" id="${escapeHtml(slide.id)}" data-slide-id="${escapeHtml(slide.id)}" data-slide-order="${slide.order}" data-slide-type="${escapeHtml(slide.type)}" aria-hidden="${slide.order === 1 ? "false" : "true"}">
+  <section class="pptx-slide ${className}" id="${escapeHtml(slide.id)}" data-slide-id="${escapeHtml(slide.id)}" data-slide-order="${slide.order}" data-slide-type="${escapeHtml(slide.type)}" data-layout-archetype="${escapeHtml(slide.layoutArchetype ?? slide.type)}" data-layout-variant="${escapeHtml(variant.id ?? slide.type)}" data-layout-family="${escapeHtml(variant.family ?? slide.type)}" aria-hidden="${slide.order === 1 ? "false" : "true"}">
     ${decorations}
     <div class="slide-shell">
       ${header}
@@ -337,6 +415,7 @@ async function extensionRecord(outputDir, plan, review) {
     assetLedger: "asset-ledger.json",
     license: "license-report.json",
     provenance: "provenance.json",
+    designProfile: "design-profile.json",
     visualScorecard: "visual-scorecard.json",
     notice: "NOTICE"
   };
@@ -357,8 +436,10 @@ async function extensionRecord(outputDir, plan, review) {
 
 function htmlDocument(plan, repairLevel, assetById, tokens) {
   const layout = processLayout(plan, tokens);
-  const slides = plan.slides.map((slide) => renderSlide(plan, slide, assetById, layout)).join("\n");
-  return renderDeckShell(plan, repairLevel, slides);
+  const policy = plan.design?.policy ?? {};
+  const variants = buildLayoutVariantPlan(plan.slides, policy);
+  const slides = plan.slides.map((slide) => renderSlide(plan, slide, assetById, layout, variants.get(slide.id))).join("\n");
+  return renderDeckShell(plan, repairLevel, slides, policy);
 }
 
 function sourceIndex(plan) {
@@ -513,6 +594,7 @@ export async function buildDeck(plan, planPath, outputDir, options = {}) {
   await writeJson(join(resolvedOutput, "sources.json"), sourceIndex(renderPlan));
   await writeJson(join(resolvedOutput, "deck-manifest.json"), deckManifest(renderPlan, assetRecords, options.repairLevel ?? 0));
   await writeJson(join(resolvedOutput, "design-intent.json"), plan.designIntent);
+  await writeJson(join(resolvedOutput, "design-profile.json"), renderPlan.design.policy);
   await writeJson(join(resolvedOutput, "content-budget-report.json"), contentBudget);
   await writeJson(join(resolvedOutput, "narrative-report.json"), narrativeDiagnostics);
   await writeJson(join(resolvedOutput, "review-report.json"), reviewArtifacts.review);

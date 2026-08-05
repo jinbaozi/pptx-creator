@@ -44,6 +44,13 @@ design tokens, asset metadata, validation results, degradations, and
 compatibility features. It is an interoperability artifact, not a Codex Skill
 manifest.
 
+When `designTokens` is present, the converter reads the package-local artifact
+before manifest conversion, maps the `text-to-html` `fonts`/`type`/`space`/
+`radius` surface to the editable PPTX typography, spacing, component, and
+chart-token surface, and copies the original file into the output package.
+Native chart palettes resolve those token references before PowerPoint objects
+are created; the converter never imports a sibling Skill at runtime.
+
 ## HTML authoring boundary
 
 Use one stable slide container per page. `.pptx-slide` is the preferred

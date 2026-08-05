@@ -570,6 +570,57 @@ export function injectNativeCharts(html, manifest, measurements) {
   return conversions;
 }
 
+export function suppressNativeChartDescendants(html, manifest, measurements) {
+  const root = parse(html);
+  const suppressions = [];
+  for (const node of root.querySelectorAll("[data-pptx-chart]")) {
+    const chartId = node.getAttribute("data-pptx-id") ?? node.getAttribute("data-id") ?? node.id;
+    if (!chartId) continue;
+    const chartElement = manifest.slides
+      ?.flatMap((slide) => (slide.elements ?? []).map((element) => ({ slide, element })))
+      .find(({ element }) => element.type === "chart" && element.id === chartId);
+    if (!chartElement) continue;
+    const slideIndex = manifest.slides.indexOf(chartElement.slide);
+    const chartMeasurement = (measurements.elements ?? []).find(
+      (measurement) => measurement.slideIndex === slideIndex && measurement.id === chartId
+    );
+    const contains = (outer, inner) => {
+      const tolerance = 0.02;
+      return Number(inner.x) >= Number(outer.x) - tolerance
+        && Number(inner.y) >= Number(outer.y) - tolerance
+        && Number(inner.x) + Number(inner.w) <= Number(outer.x) + Number(outer.w) + tolerance
+        && Number(inner.y) + Number(inner.h) <= Number(outer.y) + Number(outer.h) + tolerance;
+    };
+    const descendantIds = new Set(
+      node.querySelectorAll("[data-pptx-id]")
+        .map((child) => child.getAttribute("data-pptx-id"))
+        .filter(Boolean)
+    );
+    if (chartMeasurement) {
+      for (const measurement of measurements.elements ?? []) {
+        if (measurement.slideIndex === slideIndex
+          && measurement.id !== chartId
+          && contains(chartMeasurement, measurement)) {
+          descendantIds.add(measurement.id);
+        }
+      }
+    }
+    const existingIds = new Set((chartElement.slide.elements ?? []).map((element) => element.id));
+    const suppressedIds = [...descendantIds]
+      .flatMap((id) => [id, `${id}-box`])
+      .filter((id) => existingIds.has(id));
+    if (suppressedIds.length === 0) continue;
+    chartElement.slide.elements = (chartElement.slide.elements ?? [])
+      .filter((element) => !suppressedIds.includes(element.id));
+    suppressions.push({
+      slideId: chartElement.slide.id,
+      chartId,
+      elementIds: [...new Set(suppressedIds)].sort()
+    });
+  }
+  return suppressions;
+}
+
 export function suppressNativeTableDescendants(manifest, measurements) {
   const descendantTags = new Set(["thead", "tbody", "tfoot", "tr", "th", "td"]);
   const suppressions = [];
@@ -1274,6 +1325,98 @@ async function materializeProtocolDesignTokens(input, outputDir) {
   return "design-tokens.json";
 }
 
+export async function readProtocolDesignTokens(input) {
+  const declared = input.packageManifest?.designTokens;
+  if (declared === undefined) return undefined;
+  if (typeof declared === "string") {
+    if (!declared.trim() || isAbsolute(declared) || declared.split("/").includes("..")) {
+      fail("E_PROTOCOL_PATH", `designTokens must be a package-local relative path: ${declared}`);
+    }
+    const source = resolve(input.packageRoot, declared);
+    if (!pathWithin(input.packageRoot, source)) {
+      fail("E_PROTOCOL_PATH", `designTokens escapes the package root: ${declared}`);
+    }
+    let canonical;
+    try {
+      const info = await lstat(source);
+      if (info.isSymbolicLink() || !info.isFile()) {
+        fail("E_PROTOCOL_PATH", `designTokens must resolve to a regular file: ${declared}`);
+      }
+      canonical = await realpath(source);
+    } catch (error) {
+      if (error instanceof HtmlToPptxError) throw error;
+      fail("E_PROTOCOL_DESIGN_TOKENS", `cannot read designTokens ${declared}: ${error.message}`);
+    }
+    if (!pathWithin(input.packageRoot, canonical)) {
+      fail("E_PROTOCOL_PATH", `designTokens resolves outside the package root: ${declared}`);
+    }
+    return readJson(canonical, "E_PROTOCOL_DESIGN_TOKENS");
+  }
+  if (!declared || typeof declared !== "object" || Array.isArray(declared)) {
+    fail("E_PROTOCOL_DESIGN_TOKENS", "designTokens must be a package-local path or object");
+  }
+  return structuredClone(declared);
+}
+
+function tokenValue(value, fallback) {
+  return value === undefined ? fallback : value;
+}
+
+export function normalizePresentationTokens(tokens) {
+  if (!tokens || typeof tokens !== "object" || Array.isArray(tokens)) {
+    fail("E_PROTOCOL_DESIGN_TOKENS", "designTokens must contain an object");
+  }
+  const source = structuredClone(tokens);
+  const colors = {
+    ...(source.colors ?? {}),
+    primary: tokenValue(source.colors?.primary, "#2457E6"),
+    secondary: tokenValue(source.colors?.secondary, source.colors?.muted ?? "#5B6475"),
+    accent: tokenValue(source.colors?.accent, "#E97831"),
+    background: tokenValue(source.colors?.background, "#F6F7FB"),
+    surface: tokenValue(source.colors?.surface, "#FFFFFF"),
+    surfaceAlt: tokenValue(source.colors?.surfaceAlt, source.colors?.primarySoft ?? "#E8EEFF"),
+    text: tokenValue(source.colors?.text, "#172033"),
+    textMuted: tokenValue(source.colors?.textMuted, source.colors?.muted ?? "#5B6475"),
+    border: tokenValue(source.colors?.border, "#D9DEEA"),
+    success: tokenValue(source.colors?.success, source.colors?.positive ?? "#147D64")
+  };
+  const fonts = source.fonts ?? {};
+  const type = source.type ?? {};
+  const typography = {
+    ...(source.typography ?? {}),
+    title: { ...(source.typography?.title ?? {}), fontFamily: tokenValue(source.typography?.title?.fontFamily, fonts.display ?? "Arial"), fontSize: tokenValue(source.typography?.title?.fontSize, type.title ?? 32) },
+    subtitle: { ...(source.typography?.subtitle ?? {}), fontFamily: tokenValue(source.typography?.subtitle?.fontFamily, fonts.body ?? "Arial"), fontSize: tokenValue(source.typography?.subtitle?.fontSize, type.body ?? 20) },
+    heading: { ...(source.typography?.heading ?? {}), fontFamily: tokenValue(source.typography?.heading?.fontFamily, fonts.display ?? "Arial"), fontSize: tokenValue(source.typography?.heading?.fontSize, type.section ?? 24) },
+    body: { ...(source.typography?.body ?? {}), fontFamily: tokenValue(source.typography?.body?.fontFamily, fonts.body ?? "Arial"), fontSize: tokenValue(source.typography?.body?.fontSize, type.body ?? 16) },
+    caption: { ...(source.typography?.caption ?? {}), fontFamily: tokenValue(source.typography?.caption?.fontFamily, fonts.body ?? "Arial"), fontSize: tokenValue(source.typography?.caption?.fontSize, type.source ?? 11) },
+    metric: { ...(source.typography?.metric ?? {}), fontFamily: tokenValue(source.typography?.metric?.fontFamily, fonts.display ?? "Arial"), fontSize: tokenValue(source.typography?.metric?.fontSize, type.display ?? 42) }
+  };
+  const space = source.space ?? {};
+  const spacing = {
+    ...(source.spacing ?? {}),
+    xs: tokenValue(source.spacing?.xs, Math.max(2, Number(space.small ?? 12) / 2)),
+    sm: tokenValue(source.spacing?.sm, space.small ?? 8),
+    md: tokenValue(source.spacing?.md, space.gap ?? 16),
+    lg: tokenValue(source.spacing?.lg, Number(space.gap ?? 16) * 1.5),
+    xl: tokenValue(source.spacing?.xl, space.canvasY ?? 32)
+  };
+  const radius = source.radius ?? {};
+  const rounded = {
+    ...(source.rounded ?? {}),
+    sm: tokenValue(source.rounded?.sm, Math.max(2, Number(radius.card ?? 12) / 4)),
+    md: tokenValue(source.rounded?.md, Number(radius.card ?? 12) / 2),
+    lg: tokenValue(source.rounded?.lg, radius.card ?? 12),
+    xl: tokenValue(source.rounded?.xl, radius.pill ?? 999)
+  };
+  const components = {
+    ...(source.components ?? {}),
+    "slide-background": { backgroundColor: "{colors.background}", ...(source.components?.["slide-background"] ?? {}) },
+    "content-card": { backgroundColor: "{colors.surface}", textColor: "{colors.text}", borderColor: "{colors.border}", ...(source.components?.["content-card"] ?? {}) },
+    "table-header": { backgroundColor: "{colors.surfaceAlt}", textColor: "{colors.primary}", typography: "{typography.body}", ...(source.components?.["table-header"] ?? {}) }
+  };
+  return { ...source, colors, typography, spacing, rounded, components };
+}
+
 export async function buildOutputProtocol({
   input,
   manifest,
@@ -1593,6 +1736,10 @@ export async function runConversion(inputPath, outputPath, options = {}) {
     fail("E_ARGUMENT", `repair attempts cannot exceed ${MAX_REPAIR_ATTEMPTS}`);
   }
   const input = await resolveHtmlInput(inputPath);
+  const declaredProtocolTokens = await readProtocolDesignTokens(input);
+  const protocolDesignTokens = declaredProtocolTokens
+    ? normalizePresentationTokens(declaredProtocolTokens)
+    : undefined;
   const outputDir = await prepareOutput(outputPath, effectiveOptions.overwrite);
   const runId = randomUUID();
   try {
@@ -1658,6 +1805,9 @@ export async function runConversion(inputPath, outputPath, options = {}) {
     const outputDesignPath = join(designDir, "DESIGN.md");
     await copyFile(designSource, outputDesignPath);
     const design = await parseDesignFile(outputDesignPath);
+    const effectiveDesign = protocolDesignTokens
+      ? { ...design, name: "Presentation Package", tokens: protocolDesignTokens }
+      : design;
     const manifestPath = join(outputDir, "deck.manifest.json");
     const converted = await writeManifestFromHtml(
       prepared.browserHtmlPath,
@@ -1667,13 +1817,22 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         designSystem: "business-neutral",
         designMode: "replica",
         replicaSourcePath: input.htmlPath,
-        designSystemSource: "design-system/DESIGN.md",
-        designSystemName: design.name,
+        designSystemSource: protocolDesignTokens ? "design-tokens.json" : "design-system/DESIGN.md",
+        designSystemName: effectiveDesign.name,
+        ...(protocolDesignTokens ? { designTokens: protocolDesignTokens } : {}),
         packageRoot: SKILL_ROOT,
         allowRemoteAssets: false
       }
     );
     let manifest = converted.manifest;
+    if (protocolDesignTokens) {
+      manifest.designSystem = {
+        ...(manifest.designSystem ?? {}),
+        source: "design-tokens.json",
+        name: effectiveDesign.name,
+        tokens: protocolDesignTokens
+      };
+    }
     const tableDescendantSuppressions = suppressNativeTableDescendants(
       manifest,
       measurements
@@ -1684,6 +1843,7 @@ export async function runConversion(inputPath, outputPath, options = {}) {
     );
     const sourceHtml = await readFile(prepared.browserHtmlPath, "utf8");
     const chartConversions = injectNativeCharts(sourceHtml, manifest, measurements);
+    const chartDescendantSuppressions = suppressNativeChartDescendants(sourceHtml, manifest, measurements);
     const localizedAssets = await localizeManifestAssets(manifest, input, outputDir);
     const fallbacks = await applyLocalizedFallbacks(
       prepared.browserHtmlPath,
@@ -1695,8 +1855,8 @@ export async function runConversion(inputPath, outputPath, options = {}) {
     assertNoFullSlideRaster(manifest, fallbacks);
 
     const fontCatalog = await createFontMetricsCatalog();
-    const fontPreflight = await preflightFonts(manifest, design);
-    const materializedFonts = materializeTextFonts(manifest, design.tokens, fontCatalog);
+    const fontPreflight = await preflightFonts(manifest, effectiveDesign);
+    const materializedFonts = materializeTextFonts(manifest, effectiveDesign.tokens, fontCatalog);
     manifest = materializedFonts.manifest;
     const fontReport = {
       ...fontPreflight,
@@ -1736,7 +1896,7 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         strict: true,
         mode: "replica",
         inputType: "html",
-        designTokens: design.tokens,
+        designTokens: effectiveDesign.tokens,
         fontCatalog
       });
       const layoutWire = formatReport(layout, { deckSize: manifest.deck.size });
@@ -1913,6 +2073,7 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       attempts,
       localizedAssets,
       chartConversions,
+      chartDescendantSuppressions,
       tableDescendantSuppressions,
       nestedTextSuppressions,
       remainingIssues

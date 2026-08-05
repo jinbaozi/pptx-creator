@@ -97,6 +97,7 @@ deck-manifest.json
 presentation-package.json
 design-tokens.json
 design-intent.json
+design-profile.json
 content-budget-report.json
 narrative-report.json
 review-report.json
@@ -114,4 +115,4 @@ preview/
 output-manifest.json
 ```
 
-`presentation-plan.source.json` preserves the exact supplied input bytes. `presentation-plan.json` preserves the validated Plan 2.0; localized media paths and integrity records belong in `assets/media/`, `asset-ledger.json`, and `license-report.json` rather than rewriting the approved asset locators.
+`presentation-plan.source.json` preserves the exact supplied input bytes. `presentation-plan.json` preserves the validated Plan 2.0; `design-profile.json` records the deterministic renderer controls compiled from its finite design dials and explicitly labels free-text direction as Host-owned advisory metadata. Localized media paths and integrity records belong in `assets/media/`, `asset-ledger.json`, and `license-report.json` rather than rewriting the approved asset locators.

@@ -118,10 +118,10 @@
     "lock": {
       "themeManifestSha256": "3f239445d42a3bf338c2520ec6b93223bef2659c794c6093a618a08866f8cc4e",
       "tokenSha256": "7a07107b66803ef9649ab38a31d72b96032c7034c75adab604a922b83b8dd055",
-      "archetypeRegistrySha256": "75555b8f9a44fe4736d60f64250bb2e02385aabdce84865af0ede171ede8a69d",
+      "archetypeRegistrySha256": "44f8c7028a9168f93d667d26f670478684d353aba9bbf09e6260ba0b3e18afa5",
       "assetLockSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "rendererVersion": "text-to-html@2.0.0-registry",
-      "canonicalPlanSha256": "c0df0209dc9aa85ced8ce22ab6c20ed46ed6385428b536672b5847793123c465"
+      "canonicalPlanSha256": "b8b39a04aac555180acab985b9dca6bd6fa17a614b2852320249e3e970b7b480"
     }
   },
   "pagination": {
@@ -266,7 +266,7 @@
       "status": "approved",
       "reviewedAt": "2026-07-30T00:00:00.000Z",
       "artifactHashes": {
-        "designIntent": "b748c89fbf782de028c67279dced6abccce42bad35227926328f14d14b8886a8",
+        "designIntent": "4bd858f86fb98ea1a64cb6d26cd3198de093d29725dfcab2af75c2b41729b029",
         "assetLock": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "renderer": "c187037cdecdcc4a05c51dab5ab4bb8ba69d41281c160a86a6e5b42efcd4d936"
       }
@@ -275,7 +275,7 @@
       "status": "approved",
       "reviewedAt": "2026-07-30T00:00:00.000Z",
       "artifactHashes": {
-        "designIntent": "b748c89fbf782de028c67279dced6abccce42bad35227926328f14d14b8886a8",
+        "designIntent": "4bd858f86fb98ea1a64cb6d26cd3198de093d29725dfcab2af75c2b41729b029",
         "assetLock": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "renderer": "c187037cdecdcc4a05c51dab5ab4bb8ba69d41281c160a86a6e5b42efcd4d936"
       }
@@ -284,7 +284,7 @@
       "status": "approved",
       "reviewedAt": "2026-07-30T00:00:00.000Z",
       "artifactHashes": {
-        "designIntent": "b748c89fbf782de028c67279dced6abccce42bad35227926328f14d14b8886a8",
+        "designIntent": "4bd858f86fb98ea1a64cb6d26cd3198de093d29725dfcab2af75c2b41729b029",
         "assetLock": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "renderer": "c187037cdecdcc4a05c51dab5ab4bb8ba69d41281c160a86a6e5b42efcd4d936"
       }

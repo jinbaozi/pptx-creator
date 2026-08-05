@@ -16,6 +16,7 @@ export function compileTokenCss(tokens) {
   --color-positive: ${tokens.colors.positive};
   --color-border: ${tokens.colors.border};
   --title-size: ${tokens.type.title}px;
+  --display-size: ${tokens.type.display}px;
   --section-size: ${tokens.type.section}px;
   --body-size: ${tokens.type.body}px;
   --label-size: ${tokens.type.label}px;
@@ -23,6 +24,10 @@ export function compileTokenCss(tokens) {
   --canvas-x: ${tokens.space.canvasX}px;
   --canvas-y: ${tokens.space.canvasY}px;
   --gap: ${tokens.space.gap}px;
+  --space-small: ${tokens.space.small}px;
+  --radius-card: ${tokens.radius.card}px;
+  --radius-pill: ${tokens.radius.pill}px;
+  --shadow-card: ${tokens.shadow.card};
 }
 `;
 }

@@ -12,6 +12,7 @@ import {
   validateLayoutArchetypeSlots
 } from "./archetypes.mjs";
 import { fail } from "./errors.mjs";
+import { compileDesignPolicy } from "./design-policy.mjs";
 import { buildReviewArtifactHashes as buildApprovalArtifactHashes } from "./review.mjs";
 import {
   DEFAULT_THEME_ID,
@@ -173,6 +174,30 @@ function validateSlideSlots(layoutArchetype, slots, path, sourceIds, assetIds) {
       path,
       archetypePath: path.replace(/\.slots$/, ".layoutArchetype")
     });
+  }
+  if (resolved.id === "table-chart-diagram") {
+    const modes = ["assetId", "table", "chart"].filter((key) => Object.hasOwn(content, key));
+    if (modes.length !== 1) {
+      fail("E_LAYOUT_CONTENT", `${path} must declare exactly one of assetId, table, or chart`, { path });
+    }
+    if (content.assetId !== undefined) {
+      requireString(content.assetId, `${path}.assetId`);
+      if (!assetIds.has(content.assetId)) fail("E_LAYOUT_CONTENT", `Unknown image asset ${content.assetId}`, { path: `${path}.assetId` });
+    }
+    validateClaim(content.caption, `${path}.caption`, sourceIds);
+    if (content.table) {
+      for (const [rowIndex, row] of content.table.rows.entries()) {
+        for (const [cellIndex, cell] of row.values.entries()) {
+          validateClaim(cell, `${path}.table.rows[${rowIndex}].values[${cellIndex}]`, sourceIds);
+        }
+      }
+    }
+    if (content.chart) {
+      for (const [index, point] of content.chart.data.entries()) {
+        validateClaim(point.claim, `${path}.chart.data[${index}].claim`, sourceIds);
+      }
+    }
+    return resolved;
   }
   switch (resolved.legacyType) {
     case "cover":
@@ -563,7 +588,8 @@ export function compilePlanForRender(plan) {
     },
     design: {
       themeId: plan.designIntent.themeId,
-      tokenOverrides: structuredClone(plan.designIntent.tokenOverrides)
+      tokenOverrides: structuredClone(plan.designIntent.tokenOverrides),
+      policy: compileDesignPolicy(plan.designIntent)
     },
     sources: structuredClone(plan.sources),
     assets: plan.assets.map((asset) => ({

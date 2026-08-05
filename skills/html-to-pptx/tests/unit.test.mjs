@@ -15,13 +15,15 @@ import {
   assertNoFullSlideRaster,
   buildOutputProtocol,
   injectNativeCharts,
+  normalizePresentationTokens,
   parseArgs,
   suppressDuplicateNestedTextElements,
+  suppressNativeChartDescendants,
   suppressNativeTableDescendants,
   validateManifestContract
 } from "../scripts/convert.mjs";
 import { connectorMetadata } from "../scripts/lib/connector-resolver.mjs";
-import { expandChartElement } from "../scripts/lib/chart-renderer.mjs";
+import { expandChartElement, nativeChartSpec } from "../scripts/lib/chart-renderer.mjs";
 
 function manifest() {
   return {
@@ -46,6 +48,22 @@ function manifest() {
 }
 
 describe("public argument and safety contracts", () => {
+  it("normalizes text-to-html design tokens into the editable PPTX token surface", () => {
+    const tokens = normalizePresentationTokens({
+      fonts: { display: "Display Sans", body: "Body Sans" },
+      colors: { primary: "#112233", muted: "#445566", primarySoft: "#EEF2FF" },
+      type: { title: 44, body: 20, source: 11 },
+      space: { gap: 18, small: 10 },
+      radius: { card: 16, pill: 999 }
+    });
+    expect(tokens.colors).toMatchObject({ primary: "#112233", textMuted: "#445566", surfaceAlt: "#EEF2FF" });
+    expect(tokens.typography.title).toMatchObject({ fontFamily: "Display Sans", fontSize: 44 });
+    expect(tokens.typography.body).toMatchObject({ fontFamily: "Body Sans", fontSize: 20 });
+    expect(tokens.spacing).toMatchObject({ md: 18, sm: 10 });
+    expect(tokens.rounded).toMatchObject({ lg: 16, xl: 999 });
+    expect(tokens.components["table-header"]).toMatchObject({ backgroundColor: "{colors.surfaceAlt}" });
+  });
+
   it("maps layered slide gradients to native background and accent shapes", () => {
     const plan = planReplicaSlideBackground(
       "radial-gradient(circle at 88% 13%, rgba(36, 87, 230, 0.1), transparent 24%), linear-gradient(135deg, #F6F7FB, #E8EEFF)",
@@ -306,6 +324,35 @@ describe("public argument and safety contracts", () => {
       x: 1,
       w: 4
     });
+  });
+
+  it("resolves protocol color tokens before creating native chart options", () => {
+    const spec = nativeChartSpec({
+      type: "chart",
+      id: "chart-token",
+      kind: "horizontalBar",
+      x: 1,
+      y: 1,
+      w: 4,
+      h: 3,
+      data: [{ label: "A", value: 1 }],
+      style: { renderMode: "native", palette: ["{colors.primary}"] }
+    }, { colors: { primary: "#123456" } });
+    expect(spec.options.chartColors).toEqual(["123456"]);
+  });
+
+  it("suppresses HTML chart preview descendants after native chart injection", () => {
+    const value = manifest();
+    value.slides[0].elements.push(
+      { type: "chart", id: "chart-001", kind: "horizontalBar", x: 1, y: 1, w: 4, h: 3, data: [{ label: "A", value: 1 }] },
+      { type: "text", id: "chart-001-label", text: "A", x: 1, y: 2, w: 1, h: 0.2 }
+    );
+    const html = `<section><div data-pptx-id="chart-001" data-pptx-chart='{"kind":"horizontalBar","data":[{"label":"A","value":1}]}'><span data-pptx-id="chart-001-label">A</span></div></section>`;
+    const suppressions = suppressNativeChartDescendants(html, value, {
+      elements: [{ id: "chart-001", slideIndex: 0, x: 1, y: 1, w: 4, h: 3 }, { id: "chart-001-label", slideIndex: 0, x: 1, y: 2, w: 1, h: 0.2 }]
+    });
+    expect(suppressions).toEqual([{ slideId: "slide-001", chartId: "chart-001", elementIds: ["chart-001-label"] }]);
+    expect(value.slides[0].elements.map((element) => element.id)).not.toContain("chart-001-label");
   });
 
   it("keeps grouped bars side by side while stacked bars share each point x", () => {

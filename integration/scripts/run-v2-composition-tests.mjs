@@ -395,16 +395,25 @@ async function validateHtmlOutput(outputDir, expectedProducer = "text-to-html") 
   };
 }
 
-async function validateHtmlToPptxOutput(outputDir) {
+async function validateHtmlToPptxOutput(outputDir, options = {}) {
   const packagePath = join(outputDir, "presentation-package.json");
-  const [protocol, qa, pptx] = await Promise.all([
+  const [protocol, packageRecord, qa, pptx] = await Promise.all([
     validatePresentationPackageFile(packagePath),
+    readJson(packagePath),
     readJson(join(outputDir, "qa-report.json")),
     requirePptx(join(outputDir, "final.pptx"), "html-to-pptx final.pptx")
   ]);
   const gates = qa.gates ?? {};
   if (protocol.kind !== "pptx-delivery" || protocol.producer !== "html-to-pptx") {
     fail("E_COMPOSITION_PROTOCOL", "html-to-pptx emitted an unexpected protocol package", { protocol });
+  }
+  if (options.requireDesignTokens) {
+    if (packageRecord.designTokens !== "design-tokens.json") {
+      fail("E_TOKEN_CONTINUITY", "html-to-pptx did not preserve the upstream design-token artifact", {
+        designTokens: packageRecord.designTokens
+      });
+    }
+    await requireFile(join(outputDir, "design-tokens.json"), "html-to-pptx design-tokens.json");
   }
   if (protocol.validationStatus !== "passed"
       || qa.status !== "passed"
@@ -560,7 +569,7 @@ export async function runV2CompositionTests(options = {}) {
       ],
       { cwd: skillRoots.htmlToPptx, timeoutMs: processTimeoutMs }
     );
-    const chain1PptxEvidence = await validateHtmlToPptxOutput(chain1Pptx);
+    const chain1PptxEvidence = await validateHtmlToPptxOutput(chain1Pptx, { requireDesignTokens: true });
     chains.push(chainResult(
       "text-to-html-to-pptx",
       "text-to-html → presentation-package → html-to-pptx",

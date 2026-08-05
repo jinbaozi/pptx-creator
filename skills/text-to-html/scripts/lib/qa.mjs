@@ -3,6 +3,7 @@ import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { SkillError } from "./errors.mjs";
+import { buildVisualProbes } from "./visual-probes.mjs";
 
 export const DEFAULT_VIEWPORTS = [
   { name: "standard", width: 1280, height: 720 },
@@ -195,6 +196,11 @@ async function inspectActiveSlide(page) {
       }
     }
 
+    const source = slide.querySelector(".source-list");
+    const sourceTruncated = Boolean(source && (source.scrollWidth > source.clientWidth + 1 || source.scrollHeight > source.clientHeight + 1));
+    const cards = [...slide.querySelectorAll(".card")];
+    const nestedCardCount = cards.filter((card) => card.parentElement?.closest(".card")).length;
+
     for (const image of [...slide.querySelectorAll("img")].filter(visible)) {
       const id = image.dataset.pptxId ?? image.alt ?? "image";
       if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
@@ -309,7 +315,17 @@ async function inspectActiveSlide(page) {
       findings,
       components,
       geometry: normalizeRect(slideRect),
-      fontStatus: document.fonts?.status ?? "unsupported"
+      fontStatus: document.fonts?.status ?? "unsupported",
+      visualProbe: {
+        slideId,
+        order,
+        family: slide.dataset.layoutFamily ?? slide.dataset.slideType ?? "unknown",
+        variant: slide.dataset.layoutVariant ?? "unknown",
+        decorationCount: slide.querySelectorAll('[data-layout-role="decoration"]').length,
+        cardCount: cards.length,
+        nestedCardCount,
+        sourceTruncated
+      }
     };
   });
 }
@@ -442,6 +458,12 @@ export async function runBrowserQa(outputDir, options = {}) {
     if (remoteRequests.length > 0) findings.push(finding("E_REMOTE_REQUEST", "Deck requested non-local runtime resources", { details: [...new Set(remoteRequests)] }));
     const contactSheetPath = join(previewDir, "contact-sheet.html");
     await writeFile(contactSheetPath, contactSheetHtml(viewportResults), "utf8");
+    const policy = await page.evaluate(() => ({
+      renderControls: {
+        maxConsecutiveFamily: Number(document.body.dataset.maxConsecutiveFamily) || 2
+      }
+    }));
+    const visualProbes = buildVisualProbes(canonicalSlides.map((slide) => slide.visualProbe), policy);
 
     return {
       version: "1.0.0",
@@ -453,6 +475,7 @@ export async function runBrowserQa(outputDir, options = {}) {
       print,
       findings,
       contactSheets: [{ path: relative(resolvedOutput, contactSheetPath).replaceAll("\\", "/") }],
+      visualProbes,
       measurements: canonicalSlides.map((slide) => ({
         slideId: slide.slideId,
         order: slide.order,

@@ -47,8 +47,9 @@ test("build emits the complete pending offline contract without sibling dependen
   const css = await readFile(join(output, "assets", "deck.css"), "utf8");
   assert.match(html, /class="pptx-deck"/);
   assert.equal((html.match(/class="pptx-slide /g) ?? []).length, 3);
-  assert.equal((html.match(/data-layout-role="decoration"/g) ?? []).length, 5);
+  assert.equal((html.match(/data-layout-role="decoration"/g) ?? []).length, 4);
   assert.match(html, /data-pptx-id="slide-cover-decor-orb" data-pptx-kind="shape"/);
+  assert.doesNotMatch(html, /data-pptx-id="slide-actions-decor-orb"/);
   assert.match(html, /data-pptx-id="slide-closing-decor-band" data-pptx-kind="shape"/);
   assert.doesNotMatch(css, /\.pptx-slide\s*\{[^}]*gradient/s);
   assert.doesNotMatch(css, /\.cover-slide\s*\{[^}]*gradient/s);
@@ -77,6 +78,35 @@ test("build emits static process connector geometry for script-stripped conversi
     "M 547 360 L 568 360 L 568 360 L 589 360",
     "M 841.5 360 L 862.5 360 L 862.5 360 L 883.5 360"
   ]);
+});
+
+test("renders reviewed table and chart archetypes as structured editable markers", async () => {
+  const { path, plan } = await examplePlan("minimal");
+  const variant = structuredClone(plan);
+  const slide = variant.slides[1];
+  slide.intent = "table-chart-diagram";
+  slide.layoutArchetype = "table-chart-diagram";
+  slide.visualRole = "结构化表格与原生图表";
+  slide.focalPoint = "一张表与一个图表说明试点信号";
+  slide.slots = {
+    chart: {
+      kind: "horizontalBar",
+      data: [{
+        label: "试点覆盖",
+        value: 42,
+        claim: { text: "试点覆盖达到批准范围。", factStatus: "provided", sourceRefs: ["source-brief"] }
+      }]
+    },
+    caption: { text: "图表显示批准的试点信号。", factStatus: "provided", sourceRefs: ["source-brief"] }
+  };
+  refreshBindings(variant);
+  const output = await mkdtemp(join(tmpdir(), "text-to-html-structured-"));
+  await buildDeck(variant, path, output);
+  const html = await readFile(join(output, "index.html"), "utf8");
+  assert.match(html, /data-pptx-kind="chart"/);
+  assert.match(html, /data-pptx-chart="\{&quot;kind&quot;:&quot;horizontalBar&quot;/);
+  assert.match(html, /data-chart-label="horizontalBar/);
+  assert.doesNotMatch(html, /data-pptx-kind="image"/);
 });
 
 test("metric values retain claim-level sources and show uncertainty labels", async () => {
