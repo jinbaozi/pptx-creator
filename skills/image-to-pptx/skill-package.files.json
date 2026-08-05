@@ -3,6 +3,7 @@
   "skillName": "image-to-pptx",
   "files": [
     "LICENSE",
+    "README.md",
     "SKILL.md",
     "package-lock.json",
     "package.json",

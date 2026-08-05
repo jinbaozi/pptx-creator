@@ -3,6 +3,7 @@
   "skillName": "text-to-html",
   "files": [
     "LICENSE",
+    "README.md",
     "SKILL.md",
     "package-lock.json",
     "package.json",
