@@ -14,16 +14,40 @@ package or output manifest remains.
 | Mobile HTML diagnostic | `html-mobile-report.json` | Reported separately; not used as PPTX geometry because slides use the desktop canvas |
 | Manifest contract | `contract-report.json` | Slide size, elements, object bounds, IDs, and local resource paths must be valid |
 | Full-slide raster prohibition | `fallback-ledger.json` | Zero full-slide raster violations |
-| Native coverage | `editable-report.json` | Editability level at least 3 and native coverage at least 0.90 |
+| Native object coverage | `editable-report.json` | Default: editability level at least 3 and `nativeObjectCoverage` at least 0.90; `nativeCoverage` is an equal deprecated alias |
+| Semantic editability coverage | `editable-report.json` | Report per-page weighted evidence; disabled by default and required at least 0.90 by `replica-strict` |
 | Layout safety | `layout-safety-report.json` | Zero critical manifest layout findings |
-| PPTX geometry | `pptx-geometry-report.json` | Zero critical OOXML boundary, overlap, ordering, and connector findings |
+| PPTX geometry | `pptx-geometry-report.json` | Zero critical OOXML boundary, overlap, ordering, connector, and explicit-group child/transform findings |
+| Structure fidelity | `structure-fidelity-report.json` | Text SHA-256, code whitespace, key-heading lines, shape geometry, border sides, native chart object/relationship/type/count, and explicit-group child/order/transform checks must have zero critical findings; manifest/PPTX bindings must match |
 | Target-office render | `evidence/attempt-N/render/preview-report.json` | LibreOffice must render one preview for every slide |
-| Visual comparison | `visual-comparison.json` | Maximum per-slide mean absolute channel difference must be at or below the configured threshold |
+| Visual comparison | `visual-comparison.json` | Version 2.0.0 full-page dimensions, SSIM, normalized MAE, and deterministic tile evidence must pass |
+| Component visual comparison | `component-comparison.json`, `components/summary.json` | Strict only: every explicit key component must pass SSIM >= 0.94 and normalized MAE <= 0.05; missing keys are unavailable and fail |
 
 The default visual threshold is `48` on a `0..255` RGB-channel scale. The report
 also records mean difference, minimum similarity, image sizes, source/candidate
 hashes, and per-slide diff images. Do not interpret similarity alone as proof;
 all gates must pass.
+
+## Quality profiles
+
+`--quality-profile default` preserves the normal level-3/native-object-coverage
+gate. Its semantic threshold is `null` (reported but not blocking), and it does
+not require component regions. `--quality-profile replica-strict` raises the
+editability gate to level 4, requires native-object and semantic coverage at
+least `0.90`, whole-slide SSIM at least `0.90`, whole-slide normalized MAE at
+most `0.05`, component SSIM at least `0.94`, component normalized MAE at most
+`0.05`, zero full-slide raster and critical structure findings, and at least
+one valid `data-pptx-visual-key="true"`/native-group/chart/pre/code component.
+Unknown profile names are `E_ARGUMENT` failures.
+
+Editability coverage is calculated per slide from clipped rectangular regions
+using a deterministic union (no overlap double counting). Whole visual layers
+are selected in manifest z-order; structured groups count once and their
+children are excluded from the parent area. Evidence records each rectangle's
+classification, area, weight, z-order, and visible contribution. Weights are:
+native text/shape/line/table/chart/photo `1.0`, structured native group `0.95`,
+decorative SVG `0.80`, text-bearing SVG `0.40`, chart/architecture SVG `0.20`,
+and cropped/local raster fallback `0.0`.
 
 ## Bounded repair
 
@@ -50,9 +74,11 @@ Accept a delivery only when all of these are true:
 qa-report.status == "passed"
 qa-report.gates.layoutSafety.criticalCount == 0
 qa-report.gates.pptxGeometry.criticalCount == 0
+qa-report.gates.structureFidelity.criticalCount == 0
 qa-report.gates.visual.passed == true
 qa-report.gates.editability.passed == true
 qa-report.gates.fullSlideRaster.violations == 0
+# For replica-strict, also require qa-report.gates.visual.components.passed == true
 ```
 
 Then inspect:

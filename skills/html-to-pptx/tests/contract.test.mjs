@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
   HtmlToPptxError,
+  injectNativeCharts,
   resolveHtmlInput
 } from "../scripts/convert.mjs";
 import {
@@ -99,5 +100,14 @@ describe("presentation-package 1.0.0 input contract", () => {
     await expect(resolveHtmlInput(join(root, "package"))).rejects.toMatchObject({
       code: "E_PROTOCOL_PATH"
     });
+  });
+
+  it("keeps legacy chart markers on the fidelity-first contract path", () => {
+    const manifest = { slides: [{ id: "slide-001", elements: [] }] };
+    const html = `<section><div data-pptx-id="chart-001" data-pptx-chart='{"kind":"groupedBar","data":[{"label":"A","series":{"first":1}}]}'></div></section>`;
+    expect(injectNativeCharts(html, manifest, {
+      elements: [{ id: "chart-001", slideIndex: 0, x: 1, y: 1, w: 4, h: 3 }]
+    })).toEqual([{ slideId: "slide-001", elementId: "chart-001", kind: "groupedBar" }]);
+    expect(manifest.slides[0].elements[0]).toMatchObject({ type: "chart", kind: "groupedBar" });
   });
 });

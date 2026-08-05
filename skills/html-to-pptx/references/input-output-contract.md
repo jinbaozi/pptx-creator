@@ -8,6 +8,11 @@ The public entry point is:
 node scripts/convert.mjs <input> <output-directory> [options]
 ```
 
+Supported quality profiles are `default` and `replica-strict`; an unknown
+`--quality-profile` is an `E_ARGUMENT` error. The default keeps level >= 3 and
+native-object coverage >= 0.90. Strict additionally requires semantic and
+component visual thresholds described in [quality-gates.md](quality-gates.md).
+
 `<input>` may be:
 
 1. A readable `.html` or `.htm` file.
@@ -65,10 +70,13 @@ Recommended semantics:
 | `data-title` | Page title in reports and notes |
 | `data-notes` | Speaker notes written to PPTX |
 | `data-pptx-id` | Stable native-object identifier |
-| `data-pptx-kind` | Explicit type such as `line`, `table`, or `chart` |
+| `data-pptx-kind` | Explicit type such as `line`, `table`, `chart`, or flat `group` |
+| `data-pptx-background` | Optional explicit group background marker; only `grid` is supported and it must be paired with a background-role group |
+| `data-pptx-visual-key="true"` | Opts a stable element into strict local component visual comparison; regions are clipped to slide bounds |
+| `data-pptx-semantic` / `data-pptx-text-bearing` | Explicit SVG semantic classification metadata used for deterministic editability weights |
 | `data-source-id` / `data-target-id` | Connector anchor targets |
 | `data-max-lines` | Text-fit constraint |
-| `data-pptx-chart` | JSON data for supported native chart primitives |
+| `data-pptx-chart` | JSON data for supported native chart objects; set `renderMode` to `native` or `semantic` explicitly |
 
 JavaScript-generated content is outside the contract. The secured browser copy
 removes script elements and inline event handlers before layout measurement.
@@ -103,12 +111,28 @@ A passed run produces:
 | `layout-safety-report.json` | Accepted manifest layout gate |
 | `pptx-geometry-report.json` | Accepted OOXML geometry gate |
 | `visual-comparison.json` | Slide-by-slide render difference |
+| `component-regions.json` | Deterministic key-component IDs, source/kind, slide indices, and measured pixel boxes |
+| `component-comparison.json` | Version 2.0.0 component crops, exact sizes, SSIM, normalized MAE, and pass status (strict runs) |
+| `component-diff/` and `components/summary.json` | Per-component diff images and aggregate strict visual evidence |
+| `structure-fidelity-report.json` | Blocking text, code-whitespace, heading-line, shape, border, native chart, and explicit-group structure audit bound to the manifest and PPTX hashes |
 | `preview/` | Accepted PPTX page renders and contact sheet |
 | `evidence/` | Source screenshots and each candidate attempt |
 
 Paths in reports are evidence paths, not APIs. Downstream automation should use
 `presentation-package.json`, `output-manifest.json`, and the named top-level
-reports.
+reports. A passed delivery must include `structure-fidelity-report.json` with
+`status: "passed"`, `summary.criticalCount: 0`, and matching
+`bindings.manifestHash`/`bindings.pptxHash`; the same report is listed in the
+protocol `validation.reports` and output artifacts. Failed attempts retain
+their per-attempt evidence but never publish a passed structure-fidelity report
+as a final delivery.
+
+`editable-report.json` is version `2.0.0`. It exposes
+`nativeObjectCoverage`, `semanticEditabilityCoverage`, per-page evidence and
+the deterministic classification/area/weight records. `nativeCoverage` remains
+an equal-valued deprecated alias for older consumers. The same fields are
+mirrored in `fallback-ledger.json`, `qa-report.json`, attempt records, the
+conversion result, and the Markdown reports.
 
 ## Compatibility behavior
 

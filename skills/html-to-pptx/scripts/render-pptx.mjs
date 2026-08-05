@@ -6,8 +6,9 @@ import pptxgen from "pptxgenjs";
 import { parseDesignFile } from "./parse-design-md.mjs";
 import { expandChartElement, nativeChartSpec } from "./lib/chart-renderer.mjs";
 import { expandDiagramElement } from "./lib/diagram-compiler.mjs";
+import { applyPptxGroups } from "./lib/group-renderer.mjs";
 
-const SHAPES = { rect: "rect", roundRect: "roundRect", ellipse: "ellipse" };
+const SHAPES = { rect: "rect", roundRect: "roundRect", pill: "roundRect", circle: "ellipse", ellipse: "ellipse" };
 const IMAGE_SHAPES = new Set(["rect", "roundRect", "ellipse"]);
 
 function fail(message) {
@@ -76,6 +77,9 @@ function textOptions(element, design, language) {
     valign: style.valign ?? "top",
     charSpacing: style.charSpacing,
     lineSpacingMultiple: style.pptxLineHeight ?? style.lineHeight ?? typography.lineHeight,
+    // Every text box is authored with an explicit geometry/line policy.  Do
+    // not let PowerPoint or another viewer shrink or resize it implicitly.
+    fit: "none",
     transparency: style.transparency,
     shadow: shadowOptions(style.shadow),
     margin: style.margin ?? 0.05
@@ -83,6 +87,43 @@ function textOptions(element, design, language) {
   const bullet = bulletOptions(style.bullet);
   if (bullet) options.bullet = bullet;
   return options;
+}
+
+export function forcedLineBreakOffsets(element) {
+  const explicit = Array.isArray(element?.lineBreakOffsets)
+    ? element.lineBreakOffsets.map(Number).filter((value) => Number.isInteger(value) && value > 0)
+    : [];
+  if (explicit.length > 0) return [...new Set(explicit)].sort((a, b) => a - b);
+  const lines = Array.isArray(element?.renderedLines) ? element.renderedLines : [];
+  if (lines.length < 2) return [];
+  const offsets = [];
+  let offset = 0;
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    offset += String(lines[index] ?? "").length;
+    offsets.push(offset);
+  }
+  return offsets;
+}
+
+export function materializeLineBreaks(text, element) {
+  const source = String(text ?? "");
+  const offsets = forcedLineBreakOffsets(element).filter((offset) => offset < source.length);
+  const preserveWhitespace = Boolean(element?.style?.preserveWhitespace)
+    || ["pre", "pre-wrap", "break-spaces"].includes(String(element?.style?.whiteSpace ?? "").toLowerCase());
+  if (offsets.length === 0) return source;
+  let cursor = 0;
+  let output = "";
+  for (const offset of offsets) {
+    if (offset <= cursor) continue;
+    output += source.slice(cursor, offset);
+    if (source[offset] === "\n") cursor = offset;
+    else {
+      output += "\n";
+      cursor = offset;
+      if (!preserveWhitespace && source[cursor] === " ") cursor += 1;
+    }
+  }
+  return output + source.slice(cursor);
 }
 
 function bulletOptions(bullet) {
@@ -121,7 +162,7 @@ function componentStyle(element, design) {
 }
 
 function roundRectAdjustment(element, style) {
-  const radiusPx = Number(style.borderRadius ?? style.radius ?? style.rounded);
+  const radiusPx = Number(style.borderRadius ?? style.borderRadiusY ?? style.radius ?? style.rounded);
   const shortSidePx = Math.min(Number(element.w), Number(element.h)) * 96;
   if (!(radiusPx >= 0 && shortSidePx > 0)) return null;
   return Math.round(Math.max(0, Math.min(50000, radiusPx / shortSidePx * 100000)));
@@ -228,13 +269,29 @@ function richRunOptions(run, design, language, fallbackText = "") {
 
 function richTextRuns(element, design, language) {
   if (!Array.isArray(element?.runs) || element.runs.length === 0) return null;
-  return element.runs
-    .map((run) => {
+  const offsets = new Set(forcedLineBreakOffsets(element));
+  const preserveWhitespace = Boolean(element?.style?.preserveWhitespace)
+    || ["pre", "pre-wrap", "break-spaces"].includes(String(element?.style?.whiteSpace ?? "").toLowerCase());
+  let sourceOffset = 0;
+  const result = [];
+  for (const run of element.runs) {
       const text = typeof run === "string" ? run : String(run?.text ?? "");
-      if (!text) return null;
-      return { text, options: richRunOptions(run, design, language, text) };
-    })
-    .filter(Boolean);
+      if (!text) continue;
+      const options = richRunOptions(run, design, language, text);
+      let cursor = offsets.has(sourceOffset) && !preserveWhitespace && text[0] === " " ? 1 : 0;
+      for (let index = 1; index <= text.length; index += 1) {
+        if (!offsets.has(sourceOffset + index)) continue;
+        if (index > cursor) result.push({
+          text: text.slice(cursor, index),
+          options: { ...options, ...(text[index] === "\n" ? {} : { breakLine: true }) }
+        });
+        cursor = index;
+        if (!preserveWhitespace && text[cursor] === " ") cursor += 1;
+      }
+      if (cursor < text.length) result.push({ text: text.slice(cursor), options });
+      sourceOffset += text.length;
+  }
+  return result.length > 0 ? result : null;
 }
 
 function addText(slide, element, design, language) {
@@ -248,7 +305,7 @@ function addText(slide, element, design, language) {
   if (element.id) opts.objectName = element.id;
   const hyperlink = hyperlinkOptions(element);
   if (hyperlink) opts.hyperlink = hyperlink;
-  slide.addText(richTextRuns(element, design, language) ?? element.text ?? "", opts);
+  slide.addText(richTextRuns(element, design, language) ?? materializeLineBreaks(element.text ?? "", element), opts);
 }
 
 function addShape(slide, element, design) {
@@ -316,6 +373,31 @@ async function patchGradientFills(pptxPath, gradientPatches) {
       xml = xml.replace(shapePattern, `$1${gradientXml}$3`);
     }
     zip.file(slidePath, xml);
+  }
+  await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function patchConnectorShapes(pptxPath, connectorPatches) {
+  if (!connectorPatches.some((slide) => slide.length > 0)) return;
+  const zip = await JSZip.loadAsync(await readFile(pptxPath));
+  for (const [slideIndex, ids] of connectorPatches.entries()) {
+    if (!ids?.length) continue;
+    const path = `ppt/slides/slide${slideIndex + 1}.xml`;
+    const file = zip.file(path);
+    if (!file) continue;
+    const names = new Set(ids.map((id) => String(id)));
+    let xml = await file.async("string");
+    xml = xml.replace(/<p:sp>[\s\S]*?<\/p:sp>/g, (block) => {
+      const name = block.match(/<p:cNvPr\b[^>]*\bname="([^"]+)"/)?.[1] ?? "";
+      if (!names.has(name)) return block;
+      return block
+        .replace(/^<p:sp>/, "<p:cxnSp>")
+        .replace(/<p:nvSpPr>/, "<p:nvCxnSpPr>")
+        .replace(/<p:cNvSpPr\s*\/?\s*>/, "<p:cNvCxnSpPr/>")
+        .replace(/<\/p:nvSpPr>/, "</p:nvCxnSpPr>")
+        .replace(/<\/p:sp>$/, "</p:cxnSp>");
+    });
+    zip.file(path, xml);
   }
   await writeFile(pptxPath, await zip.generateAsync({ type: "nodebuffer" }));
 }
@@ -995,6 +1077,7 @@ async function main() {
 
   const countersBySlide = [];
   const gradientPatches = [];
+  const connectorPatches = [];
   const backgroundGradientPatches = [];
   const imageShapePatches = [];
   const roundRectPatches = [];
@@ -1017,6 +1100,11 @@ async function main() {
         .filter((element) => element.type === "shape" && element.style?.gradient)
         .map((element) => ({ id: element.id, gradient: element.style.gradient }))
     );
+    connectorPatches.push(
+      renderableElements
+        .filter((element) => element.type === "line" && element.id && element.connector)
+        .map((element) => element.id)
+    );
     imageShapePatches.push(
       renderableElements
         .filter((element) => element.type === "image" && element.id && IMAGE_SHAPES.has(element.imageShape))
@@ -1024,7 +1112,7 @@ async function main() {
     );
     roundRectPatches.push(
       renderableElements
-        .filter((element) => element.type === "shape" && element.shape === "roundRect" && element.id)
+        .filter((element) => element.type === "shape" && ["roundRect", "pill"].includes(element.shape) && element.id)
         .map((element) => ({ id: element.id, adjustment: roundRectAdjustment(element, componentStyle(element, design)) }))
         .filter((patch) => patch.adjustment !== null)
     );
@@ -1059,6 +1147,7 @@ async function main() {
 
   await pptx.writeFile({ fileName: outputPath });
   await patchGradientFills(outputPath, gradientPatches);
+  await patchConnectorShapes(outputPath, connectorPatches);
   await patchBackgroundGradientFills(outputPath, backgroundGradientPatches);
   await patchImageShapes(outputPath, imageShapePatches);
   await patchRoundRectAdjustments(outputPath, roundRectPatches);
@@ -1067,6 +1156,7 @@ async function main() {
   await patchTextDirections(outputPath, textDirectionPatches);
   await patchTextRtl(outputPath, textRtlPatches);
   await patchTextStrokes(outputPath, textStrokePatches);
+  await applyPptxGroups(outputPath, manifest);
   const editabilityCounter = aggregateCounters(countersBySlide);
   const fontNames = collectFontNames(manifest, design).map((requested) => ({
     element: "design-tokens",

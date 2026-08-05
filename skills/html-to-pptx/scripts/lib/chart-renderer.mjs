@@ -1,13 +1,31 @@
 // Expands the V2 chart vocabulary into editable primitive elements
 // (shape/line/text).
 
-const STACK_LIKE_KINDS = new Set(["stackedBar", "groupedBar"]);
-const SUPPORTED_KINDS = new Set([
+export const CHART_KINDS = new Set([
+  "stackedBar",
+  "groupedBar",
+  "horizontalBar",
+  "kpiGroup",
+  "sparkline",
+  "line",
+  "area",
+  "lineArea"
+]);
+export const FIDELITY_CHART_KINDS = new Set([
   "stackedBar",
   "groupedBar",
   "horizontalBar",
   "kpiGroup",
   "sparkline"
+]);
+const STACK_LIKE_KINDS = new Set(["stackedBar", "groupedBar"]);
+const NATIVE_CHART_KINDS = new Set([
+  "stackedBar",
+  "groupedBar",
+  "horizontalBar",
+  "line",
+  "area",
+  "lineArea"
 ]);
 
 function resolveDesignValue(value, tokens) {
@@ -380,56 +398,129 @@ export function isNativeChartElement(element) {
   return ["native", "semantic", "semantic-first"].includes(String(mode ?? "").trim().toLowerCase());
 }
 
-function nativeSeriesData(element) {
-  const data = Array.isArray(element?.data) ? element.data : [];
-  const kind = element.kind;
-  if (kind === "horizontalBar") {
-    return [{
-      name: element.style?.seriesName ?? "Value",
-      labels: data.map((point) => String(point?.label ?? "")),
-      values: data.map((point) => Number(point?.value) || 0)
-    }];
+function finiteChartNumber(value, path) {
+  if (value === null || value === undefined || value === "" || typeof value === "boolean") {
+    throw new Error(`${path} must be a finite numeric value`);
   }
-  const seriesNames = [];
-  for (const point of data) {
-    for (const name of Object.keys(numericSeries(point?.series))) {
-      if (!seriesNames.includes(name)) seriesNames.push(name);
+  const number = Number(value);
+  if (!Number.isFinite(number)) throw new Error(`${path} must be a finite numeric value`);
+  return number;
+}
+
+function chartPointLabel(point, index) {
+  if (!point || typeof point !== "object" || Array.isArray(point)) {
+    throw new Error(`chart data point ${index + 1} must be an object`);
+  }
+  if (!Object.prototype.hasOwnProperty.call(point, "label") || point.label === null || point.label === undefined) {
+    throw new Error(`chart data point ${index + 1} requires a label`);
+  }
+  return String(point.label);
+}
+
+function strictNativeSeriesData(element) {
+  const data = element?.data;
+  const id = element?.id ?? "chart";
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error(`chart ${id} requires a non-empty data array`);
+  }
+  const labels = data.map((point, index) => chartPointLabel(point, index));
+  const valueFlags = data.map((point) => Object.prototype.hasOwnProperty.call(point, "value"));
+  const seriesFlags = data.map((point) => point?.series !== undefined);
+  const hasValues = valueFlags.some(Boolean);
+  const hasSeries = seriesFlags.some(Boolean);
+  if (hasValues && hasSeries) {
+    throw new Error(`chart ${id} data must use one consistent value or series shape`);
+  }
+  if (!hasValues && !hasSeries) {
+    throw new Error(`chart ${id} data requires numeric value or series fields`);
+  }
+
+  if (hasValues) {
+    if (!valueFlags.every(Boolean)) throw new Error(`chart ${id} data has inconsistent value fields`);
+    const values = data.map((point, index) => finiteChartNumber(point.value, `chart ${id} data[${index}].value`));
+    return [{ name: String(element.style?.seriesName ?? "Value"), labels, values }];
+  }
+
+  if (!seriesFlags.every(Boolean) || data.some((point) => !point.series || typeof point.series !== "object" || Array.isArray(point.series))) {
+    throw new Error(`chart ${id} data series must be consistent objects`);
+  }
+  const seriesNames = Object.keys(data[0].series);
+  if (seriesNames.length === 0) throw new Error(`chart ${id} data series must not be empty`);
+  for (const [index, point] of data.entries()) {
+    const names = Object.keys(point.series);
+    if (names.length !== seriesNames.length || seriesNames.some((name) => !Object.prototype.hasOwnProperty.call(point.series, name))) {
+      throw new Error(`chart ${id} data series keys are inconsistent at data[${index}]`);
     }
   }
-  const labels = data.map((point) => String(point?.label ?? ""));
   return seriesNames.map((name) => ({
     name: String(name),
     labels,
-    values: data.map((point) => numericSeries(point?.series)[name] || 0)
+    values: data.map((point, index) => finiteChartNumber(point.series[name], `chart ${id} data[${index}].series.${name}`))
   }));
+}
+
+export function validateNativeChartData(element) {
+  if (!element || element.type !== "chart") throw new Error("native chart data requires a chart element");
+  if (!NATIVE_CHART_KINDS.has(element.kind)) {
+    throw new Error(`native chart mode does not support ${String(element.kind ?? "missing")}; use fidelity-first primitives`);
+  }
+  const series = strictNativeSeriesData(element);
+  if (["groupedBar", "stackedBar"].includes(element.kind) && series.length === 1 && element.data.some((point) => Object.prototype.hasOwnProperty.call(point, "value"))) {
+    throw new Error(`chart ${element.id ?? "chart"} ${element.kind} requires series data`);
+  }
+  if (element.kind === "horizontalBar" && series.length !== 1) {
+    throw new Error(`chart ${element.id ?? "chart"} horizontalBar requires a single value series`);
+  }
+  if (element.kind === "lineArea" && series.length !== 1) {
+    throw new Error(`chart ${element.id ?? "chart"} lineArea currently requires a single series`);
+  }
+  return series;
 }
 
 export function nativeChartSpec(element, designTokens = {}) {
   if (!element || element.type !== "chart" || !isNativeChartElement(element)) return null;
-  if (!["groupedBar", "stackedBar", "horizontalBar"].includes(element.kind)) {
-    throw new Error(`native chart mode does not support ${String(element.kind ?? "missing")}; use fidelity-first primitives`);
-  }
   const style = resolveDesignValue(element.style ?? {}, designTokens);
   const resolvedElement = { ...element, style };
+  const seriesData = validateNativeChartData(resolvedElement);
   const palette = resolvePalette(resolvedElement).map((color) => String(color).replace(/^#/, ""));
+  const baseOptions = {
+    x: element.x,
+    y: element.y,
+    w: element.w,
+    h: element.h,
+    ...(element.id ? { objectName: element.id } : {}),
+    ...(palette.length > 0 ? { chartColors: palette } : {}),
+    showLegend: style.showLegend !== false,
+    showValue: style.showValues !== false,
+    ...(style.showTitle ? { showTitle: true, title: String(style.title ?? element.title ?? "") } : {}),
+    ...(style.catAxisLabelFontSize ? { catAxisLabelFontSize: Number(style.catAxisLabelFontSize) } : {}),
+    ...(style.valAxisLabelFontSize ? { valAxisLabelFontSize: Number(style.valAxisLabelFontSize) } : {})
+  };
+  if (["groupedBar", "stackedBar", "horizontalBar"].includes(element.kind)) {
+    return {
+      type: "bar",
+      data: seriesData,
+      options: {
+        ...baseOptions,
+        barDir: element.kind === "horizontalBar" ? "bar" : "col",
+        barGrouping: element.kind === "stackedBar" ? "stacked" : "clustered"
+      }
+    };
+  }
+  if (element.kind === "lineArea") {
+    return {
+      type: [
+        { type: "area", data: seriesData, options: { ...baseOptions, objectName: `${element.id ?? "chart"}__area` } },
+        { type: "line", data: seriesData, options: { ...baseOptions, objectName: `${element.id ?? "chart"}__line` } }
+      ],
+      data: undefined,
+      options: baseOptions
+    };
+  }
   return {
-    type: "bar",
-    data: nativeSeriesData(resolvedElement),
-    options: {
-      x: element.x,
-      y: element.y,
-      w: element.w,
-      h: element.h,
-      ...(element.id ? { objectName: element.id } : {}),
-      barDir: element.kind === "horizontalBar" ? "bar" : "col",
-      barGrouping: element.kind === "stackedBar" ? "stacked" : "clustered",
-      ...(palette.length > 0 ? { chartColors: palette } : {}),
-      showLegend: style.showLegend !== false,
-      showValue: style.showValues !== false,
-      ...(style.showTitle ? { showTitle: true, title: String(style.title ?? element.title ?? "") } : {}),
-      ...(style.catAxisLabelFontSize ? { catAxisLabelFontSize: Number(style.catAxisLabelFontSize) } : {}),
-      ...(style.valAxisLabelFontSize ? { valAxisLabelFontSize: Number(style.valAxisLabelFontSize) } : {})
-    }
+    type: element.kind,
+    data: seriesData,
+    options: baseOptions
   };
 }
 
@@ -437,8 +528,8 @@ export function expandChartElement(element) {
   if (!element || element.type !== "chart") return [element];
   if (isNativeChartElement(element)) return [element];
   const kind = element.kind;
-  if (!SUPPORTED_KINDS.has(kind)) {
-    throw new Error(`unsupported chart kind ${String(kind ?? "missing")}; expected ${[...SUPPORTED_KINDS].join(",")}`);
+  if (!CHART_KINDS.has(kind)) {
+    throw new Error(`unsupported chart kind ${String(kind ?? "missing")}; expected ${[...CHART_KINDS].join(",")}`);
   }
   if (STACK_LIKE_KINDS.has(kind)) {
     if (kind === "groupedBar") return expandGroupedBar(element);
@@ -446,5 +537,8 @@ export function expandChartElement(element) {
   }
   if (kind === "horizontalBar") return expandHorizontalBar(element);
   if (kind === "kpiGroup") return expandKpiGroup(element);
+  if (["line", "area", "lineArea"].includes(kind)) {
+    throw new Error(`chart ${element.id ?? "unknown"} kind ${kind} requires native or semantic renderMode`);
+  }
   return expandSparkline(element);
 }

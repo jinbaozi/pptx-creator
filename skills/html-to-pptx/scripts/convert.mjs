@@ -48,6 +48,16 @@ import {
 } from "./lib/font-preflight.mjs";
 import { materializeTextFonts } from "./lib/text-fit.mjs";
 import { auditPptxGeometry } from "./lib/pptx-geometry-audit.mjs";
+import { auditStructureFidelity } from "./lib/structure-fidelity.mjs";
+import { reconcileExplicitGroups } from "./lib/html-to-manifest-core.mjs";
+import { calculateEditabilityCoverage, EDITABILITY_COVERAGE_VERSION } from "./lib/editability-coverage.mjs";
+import { buildComponentRegions } from "./lib/component-regions.mjs";
+import {
+  CHART_KINDS,
+  FIDELITY_CHART_KINDS,
+  isNativeChartElement,
+  validateNativeChartData
+} from "./lib/chart-renderer.mjs";
 
 const execFileAsync = promisify(execFile);
 const SKILL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -56,8 +66,34 @@ const PROTOCOL_VERSION = "1.0.0";
 const MIN_BROWSER_TIMEOUT_MS = 90_000;
 const MAX_REPAIR_ATTEMPTS = 3;
 const DEFAULT_VISUAL_THRESHOLD = 48;
+const DEFAULT_SSIM_THRESHOLD = 0.85;
+const DEFAULT_NORMALIZED_MAE_THRESHOLD = 12 / 255;
 const MIN_EDITABILITY_LEVEL = 3;
 const MIN_NATIVE_COVERAGE = 0.90;
+const QUALITY_PROFILES = Object.freeze({
+  default: Object.freeze({
+    name: "default",
+    minimumLevel: MIN_EDITABILITY_LEVEL,
+    minimumNativeObjectCoverage: MIN_NATIVE_COVERAGE,
+    minimumSemanticEditabilityCoverage: null,
+    minimumSsim: DEFAULT_SSIM_THRESHOLD,
+    maximumNormalizedMae: DEFAULT_NORMALIZED_MAE_THRESHOLD,
+    minimumComponentSsim: null,
+    maximumComponentNormalizedMae: null,
+    requireComponents: false
+  }),
+  "replica-strict": Object.freeze({
+    name: "replica-strict",
+    minimumLevel: 4,
+    minimumNativeObjectCoverage: MIN_NATIVE_COVERAGE,
+    minimumSemanticEditabilityCoverage: 0.90,
+    minimumSsim: 0.90,
+    maximumNormalizedMae: 0.05,
+    minimumComponentSsim: 0.94,
+    maximumComponentNormalizedMae: 0.05,
+    requireComponents: true
+  })
+});
 const PROTOCOL_FILENAMES = [
   "presentation-package.json",
   "deck-manifest.json"
@@ -77,7 +113,10 @@ const GENERATED_TOP_LEVEL = [
   "contract-report.json",
   "layout-safety-report.json",
   "pptx-geometry-report.json",
+  "structure-fidelity-report.json",
   "visual-comparison.json",
+  "component-comparison.json",
+  "component-regions.json",
   "html-layout-report.json",
   "html-mobile-report.json",
   "failure-report.json",
@@ -88,18 +127,12 @@ const GENERATED_TOP_LEVEL = [
   "design-tokens.json",
   "preview",
   "visual-diff",
+  "component-diff",
+  "components",
   "evidence",
   "assets",
   "design-system"
 ];
-const CHART_KINDS = new Set([
-  "stackedBar",
-  "groupedBar",
-  "horizontalBar",
-  "kpiGroup",
-  "sparkline"
-]);
-
 export class HtmlToPptxError extends Error {
   constructor(code, message, details = undefined) {
     super(message);
@@ -119,11 +152,19 @@ function numberOption(value, label) {
   return number;
 }
 
+export function resolveQualityProfile(name = "default") {
+  if (!Object.prototype.hasOwnProperty.call(QUALITY_PROFILES, name)) {
+    fail("E_ARGUMENT", `quality profile must be one of: ${Object.keys(QUALITY_PROFILES).join("|")}`);
+  }
+  return QUALITY_PROFILES[name];
+}
+
 export function parseArgs(argv) {
   const options = {
     maxRepairAttempts: MAX_REPAIR_ATTEMPTS,
     browserTimeoutMs: MIN_BROWSER_TIMEOUT_MS,
     visualThreshold: DEFAULT_VISUAL_THRESHOLD,
+    qualityProfile: "default",
     allowRemoteAssets: false,
     overwrite: false
   };
@@ -136,6 +177,11 @@ export function parseArgs(argv) {
       options.browserTimeoutMs = numberOption(argv[++index], arg);
     } else if (arg === "--visual-threshold") {
       options.visualThreshold = numberOption(argv[++index], arg);
+    } else if (arg === "--quality-profile") {
+      const value = argv[++index];
+      if (!value || value.startsWith("--")) fail("E_ARGUMENT", "--quality-profile requires default|replica-strict");
+      options.qualityProfile = value;
+      resolveQualityProfile(options.qualityProfile);
     } else if (arg === "--allow-remote-assets") {
       options.allowRemoteAssets = true;
     } else if (arg === "--overwrite") {
@@ -535,11 +581,34 @@ export function injectNativeCharts(html, manifest, measurements) {
     } catch (error) {
       fail("E_CHART_MARKER", `chart ${id} contains invalid JSON: ${error.message}`);
     }
+    if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+      fail("E_CHART_MARKER", `chart ${id} marker must contain a JSON object`);
+    }
     if (!CHART_KINDS.has(spec.kind)) {
       fail("E_CHART_MARKER", `chart ${id} kind ${spec.kind ?? "missing"} is unsupported; supported=${[...CHART_KINDS].join(",")}`);
     }
-    if (!Array.isArray(spec.data) || spec.data.length === 0) {
-      fail("E_CHART_MARKER", `chart ${id} requires a non-empty data array`);
+    const markerRenderMode = spec.renderMode ?? spec.mode ?? spec.style?.renderMode;
+    const chartElement = {
+      type: "chart",
+      id,
+      kind: spec.kind,
+      ...(markerRenderMode !== undefined ? { renderMode: markerRenderMode } : {}),
+      data: spec.data,
+      style: spec.style ?? {}
+    };
+    if (isNativeChartElement(chartElement)) {
+      try {
+        validateNativeChartData(chartElement);
+      } catch (error) {
+        fail("E_CHART_MARKER", error.message);
+      }
+    } else {
+      if (!FIDELITY_CHART_KINDS.has(spec.kind)) {
+        fail("E_CHART_MARKER", `chart ${id} kind ${spec.kind} requires renderMode native or semantic`);
+      }
+      if (!Array.isArray(spec.data) || spec.data.length === 0) {
+        fail("E_CHART_MARKER", `chart ${id} requires a non-empty data array`);
+      }
     }
     const measurement = measurements.elements.find((entry) => entry.id === id);
     if (!measurement
@@ -551,12 +620,7 @@ export function injectNativeCharts(html, manifest, measurements) {
     slide.elements = (slide.elements ?? [])
       .filter((element) => ![id, `${id}-box`].includes(element.id));
     slide.elements.push({
-      type: "chart",
-      id,
-      kind: spec.kind,
-      ...(spec.renderMode || spec.mode || spec.style?.renderMode ? { renderMode: spec.renderMode ?? spec.mode ?? spec.style?.renderMode } : {}),
-      data: spec.data,
-      style: spec.style ?? {},
+      ...chartElement,
       x: Number(measurement.x),
       y: Number(measurement.y),
       w: Number(measurement.w),
@@ -576,6 +640,18 @@ export function suppressNativeChartDescendants(html, manifest, measurements) {
   for (const node of root.querySelectorAll("[data-pptx-chart]")) {
     const chartId = node.getAttribute("data-pptx-id") ?? node.getAttribute("data-id") ?? node.id;
     if (!chartId) continue;
+    let marker;
+    try {
+      marker = JSON.parse(node.getAttribute("data-pptx-chart"));
+    } catch {
+      continue;
+    }
+    const markerElement = {
+      type: "chart",
+      kind: marker?.kind,
+      renderMode: marker?.renderMode ?? marker?.mode ?? marker?.style?.renderMode
+    };
+    if (!isNativeChartElement(markerElement) && !FIDELITY_CHART_KINDS.has(marker?.kind)) continue;
     const chartElement = manifest.slides
       ?.flatMap((slide) => (slide.elements ?? []).map((element) => ({ slide, element })))
       .find(({ element }) => element.type === "chart" && element.id === chartId);
@@ -762,6 +838,7 @@ export async function applyLocalizedFallbacks(
         slideIndex,
         slideId: slide.id,
         elementId: effect.elementId,
+        ownerElementId: measurement.pseudoOwnerId ?? effect.elementId,
         px: measurement.px,
         inches: {
           x: Number(measurement.x),
@@ -815,11 +892,22 @@ export async function applyLocalizedFallbacks(
       0,
       (slide.elements ?? []).findIndex((element) => element.id === plan.elementId)
     );
+    const ownedIds = new Set([plan.elementId, `${plan.elementId}-box`]);
+    const byId = new Map((slide.elements ?? []).map((element) => [element.id, element]));
+    for (const element of slide.elements ?? []) {
+      let parentId = element.semanticParentId;
+      const seenParents = new Set();
+      while (parentId && !seenParents.has(parentId)) {
+        if (parentId === plan.elementId) {
+          ownedIds.add(element.id);
+          break;
+        }
+        seenParents.add(parentId);
+        parentId = byId.get(parentId)?.semanticParentId ?? null;
+      }
+    }
     slide.elements = (slide.elements ?? [])
-      .filter((element) => ![
-        plan.elementId,
-        `${plan.elementId}-box`
-      ].includes(element.id));
+      .filter((element) => !ownedIds.has(element.id));
     slide.elements.splice(Math.min(index, slide.elements.length), 0, {
       type: "cropped-asset",
       id: `${plan.elementId}-localized-fallback`,
@@ -834,7 +922,8 @@ export async function applyLocalizedFallbacks(
           "native-text",
           "native-svg"
         ]
-      }
+      },
+      semanticParentId: plan.ownerElementId
     });
     slide.replicaUnsupportedEffects = (slide.replicaUnsupportedEffects ?? [])
       .filter((effect) => effect.elementId !== plan.elementId);
@@ -1076,16 +1165,36 @@ async function renderPreview(pptxPath, outputDir) {
   return report;
 }
 
-async function compareDeck(sourceDir, renderDir, outputPath, threshold) {
+async function compareDeck(sourceDir, renderDir, outputPath, options = {}) {
+  const threshold = Number(options.threshold ?? DEFAULT_VISUAL_THRESHOLD);
   let processError = null;
+  const args = [
+    join(SKILL_ROOT, "scripts", "compare-deck.py"),
+    sourceDir,
+    renderDir,
+    outputPath,
+    "--threshold",
+    String(threshold)
+  ];
+  if (options.ssimThreshold !== undefined && options.ssimThreshold !== null) {
+    args.push("--ssim-threshold", String(options.ssimThreshold));
+  }
+  if (options.normalizedMaeThreshold !== undefined && options.normalizedMaeThreshold !== null) {
+    args.push("--normalized-mae-threshold", String(options.normalizedMaeThreshold));
+  }
+  if (options.componentsPath) {
+    args.push(
+      "--components",
+      options.componentsPath,
+      "--component-ssim-threshold",
+      String(options.componentSsimThreshold ?? options.ssimThreshold ?? 0.85),
+      "--component-normalized-mae-threshold",
+      String(options.componentNormalizedMaeThreshold ?? options.normalizedMaeThreshold ?? DEFAULT_NORMALIZED_MAE_THRESHOLD)
+    );
+  }
   try {
     await execFileAsync(pythonExecutable(), [
-      join(SKILL_ROOT, "scripts", "compare-deck.py"),
-      sourceDir,
-      renderDir,
-      outputPath,
-      "--threshold",
-      String(threshold)
+      ...args
     ], {
       cwd: SKILL_ROOT,
       timeout: 180_000,
@@ -1108,17 +1217,7 @@ async function compareDeck(sourceDir, renderDir, outputPath, threshold) {
   return report;
 }
 
-function countFallbackCoverage(manifest, fallbacks) {
-  const deckArea = Number(manifest.deck.size.width) * Number(manifest.deck.size.height)
-    * Math.max(1, manifest.slides.length);
-  const fallbackArea = fallbacks.reduce(
-    (sum, fallback) => sum + Number(fallback.box?.w ?? 0) * Number(fallback.box?.h ?? 0),
-    0
-  );
-  return Number(Math.max(0, 1 - fallbackArea / deckArea).toFixed(4));
-}
-
-function editabilityReport(intermediate, manifest, fallbacks) {
+function editabilityReport(intermediate, manifest, fallbacks, qualityProfile = QUALITY_PROFILES.default) {
   const counters = intermediate?.editabilityCounter ?? {
     text: 0,
     shape: 0,
@@ -1140,45 +1239,78 @@ function editabilityReport(intermediate, manifest, fallbacks) {
       return result;
     }, zeroCounters());
   };
-  const slideArea = Number(manifest.deck.size.width) * Number(manifest.deck.size.height);
+  const coverage = calculateEditabilityCoverage({
+    manifest,
+    fallbacks,
+    countersBySlide: intermediate?.countersBySlide ?? []
+  });
   const perSlide = manifest.slides.map((slide, slideIndex) => {
     const slideFallbacks = fallbackForSlide(slide, slideIndex);
-    const fallbackArea = slideFallbacks.reduce(
-      (sum, fallback) => sum + Number(fallback.box?.w ?? 0) * Number(fallback.box?.h ?? 0),
-      0
-    );
-    const nativeCoverage = Number(Math.max(0, 1 - fallbackArea / slideArea).toFixed(4));
+    const coverageSlide = coverage.perSlide[slideIndex] ?? {
+      nativeObjectCoverage: 1,
+      semanticEditabilityCoverage: 1,
+      nativeCoverage: 1,
+      semanticEvidence: []
+    };
     const slideCounters = countersForSlide(slide, slideIndex);
     const level = editableLevel(slideCounters);
+    const semanticPassed = qualityProfile.minimumSemanticEditabilityCoverage === null
+      || coverageSlide.semanticEditabilityCoverage >= qualityProfile.minimumSemanticEditabilityCoverage;
     return {
       slideIndex,
       slideId: slide.id,
       level,
-      targetLevel: 4,
-      nativeCoverage,
-      passed: level >= MIN_EDITABILITY_LEVEL && nativeCoverage >= MIN_NATIVE_COVERAGE,
+      targetLevel: qualityProfile.minimumLevel,
+      nativeObjectCoverage: coverageSlide.nativeObjectCoverage,
+      nativeCoverage: coverageSlide.nativeObjectCoverage,
+      semanticEditabilityCoverage: coverageSlide.semanticEditabilityCoverage,
+      semanticEvidence: coverageSlide.semanticEvidence,
+      passed: level >= qualityProfile.minimumLevel
+        && coverageSlide.nativeObjectCoverage >= qualityProfile.minimumNativeObjectCoverage
+        && semanticPassed,
       counters: slideCounters,
       rasterizedRegions: slideFallbacks
     };
   });
   const level = perSlide.length ? Math.min(...perSlide.map((slide) => slide.level)) : editableLevel(counters);
-  const nativeCoverage = perSlide.length
-    ? Math.min(...perSlide.map((slide) => slide.nativeCoverage))
-    : countFallbackCoverage(manifest, fallbacks);
+  const nativeObjectCoverage = coverage.nativeObjectCoverage;
+  const semanticEditabilityCoverage = coverage.semanticEditabilityCoverage;
   return {
-    version: "1.0.0",
+    version: EDITABILITY_COVERAGE_VERSION,
+    qualityProfile: qualityProfile.name,
     level,
-    targetLevel: 4,
+    targetLevel: qualityProfile.minimumLevel,
     passed: perSlide.length
       ? perSlide.every((slide) => slide.passed)
-      : level >= MIN_EDITABILITY_LEVEL && nativeCoverage >= MIN_NATIVE_COVERAGE,
-    nativeCoverage,
+      : level >= qualityProfile.minimumLevel
+        && nativeObjectCoverage >= qualityProfile.minimumNativeObjectCoverage
+        && (qualityProfile.minimumSemanticEditabilityCoverage === null
+          || semanticEditabilityCoverage >= qualityProfile.minimumSemanticEditabilityCoverage),
+    nativeObjectCoverage,
+    /** @deprecated Use nativeObjectCoverage. Kept byte-for-byte equivalent for V1 consumers. */
+    nativeCoverage: nativeObjectCoverage,
+    semanticEditabilityCoverage,
     counters,
     thresholds: {
-      minimumLevel: MIN_EDITABILITY_LEVEL,
-      minimumNativeCoverage: MIN_NATIVE_COVERAGE
+      minimumLevel: qualityProfile.minimumLevel,
+      minimumNativeObjectCoverage: qualityProfile.minimumNativeObjectCoverage,
+      minimumNativeCoverage: qualityProfile.minimumNativeObjectCoverage,
+      minimumSemanticEditabilityCoverage: qualityProfile.minimumSemanticEditabilityCoverage,
+      minimumSsim: qualityProfile.minimumSsim,
+      maximumNormalizedMae: qualityProfile.maximumNormalizedMae,
+      minimumComponentSsim: qualityProfile.minimumComponentSsim,
+      maximumComponentNormalizedMae: qualityProfile.maximumComponentNormalizedMae
     },
     perSlide,
+    coverageEvidence: coverage.perSlide.map((slide) => ({
+      slideIndex: slide.slideIndex,
+      slideId: slide.slideId,
+      nativeObjectCoverage: slide.nativeObjectCoverage,
+      semanticEditabilityCoverage: slide.semanticEditabilityCoverage,
+      fallbackArea: slide.fallbackArea,
+      fallbackRectangles: slide.fallbackRectangles,
+      semanticEvidence: slide.semanticEvidence
+    })),
     editable: [
       "text",
       "shapes",
@@ -1231,7 +1363,7 @@ function protocolComponentType(element) {
   if (element.type === "line") return "connector";
   if (element.type === "cropped-asset") return "image";
   if (["text", "shape", "image", "table", "chart"].includes(element.type)) return element.type;
-  if (element.type === "diagram") return "group";
+  if (element.type === "diagram" || element.type === "group") return "group";
   if (element.type === "icon") return "shape";
   return "unknown";
 }
@@ -1612,12 +1744,16 @@ function qaMarkdown(qa) {
     `- Repair attempts: ${qa.repairAttempts}`,
     `- HTML critical findings: ${qa.gates.htmlLayout.criticalCount}`,
     `- PPTX geometry critical findings: ${qa.gates.pptxGeometry.criticalCount}`,
+    `- Structure fidelity critical findings: ${qa.gates.structureFidelity.criticalCount}`,
     `- Visual max mean channel difference: ${qa.gates.visual.maxMeanAbsChannelDiff}`,
     `- Visual minimum SSIM: ${qa.gates.visual.minimumSsim}`,
     `- Visual maximum normalized MAE: ${qa.gates.visual.maximumNormalizedMae}`,
     `- Visual worst tile: ${qa.gates.visual.worstTile ? JSON.stringify(qa.gates.visual.worstTile) : "none"}`,
+    `- Visual component status: ${qa.gates.visual.components?.status ?? "disabled"}`,
     `- Editability level: ${qa.gates.editability.level}`,
+    `- Native object coverage: ${qa.gates.editability.nativeObjectCoverage}`,
     `- Native coverage: ${qa.gates.editability.nativeCoverage}`,
+    `- Semantic editability coverage: ${qa.gates.editability.semanticEditabilityCoverage}`,
     "",
     qa.remainingIssues.length
       ? `Remaining issues:\n${qa.remainingIssues.map((issue) => `- ${issue}`).join("\n")}`
@@ -1631,14 +1767,18 @@ function editableMarkdown(report) {
     "# Editability",
     "",
     `- Level: ${report.level}`,
+    `- Quality profile: ${report.qualityProfile ?? "default"}`,
+    `- Native object coverage: ${report.nativeObjectCoverage}`,
     `- Native coverage: ${report.nativeCoverage}`,
+    `- Semantic editability coverage: ${report.semanticEditabilityCoverage}`,
     `- Local raster regions: ${report.rasterizedRegions.length}`,
     `- Minimum level gate: ${report.thresholds?.minimumLevel ?? 3}`,
-    `- Minimum native coverage gate: ${report.thresholds?.minimumNativeCoverage ?? 0.9}`,
+    `- Minimum native object coverage gate: ${report.thresholds?.minimumNativeObjectCoverage ?? report.thresholds?.minimumNativeCoverage ?? 0.9}`,
+    `- Minimum semantic coverage gate: ${report.thresholds?.minimumSemanticEditabilityCoverage ?? "disabled"}`,
     "",
     "Per-slide evidence:",
     ...(report.perSlide ?? []).map((slide) =>
-      `- ${slide.slideId}: level ${slide.level}, native coverage ${slide.nativeCoverage}, passed ${slide.passed}`
+      `- ${slide.slideId}: level ${slide.level}, native object coverage ${slide.nativeObjectCoverage}, semantic coverage ${slide.semanticEditabilityCoverage}, passed ${slide.passed}`
     ),
     "",
     "Editable object families:",
@@ -1662,7 +1802,7 @@ function failureQaMarkdown(report) {
 
 async function writeFailure(outputDir, error, context = {}) {
   const report = {
-    version: "1.0.0",
+    version: SKILL_VERSION,
     status: "failed",
     code: error.code ?? "E_UNKNOWN",
     message: error.message,
@@ -1672,11 +1812,21 @@ async function writeFailure(outputDir, error, context = {}) {
   };
   await mkdir(outputDir, { recursive: true }).catch(() => {});
   const failedQa = {
-    version: "1.0.0",
+    version: SKILL_VERSION,
     status: "failed",
     code: report.code,
     message: report.message,
     details: report.details,
+    qualityProfile: context.qualityProfile ?? "default",
+    gates: {
+      visual: { components: { status: "unavailable", passed: false } },
+      editability: {
+        nativeObjectCoverage: null,
+        nativeCoverage: null,
+        semanticEditabilityCoverage: null,
+        passed: false
+      }
+    },
     finalPublished: false,
     ...(report.runId ? { runId: report.runId } : {}),
     ...(report.input ? { input: report.input } : {}),
@@ -1697,7 +1847,7 @@ async function writeFailure(outputDir, error, context = {}) {
 
 export async function discardPublishedArtifacts(outputDir) {
   const removed = [];
-  for (const name of ["final.pptx", "final.pptx.pending", "presentation-package.json", "output-manifest.json"]) {
+  for (const name of ["final.pptx", "final.pptx.pending", "presentation-package.json", "output-manifest.json", "structure-fidelity-report.json"]) {
     const path = join(outputDir, name);
     try {
       await lstat(path);
@@ -1725,10 +1875,13 @@ export async function runConversion(inputPath, outputPath, options = {}) {
     maxRepairAttempts: MAX_REPAIR_ATTEMPTS,
     browserTimeoutMs: MIN_BROWSER_TIMEOUT_MS,
     visualThreshold: DEFAULT_VISUAL_THRESHOLD,
+    qualityProfile: "default",
     allowRemoteAssets: false,
     overwrite: false,
     ...options
   };
+  const qualityProfile = resolveQualityProfile(effectiveOptions.qualityProfile);
+  effectiveOptions.qualityProfile = qualityProfile.name;
   if (effectiveOptions.browserTimeoutMs < MIN_BROWSER_TIMEOUT_MS) {
     fail("E_ARGUMENT", `browser timeout must be at least ${MIN_BROWSER_TIMEOUT_MS}ms`);
   }
@@ -1852,6 +2005,11 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       outputDir,
       effectiveOptions.browserTimeoutMs
     );
+    // Native chart injection, descendant suppression, and localized fallbacks
+    // mutate the final paint list. Reconcile explicit groups from the source
+    // DOM now so generated layers and the injected native chart are grouped
+    // in their final contiguous order before rendering/auditing.
+    reconcileExplicitGroups(parse(sourceHtml), manifest, measurements);
     assertNoFullSlideRaster(manifest, fallbacks);
 
     const fontCatalog = await createFontMetricsCatalog();
@@ -1875,12 +2033,19 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       `${JSON.stringify(contract, null, 2)}\n`,
       "utf8"
     );
+    const fallbackCoverage = calculateEditabilityCoverage({ manifest, fallbacks });
+    const componentRegions = buildComponentRegions({ html: sourceHtml, measurements, manifest });
+    const componentRegionsPath = join(outputDir, "component-regions.json");
+    await writeFile(componentRegionsPath, `${JSON.stringify(componentRegions, null, 2)}\n`, "utf8");
     await writeFile(
       join(outputDir, "fallback-ledger.json"),
       `${JSON.stringify({
-        version: "1.0.0",
+        version: EDITABILITY_COVERAGE_VERSION,
         fullSlideRasterForbidden: true,
-        nativeCoverage: countFallbackCoverage(manifest, fallbacks),
+        nativeObjectCoverage: fallbackCoverage.nativeObjectCoverage,
+        /** @deprecated Use nativeObjectCoverage. */
+        nativeCoverage: fallbackCoverage.nativeObjectCoverage,
+        semanticEditabilityCoverage: fallbackCoverage.semanticEditabilityCoverage,
         entries: fallbacks
       }, null, 2)}\n`,
       "utf8"
@@ -1922,6 +2087,16 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         `${JSON.stringify(geometry, null, 2)}\n`,
         "utf8"
       );
+      const structureFidelity = await auditStructureFidelity({
+        manifest,
+        manifestPath,
+        pptxPath: candidatePath
+      });
+      await writeFile(
+        join(attemptDir, "structure-fidelity-report.json"),
+        `${JSON.stringify(structureFidelity, null, 2)}\n`,
+        "utf8"
+      );
       const renderDir = join(attemptDir, "render");
       const preview = await renderPreview(candidatePath, renderDir);
       const sourceScreenshots = join(sourceEvidenceDir, "html-preview");
@@ -1929,16 +2104,35 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         sourceScreenshots,
         renderDir,
         join(attemptDir, "visual-comparison.json"),
-        effectiveOptions.visualThreshold
+        {
+          threshold: effectiveOptions.visualThreshold,
+          ...(qualityProfile.name === "replica-strict"
+            ? {
+              ssimThreshold: qualityProfile.minimumSsim,
+              normalizedMaeThreshold: qualityProfile.maximumNormalizedMae,
+              componentSsimThreshold: qualityProfile.minimumComponentSsim,
+              componentNormalizedMaeThreshold: qualityProfile.maximumComponentNormalizedMae,
+              componentsPath: componentRegionsPath
+            }
+            : {})
+        }
       );
       const editability = editabilityReport(
         renderSummary.intermediate,
         manifest,
-        fallbacks
+        fallbacks,
+        qualityProfile
       );
+      const componentVisual = visual.components ?? null;
+      const componentsPassed = !qualityProfile.requireComponents
+        || Boolean(componentVisual?.summary?.passed === true);
+      const fullSlideRasterPassed = fallbacks.every((fallback) => fallback.fullSlide !== true);
       const passed = layout.summary.criticalCount === 0
         && geometry.summary.criticalCount === 0
+        && structureFidelity.summary.criticalCount === 0
         && visual.summary.passed
+        && componentsPassed
+        && fullSlideRasterPassed
         && editability.passed
         && preview.previewCount === manifest.slides.length;
       const attemptRecord = {
@@ -1946,10 +2140,15 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         passed,
         layout: layout.summary,
         geometry: geometry.summary,
+        structureFidelity: structureFidelity.summary,
         visual: visual.summary,
+        components: componentVisual?.summary ?? { status: "disabled", passed: true },
+        qualityProfile: qualityProfile.name,
         editability: {
           level: editability.level,
+          nativeObjectCoverage: editability.nativeObjectCoverage,
           nativeCoverage: editability.nativeCoverage,
+          semanticEditabilityCoverage: editability.semanticEditabilityCoverage,
           passed: editability.passed,
           thresholds: editability.thresholds,
           perSlide: editability.perSlide
@@ -1965,6 +2164,7 @@ export async function runConversion(inputPath, outputPath, options = {}) {
           layout,
           layoutWire,
           geometry,
+          structureFidelity,
           visual,
           editability,
           preview,
@@ -2000,10 +2200,30 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       "utf8"
     );
     await writeFile(
+      join(outputDir, "structure-fidelity-report.json"),
+      `${JSON.stringify(success.structureFidelity, null, 2)}\n`,
+      "utf8"
+    );
+    await writeFile(
       join(outputDir, "visual-comparison.json"),
       `${JSON.stringify(success.visual, null, 2)}\n`,
       "utf8"
     );
+    if (success.visual.components) {
+      await writeFile(
+        join(outputDir, "component-comparison.json"),
+        `${JSON.stringify(success.visual.components, null, 2)}\n`,
+        "utf8"
+      );
+      const componentDiffSource = join(success.renderDir, "../component-diff");
+      const componentSummarySource = join(success.renderDir, "../components", "summary.json");
+      await access(componentDiffSource);
+      await access(componentSummarySource);
+      await cp(componentDiffSource, join(outputDir, "component-diff"), { recursive: true, force: true });
+      await cp(join(success.renderDir, "../components"), join(outputDir, "components"), { recursive: true, force: true });
+      await access(join(outputDir, "component-diff"));
+      await access(join(outputDir, "components", "summary.json"));
+    }
     const finalPath = join(outputDir, "final.pptx");
     const pendingFinalPath = join(outputDir, "final.pptx.pending");
     await copyFile(success.candidatePath, pendingFinalPath);
@@ -2046,9 +2266,10 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         : [])
     ];
     const qa = {
-      version: "1.0.0",
+      version: "2.0.0",
       runId,
       status: "passed",
+      qualityProfile: qualityProfile.name,
       inputKind: input.inputKind,
       slideCount: manifest.slides.length,
       repairAttempts: success.attempt,
@@ -2060,10 +2281,16 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         manifestContract: contract,
         layoutSafety: success.layout.summary,
         pptxGeometry: success.geometry.summary,
-        visual: success.visual.summary,
+        structureFidelity: success.structureFidelity.summary,
+        visual: {
+          ...success.visual.summary,
+          components: success.visual.components?.summary ?? { status: "disabled", passed: true }
+        },
         editability: {
           level: success.editability.level,
+          nativeObjectCoverage: success.editability.nativeObjectCoverage,
           nativeCoverage: success.editability.nativeCoverage,
+          semanticEditabilityCoverage: success.editability.semanticEditabilityCoverage,
           passed: success.editability.passed,
           thresholds: success.editability.thresholds,
           perSlide: success.editability.perSlide
@@ -2085,7 +2312,10 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       "compatibility-report.json",
       "html-layout-report.json",
       "pptx-geometry-report.json",
+      "structure-fidelity-report.json",
       "visual-comparison.json",
+      ...(success.visual.components ? ["component-comparison.json"] : []),
+      "component-regions.json",
       "fallback-ledger.json",
       "output-manifest.json"
     ];
@@ -2122,7 +2352,9 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       "contract-report.json",
       "layout-safety-report.json",
       "pptx-geometry-report.json",
+      "structure-fidelity-report.json",
       "visual-comparison.json",
+      ...(success.visual.components ? ["component-comparison.json", "component-regions.json"] : ["component-regions.json"]),
       "html-layout-report.json",
       "html-mobile-report.json",
       ...(designTokens ? [designTokens] : [])
@@ -2141,7 +2373,9 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       pptx: finalPath,
       slides: manifest.slides.length,
       editabilityLevel: success.editability.level,
+      nativeObjectCoverage: success.editability.nativeObjectCoverage,
       nativeCoverage: success.editability.nativeCoverage,
+      semanticEditabilityCoverage: success.editability.semanticEditabilityCoverage,
       visual: success.visual.summary,
       repairs: success.attempt,
       protocolVersion: PROTOCOL_VERSION
@@ -2150,7 +2384,8 @@ export async function runConversion(inputPath, outputPath, options = {}) {
     await finalizeFailedOutput(outputDir, error, {
       input: input.htmlPath,
       inputKind: input.inputKind,
-      runId
+      runId,
+      qualityProfile: qualityProfile.name
     });
     throw error;
   }
@@ -2161,7 +2396,7 @@ async function main() {
   if (!input || !output) {
     fail(
       "E_ARGUMENT",
-      "usage: convert.mjs <input.html|directory|presentation-package.json> <output-dir> [--max-repair-attempts 0..3] [--browser-timeout-ms >=90000] [--visual-threshold 48] [--allow-remote-assets] [--overwrite]"
+      "usage: convert.mjs <input.html|directory|presentation-package.json> <output-dir> [--quality-profile default|replica-strict] [--max-repair-attempts 0..3] [--browser-timeout-ms >=90000] [--visual-threshold 48] [--allow-remote-assets] [--overwrite]"
     );
   }
   const result = await runConversion(input, output, options);

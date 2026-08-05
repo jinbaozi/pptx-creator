@@ -1,4 +1,7 @@
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { parse } from "node-html-parser";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -9,10 +12,12 @@ import {
 } from "../scripts/lib/html-layout-audit.mjs";
 import { measureHtmlFile } from "../scripts/measure-html.mjs";
 import { applyLocalizedFallbacks } from "../scripts/convert.mjs";
-import { convertHtmlToManifest } from "../scripts/lib/html-to-manifest-core.mjs";
+import { convertHtmlToManifest, reconcileExplicitGroups } from "../scripts/lib/html-to-manifest-core.mjs";
+import { auditStructureFidelity } from "../scripts/lib/structure-fidelity.mjs";
 
 const browserIt = process.env.PLAYWRIGHT_RUN === "1" ? it : it.skip;
 const example = resolve("examples/minimal/index.html");
+const execFileAsync = promisify(execFile);
 
 describe("real Chromium source validation", () => {
   browserIt("renders, screenshots, and measures every slide with a 90s timeout", async () => {
@@ -72,6 +77,59 @@ describe("real Chromium source validation", () => {
       const measured = await measureHtmlFile(input, { replica: true, totalTimeoutMs: 90_000 });
       const fragments = measured.elements.filter((element) => /^html-/.test(element.id) && element.kind === "text");
       expect(fragments.map((element) => element.semantics.semanticParentId)).toEqual(["claim-001", "claim-001"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  browserIt("preserves CSS white-space modes, tab size, and measured heading lines", async () => {
+    const root = await mkdtemp(join(tmpdir(), "html-to-pptx-browser-whitespace-"));
+    const input = join(root, "index.html");
+    await writeFile(input, `<!doctype html><html><head><style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body, .pptx-slide { margin: 0; width: 1280px; height: 720px; }
+      .pptx-slide { position: relative; overflow: hidden; background: white; }
+      [data-pptx-kind="text"] { position: absolute; left: 40px; width: 500px; font-family: Arial, sans-serif; }
+      #normal { top: 20px; white-space: normal; }
+      #pre { top: 70px; white-space: pre; tab-size: 4; }
+      #pre-wrap { top: 120px; white-space: pre-wrap; tab-size: 2; }
+      #pre-line { top: 190px; white-space: pre-line; }
+      #break-spaces { top: 250px; white-space: break-spaces; tab-size: 6; }
+      #heading { top: 320px; width: 220px; font-size: 32px; line-height: 1.1; white-space: normal; }
+      #radius { top: 380px; width: 200px; height: 100px; border-radius: 50% / 30%; background: white; }
+      #mixed { top: 500px; width: 180px; font-size: 32px; line-height: 1.1; white-space: normal; }
+    </style></head><body><section class="pptx-slide" data-slide-id="slide-001">
+      <div id="normal" data-pptx-id="normal" data-pptx-kind="text">  alpha   beta\n gamma  </div>
+      <pre id="pre" data-pptx-id="pre" data-pptx-kind="text">  alpha\t beta\r\n    gamma  </pre>
+      <div id="pre-wrap" data-pptx-id="pre-wrap" data-pptx-kind="text">  alpha\t beta\n    gamma  </div>
+      <div id="pre-line" data-pptx-id="pre-line" data-pptx-kind="text">  alpha   beta\n    gamma  </div>
+      <div id="break-spaces" data-pptx-id="break-spaces" data-pptx-kind="text">  alpha   beta\n    gamma  </div>
+      <h1 id="heading" data-pptx-id="heading" data-pptx-kind="text">A measured heading that wraps across lines</h1>
+      <div id="radius" data-pptx-id="radius" data-pptx-kind="shape"></div>
+      <h1 id="mixed" data-pptx-id="mixed" data-pptx-kind="text">Alpha <span>beta</span> gamma delta</h1>
+    </section></body></html>`);
+    try {
+      const measured = await measureHtmlFile(input, { replica: true, totalTimeoutMs: 90_000 });
+      const byId = new Map(measured.elements.map((element) => [element.id, element]));
+      expect(byId.get("normal")).toMatchObject({ text: "alpha beta gamma", style: { whiteSpace: "normal", preserveWhitespace: false, tabSize: 8 } });
+      expect(byId.get("pre")).toMatchObject({ text: "  alpha\t beta\n    gamma  ", style: { whiteSpace: "pre", preserveWhitespace: true, tabSize: 4 } });
+      expect(byId.get("pre-wrap")).toMatchObject({ text: "  alpha\t beta\n    gamma  ", style: { whiteSpace: "pre-wrap", preserveWhitespace: true, tabSize: 2 } });
+      expect(byId.get("pre-line")).toMatchObject({ text: "alpha beta\ngamma", style: { whiteSpace: "pre-line", preserveWhitespace: false } });
+      expect(byId.get("break-spaces")).toMatchObject({ text: "  alpha   beta\n    gamma  ", style: { whiteSpace: "break-spaces", preserveWhitespace: true, tabSize: 6 } });
+      expect(byId.get("heading")).toMatchObject({
+        renderedLines: expect.arrayContaining([expect.any(String)]),
+        lineBreakOffsets: expect.any(Array),
+        renderedLineCount: expect.any(Number)
+      });
+      expect(byId.get("heading").renderedLineCount).toBeGreaterThan(1);
+      expect(byId.get("heading").lineBreakOffsets.length).toBeGreaterThan(0);
+      expect(byId.get("radius").style.cornerRadii[0]).toMatchObject({ rx: 100, ry: 30 });
+      expect(byId.get("mixed")).toMatchObject({
+        text: "Alpha beta gamma delta",
+        renderedLines: ["Alpha beta", "gamma", "delta"],
+        lineBreakOffsets: [10, 16],
+        renderedLineCount: 3
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -321,6 +379,58 @@ describe("real Chromium source validation", () => {
         id: "effect-005-localized-fallback",
         type: "cropped-asset"
       })]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  browserIt("localizes unsupported pseudo paint to pseudo bounds and preserves explicit group ownership", async () => {
+    const root = await mkdtemp(join(tmpdir(), "html-to-pptx-pseudo-group-fallback-"));
+    const input = join(root, "index.html");
+    const outputDir = join(root, "output");
+    const manifestPath = join(outputDir, "deck.manifest.json");
+    const pptxPath = join(outputDir, "deck.pptx");
+    const html = `<!doctype html><html><head><style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body, .pptx-slide { margin: 0; width: 1280px; height: 720px; }
+      .pptx-slide { position: relative; overflow: hidden; background: #FFFFFF; }
+      #pseudo-group { position: absolute; left: 70px; top: 60px; width: 360px; height: 220px; }
+      #pseudo-owner { position: absolute; left: 30px; top: 30px; width: 260px; height: 140px; background: #F8FAFC; }
+      #pseudo-owner::before { content: "BLUR"; position: absolute; left: 18px; top: 16px; background: #EF4444; font: 16px/20px Arial, sans-serif; filter: blur(3px); }
+    </style></head><body><section class="pptx-slide" data-slide-id="slide-001">
+      <div id="pseudo-group" data-pptx-id="pseudo-group" data-pptx-kind="group">
+        <div id="pseudo-owner" data-pptx-id="pseudo-owner" data-pptx-kind="shape"></div>
+      </div>
+    </section></body></html>`;
+    await writeFile(input, html, "utf8");
+    try {
+      const measurements = await measureHtmlFile(input, { replica: true, totalTimeoutMs: 90_000 });
+      const owner = measurements.elements.find((element) => element.id === "pseudo-owner");
+      const pseudo = measurements.elements.find((element) => element.id === "pseudo-owner-before");
+      expect(pseudo).toMatchObject({ generated: true, pseudoOwnerId: "pseudo-owner", replica: { unsupportedVisual: "pseudo-unsupported-filter" } });
+      expect(pseudo.px.w).toBeLessThan(owner.px.w);
+      const manifest = convertHtmlToManifest(html, {
+        measurements,
+        designMode: "replica",
+        designSystemSource: resolve("design-systems/business-neutral/DESIGN.md")
+      });
+      const initialGroup = manifest.slides[0].elements.find((element) => element.id === "pseudo-group");
+      expect(initialGroup.children).toEqual(expect.arrayContaining(["pseudo-owner", "pseudo-owner-before"]));
+      const fallbacks = await applyLocalizedFallbacks(input, manifest, measurements, outputDir, 90_000);
+      expect(fallbacks).toHaveLength(1);
+      expect(fallbacks[0].box.w).toBeLessThan(owner.w);
+      expect(fallbacks[0].box.h).toBeLessThan(owner.h);
+      reconcileExplicitGroups(parse(html), manifest, measurements);
+      const group = manifest.slides[0].elements.find((element) => element.id === "pseudo-group");
+      expect(group.children).toEqual(["pseudo-owner", "pseudo-owner-before-localized-fallback"]);
+      expect(manifest.slides[0].elements.find((element) => element.id === "pseudo-owner-before-localized-fallback")).toMatchObject({ semanticParentId: "pseudo-owner" });
+      await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+      await execFileAsync(process.execPath, [resolve("scripts/render-pptx.mjs"), manifestPath, pptxPath], { cwd: resolve(".") });
+      const structure = await auditStructureFidelity({ manifest, manifestPath, pptxPath });
+      expect(structure.summary.blocked).toBe(false);
+      expect(structure.groups).toEqual(expect.arrayContaining([
+        expect.objectContaining({ elementId: "pseudo-group", passed: true })
+      ]));
     } finally {
       await rm(root, { recursive: true, force: true });
     }

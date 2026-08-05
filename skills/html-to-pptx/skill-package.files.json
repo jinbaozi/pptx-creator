@@ -29,7 +29,12 @@
     "package-lock.json",
     "schemas/presentation-package.schema.json",
     "scripts/validate-presentation-package.mjs",
-    "scripts/convert.mjs"
+    "scripts/convert.mjs",
+    "scripts/lib/editability-coverage.mjs",
+    "scripts/lib/component-regions.mjs",
+    "scripts/lib/group-renderer.mjs",
+    "scripts/lib/pptx-object-tree.mjs",
+    "scripts/lib/structure-fidelity.mjs"
   ],
   "requiredDirectories": [
     "scripts",

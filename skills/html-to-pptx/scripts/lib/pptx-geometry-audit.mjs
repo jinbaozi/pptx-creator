@@ -3,11 +3,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import JSZip from "jszip";
 import { preflightLayout } from "./check-layout-safety.mjs";
+import { parsePptxObjectTree } from "./pptx-object-tree.mjs";
+import { EMU_PER_INCH } from "./group-renderer.mjs";
 
 export const PPTX_GEOMETRY_REPORT_VERSION = "0.4.0";
 
-const LINEAGE_TYPES = new Set(["text", "shape", "image", "cropped-asset", "line"]);
-const EMU_PER_INCH = 914400;
+const LINEAGE_TYPES = new Set(["text", "shape", "image", "cropped-asset", "line", "group"]);
 const POST_RENDER_SAFETY_KINDS = new Set([
   "content-occlusion",
   "decoration-occlusion",
@@ -24,15 +25,6 @@ const POST_RENDER_SAFETY_KINDS = new Set([
   "connector-route-invalid"
 ]);
 const GENERIC_OBJECT_NAME = /^(?:Shape|Text|Picture|Image|Group|Table|Chart|Diagram)\s+\d+$/i;
-
-function decodeXml(value) {
-  return String(value ?? "")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&amp;", "&");
-}
 
 function canonicalJson(value) {
   if (Array.isArray(value)) return value.map(canonicalJson);
@@ -67,36 +59,65 @@ async function canonicalPptxHash(zip) {
   return `sha256:${digest.digest("hex")}`;
 }
 
-function slideObjects(xml) {
-  const objects = [];
-  const pattern = /<p:(sp|pic|graphicFrame|cxnSp)\b[\s\S]*?<\/p:\1>/g;
-  for (const match of xml.matchAll(pattern)) {
-    const block = match[0];
-    const name = decodeXml(block.match(/<p:cNvPr\b[^>]*\bname="([^"]*)"/)?.[1] ?? "");
-    const ext = block.match(/<a:ext\b[^>]*\bcx="(-?\d+)"[^>]*\bcy="(-?\d+)"/);
-    const offset = block.match(/<a:off\b[^>]*\bx="(-?\d+)"[^>]*\by="(-?\d+)"/);
-    objects.push({
-      name,
-      kind: match[1],
-      order: objects.length,
-      x: Number(offset?.[1] ?? 0),
-      y: Number(offset?.[2] ?? 0),
-      cx: Number(ext?.[1] ?? 0),
-      cy: Number(ext?.[2] ?? 0),
-      flipH: /<a:xfrm\b[^>]*\bflipH="1"/.test(block),
-      flipV: /<a:xfrm\b[^>]*\bflipV="1"/.test(block),
-      beginArrow: /<a:headEnd\b[^>]*\btype="(?!none)[^"]+"/.test(block),
-      endArrow: /<a:tailEnd\b[^>]*\btype="(?!none)[^"]+"/.test(block),
-      viewerAutofit: /<a:(?:normAutofit|spAutoFit)\b/.test(block)
-    });
-  }
-  return objects;
-}
-
 function expectedLineage(slide) {
   return (slide.elements ?? [])
     .filter((element) => LINEAGE_TYPES.has(element?.type) && typeof element.id === "string" && element.id.length > 0)
     .map((element) => element.id);
+}
+
+function expectedGroups(slide) {
+  return (slide?.elements ?? []).filter((element) => element?.type === "group" && typeof element.id === "string");
+}
+
+function expectedGroupTransform(group) {
+  const toEmu = (value) => Math.round(Number(value) * EMU_PER_INCH);
+  return {
+    off: { x: toEmu(group.x), y: toEmu(group.y) },
+    ext: { cx: toEmu(group.w), cy: toEmu(group.h) },
+    chOff: { x: toEmu(group.x), y: toEmu(group.y) },
+    chExt: { cx: toEmu(group.w), cy: toEmu(group.h) }
+  };
+}
+
+function expectedChildTransform(element) {
+  const x = Number(element?.x);
+  const y = Number(element?.y);
+  const w = Number(element?.w);
+  const h = Number(element?.h);
+  const line = element?.type === "line";
+  return {
+    off: {
+      x: Math.round((line && w < 0 ? x + w : x) * EMU_PER_INCH),
+      y: Math.round((line && h < 0 ? y + h : y) * EMU_PER_INCH)
+    },
+    ext: { cx: Math.round(Math.abs(w) * EMU_PER_INCH), cy: Math.round(Math.abs(h) * EMU_PER_INCH) },
+    flipH: line && w < 0,
+    flipV: line && h < 0
+  };
+}
+
+function childTransformPassed(expected, actual) {
+  return Boolean(actual)
+    && expected.off.x === actual.off?.x
+    && expected.off.y === actual.off?.y
+    && expected.ext.cx === actual.ext?.cx
+    && expected.ext.cy === actual.ext?.cy
+    && expected.flipH === Boolean(actual.flipH)
+    && expected.flipV === Boolean(actual.flipV);
+}
+
+function groupTransformPassed(expected, actual) {
+  if (!actual) return false;
+  return [
+    [expected.off?.x, actual.off?.x],
+    [expected.off?.y, actual.off?.y],
+    [expected.ext?.cx, actual.ext?.cx],
+    [expected.ext?.cy, actual.ext?.cy],
+    [expected.chOff?.x, actual.chOff?.x],
+    [expected.chOff?.y, actual.chOff?.y],
+    [expected.chExt?.cx, actual.chExt?.cx],
+    [expected.chExt?.cy, actual.chExt?.cy]
+  ].every(([left, right]) => Number.isFinite(left) && left === right);
 }
 
 function isCriticalTitle(element) {
@@ -127,9 +148,14 @@ function postRenderSafetyFindings(manifest, slide, objectsByName, options = {}) 
     .filter((element) => LINEAGE_TYPES.has(element?.type) && objectsByName.has(element.id))
     .map((element) => actualElementGeometry(element, objectsByName.get(element.id)));
   if (elements.length === 0) return [];
+  // Group wrappers are structural and their children are already represented
+  // by the measured objects above. Omit the wrapper from the reconstructed
+  // safety manifest so the preflight cannot treat chart/table descendants as
+  // missing group members or double-count the wrapper.
+  const safetyElements = elements.filter((element) => element?.type !== "group");
   const actualManifest = {
     ...manifest,
-    slides: [{ ...slide, elements }]
+    slides: [{ ...slide, elements: safetyElements }]
   };
   const sourcePreservingReplica = ["image", "pdf"].includes(String(manifest?.metadata?.inputType ?? "").toLowerCase())
     || String(manifest?.metadata?.mode ?? "").toLowerCase() === "replica";
@@ -219,7 +245,21 @@ export async function auditPptxGeometry(pptxPath, manifest, options = {}) {
       findings.push({ slideId: slide.id, elementId: "__slide__", kind: "pptx-object-lineage", severity: "critical", message: `PPTX is missing ${path}.` });
       continue;
     }
-    const objects = slideObjects(await file.async("string"));
+    const tree = parsePptxObjectTree(await file.async("string"));
+    const objects = tree.flat.map((object) => ({
+      ...object,
+      x: Number(object.transform?.off?.x ?? 0),
+      y: Number(object.transform?.off?.y ?? 0),
+      cx: Number(object.transform?.ext?.cx ?? 0),
+      cy: Number(object.transform?.ext?.cy ?? 0)
+    }));
+    const topLevelObjects = tree.topLevel.map((object) => ({
+      ...object,
+      x: Number(object.transform?.off?.x ?? 0),
+      y: Number(object.transform?.off?.y ?? 0),
+      cx: Number(object.transform?.ext?.cx ?? 0),
+      cy: Number(object.transform?.ext?.cy ?? 0)
+    }));
     const byName = new Map(objects.filter((object) => object.name).map((object) => [object.name, object]));
     const generic = objects.filter((object) => GENERIC_OBJECT_NAME.test(object.name));
     if (generic.length > 0) {
@@ -229,6 +269,120 @@ export async function auditPptxGeometry(pptxPath, manifest, options = {}) {
         kind: "pptx-object-lineage",
         severity: "critical",
         message: `PPTX contains generic Office object names (${generic.map((object) => object.name).join(", ")}); every rendered object must retain manifest ID lineage.`
+      });
+    }
+    const expectedGroupElements = expectedGroups(slide);
+    const actualGroups = topLevelObjects.filter((object) => object.isGroup);
+    const actualGroupsByName = new Map(actualGroups.filter((object) => object.name).map((object) => [object.name, object]));
+    const actualByName = new Map(objects.filter((object) => object.name).map((object) => [object.name, object]));
+    const expectedByName = new Map((slide?.elements ?? []).filter((element) => element?.id).map((element) => [element.id, element]));
+    const slideChildTransformMismatches = [];
+    const nameCounts = new Map();
+    for (const object of objects) {
+      if (object.name) nameCounts.set(object.name, (nameCounts.get(object.name) ?? 0) + 1);
+    }
+    const duplicateObjectNames = [...nameCounts.entries()].filter(([, count]) => count > 1).map(([name]) => name);
+    if (duplicateObjectNames.length > 0) {
+      findings.push({
+        slideId: slide.id,
+        elementId: duplicateObjectNames[0],
+        kind: "pptx-object-name-duplicate",
+        severity: "critical",
+        message: `PPTX contains duplicate object names: ${duplicateObjectNames.join(", ")}.`,
+        duplicateObjectNames
+      });
+    }
+    const expectedGroupNames = new Set(expectedGroupElements.map((group) => group.id));
+    for (const group of expectedGroupElements) {
+      const object = actualGroupsByName.get(group.id) ?? actualByName.get(group.id);
+      const expectedChildren = Array.isArray(group.children) ? [...group.children] : [];
+      const actualChildren = object?.children?.map((child) => child.name).filter(Boolean) ?? [];
+      const childOrderPassed = Boolean(object?.isGroup)
+        && object.parentGroupId === null
+        && actualChildren.join("\u0000") === expectedChildren.join("\u0000");
+      const expectedTransform = expectedGroupTransform(group);
+      const actualTransform = object?.transform ?? null;
+      const transformPassed = Boolean(object?.isGroup) && groupTransformPassed(expectedTransform, actualTransform);
+      const ungroupedChildIds = expectedChildren.filter((childId) => {
+        const child = actualByName.get(childId);
+        return !child || child.parentGroupId !== group.id;
+      });
+      const unexpectedChildIds = actualChildren.filter((childId) => !expectedChildren.includes(childId));
+      const childTransformMismatches = expectedChildren.flatMap((childId) => {
+        const expectedElement = expectedByName.get(childId);
+        const actualElement = actualByName.get(childId);
+        if (!expectedElement || !actualElement) return [{ childId, expected: expectedElement ? expectedChildTransform(expectedElement) : null, actual: actualElement?.transform ?? null }];
+        const expectedTransform = expectedChildTransform(expectedElement);
+        const actualTransform = { ...actualElement.transform, flipH: actualElement.flipH, flipV: actualElement.flipV };
+        return childTransformPassed(expectedTransform, actualTransform) ? [] : [{ childId, expected: expectedTransform, actual: actualTransform }];
+      });
+      if (!childOrderPassed || unexpectedChildIds.length > 0) {
+        findings.push({
+          slideId: slide.id,
+          elementId: group.id,
+          kind: "group-child-order",
+          severity: "critical",
+          message: `PPTX group child order or membership mismatch for ${group.id}.`,
+          expectedChildren,
+          actualChildren,
+          unexpectedChildIds
+        });
+      }
+      if (!transformPassed) {
+        findings.push({
+          slideId: slide.id,
+          elementId: group.id,
+          kind: "group-transform",
+          severity: "critical",
+          message: `PPTX group transform mismatch for ${group.id}.`,
+          expectedTransform,
+          actualTransform
+        });
+      }
+      if (ungroupedChildIds.length > 0) {
+        findings.push({
+          slideId: slide.id,
+          elementId: group.id,
+          kind: "group-ungrouped-child",
+          severity: "critical",
+          message: `PPTX group children are not direct children of ${group.id}.`,
+          ungroupedChildIds
+        });
+      }
+      if (childTransformMismatches.length > 0) {
+        slideChildTransformMismatches.push({ groupId: group.id, mismatches: childTransformMismatches });
+        findings.push({
+          slideId: slide.id,
+          elementId: group.id,
+          kind: "group-child-transform",
+          severity: "critical",
+          message: `PPTX group child transform mismatch for ${group.id}.`,
+          childTransformMismatches
+        });
+      }
+    }
+    const unexpectedGroups = actualGroups.filter((object) => object.name && !expectedGroupNames.has(object.name)).map((object) => object.name);
+    if (unexpectedGroups.length > 0) {
+      findings.push({
+        slideId: slide.id,
+        elementId: unexpectedGroups[0],
+        kind: "group-unexpected",
+        severity: "critical",
+        message: `PPTX contains undeclared top-level groups: ${unexpectedGroups.join(", ")}.`,
+        unexpectedGroups
+      });
+    }
+    const expectedGridCount = expectedGroupElements.filter((group) => group.backgroundKind === "grid" && String(group.role ?? "").toLowerCase() === "background").length;
+    const actualGridCount = actualGroups.filter((object) => expectedGroupElements.some((group) => group.id === object.name && group.backgroundKind === "grid" && String(group.role ?? "").toLowerCase() === "background")).length;
+    if (expectedGridCount > 1 || actualGridCount > 1 || (expectedGridCount > 0 && actualGridCount !== expectedGridCount)) {
+      findings.push({
+        slideId: slide.id,
+        elementId: expectedGroupElements.find((group) => group.backgroundKind === "grid")?.id ?? "__slide__",
+        kind: "group-background",
+        severity: "critical",
+        message: `Explicit grid background count mismatch on ${slide.id}.`,
+        expectedGridCount,
+        actualGridCount
       });
     }
     for (const object of objects.filter((item) => item.cx < 0 || item.cy < 0)) {
@@ -277,13 +431,22 @@ export async function auditPptxGeometry(pptxPath, manifest, options = {}) {
       findings.push(...lineFindings(slide, byName));
       findings.push(...postRenderSafetyFindings(manifest, slide, byName, options));
     }
-    slides.push({ slideId: slide.id, expectedObjectCount: expected.length, matchedObjectCount: expected.length - missing.length, objectCount: objects.length });
+    slides.push({
+      slideId: slide.id,
+      expectedObjectCount: expected.length,
+      matchedObjectCount: expected.length - missing.length,
+      objectCount: objects.length,
+      expectedGroupCount: expectedGroupElements.length,
+      actualGroupCount: actualGroups.length,
+      backgroundGridTopLevelObjects: actualGridCount,
+      childTransformMismatches: slideChildTransformMismatches
+    });
   }
   if (manifestSlides.length === 0) {
     const named = slides.reduce((sum, slide) => sum + slide.objectCount, 0);
     const customNames = [];
     for (const path of slidePaths) {
-      const objects = slideObjects(await zip.file(path).async("string"));
+      const objects = parsePptxObjectTree(await zip.file(path).async("string")).flat;
       customNames.push(...objects.map((object) => object.name).filter((name) => name && !GENERIC_OBJECT_NAME.test(name)));
     }
     if (named > 0 && customNames.length === 0) {
@@ -304,7 +467,15 @@ export async function auditPptxGeometry(pptxPath, manifest, options = {}) {
     bindings: { manifestHash: await manifestBindingHash(manifest, options.manifestPath), pptxHash: await canonicalPptxHash(zip) },
     slides,
     findings: uniqueFindings,
-    summary: { slideCount: auditSlides.length, criticalCount, warningCount: uniqueFindings.length - criticalCount, blocked: criticalCount > 0 }
+    summary: {
+      slideCount: auditSlides.length,
+      criticalCount,
+      warningCount: uniqueFindings.length - criticalCount,
+      groupExpectedCount: slides.reduce((sum, slide) => sum + Number(slide.expectedGroupCount ?? 0), 0),
+      groupActualCount: slides.reduce((sum, slide) => sum + Number(slide.actualGroupCount ?? 0), 0),
+      backgroundGridTopLevelObjects: slides.reduce((sum, slide) => sum + Number(slide.backgroundGridTopLevelObjects ?? 0), 0),
+      blocked: criticalCount > 0
+    }
   };
 }
 

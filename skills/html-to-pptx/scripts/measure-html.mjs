@@ -346,7 +346,9 @@ export async function measureHtmlFile(inputPath, options = {}) {
       function replicaEffects(style, unsupportedVisual, node, options = {}) {
         const transformData = cssTransformData(style);
         const compositing = unsupportedCompositing(style, transformData, options);
-        const effectiveOpacity = effectiveOpacityFor(node);
+        const effectiveOpacity = Number.isFinite(Number(options.effectiveOpacity))
+          ? Number(options.effectiveOpacity)
+          : effectiveOpacityFor(node);
         return {
           hasUnsupportedEffects:
             style.filter !== "none" ||
@@ -393,36 +395,52 @@ export async function measureHtmlFile(inputPath, options = {}) {
         );
       }
 
-      function normalizeTextNodeContent(value, whiteSpace) {
-        const source = String(value ?? "");
-        if (["pre", "pre-line", "pre-wrap", "break-spaces"].includes(whiteSpace)) {
+      function normalizeLineEndings(value) {
+        return String(value ?? "").replace(/\r\n?/g, "\n");
+      }
+
+      function whiteSpaceMode(value) {
+        const mode = String(value ?? "normal").trim().toLowerCase();
+        return ["normal", "nowrap", "pre", "pre-wrap", "pre-line", "break-spaces"].includes(mode)
+          ? mode
+          : "normal";
+      }
+
+      function normalizeTextNodeContent(value, whiteSpace, options = {}) {
+        const source = normalizeLineEndings(value);
+        const mode = whiteSpaceMode(whiteSpace);
+        const trim = options.trim === true;
+        // CSS `pre`, `pre-wrap`, and `break-spaces` preserve every source
+        // newline and space.  Do not trim or collapse these values: later
+        // manifest/render stages must see the same code indentation.
+        if (["pre", "pre-wrap", "break-spaces"].includes(mode)) return source;
+        // CSS `pre-line` preserves newlines but collapses other whitespace.
+        if (mode === "pre-line") {
+          // Chromium drops collapsible whitespace at each preserved line
+          // boundary. Keep the line count, but normalize every line as an
+          // independent inline formatting context.
           return source
-            .replace(/\r\n?/g, "\n")
             .split("\n")
             .map((line) => line.replace(/[ \t\f\v]+/g, " ").trim())
-            .join("\n")
-            .replace(/\n{3,}/g, "\n\n")
-            .trim();
+            .join("\n");
         }
-        return source.replace(/\s+/g, " ").trim();
+        // `normal` and `nowrap` collapse all whitespace runs into one space.
+        const collapsed = source.replace(/[ \t\f\v\n]+/g, " ");
+        return trim ? collapsed.trim() : collapsed;
       }
 
       function directText(node, style) {
-        const whiteSpace = style?.whiteSpace;
+        const whiteSpace = whiteSpaceMode(style?.whiteSpace);
         const parts = [];
         for (const child of node.childNodes) {
           if (child.nodeType === Node.TEXT_NODE) {
-            const text = normalizeTextNodeContent(child.textContent, whiteSpace);
-            if (text) parts.push(text);
+            parts.push(normalizeTextNodeContent(child.textContent, whiteSpace));
           } else if (child.nodeType === Node.ELEMENT_NODE && child.tagName.toLowerCase() === "br") {
             parts.push("\n");
           }
         }
-        return parts
-          .join(" ")
-          .replace(/[ \t]*\n[ \t]*/g, "\n")
-          .replace(/\n{3,}/g, "\n\n")
-          .trim();
+        const value = parts.join("");
+        return normalizeTextNodeContent(value, whiteSpace, { trim: !["pre", "pre-wrap", "break-spaces"].includes(whiteSpace) });
       }
 
       function isSemanticConnectorSvg(node) {
@@ -488,7 +506,9 @@ export async function measureHtmlFile(inputPath, options = {}) {
         const nativePath = /^\s*(?:[Mm]\s*-?[\d.]+[ ,]+-?[\d.]+\s*(?:[LlHhVv]\s*-?[\d.]+(?:[ ,]+-?[\d.]+)?\s*)*(?:[Zz]\s*)?)$/;
         const nodes = [node, ...node.querySelectorAll("*")];
         const unsafeReasons = new Set();
+        const classificationReasons = new Set();
         let native = true;
+        let tierBCompatible = true;
         const serializedNodes = [];
         nodes.forEach((child, index) => {
           const tag = String(child.tagName ?? "").toLowerCase();
@@ -498,19 +518,37 @@ export async function measureHtmlFile(inputPath, options = {}) {
             .find((value) => value && value !== "none");
           if (["filter", "mask", "clippath", "foreignobject", "script", "iframe", "object", "embed", "animate", "animatemotion", "animatetransform", "set"].includes(tag)
             || computedFilter) unsafeReasons.add(computedFilter ? "unsupported-compositing" : `${tag}-paint`);
-          if (!allowedNative.has(tag)) native = false;
-          if (["tspan", "defs", "style"].includes(tag)) native = false;
+          if (!allowedNative.has(tag)) {
+            native = false;
+            tierBCompatible = false;
+          }
+          if (["tspan", "defs", "style"].includes(tag)) {
+            native = false;
+            tierBCompatible = false;
+          }
+          if (!["svg", "g", "rect", "circle", "ellipse", "line", "polyline", "polygon", "path", "text", "title", "desc"].includes(tag)) tierBCompatible = false;
           if (tag === "path") {
             const d = String(child.getAttribute("d") ?? "");
             const fill = String(computed.fill ?? child.getAttribute("fill") ?? "none").toLowerCase();
-            if (!nativePath.test(d) || fill !== "none") native = false;
+            if (!nativePath.test(d) || fill !== "none") {
+              native = false;
+              tierBCompatible = false;
+            }
           }
           if (tag === "polyline" || tag === "polygon") {
-            native = native && Boolean(String(child.getAttribute("points") ?? "").trim());
-            if (tag === "polygon" && String(computed.fill ?? child.getAttribute("fill") ?? "none").toLowerCase() !== "none") native = false;
+            const hasPoints = Boolean(String(child.getAttribute("points") ?? "").trim());
+            native = native && hasPoints;
+            if (!hasPoints) tierBCompatible = false;
+            if (tag === "polygon" && String(computed.fill ?? child.getAttribute("fill") ?? "none").toLowerCase() !== "none") {
+              native = false;
+              tierBCompatible = false;
+            }
           }
           const declaredTransform = child.getAttribute("transform");
-          if (!svgTransformSafe(declaredTransform || computed.transform)) native = false;
+          if (!svgTransformSafe(declaredTransform || computed.transform)) {
+            native = false;
+            tierBCompatible = false;
+          }
           for (const attribute of [...child.attributes]) {
             const name = String(attribute.name ?? "").toLowerCase();
             const value = String(attribute.value ?? "");
@@ -546,7 +584,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
           serializedNodes.push({
             index,
             tag,
-            id: child.getAttribute("id") || child.getAttribute("data-id") || null,
+            id: child.getAttribute("data-pptx-id") || child.getAttribute("data-id") || child.getAttribute("id") || null,
             text: tag === "text" ? String(child.textContent ?? "") : null,
             style,
             transform: child.getAttribute("transform") || null,
@@ -554,15 +592,254 @@ export async function measureHtmlFile(inputPath, options = {}) {
           });
         });
         const source = serializeSvgWithComputedStyles(node);
+        const drawable = serializedNodes.filter((entry) => ["rect", "circle", "ellipse", "line", "polyline", "polygon", "path", "text"].includes(entry.tag));
+        const stableInternalIds = drawable.length > 0 && drawable.every((entry) => Boolean(entry.id));
+        const explicitSemantic = String(
+          node.getAttribute("data-pptx-semantic")
+            || node.getAttribute("data-pptx-svg-semantic")
+            || node.getAttribute("data-pptx-role")
+            || ""
+        ).trim().toLowerCase();
+        const markerKind = String(node.getAttribute("data-pptx-kind") || "").trim().toLowerCase();
+        const textBearingMarker = ["true", "1", "yes"].includes(
+          String(node.getAttribute("data-pptx-text-bearing") || "").trim().toLowerCase()
+        );
+        const semanticClassification = ["chart", "chart-svg", "svg-chart"].includes(explicitSemantic)
+          || markerKind === "chart"
+          || node.hasAttribute("data-pptx-chart")
+          ? "chart"
+          : ["architecture", "architecture-svg", "diagram", "diagram-svg", "svg-architecture"].includes(explicitSemantic)
+            || ["architecture", "diagram"].includes(markerKind)
+            ? "architecture"
+            : textBearingMarker || ["text", "text-bearing", "text-bearing-svg", "svg-text"].includes(explicitSemantic)
+              ? "text-bearing"
+              : drawable.some((entry) => entry.tag === "text")
+                ? "text-bearing"
+                : "decorative";
+        const semanticSource = explicitSemantic
+          ? "dom-marker"
+          : textBearingMarker
+            ? "dom-marker"
+          : markerKind === "chart" || markerKind === "architecture" || markerKind === "diagram" || node.hasAttribute("data-pptx-chart")
+            ? "dom-marker"
+            : drawable.some((entry) => entry.tag === "text")
+              ? "svg-text-node"
+              : "svg-structure-default";
+        const explicitGroupNodes = nodes.filter((entry) => String(entry.tagName ?? "").toLowerCase() === "g"
+          && (entry.getAttribute("data-pptx-group") === "true" || entry.getAttribute("data-pptx-kind") === "group"));
+        const hasExplicitGroup = explicitGroupNodes.length > 0;
+        const explicitGroupsHaveStableIds = explicitGroupNodes.every((entry) => Boolean(
+          entry.getAttribute("data-pptx-id") || entry.getAttribute("data-id") || entry.getAttribute("id")
+        ));
+        if (hasExplicitGroup && !explicitGroupsHaveStableIds) classificationReasons.add("missing-group-id");
+        const tier = unsafeReasons.size > 0
+          ? "C"
+          : native && !hasExplicitGroup
+            ? "A"
+            : tierBCompatible && hasExplicitGroup && explicitGroupsHaveStableIds && stableInternalIds
+              ? "B"
+              : "C";
         const mode = unsafeReasons.size > 0
           ? "raster-fallback"
-          : native ? "native" : "vector-preserved";
+          : tier === "A" || tier === "B" ? "native" : "vector-preserved";
         return {
           mode,
+          tier,
           safe: unsafeReasons.size === 0,
-          reasons: [...unsafeReasons].sort(),
+          reasons: [...new Set([...unsafeReasons, ...classificationReasons])].sort(),
           source,
-          nodes: serializedNodes
+          nodes: serializedNodes,
+          semantic: {
+            classification: semanticClassification,
+            source: semanticSource,
+            ...(semanticClassification === "text-bearing" && drawable.some((entry) => entry.tag === "text")
+              ? { evidence: "svg-text-node" }
+              : {})
+          }
+        };
+      }
+
+      function splitCssPaintList(value) {
+        const parts = [];
+        let current = "";
+        let depth = 0;
+        for (const char of String(value ?? "")) {
+          if (char === "(") depth += 1;
+          if (char === ")") depth = Math.max(0, depth - 1);
+          if (char === "," && depth === 0) {
+            if (current.trim()) parts.push(current.trim());
+            current = "";
+          } else current += char;
+        }
+        if (current.trim()) parts.push(current.trim());
+        return parts;
+      }
+
+      function decodePseudoContent(value) {
+        const source = String(value ?? "").trim();
+        if (!source || ["none", "normal", '""', "''"].includes(source)) return "";
+        const quoted = source.match(/^(['"])([\s\S]*)\1$/);
+        if (!quoted) return null;
+        return quoted[2].replace(/\\([\\"'nrt])/g, (_match, escaped) => ({ n: "\n", r: "\r", t: "\t" }[escaped] ?? escaped));
+      }
+
+      function pseudoSimpleFallbackReason(style) {
+        const compositing = unsupportedCompositing(style, cssTransformData(style));
+        if (hasUnsupportedCompositing(compositing)) return "pseudo-unsupported-compositing";
+        if (style.filter !== "none" && !/^drop-shadow\(/i.test(String(style.filter ?? ""))) return "pseudo-unsupported-filter";
+        if (style.clipPath !== "none" || style.maskImage !== "none" || style.mixBlendMode !== "normal") return "pseudo-unsupported-compositing";
+        const backgrounds = splitCssPaintList(style.backgroundImage).filter((layer) => layer && layer !== "none");
+        if (backgrounds.some((layer) => !/^(?:linear|radial)-gradient\(/i.test(layer))) return "pseudo-unsupported-background";
+        const shadowParts = splitCssPaintList(style.boxShadow).filter(Boolean);
+        if (shadowParts.length > 1 || shadowParts.some((part) => /\binset\b/i.test(part))) return "pseudo-unsupported-shadow";
+        const borderWidths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth]
+          .map((value) => Number.parseFloat(value || "0") || 0)
+          .filter((value) => value > 0);
+        if (borderWidths.length > 1) return "pseudo-unsupported-border";
+        return null;
+      }
+
+      function pseudoBounds(owner, pseudoStyle, contentText) {
+        const ownerRect = owner.getBoundingClientRect();
+        const parsePx = (value) => {
+          const number = Number.parseFloat(String(value ?? ""));
+          return Number.isFinite(number) ? number : null;
+        };
+        const position = String(pseudoStyle.position ?? "static").toLowerCase();
+        const explicitWidth = parsePx(pseudoStyle.width);
+        const explicitHeight = parsePx(pseudoStyle.height);
+        const leftOffset = parsePx(pseudoStyle.left);
+        const rightOffset = parsePx(pseudoStyle.right);
+        const topOffset = parsePx(pseudoStyle.top);
+        const bottomOffset = parsePx(pseudoStyle.bottom);
+        let width = explicitWidth;
+        let height = explicitHeight;
+        if (!(width > 0)) {
+          if (leftOffset !== null && rightOffset !== null) width = Math.max(0, ownerRect.width - leftOffset - rightOffset);
+        }
+        if (!(height > 0)) {
+          if (topOffset !== null && bottomOffset !== null) height = Math.max(0, ownerRect.height - topOffset - bottomOffset);
+        }
+        const probe = document.createElement(contentText ? "span" : "div");
+        probe.setAttribute("data-pptx-generated", "true");
+        probe.textContent = contentText ?? "";
+        probe.style.position = "fixed";
+        probe.style.left = `${ownerRect.left}px`;
+        probe.style.top = `${ownerRect.top}px`;
+        probe.style.margin = "0";
+        probe.style.boxSizing = "border-box";
+        probe.style.pointerEvents = "none";
+        probe.style.zIndex = "-2147483648";
+        const copyProperties = [
+          "display", "visibility", "opacity", "color", "background", "background-color", "background-image",
+          "background-size", "background-position", "background-repeat", "border", "border-radius", "box-shadow",
+          "font", "font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing",
+          "white-space", "text-transform", "text-decoration", "text-align", "overflow", "padding", "box-sizing",
+          "transform", "transform-origin"
+        ];
+        copyProperties.forEach((property) => {
+          const value = String(pseudoStyle.getPropertyValue(property) ?? "").trim();
+          if (value) probe.style.setProperty(property, value);
+        });
+        if (width > 0) probe.style.width = `${width}px`;
+        if (height > 0) probe.style.height = `${height}px`;
+        document.body.appendChild(probe);
+        let rect = probe.getBoundingClientRect();
+        width = width > 0 ? width : rect.width;
+        height = height > 0 ? height : rect.height;
+        if (!(width > 0) && contentText) width = Math.max(1, rect.width);
+        if (!(height > 0) && contentText) height = Math.max(1, rect.height);
+        const x = leftOffset !== null
+          ? ownerRect.left + leftOffset
+          : rightOffset !== null
+            ? ownerRect.right - rightOffset - width
+            : ownerRect.left;
+        const y = topOffset !== null
+          ? ownerRect.top + topOffset
+          : bottomOffset !== null
+            ? ownerRect.bottom - bottomOffset - height
+            : ownerRect.top;
+        probe.style.left = `${x}px`;
+        probe.style.top = `${y}px`;
+        rect = probe.getBoundingClientRect();
+        const measured = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+        probe.remove();
+        return measured;
+      }
+
+      function maxDescendantPaintOrder(node, fallback = null) {
+        let maximum = Number(fallback?.paintOrder);
+        for (const descendant of node?.querySelectorAll?.("*") ?? []) {
+          const metadata = domSnapshotMetadata(descendant);
+          const paintOrder = Number(metadata?.paintOrder);
+          if (Number.isFinite(paintOrder)) maximum = Math.max(maximum, paintOrder);
+        }
+        return Number.isFinite(maximum) ? maximum : null;
+      }
+
+      function materializePseudoMeasurement(node, pseudoName, ownerId, slideId, slideIndex, slideRect, nodeMeta) {
+        const pseudoStyle = window.getComputedStyle(node, `::${pseudoName}`);
+        const contentText = decodePseudoContent(pseudoStyle.content);
+        const parsedBackground = parseCssColor(pseudoStyle.backgroundColor);
+        const hasVisibleBackground = typeof parsedBackground === "string"
+          || (parsedBackground && Number(parsedBackground.transparency ?? 0) < 100);
+        const hasPaintedBackground = pseudoStyle.backgroundImage !== "none"
+          || Boolean(hasVisibleBackground)
+          || Number.parseFloat(pseudoStyle.borderTopWidth || "0") > 0
+          || Number.parseFloat(pseudoStyle.borderRightWidth || "0") > 0
+          || Number.parseFloat(pseudoStyle.borderBottomWidth || "0") > 0
+          || Number.parseFloat(pseudoStyle.borderLeftWidth || "0") > 0
+          || pseudoStyle.boxShadow !== "none";
+        if (pseudoStyle.display === "none" || pseudoStyle.visibility === "hidden" || (contentText === "" && !hasPaintedBackground)) return null;
+        if (contentText === null) return null;
+        const pseudoRect = pseudoBounds(node, pseudoStyle, contentText);
+        if (!(pseudoRect.width > 0 && pseudoRect.height > 0)) return null;
+        const fallbackReason = pseudoSimpleFallbackReason(pseudoStyle);
+        const id = `${ownerId}-${pseudoName}`;
+        const effectiveOpacity = effectiveOpacityFor(node) * (Number.parseFloat(pseudoStyle.opacity || "1") || 1);
+        const kind = contentText ? "text" : "shape";
+        const ownPaintOrder = Number(nodeMeta?.paintOrder);
+        const descendantPaintOrder = maxDescendantPaintOrder(node, nodeMeta);
+        const pseudoPaintOrder = Number.isFinite(ownPaintOrder)
+          ? pseudoName === "before"
+            ? ownPaintOrder + 0.01
+            : Math.max(ownPaintOrder, Number(descendantPaintOrder) || ownPaintOrder) + 0.02
+          : null;
+        const generatedNodeMeta = nodeMeta ? {
+          ...nodeMeta,
+          ...(Number.isFinite(pseudoPaintOrder) ? { paintOrder: pseudoPaintOrder } : {})
+        } : null;
+        return {
+          id,
+          slideId,
+          kind,
+          slideIndex,
+          tagName: contentText ? "span" : "div",
+          selector: `[data-pptx-generated="${id}"]`,
+          text: contentText,
+          visibleText: contentText || null,
+          src: null,
+          href: null,
+          hyperlinkTooltip: null,
+          generated: true,
+          dataPptxGenerated: true,
+          generatedBy: ownerId,
+          pseudo: pseudoName,
+          pseudoOwnerId: ownerId,
+          semantics: { semanticParentId: ownerId, role: "generated-pseudo" },
+          ...(generatedNodeMeta ? {
+            paintOrder: generatedNodeMeta.paintOrder,
+            stackingContext: Boolean(generatedNodeMeta.stackingContext),
+            stackingContextPath: generatedNodeMeta.stackingContextPath ?? []
+          } : {}),
+          style: computedStyleFor(pseudoStyle, pseudoRect, effectiveOpacity),
+          replica: replicaEffects(pseudoStyle, fallbackReason, node, { effectiveOpacity }),
+          px: {
+            x: pseudoRect.left - slideRect.left,
+            y: pseudoRect.top - slideRect.top,
+            w: pseudoRect.width,
+            h: pseudoRect.height
+          }
         };
       }
 
@@ -570,14 +847,8 @@ export async function measureHtmlFile(inputPath, options = {}) {
         const tagName = node?.tagName?.toLowerCase();
         if (!tagName) return false;
         const style = window.getComputedStyle(node);
-        const before = window.getComputedStyle(node, "::before");
-        const after = window.getComputedStyle(node, "::after");
-        const pseudoVisible = [before, after].some((pseudo) => pseudo.content
-          && !["none", "normal", '""', "''"].includes(pseudo.content)
-          && pseudo.display !== "none" && pseudo.visibility !== "hidden");
         return tagName === "canvas"
           || (tagName === "svg" && !isSemanticConnectorSvg(node))
-          || pseudoVisible
           || style.filter !== "none"
           || style.backdropFilter !== "none"
           || style.clipPath !== "none"
@@ -589,15 +860,12 @@ export async function measureHtmlFile(inputPath, options = {}) {
       function directTextNodes(node) {
 	        return [...node.childNodes]
 	          .filter((child) => child.nodeType === Node.TEXT_NODE)
-	          .map((child) => ({ node: child, text: child.textContent.replace(/\s+/g, " ").trim() }))
-	          .filter((entry) => entry.text);
+	          .map((child) => ({ node: child, text: String(child.textContent ?? "") }))
+	          .filter((entry) => entry.text.length > 0);
       }
 
-      function normalizeRunText(value) {
-        return String(value ?? "")
-          .replace(/\r\n?/g, "\n")
-          .replace(/[ \t\f\v]+/g, " ")
-          .replace(/\n{3,}/g, "\n\n");
+      function normalizeRunText(value, whiteSpace = "normal") {
+        return normalizeTextNodeContent(value, whiteSpace);
       }
 
       function runDecoration(style) {
@@ -634,11 +902,13 @@ export async function measureHtmlFile(inputPath, options = {}) {
       function collectRichTextRuns(node) {
         if (!node || node.nodeType !== Node.ELEMENT_NODE) return [];
         const runs = [];
+        const parentStyle = window.getComputedStyle(node);
+        const whiteSpace = whiteSpaceMode(parentStyle.whiteSpace);
         const walk = (current) => {
           for (const child of current.childNodes ?? []) {
             if (child.nodeType === Node.TEXT_NODE) {
-              const text = normalizeRunText(child.textContent);
-              if (!text || !text.trim()) continue;
+              const text = normalizeRunText(child.textContent, whiteSpace);
+              if (!text || (!text.trim() && !["pre", "pre-wrap", "break-spaces"].includes(whiteSpace))) continue;
               runs.push({ text, ...runStyleFor(child) });
             } else if (child.nodeType === Node.ELEMENT_NODE) {
               const tagName = child.tagName.toLowerCase();
@@ -655,7 +925,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
           }
         };
         walk(node);
-        if (runs.length > 0) {
+        if (runs.length > 0 && !["pre", "pre-wrap", "break-spaces"].includes(whiteSpace)) {
           runs[0].text = runs[0].text.replace(/^\s+/, "");
           const last = runs.at(-1);
           last.text = last.text.replace(/\s+$/, "");
@@ -756,7 +1026,8 @@ export async function measureHtmlFile(inputPath, options = {}) {
 
       function inlineTextLineFragments(textNode, style) {
         const raw = String(textNode?.textContent ?? "");
-        if (!raw.trim()) return [];
+        const mode = whiteSpaceMode(style?.whiteSpace);
+        if (!raw.length || (!raw.trim() && !["pre", "pre-wrap", "break-spaces"].includes(mode))) return [];
         const range = document.createRange();
         const lines = [];
         const lineForRect = (rect) => {
@@ -788,7 +1059,12 @@ export async function measureHtmlFile(inputPath, options = {}) {
           .filter((line) => line.start !== null && line.end > line.start)
           .sort((left, right) => left.top - right.top || left.left - right.left)
           .map((line, index) => {
-            const text = normalizeTextNodeContent(raw.slice(line.start, line.end), style?.whiteSpace);
+            const text = normalizeTextNodeContent(raw.slice(line.start, line.end), mode, {
+              // Keep fragment-edge spaces until all inline fragments sharing
+              // the same visual line are merged. CSS whitespace normalization
+              // is applied once at that line boundary in keyHeadingMetadata.
+              trim: false
+            });
             return {
               index,
               text,
@@ -800,7 +1076,85 @@ export async function measureHtmlFile(inputPath, options = {}) {
               }
             };
           })
-          .filter((line) => line.text);
+          .filter((line) => line.text.length > 0);
+      }
+
+      function keyHeadingMetadata(node, style, text) {
+        const tagName = String(node?.tagName ?? "").toLowerCase();
+        const role = String(node?.getAttribute?.("data-layout-role") ?? "").trim().toLowerCase();
+        const maxLines = node?.getAttribute?.("data-max-lines");
+        const fontSize = Number.parseFloat(style?.fontSize ?? "0") || 0;
+        const isKeyHeading = ["h1", "h2"].includes(tagName)
+          || role === "title"
+          || maxLines !== null
+          || fontSize >= 28;
+        if (!isKeyHeading) return null;
+
+        const fragments = [];
+        const textNodes = [];
+        const walk = (current) => {
+          for (const child of current?.childNodes ?? []) {
+            if (child.nodeType === Node.TEXT_NODE) textNodes.push(child);
+            else if (child.nodeType === Node.ELEMENT_NODE && child.tagName.toLowerCase() !== "br") walk(child);
+          }
+        };
+        walk(node);
+        for (const textNode of textNodes) {
+          for (const fragment of inlineTextLineFragments(textNode, style)) {
+            fragments.push({ ...fragment, text: fragment.text });
+          }
+        }
+        fragments.sort((left, right) => left.rect.top - right.rect.top || left.rect.left - right.rect.left);
+        const renderedLines = [];
+        for (const fragment of fragments) {
+          const previous = renderedLines.at(-1);
+          if (previous && Math.abs(previous.top - fragment.rect.top) <= 1.5) {
+            previous.text += fragment.text;
+          } else {
+            renderedLines.push({ top: fragment.rect.top, text: fragment.text });
+          }
+        }
+        const preserveLineWhitespace = ["pre", "pre-wrap", "break-spaces"].includes(whiteSpaceMode(style?.whiteSpace));
+        const renderedLineTexts = renderedLines.map((line) => normalizeTextNodeContent(
+          line.text,
+          style?.whiteSpace,
+          { trim: !preserveLineWhitespace }
+        ));
+        const canonical = String(text ?? "");
+        const fallbackLines = canonical.split("\n");
+        const lines = renderedLineTexts.length > 0 ? renderedLineTexts : fallbackLines;
+        const lineBreakOffsets = [];
+        let sourceCursor = 0;
+        for (let index = 0; index < Math.max(0, lines.length - 1); index += 1) {
+          const line = String(lines[index] ?? "");
+          const directStart = canonical.indexOf(line, sourceCursor);
+          let sourceEnd = directStart >= 0 ? directStart + line.length : sourceCursor;
+          if (directStart < 0) {
+            // Fallback for a line whose visual whitespace was normalized
+            // differently from the canonical source. Match non-whitespace
+            // characters in order while consuming every source whitespace
+            // run, so the returned coordinate still points into `canonical`.
+            let cursor = sourceCursor;
+            for (const character of line) {
+              if (/\s/.test(character)) {
+                while (cursor < canonical.length && /\s/.test(canonical[cursor])) cursor += 1;
+                continue;
+              }
+              const match = canonical.indexOf(character, cursor);
+              if (match < 0) break;
+              cursor = match + 1;
+            }
+            sourceEnd = cursor;
+          }
+          lineBreakOffsets.push(sourceEnd);
+          sourceCursor = sourceEnd;
+          while (sourceCursor < canonical.length && /\s/.test(canonical[sourceCursor])) sourceCursor += 1;
+        }
+        return {
+          renderedLines: lines,
+          lineBreakOffsets,
+          renderedLineCount: lines.length
+        };
       }
 
 	      function renderedEllipsisText(node, style, text) {
@@ -861,8 +1215,14 @@ export async function measureHtmlFile(inputPath, options = {}) {
 
       function inferKind(node, style) {
         const explicit = node.getAttribute("data-pptx-kind") || node.getAttribute("data-pptx-type");
-        if (explicit) return explicit;
         const tag = node.tagName.toLowerCase();
+        // SVG semantic markers describe the vector's meaning; they do not
+        // route the SVG into the HTML chart/architecture converters. Keep
+        // the source kind as shape so Tier A/B/C SVG handling remains intact.
+        if (tag === "svg" && ["chart", "architecture", "diagram"].includes(String(explicit ?? "").trim().toLowerCase())) {
+          return "shape";
+        }
+        if (explicit) return explicit;
         if (tag === "img") return "image";
         if (tag === "table") return "table";
         if (tag === "hr") return "line";
@@ -879,15 +1239,44 @@ export async function measureHtmlFile(inputPath, options = {}) {
         return parent?.getAttribute("data-pptx-id") ?? parent?.getAttribute("data-id") ?? parent?.id ?? null;
       }
 
-      function cssRadiusPx(value, rect) {
-        const source = String(value || "0").trim();
+      function cssRadiusAxis(value, basis) {
+        const source = String(value ?? "0").trim().toLowerCase();
+        if (!source) return 0;
         const numeric = Number.parseFloat(source);
         if (!Number.isFinite(numeric)) return 0;
-        if (source.endsWith("%")) {
-          const basis = Math.min(rect?.width ?? 0, rect?.height ?? 0);
-          return Math.round(((basis * numeric) / 100) * 100) / 100;
-        }
-        return numeric;
+        if (source.endsWith("%")) return Math.max(0, (basis * numeric) / 100);
+        return Math.max(0, numeric);
+      }
+
+      function cssRadiusPair(value, rect) {
+        const source = String(value ?? "0").trim();
+        const [horizontal, vertical] = source.split("/").map((part) => part.trim());
+        const xParts = String(horizontal || "0").split(/\s+/).filter(Boolean);
+        const yParts = vertical
+          ? String(vertical).split(/\s+/).filter(Boolean)
+          : xParts.slice(1);
+        const x = cssRadiusAxis(xParts[0] || "0", Number(rect?.width ?? 0));
+        const y = cssRadiusAxis(yParts[0] || xParts[0] || "0", Number(rect?.height ?? 0));
+        const pair = {
+          rx: Math.round(x * 100) / 100,
+          ry: Math.round(y * 100) / 100
+        };
+        return pair;
+      }
+
+      function normalizeCornerRadii(corners, rect) {
+        const width = Math.max(0, Number(rect?.width ?? 0));
+        const height = Math.max(0, Number(rect?.height ?? 0));
+        const values = corners.map((corner) => ({ rx: Math.max(0, Number(corner?.rx) || 0), ry: Math.max(0, Number(corner?.ry) || 0) }));
+        const scale = Math.min(
+          1,
+          width > 0 ? width / Math.max(1, values[0].rx + values[1].rx, values[2].rx + values[3].rx) : 1,
+          height > 0 ? height / Math.max(1, values[0].ry + values[3].ry, values[1].ry + values[2].ry) : 1
+        );
+        return values.map((corner) => ({
+          rx: Math.round(corner.rx * scale * 100) / 100,
+          ry: Math.round(corner.ry * scale * 100) / 100
+        }));
       }
 
       function computedStyleFor(style, rect = null, effectiveOpacity = null) {
@@ -896,6 +1285,15 @@ export async function measureHtmlFile(inputPath, options = {}) {
           ? Math.round((fontSize ?? 0) * 1.2 * 100) / 100
           : pxToPt(style.lineHeight);
         const transformData = cssTransformData(style);
+        const whiteSpace = whiteSpaceMode(style.whiteSpace);
+        const parsedTabSize = Number.parseFloat(style.tabSize);
+        const tabSize = Number.isFinite(parsedTabSize) && parsedTabSize > 0 ? parsedTabSize : 8;
+        const cornerRadii = normalizeCornerRadii([
+          cssRadiusPair(style.borderTopLeftRadius, rect),
+          cssRadiusPair(style.borderTopRightRadius, rect),
+          cssRadiusPair(style.borderBottomRightRadius, rect),
+          cssRadiusPair(style.borderBottomLeftRadius, rect)
+        ], rect);
         return {
           color: rgbaToHex(style.color),
           colorTransparency: rgbaToTransparency(style.color),
@@ -930,11 +1328,24 @@ export async function measureHtmlFile(inputPath, options = {}) {
           outlineWidth: Number.parseFloat(style.outlineWidth || "0") || 0,
           outlineStyle: style.outlineStyle,
           outlineOffset: Number.parseFloat(style.outlineOffset || "0") || 0,
-          borderRadius: cssRadiusPx(style.borderTopLeftRadius, rect),
-          borderTopLeftRadius: cssRadiusPx(style.borderTopLeftRadius, rect),
-          borderTopRightRadius: cssRadiusPx(style.borderTopRightRadius, rect),
-          borderBottomRightRadius: cssRadiusPx(style.borderBottomRightRadius, rect),
-          borderBottomLeftRadius: cssRadiusPx(style.borderBottomLeftRadius, rect),
+          // Keep the legacy scalar radius while exposing normalized two-axis
+          // radii for structure-preserving shape classification.
+          borderRadius: cornerRadii[0].rx,
+          borderRadiusX: cornerRadii[0].rx,
+          borderRadiusY: cornerRadii[0].ry,
+          borderTopLeftRadius: cornerRadii[0].rx,
+          borderTopRightRadius: cornerRadii[1].rx,
+          borderBottomRightRadius: cornerRadii[2].rx,
+          borderBottomLeftRadius: cornerRadii[3].rx,
+          borderTopLeftRadiusX: cornerRadii[0].rx,
+          borderTopLeftRadiusY: cornerRadii[0].ry,
+          borderTopRightRadiusX: cornerRadii[1].rx,
+          borderTopRightRadiusY: cornerRadii[1].ry,
+          borderBottomRightRadiusX: cornerRadii[2].rx,
+          borderBottomRightRadiusY: cornerRadii[2].ry,
+          borderBottomLeftRadiusX: cornerRadii[3].rx,
+          borderBottomLeftRadiusY: cornerRadii[3].ry,
+          cornerRadii,
           opacity: Number.parseFloat(style.opacity || "1"),
           ...(Number.isFinite(Number(effectiveOpacity)) ? { effectiveOpacity: Number(effectiveOpacity) } : {}),
           fontFamily: style.fontFamily,
@@ -964,7 +1375,9 @@ export async function measureHtmlFile(inputPath, options = {}) {
           webkitTextStrokeColor: rgbaToHex(style.webkitTextStrokeColor),
           webkitTextStrokeTransparency: rgbaToTransparency(style.webkitTextStrokeColor),
           webkitTextStrokeWidth: Number.parseFloat(style.webkitTextStrokeWidth || "0") || 0,
-          whiteSpace: style.whiteSpace,
+          whiteSpace,
+          tabSize,
+          preserveWhitespace: ["pre", "pre-wrap", "break-spaces"].includes(whiteSpace),
           paddingTop: pxToPt(style.paddingTop),
           paddingRight: pxToPt(style.paddingRight),
           paddingBottom: pxToPt(style.paddingBottom),
@@ -1029,16 +1442,20 @@ export async function measureHtmlFile(inputPath, options = {}) {
           const id = node.getAttribute("data-pptx-id") || node.getAttribute("data-id") || node.id || generatedId;
           const tagName = node.tagName.toLowerCase();
           const nodeMeta = domSnapshotMetadata(node) ?? slideMeta;
-          const before = window.getComputedStyle(node, "::before");
-          const after = window.getComputedStyle(node, "::after");
-          const pseudoVisible = [before, after].some((pseudo) => pseudo.content && !["none", "normal", '""', "''"].includes(pseudo.content) && pseudo.display !== "none" && pseudo.visibility !== "hidden");
+          const pseudoBeforeMeasurement = replicaMode
+            ? materializePseudoMeasurement(node, "before", id, slideId, slideIndex, slideRect, nodeMeta)
+            : null;
+          const pseudoAfterMeasurement = replicaMode
+            ? materializePseudoMeasurement(node, "after", id, slideId, slideIndex, slideRect, nodeMeta)
+            : null;
+          if (pseudoBeforeMeasurement) raw.push(pseudoBeforeMeasurement);
           const semanticConnectorSvg = isSemanticConnectorSvg(node);
           const svg = tagName === "svg" ? svgInspection(node) : null;
           const unsupportedVisual = tagName === "canvas"
             ? "canvas-paint"
             : tagName === "svg" && !semanticConnectorSvg && svg?.mode === "raster-fallback"
               ? "svg-paint"
-              : pseudoVisible ? "pseudo-element-paint" : null;
+              : null;
           const pushInlineTextFragments = (allowLeaf = false) => {
             if (!replicaMode || (!hasVisibleChildElements(node) && !allowLeaf)) return false;
             let pushed = false;
@@ -1078,10 +1495,14 @@ export async function measureHtmlFile(inputPath, options = {}) {
             });
             return pushed;
           };
-          if (semanticConnectorSvg) return;
+          if (semanticConnectorSvg) {
+            if (pseudoAfterMeasurement) raw.push(pseudoAfterMeasurement);
+            return;
+          }
           const kind = inferKind(node, style) ?? (svg ? "shape" : unsupportedVisual ? "shape" : null);
           if (!kind) {
             pushInlineTextFragments();
+            if (pseudoAfterMeasurement) raw.push(pseudoAfterMeasurement);
             return;
           }
           const isExplicitText = node.hasAttribute("data-pptx-kind") || node.hasAttribute("data-pptx-type") || node.hasAttribute("data-pptx-id") || node.hasAttribute("data-id") || Boolean(node.id);
@@ -1092,9 +1513,15 @@ export async function measureHtmlFile(inputPath, options = {}) {
               || (node.getAttribute("data-pptx-kind") === "text"
                 ? normalizeTextNodeContent(node.innerText, style.whiteSpace)
                 : "");
-          if (kind === "text" && !text) return;
+          if (kind === "text" && !text) {
+            if (pseudoAfterMeasurement) raw.push(pseudoAfterMeasurement);
+            return;
+          }
           const visibleText = kind === "text" ? renderedEllipsisText(node, style, text) : null;
-	          if (kind === "text" && !isExplicitText && !hasPaint(style) && pushInlineTextFragments(true)) return;
+          if (kind === "text" && !isExplicitText && !hasPaint(style) && pushInlineTextFragments(true)) {
+            if (pseudoAfterMeasurement) raw.push(pseudoAfterMeasurement);
+            return;
+          }
           const anchor = kind === "table"
             ? null
             : node.matches?.("a[href]") ? node : node.querySelector?.("a[href]") || node.closest?.("a[href]");
@@ -1106,6 +1533,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
           const listIndex = list && node.tagName.toLowerCase() === "li" ? [...list.children].indexOf(node) : null;
           const richRuns = kind === "text" && isExplicitText ? collectRichTextRuns(node) : [];
           const tableMeta = kind === "table" ? collectTableMeta(node, rect, slideRect) : null;
+          const lineMetadata = kind === "text" ? keyHeadingMetadata(node, style, text) : null;
           raw.push({
 	            id,
 	            slideId,
@@ -1118,7 +1546,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
 	            src: node.getAttribute("src") ?? null,
 	            href: anchor?.getAttribute("href") ?? null,
 	            hyperlinkTooltip: anchor?.getAttribute("title") || anchor?.getAttribute("data-tooltip") || null,
-	            semantics: {
+	              semantics: {
 		              role: node.getAttribute("data-layout-role") || (tagName === "h1" ? "title" : null),
 		              maxLines: (() => {
 		                const raw = node.getAttribute("data-max-lines");
@@ -1153,9 +1581,20 @@ export async function measureHtmlFile(inputPath, options = {}) {
 	                .split(/[\s,]+/)
 	                .map((value) => value.trim())
 	                .filter(Boolean),
-	              asOf: node.getAttribute("data-as-of") || null
+	              asOf: node.getAttribute("data-as-of") || null,
+              ...(lineMetadata ? {
+                renderedLines: lineMetadata.renderedLines,
+                lineBreakOffsets: lineMetadata.lineBreakOffsets,
+                renderedLineCount: lineMetadata.renderedLineCount
+              } : {})
 	            },
+            ...(lineMetadata ? {
+              renderedLines: lineMetadata.renderedLines,
+              lineBreakOffsets: lineMetadata.lineBreakOffsets,
+              renderedLineCount: lineMetadata.renderedLineCount
+            } : {}),
             ...(kind === "image" ? { naturalWidth: node.naturalWidth || null, naturalHeight: node.naturalHeight || null } : {}),
+            ...(node.getAttribute("data-pptx-shape") ? { shapeOverride: node.getAttribute("data-pptx-shape") } : {}),
             ...(richRuns.length > 0 ? { runs: richRuns } : {}),
             ...(tableMeta ? { table: tableMeta } : {}),
 	            ...(svg ? { svg } : {}),
@@ -1175,6 +1614,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
           });
 
           if (kind !== "text") pushInlineTextFragments();
+          if (pseudoAfterMeasurement) raw.push(pseudoAfterMeasurement);
         });
       });
 

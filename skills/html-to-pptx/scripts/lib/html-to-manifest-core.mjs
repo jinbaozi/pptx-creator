@@ -5,6 +5,7 @@ import { parse } from "node-html-parser";
 import { buildMeasurementLookup, getMeasurementBox, mergeMeasurementsIntoManifest, roundInches } from "./html-measurement-core.mjs";
 import { buildTokenLookup, exactTokenRef, resolveTokens } from "./color-tokens.mjs";
 import { resolveSemanticConnectors } from "./connector-resolver.mjs";
+import { FIDELITY_CHART_KINDS, isNativeChartElement } from "./chart-renderer.mjs";
 import * as archetypeResolver from "./archetype-resolver.mjs";
 
 export { mergeMeasurementsIntoManifest };
@@ -281,6 +282,13 @@ function shapeElement(id, box, component = "{components.content-card}") {
     h: box.h,
     style: { component }
   };
+}
+
+function shapeOverrideFromNode(node) {
+  const value = String(node?.getAttribute?.("data-pptx-shape") ?? "").trim().toLowerCase();
+  if (!value) return null;
+  if (value === "roundrect" || value === "round-rect") return "roundRect";
+  return ["rect", "roundRect", "pill", "circle", "ellipse"].includes(value) ? value : null;
 }
 
 function replicaTableStyle(style = {}) {
@@ -1220,13 +1228,20 @@ function parseCssGradientStops(stopParts) {
 
 function parseCssRadialGradientDescriptor(value) {
   const source = String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-  if (!source || source === "at center") return { shape: "ellipse", position: "center" };
+  if (!source || source === "at center") return { shape: "ellipse", position: "center", xPercent: 50, yPercent: 50 };
   const match = source.match(/^(?:(circle|ellipse)\s*)?(?:at\s+(.+))?$/);
   if (!match) return null;
   const shape = match[1] ?? "ellipse";
   const position = match[2] ?? "center";
-  if (!["center", "50% 50%", "center center"].includes(position)) return null;
-  return { shape, position: "center" };
+  if (["center", "50% 50%", "center center"].includes(position)) {
+    return { shape, position: "center", xPercent: 50, yPercent: 50 };
+  }
+  const percent = position.match(/^(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/);
+  if (!percent) return null;
+  const xPercent = Number(percent[1]);
+  const yPercent = Number(percent[2]);
+  if (xPercent < 0 || xPercent > 100 || yPercent < 0 || yPercent > 100) return null;
+  return { shape, position: `${xPercent}% ${yPercent}%`, xPercent, yPercent };
 }
 
 function parseCssRadialGradient(value) {
@@ -1244,6 +1259,8 @@ function parseCssRadialGradient(value) {
     type: "radial",
     shape: descriptor.shape,
     position: descriptor.position,
+    ...(Number.isFinite(descriptor.xPercent) ? { xPercent: descriptor.xPercent } : {}),
+    ...(Number.isFinite(descriptor.yPercent) ? { yPercent: descriptor.yPercent } : {}),
     stops
   };
 }
@@ -1253,24 +1270,17 @@ function parseCssSupportedGradient(value) {
 }
 
 function parseCssRadialOverlay(value) {
-  if (typeof value !== "string" || !/^radial-gradient\(/i.test(value.trim())) return null;
-  const body = value.trim().replace(/^radial-gradient\(/i, "").replace(/\)\s*$/, "");
-  const parts = splitCssCommaList(body);
-  if (parts.length < 3) return null;
-  const descriptor = String(parts[0]).trim().toLowerCase().replace(/\s+/g, " ");
-  const position = descriptor.match(/^(circle|ellipse)?\s*at\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/);
-  if (!position) return null;
-  const xPercent = Number(position[2]);
-  const yPercent = Number(position[3]);
-  if (xPercent < 0 || xPercent > 100 || yPercent < 0 || yPercent > 100) return null;
-  const stops = parseCssGradientStops(parts.slice(1));
-  if (!stops) return null;
+  const gradient = parseCssRadialGradient(value);
+  if (!gradient || !Number.isFinite(gradient.xPercent) || !Number.isFinite(gradient.yPercent)
+    || (gradient.xPercent === 50 && gradient.yPercent === 50)) return null;
+  const xPercent = gradient.xPercent;
+  const yPercent = gradient.yPercent;
   return {
     gradient: {
       type: "radial",
-      shape: position[1] === "circle" ? "circle" : "ellipse",
+      shape: gradient.shape,
       position: "center",
-      stops
+      stops: gradient.stops
     },
     xPercent,
     yPercent
@@ -1292,6 +1302,33 @@ export function planReplicaSlideBackground(
   };
   for (let index = layers.length - 1; index >= 0; index -= 1) {
     const layer = layers[index];
+    const radial = parseCssRadialOverlay(layer);
+    if (radial) {
+      const halfWidthPercent = Math.max(
+        4,
+        Math.min(30, radial.xPercent, 100 - radial.xPercent)
+      );
+      const halfHeightPercent = Math.max(
+        4,
+        Math.min(30, radial.yPercent, 100 - radial.yPercent)
+      );
+      plan.overlays.unshift({
+        type: "shape",
+        id: `__slide-background-accent-${String(index + 1).padStart(3, "0")}`,
+        shape: "ellipse",
+        role: "background",
+        x: Number(((radial.xPercent - halfWidthPercent) / 100 * deckSize.width).toFixed(4)),
+        y: Number(((radial.yPercent - halfHeightPercent) / 100 * deckSize.height).toFixed(4)),
+        w: Number((halfWidthPercent * 2 / 100 * deckSize.width).toFixed(4)),
+        h: Number((halfHeightPercent * 2 / 100 * deckSize.height).toFixed(4)),
+        style: {
+          fill: radial.gradient.stops[0].color,
+          borderWidth: 0,
+          gradient: radial.gradient
+        }
+      });
+      continue;
+    }
     const gradient = parseCssSupportedGradient(layer);
     if (gradient) {
       if (index === layers.length - 1) {
@@ -1315,34 +1352,7 @@ export function planReplicaSlideBackground(
       }
       continue;
     }
-    const radial = parseCssRadialOverlay(layer);
-    if (!radial) {
-      plan.unsupported.push(layer);
-      continue;
-    }
-    const halfWidthPercent = Math.max(
-      4,
-      Math.min(30, radial.xPercent, 100 - radial.xPercent)
-    );
-    const halfHeightPercent = Math.max(
-      4,
-      Math.min(30, radial.yPercent, 100 - radial.yPercent)
-    );
-    plan.overlays.unshift({
-      type: "shape",
-      id: `__slide-background-accent-${String(index + 1).padStart(3, "0")}`,
-      shape: "ellipse",
-      role: "background",
-      x: Number(((radial.xPercent - halfWidthPercent) / 100 * deckSize.width).toFixed(4)),
-      y: Number(((radial.yPercent - halfHeightPercent) / 100 * deckSize.height).toFixed(4)),
-      w: Number((halfWidthPercent * 2 / 100 * deckSize.width).toFixed(4)),
-      h: Number((halfHeightPercent * 2 / 100 * deckSize.height).toFixed(4)),
-      style: {
-        fill: radial.gradient.stops[0].color,
-        borderWidth: 0,
-        gradient: radial.gradient
-      }
-    });
+    plan.unsupported.push(layer);
   }
   return plan;
 }
@@ -1417,16 +1427,32 @@ function hasCssBoxShadow(style) {
 }
 
 function hasReplicaPaint(style) {
-  return Boolean(style.backgroundColor) || Boolean(style.borderColor && Number(style.borderWidth ?? 0) > 0) || Boolean(parseCssBoxShadow(style.boxShadow)) || hasCssOutline(style);
+  const backgroundLayers = typeof style.backgroundImage === "string"
+    ? splitCssCommaList(style.backgroundImage).filter((layer) => layer && layer !== "none")
+    : [];
+  const backgroundColorVisible = Boolean(style.backgroundColor)
+    && Number(style.backgroundTransparency ?? 0) < 100;
+  return backgroundColorVisible
+    || backgroundLayers.length > 0
+    || Boolean(style.borderColor && Number(style.borderWidth ?? 0) > 0)
+    || Boolean(parseCssBoxShadow(style.boxShadow))
+    || hasCssOutline(style);
 }
 
 function replicaUnsupportedEffect(measurement, style) {
   if (!measurement.replica?.hasUnsupportedEffects) return null;
   const backgroundImage = measurement.replica.backgroundImage ?? style.backgroundImage ?? null;
-  const supportedGradient = parseCssSupportedGradient(backgroundImage);
-  const backgroundImageSrc = parseCssBackgroundImageUrl(backgroundImage);
-  const supportedBackgroundImage = backgroundImageSrc && replicaBackgroundImagePlanForSrc(backgroundImageSrc, style, measuredBox(measurement));
-  const unsupportedBackgroundImage = backgroundImage && !supportedGradient && !supportedBackgroundImage ? backgroundImage : null;
+  const backgroundLayers = typeof backgroundImage === "string"
+    ? splitCssCommaList(backgroundImage).filter((layer) => layer && layer !== "none")
+    : [];
+  const unsupportedBackgroundLayers = backgroundLayers.filter((layer) => {
+    if (parseCssSupportedGradient(layer)) return false;
+    const backgroundImageSrc = parseCssBackgroundImageUrl(layer);
+    return !(backgroundImageSrc && replicaBackgroundImagePlanForSrc(backgroundImageSrc, style, measuredBox(measurement)));
+  });
+  const unsupportedBackgroundImage = unsupportedBackgroundLayers.length > 0
+    ? unsupportedBackgroundLayers.join(", ")
+    : null;
   const unsupportedFilter = measurement.replica.filter && !parseCssDropShadowFilter(measurement.replica.filter) ? measurement.replica.filter : null;
   const unsupportedCompositing = measurement.replica.unsupportedCompositing ?? {};
   const unsupportedTransform = unsupportedCompositing.transformFallback ?? (style.transformData?.supported === false ? style.transformData.fallback : null);
@@ -1457,28 +1483,70 @@ function replicaBorderDashType(style) {
 function replicaShapeKind(measurement) {
   const style = cssStyle(measurement);
   const box = measuredBox(measurement);
-  const cornerRadii = replicaCornerRadii(style);
-  const minDimensionPx = Math.min(Number(measurement?.px?.w ?? box.w * 96), Number(measurement?.px?.h ?? box.h * 96));
-  if (Number.isFinite(minDimensionPx) && minDimensionPx > 0 && cornerRadii.every((radius) => radius >= minDimensionPx / 2 - 0.5)) {
-    return "ellipse";
+  const override = String(measurement?.shapeOverride ?? "").trim().toLowerCase();
+  if (["rect", "roundrect", "round-rect", "pill", "circle", "ellipse"].includes(override)) {
+    if (override === "round-rect" || override === "roundrect") return "roundRect";
+    return override;
   }
+  const cornerRadii = replicaCornerRadii(style);
+  const widthPx = Number(measurement?.px?.w ?? box.w * 96);
+  const heightPx = Number(measurement?.px?.h ?? box.h * 96);
+  const shortSidePx = Math.min(widthPx, heightPx);
+  const allHalfShort = cornerRadii.every((corner) =>
+    Math.abs(corner.rx - shortSidePx / 2) <= 1 && Math.abs(corner.ry - shortSidePx / 2) <= 1
+  );
+  const allHalfWidthHeight = cornerRadii.every((corner) =>
+    Math.abs(corner.rx - widthPx / 2) <= 1 && Math.abs(corner.ry - heightPx / 2) <= 1
+  );
+  if (allHalfShort && Math.abs(widthPx - heightPx) <= 1) return "circle";
+  if (allHalfShort && Math.abs(widthPx - heightPx) > 1) return "pill";
+  if (allHalfWidthHeight) return "ellipse";
   return hasUniformReplicaCornerRadius(cornerRadii) ? "roundRect" : "rect";
 }
 
 function replicaCornerRadii(style) {
+  if (Array.isArray(style.cornerRadii) && style.cornerRadii.length === 4) {
+    return style.cornerRadii.map((corner) => ({
+      rx: Math.max(0, Number(corner?.rx) || 0),
+      ry: Math.max(0, Number(corner?.ry ?? corner?.rx) || 0)
+    }));
+  }
   const shorthand = Number(style.borderRadius) || 0;
   return [
-    style.borderTopLeftRadius ?? shorthand,
-    style.borderTopRightRadius ?? shorthand,
-    style.borderBottomRightRadius ?? shorthand,
-    style.borderBottomLeftRadius ?? shorthand
-  ].map((value) => Number(value) || 0);
+    [style.borderTopLeftRadiusX ?? style.borderTopLeftRadius ?? shorthand, style.borderTopLeftRadiusY ?? style.borderTopLeftRadius ?? shorthand],
+    [style.borderTopRightRadiusX ?? style.borderTopRightRadius ?? shorthand, style.borderTopRightRadiusY ?? style.borderTopRightRadius ?? shorthand],
+    [style.borderBottomRightRadiusX ?? style.borderBottomRightRadius ?? shorthand, style.borderBottomRightRadiusY ?? style.borderBottomRightRadius ?? shorthand],
+    [style.borderBottomLeftRadiusX ?? style.borderBottomLeftRadius ?? shorthand, style.borderBottomLeftRadiusY ?? style.borderBottomLeftRadius ?? shorthand]
+  ].map(([rx, ry]) => ({ rx: Math.max(0, Number(rx) || 0), ry: Math.max(0, Number(ry) || 0) }));
 }
 
 function hasUniformReplicaCornerRadius(cornerRadii) {
-  const positive = cornerRadii.filter((radius) => radius > 1);
+  const positive = cornerRadii.filter((corner) => corner.rx > 1 || corner.ry > 1);
   if (positive.length !== 4) return false;
-  return cornerRadii.every((radius) => Math.abs(radius - cornerRadii[0]) <= 0.5);
+  return cornerRadii.every((corner) =>
+    Math.abs(corner.rx - cornerRadii[0].rx) <= 0.5
+    && Math.abs(corner.ry - cornerRadii[0].ry) <= 0.5
+  );
+}
+
+function shapeFidelityFor(measurement, style, shape) {
+  const radii = replicaCornerRadii(style);
+  const override = String(measurement?.shapeOverride ?? "").trim();
+  const asymmetric = radii.some((corner) =>
+    Math.abs(corner.rx - radii[0].rx) > 0.5 || Math.abs(corner.ry - radii[0].ry) > 0.5
+  );
+  const elliptical = radii.some((corner) => Math.abs(corner.rx - corner.ry) > 0.5);
+  if (asymmetric || (elliptical && !["ellipse", "pill"].includes(shape))) {
+    return {
+      status: "unsupported",
+      reason: asymmetric ? "asymmetric-corner-radii" : "elliptical-corner-radii",
+      cornerRadii: radii
+    };
+  }
+  if (override && !["rect", "roundrect", "round-rect", "pill", "circle", "ellipse"].includes(override.toLowerCase())) {
+    return { status: "unsupported", reason: `unsupported-shape-override:${override}` };
+  }
+  return { status: "native", shape, cornerRadii: radii };
 }
 
 function cssBorderDashType(borderStyle) {
@@ -1507,13 +1575,40 @@ function borderLineElement(id, measurement, border) {
   const style = cssStyle(measurement);
   const box = measuredBox(measurement);
   const inset = border.width / 96 / 2;
+  const radii = replicaCornerRadii(style);
+  const topLeft = radii[0] ?? { rx: 0, ry: 0 };
+  const topRight = radii[1] ?? { rx: 0, ry: 0 };
+  const bottomRight = radii[2] ?? { rx: 0, ry: 0 };
+  const bottomLeft = radii[3] ?? { rx: 0, ry: 0 };
+  const horizontalInset = (left, right) => Math.max(0, (Number(left) || 0) + (Number(right) || 0)) / 96;
+  const verticalInset = (top, bottom) => Math.max(0, (Number(top) || 0) + (Number(bottom) || 0)) / 96;
   const line = {
     type: "line",
     id: `${id}-${border.side}-border`,
-    x: border.side === "right" ? box.x + box.w - inset : border.side === "left" ? box.x + inset : box.x,
-    y: border.side === "bottom" ? box.y + box.h - inset : border.side === "top" ? box.y + inset : box.y,
-    w: border.side === "left" || border.side === "right" ? 0 : box.w,
-    h: border.side === "top" || border.side === "bottom" ? 0 : box.h,
+    x: border.side === "right"
+      ? box.x + box.w - inset
+      : border.side === "left"
+        ? box.x + inset
+        : box.x + (border.side === "top"
+          ? (Number(topLeft.rx) || 0) / 96
+          : (Number(bottomLeft.rx) || 0) / 96),
+    y: border.side === "bottom"
+      ? box.y + box.h - inset
+      : border.side === "top"
+        ? box.y + inset
+        : box.y + (border.side === "right"
+          ? (Number(topRight.ry) || 0) / 96
+          : (Number(topLeft.ry) || 0) / 96),
+    w: border.side === "left" || border.side === "right"
+      ? 0
+      : Math.max(0, box.w - (border.side === "top"
+        ? horizontalInset(topLeft.rx, topRight.rx)
+        : horizontalInset(bottomLeft.rx, bottomRight.rx))),
+    h: border.side === "top" || border.side === "bottom"
+      ? 0
+      : Math.max(0, box.h - (border.side === "left"
+        ? verticalInset(topLeft.ry, bottomLeft.ry)
+        : verticalInset(topRight.ry, bottomRight.ry))),
     style: {
       color: border.color ?? style.borderColor ?? "{colors.border}",
       width: Math.max(0.25, border.width * 0.75)
@@ -1529,13 +1624,16 @@ function borderLineElement(id, measurement, border) {
 
 function singleSideBorderLineElement(id, measurement) {
   const style = cssStyle(measurement);
-  if (style.backgroundColor || Number(style.borderRadius ?? 0) > 0 || hasCssBoxShadow(style)) return null;
+  if (style.backgroundColor || hasCssBorderRadius(style) || hasCssBoxShadow(style)) return null;
   const borders = visibleBorderSides(style);
   if (borders.length !== 1) return null;
   return borderLineElement(id, measurement, borders[0]);
 }
 
 function hasCssBorderRadius(style) {
+  if (Array.isArray(style.cornerRadii)) {
+    return style.cornerRadii.some((corner) => Number(corner?.rx ?? 0) > 0 || Number(corner?.ry ?? 0) > 0);
+  }
   return ["borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"].some(
     (key) => Number(style[key] ?? 0) > 0
   );
@@ -1565,7 +1663,6 @@ function hasAsymmetricBorderSides(style, borders) {
 
 function filledBoxBorderLineElements(id, measurement) {
   const style = cssStyle(measurement);
-  if (!style.backgroundColor || hasCssBorderRadius(style) || hasCssBoxShadow(style)) return [];
   const borders = visibleBorderSides(style);
   if (!hasAsymmetricBorderSides(style, borders)) return [];
   return borders.map((border) => borderLineElement(id, measurement, border));
@@ -1574,11 +1671,18 @@ function filledBoxBorderLineElements(id, measurement) {
 function replicaShapeElement(id, measurement) {
   const style = cssStyle(measurement);
   const dashType = replicaBorderDashType(style);
+  const shape = replicaShapeKind(measurement);
+  const shapeFidelity = shapeFidelityFor(measurement, style, shape);
+  const cornerRadii = replicaCornerRadii(style);
+  const borderSides = visibleBorderSides(style);
   const element = {
     type: "shape",
     id,
-    shape: replicaShapeKind(measurement),
+    shape,
     ...measuredBox(measurement),
+    ...(measurement?.shapeOverride ? { shapeOverride: String(measurement.shapeOverride) } : {}),
+    ...(shapeFidelity ? { shapeFidelity } : {}),
+    ...(borderSides.length > 0 ? { borderSides: borderSides.map((border) => ({ side: border.side, width: border.width, style: border.borderStyle, color: border.color })) } : {}),
     style: {
       fill: style.backgroundColor ?? "#FFFFFF",
       backgroundColor: style.backgroundColor ?? "#FFFFFF",
@@ -1587,15 +1691,16 @@ function replicaShapeElement(id, measurement) {
       transparency: style.backgroundColor ? (cssCombinedTransparency(style, "backgroundTransparency") ?? 0) : 100
     }
   };
-  if (element.shape === "roundRect") {
-    element.style.borderRadius = replicaCornerRadii(style)[0];
+  if (["roundRect", "pill"].includes(element.shape)) {
+    element.style.borderRadius = cornerRadii[0].rx;
+    element.style.borderRadiusX = cornerRadii[0].rx;
+    element.style.borderRadiusY = cornerRadii[0].ry;
+    element.style.cornerRadii = cornerRadii;
     const explicitInset = Number(measurement?.semantics?.safeInset);
     element.safeInset = Number.isFinite(explicitInset) && explicitInset >= 0 ? explicitInset : 0.12;
   }
   const hyperlink = measurementHyperlink(measurement);
   if (hyperlink) element.hyperlink = hyperlink;
-  const gradient = parseCssSupportedGradient(style.backgroundImage);
-  if (gradient) element.style.gradient = gradient;
   const borderTransparency = cssCombinedTransparency(style, "borderTransparency");
   if (borderTransparency !== null) element.style.borderTransparency = borderTransparency;
   if (dashType) element.style.dashType = dashType;
@@ -1606,38 +1711,136 @@ function replicaShapeElement(id, measurement) {
   return applyReplicaRotation(element, style);
 }
 
-function replicaPaintLayerElements(id, measurement) {
-  const singleBorderLine = singleSideBorderLineElement(id, measurement);
-  if (singleBorderLine) return [singleBorderLine];
-  const backgroundImages = replicaBackgroundImageElements(id, measurement);
-  const shape = replicaShapeElement(id, measurement);
-  const outline = replicaOutlineElement(id, measurement);
-  if (backgroundImages.length > 0 && !shape.style.gradient) {
-    shape.style.fill = "#FFFFFF";
-    shape.style.backgroundColor = "#FFFFFF";
-    shape.style.transparency = 100;
+function replicaBackgroundGradientElement(id, measurement, gradient, suffix) {
+  const base = replicaShapeElement(id, measurement);
+  const firstStop = gradient?.stops?.[0];
+  const style = {
+    ...base.style,
+    fill: firstStop?.color ?? base.style.fill ?? "#FFFFFF",
+    backgroundColor: firstStop?.color ?? base.style.backgroundColor ?? "#FFFFFF",
+    borderColor: firstStop?.color ?? base.style.borderColor ?? "#FFFFFF",
+    borderWidth: 0,
+    transparency: 0,
+    gradient
+  };
+  delete style.borderTransparency;
+  delete style.dashType;
+  delete style.shadow;
+  return {
+    ...base,
+    id: `${id}-${suffix}`,
+    style
+  };
+}
+
+function replicaRadialGlowElement(id, measurement, radial, suffix) {
+  const box = measuredBox(measurement);
+  const gradient = radial?.gradient;
+  const xPercent = Number(radial?.xPercent);
+  const yPercent = Number(radial?.yPercent);
+  if (!gradient || !Number.isFinite(xPercent) || !Number.isFinite(yPercent)) return null;
+  const halfWidthPercent = Math.max(4, Math.min(30, xPercent, 100 - xPercent));
+  const halfHeightPercent = Math.max(4, Math.min(30, yPercent, 100 - yPercent));
+  const firstStop = gradient.stops?.[0];
+  return {
+    type: "shape",
+    id: `${id}-${suffix}`,
+    shape: gradient.shape === "circle" ? "ellipse" : "ellipse",
+    x: Number((box.x + (xPercent - halfWidthPercent) / 100 * box.w).toFixed(4)),
+    y: Number((box.y + (yPercent - halfHeightPercent) / 100 * box.h).toFixed(4)),
+    w: Number((halfWidthPercent * 2 / 100 * box.w).toFixed(4)),
+    h: Number((halfHeightPercent * 2 / 100 * box.h).toFixed(4)),
+    style: {
+      fill: firstStop?.color ?? "#FFFFFF",
+      backgroundColor: firstStop?.color ?? "#FFFFFF",
+      borderWidth: 0,
+      transparency: 0,
+      gradient
+    }
+  };
+}
+
+/**
+ * Plan an element's CSS paint into deterministic editable layers. CSS paints
+ * the last background image first; the returned list is therefore ordered
+ * from back to front and keeps solid fill, gradients, radial glows, borders,
+ * and shadows separate where PowerPoint cannot represent the CSS stack in one
+ * shape.
+ */
+export function planReplicaElementBackgroundLayers(id, measurement) {
+  const style = cssStyle(measurement);
+  const layers = typeof style.backgroundImage === "string"
+    ? splitCssCommaList(style.backgroundImage).filter((layer) => layer && layer !== "none")
+    : [];
+  const elements = [];
+  const base = replicaShapeElement(id, measurement);
+  delete base.style.gradient;
+  const borders = visibleBorderSides(style);
+  const asymmetricBorders = hasAsymmetricBorderSides(style, borders);
+  const baseVisible = Boolean(style.backgroundColor)
+    || Number(base.style.borderWidth ?? 0) > 0
+    || Boolean(base.style.shadow);
+  if (baseVisible) {
+    if (asymmetricBorders) {
+      base.style.borderWidth = 0;
+      delete base.style.borderTransparency;
+      delete base.style.dashType;
+    }
+    elements.push(base);
   }
+
+  let gradientOrdinal = 0;
+  let glowOrdinal = 0;
+  let backgroundImagesAdded = false;
+  for (let index = layers.length - 1; index >= 0; index -= 1) {
+    const layer = layers[index];
+    if (parseCssBackgroundImageUrl(layer)) {
+      if (!backgroundImagesAdded) {
+        elements.push(...replicaBackgroundImageElements(id, measurement));
+        backgroundImagesAdded = true;
+      }
+      continue;
+    }
+    const radial = parseCssRadialOverlay(layer);
+    if (radial) {
+      const glow = replicaRadialGlowElement(id, measurement, radial, `radial-glow-${String(++glowOrdinal).padStart(3, "0")}`);
+      if (glow) elements.push(glow);
+      continue;
+    }
+    const gradient = parseCssSupportedGradient(layer);
+    if (!gradient) continue;
+    // A centered radial/linear gradient can use the element's native bounds;
+    // non-centered radial gradients use the standalone glow above so their
+    // focal point remains visible instead of being silently centered.
+    if (gradient.type === "radial" && (gradient.xPercent !== 50 || gradient.yPercent !== 50)) continue;
+    elements.push(replicaBackgroundGradientElement(
+      id,
+      measurement,
+      gradient,
+      `background-gradient-${String(++gradientOrdinal).padStart(3, "0")}`
+    ));
+  }
+
   const borderLines = filledBoxBorderLineElements(id, measurement);
-  if (borderLines.length === 0) {
-    const hasVisibleShape =
-      shape.style.gradient ||
-      Number(shape.style.transparency ?? 0) < 100 ||
-      Number(shape.style.borderWidth ?? 0) > 0 ||
-      shape.style.shadow;
-    const base =
-      backgroundImages.length > 0 && !hasVisibleShape
-        ? backgroundImages
-        : backgroundImages.length > 0
-          ? [...backgroundImages, shape]
-          : hasVisibleShape ? [shape] : [];
-    return outline ? [...base, outline] : base;
+  if (borderLines.length > 0) {
+    elements.push(...borderLines);
+  } else if (!baseVisible && borders.length === 1) {
+    const single = borderLineElement(id, measurement, borders[0]);
+    if (single) elements.push(single);
   }
-  shape.style.borderWidth = 0;
-  shape.style.borderColor = shape.style.fill ?? shape.style.backgroundColor ?? "#FFFFFF";
-  delete shape.style.borderTransparency;
-  delete shape.style.dashType;
-  const base = backgroundImages.length > 0 ? [...backgroundImages, shape, ...borderLines] : [shape, ...borderLines];
-  return outline ? [...base, outline] : base;
+  const outline = replicaOutlineElement(id, measurement);
+  if (outline) elements.push(outline);
+  return elements;
+}
+
+function replicaPaintLayerElements(id, measurement) {
+  const style = cssStyle(measurement);
+  const layers = typeof style.backgroundImage === "string"
+    ? splitCssCommaList(style.backgroundImage).filter((layer) => layer && layer !== "none")
+    : [];
+  const singleBorderLine = layers.length === 0 ? singleSideBorderLineElement(id, measurement) : null;
+  if (singleBorderLine) return [singleBorderLine];
+  return planReplicaElementBackgroundLayers(id, measurement);
 }
 
 function evidenceFromSemantics(semantics = {}) {
@@ -1691,7 +1894,9 @@ function replicaTextRuns(measurement, style) {
       ...(source.hyperlink ? { hyperlink: { ...source.hyperlink } } : {})
     };
   }).filter(Boolean);
-  if (runs.length > 0) {
+  const preserveWhitespace = Boolean(style.preserveWhitespace)
+    || ["pre", "pre-wrap", "break-spaces"].includes(String(style.whiteSpace ?? "").toLowerCase());
+  if (runs.length > 0 && !preserveWhitespace) {
     runs[0].text = runs[0].text.replace(/^\s+/, "");
     runs.at(-1).text = runs.at(-1).text.replace(/\s+$/, "");
   }
@@ -1727,6 +1932,9 @@ function replicaTextElement(id, measurement, options = {}) {
     ...(Number.isInteger(semantics.maxLines) ? { maxLines: semantics.maxLines } : {}),
     text,
     ...(runs.length > 0 ? { runs } : {}),
+    ...(Array.isArray(measurement?.renderedLines) ? { renderedLines: [...measurement.renderedLines] } : {}),
+    ...(Array.isArray(measurement?.lineBreakOffsets) ? { lineBreakOffsets: [...measurement.lineBreakOffsets] } : {}),
+    ...(Number.isInteger(measurement?.renderedLineCount) ? { renderedLineCount: measurement.renderedLineCount } : {}),
     ...measuredBox(measurement),
     ...(hyperlink ? { hyperlink } : {}),
     ...(evidence ? { evidence } : {}),
@@ -1750,6 +1958,9 @@ function replicaTextElement(id, measurement, options = {}) {
       textStroke: replicaTextStroke(style),
       charSpacing: style.letterSpacing,
       textOverflow: replicaTextOverflow(style),
+      whiteSpace: style.whiteSpace,
+      tabSize: style.tabSize,
+      preserveWhitespace: Boolean(style.preserveWhitespace),
       ...replicaTextDecoration(style),
       ...(bullet ? { bullet } : {}),
       margin: replicaTextMargin(style)
@@ -2339,7 +2550,9 @@ function svgClassification(node, measurement) {
   const source = String(metadata.source ?? node.toString?.() ?? "");
   const safety = svgSourceSafety(source);
   if (safety.length > 0) return { mode: "raster-fallback", reasons: safety, source };
-  const mode = ["native", "vector-preserved", "raster-fallback"].includes(metadata.mode)
+  const mode = metadata.tier === "B"
+    ? "native"
+    : ["native", "vector-preserved", "raster-fallback"].includes(metadata.mode)
     ? metadata.mode
     : "vector-preserved";
   return { mode, reasons: Array.isArray(metadata.reasons) ? metadata.reasons : [], source, metadata };
@@ -2372,6 +2585,7 @@ function svgVectorImageElement(id, measurement, classification) {
     mediaKind: "svg",
     vectorSource: "inline-svg",
     alt: id,
+    ...(classification.metadata?.semantic ? { svgSemantic: { ...classification.metadata.semantic } } : {}),
     ...(cssCombinedTransparency(cssStyle(measurement)) !== null
       ? { transparency: cssCombinedTransparency(cssStyle(measurement)) }
       : {})
@@ -2384,6 +2598,7 @@ function svgNativeElements(node, measurement, classification) {
   const viewBox = parseSvgViewBox(node);
   if (!viewBox) return [];
   const metadataNodes = classification.metadata?.nodes ?? [];
+  const tier = classification.metadata?.tier ?? "A";
   let ordinal = 0;
   const native = [];
   const walk = (current, inheritedStyle, inheritedMatrix) => {
@@ -2395,12 +2610,20 @@ function svgNativeElements(node, measurement, classification) {
     if (!localMatrix) return false;
     const matrix = svgMatrixMultiply(inheritedMatrix, localMatrix);
     if (["svg", "g", "defs", "style", "title", "desc"].includes(tag)) {
+      if (tier === "B" && tag === "g"
+        && !current.getAttribute?.("id")
+        && !current.getAttribute?.("data-pptx-id")
+        && !current.getAttribute?.("data-id")
+        && !current.getAttribute?.("data-pptx-group")
+        && !current.getAttribute?.("data-pptx-kind")) return false;
       for (const child of current.childNodes ?? []) {
         if (child?.tagName && !walk(child, style, matrix)) return false;
       }
       return true;
     }
-    const baseId = current.getAttribute?.("id") ?? current.getAttribute?.("data-id") ?? `${measurement.id}-svg-${ordinal}`;
+    const stableId = current.getAttribute?.("data-pptx-id") ?? current.getAttribute?.("data-id") ?? current.getAttribute?.("id") ?? null;
+    if (tier === "B" && !stableId) return false;
+    const baseId = stableId ?? `${measurement.id}-svg-${ordinal}`;
     const angle = svgTransformAngle(matrix);
     if (angle === null) return false;
     const point = (x, y) => svgTransformPoint(matrix, { x, y });
@@ -2411,8 +2634,9 @@ function svgNativeElements(node, measurement, classification) {
         y: mapped.points[0].y,
         w: roundInches(mapped.points[1].x - mapped.points[0].x),
         h: roundInches(mapped.points[1].y - mapped.points[0].y)
-      }, true);
+      }, true, current);
       line.style = svgNativeStyle(style, true);
+      if (suffix) line.semanticParentId = baseId;
       native.push(line);
     };
     if (tag === "line") {
@@ -2823,7 +3047,10 @@ function convertKindElement(node, lookup, options = {}) {
     ];
   }
   if (kind === "shape") {
-    return [applyNodeLayoutSemantics(shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}"), node)];
+    const element = shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}");
+    const shapeOverride = shapeOverrideFromNode(node);
+    if (shapeOverride) { element.shape = shapeOverride; element.shapeOverride = shapeOverride; }
+    return [applyNodeLayoutSemantics(element, node)];
   }
   if (kind === "card") {
     return cardInnerElements(node, coords, id);
@@ -2866,7 +3093,10 @@ function convertMeasuredSlide(slideNode, lookup, slideId, options = {}) {
         runs.length > 0 ? { runs } : {}
       ), node));
     } else if (pptxType === "shape") {
-      elements.push(applyNodeLayoutSemantics(shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}"), node));
+      const element = shapeElement(id, coords, node.getAttribute("data-component") ?? "{components.content-card}");
+      const shapeOverride = shapeOverrideFromNode(node);
+      if (shapeOverride) { element.shape = shapeOverride; element.shapeOverride = shapeOverride; }
+      elements.push(applyNodeLayoutSemantics(element, node));
     } else if (pptxType === "table") {
       elements.push(tableElement(id, node, coords, null, lookup?.get(id)));
     } else if (pptxType === "line") {
@@ -2946,7 +3176,15 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
 
   function addLayer(measurement, measurementIndex, layerElements) {
     const normalized = (Array.isArray(layerElements) ? layerElements : [layerElements]).map((element) => {
-      if (element?.id !== measurement.id) return element;
+      if (element?.id !== measurement.id) {
+        // Generated paint layers (text boxes, border sides, outlines, and
+        // background tiles) remain structurally owned by their measured
+        // source element so explicit groups can be rebuilt after later
+        // suppression/fallback mutations without broad ID matching.
+        return element && !element.semanticParentId
+          ? { ...element, semanticParentId: measurement.id }
+          : element;
+      }
       const semantics = measurement.semantics ?? {};
       const measuredElement = {
         ...element,
@@ -2980,6 +3218,9 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
       paintOrder: Number.isFinite(Number(measurement.paintOrder)) ? Number(measurement.paintOrder) : null,
       stackingContextPath: Array.isArray(measurement.stackingContextPath) ? measurement.stackingContextPath : [],
       measurementIndex,
+      measurementId: measurement.id,
+      pseudo: measurement.pseudo ?? null,
+      pseudoOwnerId: measurement.pseudoOwnerId ?? null,
       elements: normalized
     });
   }
@@ -3004,6 +3245,13 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
         kind: measurement.kind,
         reason: "invalid-measurement-box"
       });
+      continue;
+    }
+    // An explicit group is a structural wrapper only. It contributes no
+    // paint layer, but it is still covered for replica accounting before any
+    // effect/fallback/unsupported-kind routing can mark it as dropped.
+    if (kind === "group") {
+      coveredMeasurementIds.add(measurement.id);
       continue;
     }
     const style = cssStyle(measurement);
@@ -3123,9 +3371,7 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
   const measuredElements = slideMeasurements.length;
   const coveredElements = coveredMeasurementIds.size;
   const coverage = measuredElements === 0 ? 1 : Math.round((coveredElements / measuredElements) * 10000) / 10000;
-  const elements = [
-    ...slideBackgroundPlan.overlays,
-    ...layers
+  const sortedLayers = layers
     .sort((a, b) => {
       const aPaint = Number.isFinite(a.paintOrder) ? a.paintOrder : null;
       const bPaint = Number.isFinite(b.paintOrder) ? b.paintOrder : null;
@@ -3137,7 +3383,54 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
       const aContext = a.stackingContextPath.join("/");
       const bContext = b.stackingContextPath.join("/");
       return aContext.localeCompare(bContext) || a.zIndex - b.zIndex || a.measurementIndex - b.measurementIndex;
-    })
+    });
+
+  // DOMSnapshot paint orders are a flat list, while CSS pseudo-elements have
+  // a local sequence: owner background, ::before, owner descendants,
+  // ::after. Reconcile only generated pseudo layers so unrelated stacking
+  // contexts retain the browser order and the owner stays editable.
+  const measurementNodes = new Map(slideMeasurements
+    .map((measurement) => [measurement.id, findNodeByMeasurementId(slideNode, measurement.id)])
+    .filter(([, node]) => node));
+  const isDescendantOf = (candidateId, ownerId) => {
+    const candidate = measurementNodes.get(candidateId);
+    const owner = measurementNodes.get(ownerId);
+    if (!candidate || !owner) return false;
+    let cursor = candidate.parentNode;
+    while (cursor && cursor !== slideNode) {
+      if (cursor === owner) return true;
+      cursor = cursor.parentNode;
+    }
+    return false;
+  };
+  const pseudoOwnerIds = [...new Set(sortedLayers
+    .filter((layer) => layer.pseudoOwnerId)
+    .map((layer) => layer.pseudoOwnerId))];
+  for (const ownerId of pseudoOwnerIds) {
+    const ownerLayer = sortedLayers.find((layer) => layer.measurementId === ownerId);
+    if (!ownerLayer) continue;
+    const beforeLayers = sortedLayers.filter((layer) => layer.pseudoOwnerId === ownerId && layer.pseudo === "before");
+    const afterLayers = sortedLayers.filter((layer) => layer.pseudoOwnerId === ownerId && layer.pseudo === "after");
+    const descendantLayers = sortedLayers.filter((layer) =>
+      layer.measurementId !== ownerId
+      && !layer.pseudoOwnerId
+      && isDescendantOf(layer.measurementId, ownerId)
+    );
+    const block = [ownerLayer, ...beforeLayers, ...descendantLayers, ...afterLayers];
+    if (block.length < 2) continue;
+    const blockSet = new Set(block);
+    const ownerIndex = sortedLayers.indexOf(ownerLayer);
+    const removedBeforeOwner = block
+      .filter((layer) => sortedLayers.indexOf(layer) >= 0 && sortedLayers.indexOf(layer) < ownerIndex)
+      .length;
+    const insertAt = Math.max(0, ownerIndex - removedBeforeOwner);
+    const remaining = sortedLayers.filter((layer) => !blockSet.has(layer));
+    remaining.splice(Math.min(insertAt, remaining.length), 0, ...block);
+    sortedLayers.splice(0, sortedLayers.length, ...remaining);
+  }
+  const elements = [
+    ...slideBackgroundPlan.overlays,
+    ...sortedLayers
     .flatMap((layer) => layer.elements)
   ];
 
@@ -3405,6 +3698,245 @@ function convertHybridSlide(slideNode, lookup, slideId) {
   };
 }
 
+function stableNodeId(node) {
+  const value = node?.getAttribute?.("data-pptx-id")
+    ?? node?.getAttribute?.("data-id")
+    ?? node?.getAttribute?.("id");
+  const id = String(value ?? "").trim();
+  return id || null;
+}
+
+function explicitChartMarker(node) {
+  const id = stableNodeId(node);
+  let spec = null;
+  try {
+    spec = JSON.parse(node.getAttribute("data-pptx-chart") ?? "null");
+  } catch {
+    return { id, spec: null, invalid: true };
+  }
+  return { id, spec, invalid: false };
+}
+
+function rejectUnsupportedGroupedCharts(node, groupId) {
+  for (const chartNode of node.querySelectorAll("[data-pptx-chart]")) {
+    const marker = explicitChartMarker(chartNode);
+    const chartId = marker.id ?? "(missing-id)";
+    if (marker.invalid || !marker.spec || typeof marker.spec !== "object") continue;
+    const renderMode = marker.spec.renderMode ?? marker.spec.mode ?? marker.spec.style?.renderMode;
+    const chart = {
+      type: "chart",
+      id: chartId,
+      kind: marker.spec.kind,
+      ...(renderMode !== undefined ? { renderMode } : {})
+    };
+    if (!isNativeChartElement(chart) && FIDELITY_CHART_KINDS.has(marker.spec.kind)) {
+      throw new Error(`invalid explicit group ${groupId}: non-native expanding chart ${chartId} cannot be grouped`);
+    }
+  }
+}
+
+function generatedLayerOwnedBy(elementId, sourceId) {
+  if (typeof elementId !== "string" || typeof sourceId !== "string" || elementId === sourceId) return false;
+  if (elementId.startsWith(`${sourceId}__chart__`)) return true;
+  if (!elementId.startsWith(`${sourceId}-`)) return false;
+  const suffix = elementId.slice(sourceId.length + 1);
+  return /^(?:box|border|outline|top-border|right-border|bottom-border|left-border|background-image(?:-\d+)?|background-gradient(?:-\d+)?|radial-glow(?:-\d+)?|localized-fallback|fallback|text(?:-|$)|svg(?:-|$))/.test(suffix);
+}
+
+function elementOwnedBySource(element, sourceIds, byId, seen = new Set()) {
+  const elementId = element?.id;
+  if (typeof elementId !== "string" || seen.has(elementId)) return false;
+  seen.add(elementId);
+  if (sourceIds.has(elementId)) return true;
+  for (const sourceId of sourceIds) {
+    if (generatedLayerOwnedBy(elementId, sourceId)) return true;
+  }
+  const parentId = element?.semanticParentId;
+  if (!parentId) return false;
+  if (sourceIds.has(parentId)) return true;
+  const parent = byId.get(parentId);
+  return parent ? elementOwnedBySource(parent, sourceIds, byId, seen) : false;
+}
+
+function explicitGroupDescriptor(node, elements, lookup, slideId, options = {}) {
+  const id = stableNodeId(node);
+  if (!id) throw new Error(`invalid explicit group on ${slideId}: group requires data-pptx-id, data-id, or id`);
+  const backgroundKind = node.getAttribute("data-pptx-background");
+  if (backgroundKind !== undefined && backgroundKind !== null && backgroundKind !== "grid") throw new Error(`invalid explicit group ${id}: unsupported background kind ${backgroundKind}`);
+  if (node.querySelector("[data-pptx-kind='group']")) throw new Error(`invalid explicit group ${id}: nested groups are not supported`);
+  rejectUnsupportedGroupedCharts(node, id);
+  const descendantIds = [];
+  const seenDescendantIds = new Set();
+  for (const descendant of node.querySelectorAll("[data-pptx-id], [data-id], [id]")) {
+    const childId = stableNodeId(descendant);
+    if (childId && childId !== id && !seenDescendantIds.has(childId)) {
+      seenDescendantIds.add(childId);
+      descendantIds.push(childId);
+    }
+  }
+  const byId = new Map(elements.filter((element) => typeof element?.id === "string").map((element) => [element.id, element]));
+  const children = elements
+    .filter((element) => element?.id !== id && elementOwnedBySource(element, new Set(descendantIds), byId))
+    .map((element) => element.id);
+  if (children.length === 0) {
+    const hasPendingNativeChart = options.allowPendingNativeCharts === true
+      && [...node.querySelectorAll("[data-pptx-chart]")].some((chartNode) => {
+        const marker = explicitChartMarker(chartNode);
+        const renderMode = marker.spec?.renderMode ?? marker.spec?.mode ?? marker.spec?.style?.renderMode;
+        return marker.spec && isNativeChartElement({ type: "chart", kind: marker.spec.kind, renderMode });
+      });
+    if (!hasPendingNativeChart) throw new Error(`invalid explicit group ${id}: no stable rendered children`);
+    return null;
+  }
+  const measuredBox = getMeasurementBox(lookup, id);
+  // Use the resolved rendered children rather than source descendant IDs.
+  // Polyline/path sources are expanded into segment IDs, and line segments
+  // may run in either direction (negative w/h), so normalize each endpoint
+  // before taking the union.
+  const fallbackBoxes = children
+    .map((childId) => elements.find((element) => element?.id === childId))
+    .filter((element) => element && ["x", "y", "w", "h"].every((key) => Number.isFinite(Number(element[key]))));
+  const unionBox = fallbackBoxes.length > 0
+    ? (() => {
+      const bounds = fallbackBoxes.map((element) => {
+        const x = Number(element.x);
+        const y = Number(element.y);
+        const right = x + Number(element.w);
+        const bottom = y + Number(element.h);
+        return {
+          left: Math.min(x, right),
+          top: Math.min(y, bottom),
+          right: Math.max(x, right),
+          bottom: Math.max(y, bottom)
+        };
+      });
+      const x = Math.min(...bounds.map((box) => box.left));
+      const y = Math.min(...bounds.map((box) => box.top));
+      const right = Math.max(...bounds.map((box) => box.right));
+      const bottom = Math.max(...bounds.map((box) => box.bottom));
+      return { x, y, w: right - x, h: bottom - y };
+    })()
+    : null;
+  const box = measuredBox ?? parseCoords(node) ?? unionBox;
+  if (!box || ![box.x, box.y, box.w, box.h].every((value) => Number.isFinite(Number(value))) || Number(box.x) < 0 || Number(box.y) < 0 || Number(box.w) <= 0 || Number(box.h) <= 0) {
+    throw new Error(`invalid explicit group ${id}: illegal geometry`);
+  }
+  return {
+    id,
+    children,
+    x: Number(box.x),
+    y: Number(box.y),
+    w: Number(box.w),
+    h: Number(box.h),
+    ...(backgroundKind === "grid" ? { role: "background", backgroundKind: "grid" } : {})
+  };
+}
+
+function applyExplicitGroups(slideNode, elements, lookup, slideId, options = {}) {
+  const groupNodes = slideNode.querySelectorAll("[data-pptx-kind='group']").filter((node) => {
+    // Inline SVG groups participate in explicit-group reconciliation only for
+    // Tier-B native SVGs. Tier-C SVGs remain one vector/media element; a
+    // missing or unsupported group ID must not be reinterpreted as an HTML
+    // group and fail after classification.
+    let cursor = node.parentNode;
+    let svgAncestor = null;
+    while (cursor && cursor !== slideNode) {
+      if (String(cursor.tagName ?? "").toLowerCase() === "svg") {
+        svgAncestor = cursor;
+        break;
+      }
+      cursor = cursor.parentNode;
+    }
+    if (!svgAncestor) return true;
+    const svgMeasurement = lookup?.get(stableNodeId(svgAncestor));
+    return svgMeasurement?.svg?.tier === "B" && svgMeasurement?.svg?.mode === "native";
+  });
+  if (groupNodes.length === 0) return elements;
+  const gridNodes = groupNodes.filter((node) => node.getAttribute("data-pptx-background") === "grid");
+  if (gridNodes.length > 1) throw new Error(`invalid explicit groups on ${slideId}: more than one grid background group`);
+  const baseElements = elements.filter((element) => element?.type !== "group");
+  const existingIds = new Set();
+  for (const element of baseElements) {
+    if (typeof element?.id !== "string") continue;
+    if (existingIds.has(element.id)) throw new Error(`invalid explicit groups on ${slideId}: duplicate rendered element id ${element.id}`);
+    existingIds.add(element.id);
+  }
+  const groupIds = new Set();
+  const claims = new Map();
+  const descriptors = [];
+  for (const node of groupNodes) {
+    const id = stableNodeId(node);
+    if (!id) throw new Error(`invalid explicit group on ${slideId}: group requires data-pptx-id, data-id, or id`);
+    if (groupIds.has(id) || existingIds.has(id)) throw new Error(`invalid explicit group ${id}: duplicate group id`);
+    groupIds.add(id);
+    const descriptor = explicitGroupDescriptor(node, baseElements, lookup, slideId, options);
+    if (!descriptor) continue;
+    for (const childId of descriptor.children) {
+      const owner = claims.get(childId);
+      if (owner && owner !== id) throw new Error(`invalid explicit groups ${owner} and ${id}: overlapping child ${childId}`);
+      claims.set(childId, id);
+    }
+    descriptors.push(descriptor);
+  }
+  const insertionByIndex = new Map();
+  const memberIndices = new Set();
+  for (const descriptor of descriptors) {
+    const indexes = descriptor.children
+      .map((id) => baseElements.findIndex((element) => element.id === id))
+      .filter((index) => index >= 0);
+    const first = Math.min(...indexes);
+    if (!Number.isFinite(first)) throw new Error(`invalid explicit group ${descriptor.id}: no stable rendered children`);
+    if (insertionByIndex.has(first)) throw new Error(`invalid explicit groups: multiple groups share child insertion position ${first}`);
+    descriptor.children = descriptor.children
+      .map((id) => ({ id, index: baseElements.findIndex((element) => element.id === id) }))
+      .filter((entry) => entry.index >= 0)
+      .sort((a, b) => a.index - b.index)
+      .map((entry) => entry.id);
+    insertionByIndex.set(first, { type: "group", ...descriptor });
+    for (const childId of descriptor.children) memberIndices.add(baseElements.findIndex((element) => element.id === childId));
+  }
+  if (descriptors.length === 0) return baseElements;
+  const output = [];
+  const emittedMemberIndices = new Set();
+  for (const [index, element] of baseElements.entries()) {
+    const insertion = insertionByIndex.get(index);
+    if (insertion) {
+      output.push(insertion);
+      for (const childId of insertion.children) {
+        const childIndex = baseElements.findIndex((candidate) => candidate.id === childId);
+        if (childIndex < 0 || emittedMemberIndices.has(childIndex)) continue;
+        emittedMemberIndices.add(childIndex);
+        output.push(baseElements[childIndex]);
+      }
+      continue;
+    }
+    if (memberIndices.has(index)) continue;
+    output.push(element);
+  }
+  return output;
+}
+
+/**
+ * Rebuild explicit groups after post-conversion mutations (native chart
+ * injection, preview suppression, and localized fallbacks).  The source DOM
+ * remains authoritative for membership; only stable source IDs, semantic
+ * parent ownership, and known generated paint-layer suffixes are accepted.
+ */
+export function reconcileExplicitGroups(sourceRoot, manifest, measurements) {
+  if (!sourceRoot || !manifest?.slides?.length) return manifest;
+  const lookup = measurements ? buildMeasurementLookup(measurements) : null;
+  const slideNodes = sourceRoot.querySelectorAll?.(".pptx-slide, [data-slide]") ?? [];
+  const sources = slideNodes.length > 0 ? [...slideNodes] : [sourceRoot];
+  for (const [slideIndex, slide] of manifest.slides.entries()) {
+    const source = sources[slideIndex];
+    if (!source) continue;
+    slide.elements = applyExplicitGroups(source, slide.elements ?? [], lookup, slide.id ?? `slide-${slideIndex + 1}`, {
+      allowPendingNativeCharts: false
+    });
+  }
+  return manifest;
+}
+
 function convertSlide(slideNode, slideIndex, options = {}) {
   const lookup = options.measurementLookup ?? null;
   const slideId = `slide-${String(slideIndex + 1).padStart(3, "0")}`;
@@ -3424,6 +3956,10 @@ function convertSlide(slideNode, slideIndex, options = {}) {
   } else {
     result = convertHybridSlide(slideNode, lookup, slideId);
   }
+
+  result.elements = applyExplicitGroups(slideNode, result.elements, lookup, slideId, {
+    allowPendingNativeCharts: true
+  });
 
   // Selective sourceCoordinates: image-anchored elements are always
   // recorded; non-image elements are recorded at most once per 2x2 region.

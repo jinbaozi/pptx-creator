@@ -55,6 +55,9 @@ Prefer a deterministic document with:
 - unique `data-slide-id` and `data-pptx-id` values;
 - speaker notes in `data-notes` on each slide;
 - explicit connector semantics on supported SVG lines;
+- explicit flat groups with stable descendant IDs (and `data-pptx-background="grid"` only for an approved grid background);
+- optional `data-pptx-visual-key="true"` on a stable element when strict local component visual QA is required;
+- explicit SVG semantic metadata (`data-pptx-semantic`, `data-pptx-kind="chart|architecture"`, or `data-pptx-text-bearing`) when a vector's meaning is not inferable from its primitives;
 - optional native chart data in `data-pptx-chart`.
 
 The browser pass strips author scripts and inline event handlers, disables
@@ -82,6 +85,19 @@ node scripts/convert.mjs input.html output \
   --visual-threshold 48
 ```
 
+The default profile keeps the level-3/native-object-coverage-0.90 contract.
+For replica acceptance, use the explicit strict profile:
+
+```bash
+node scripts/convert.mjs input.html output --quality-profile replica-strict
+```
+
+`replica-strict` requires editability level `4`, native-object and semantic
+coverage `>= 0.90`, whole-slide SSIM `>= 0.90`, whole-slide normalized MAE
+`<= 0.05`, component SSIM `>= 0.94`, component normalized MAE `<= 0.05`, no
+full-slide raster, zero critical structure findings, and at least one valid
+visual key component. Unknown profile names fail with `E_ARGUMENT`.
+
 - Add `--overwrite` only when replacing generated artifacts in the exact
   destination is intended.
 - Add `--allow-remote-assets` only when network retrieval is authorized. The
@@ -101,9 +117,12 @@ The command performs this fixed sequence:
 7. Preflight fonts, resources, manifest structure, layout, and object geometry.
 8. Render the candidate PPTX with LibreOffice and compare every slide with the
    HTML screenshot.
-9. Apply only bounded deterministic layout repairs, then render and compare
+9. When strict profile is selected, crop deterministic key-component regions,
+   write component diffs and a component summary, and include that result in
+   the visual gate.
+10. Apply only bounded deterministic layout repairs, then render and compare
    again.
-10. Publish `final.pptx` and the versioned delivery package only after all
+11. Publish `final.pptx` and the versioned delivery package only after all
     blocking gates pass.
 
 Read [quality-gates.md](references/quality-gates.md) before changing thresholds,
@@ -112,8 +131,14 @@ interpreting a visual report, or deciding whether delivery is complete.
 ## Decide from the result
 
 - Deliver only when `qa-report.json` has `status: "passed"`.
-- Require editability level `3` or higher and native coverage of at least
-  `0.90`.
+- Require editability level `3` or higher and native-object coverage of at least
+  `0.90` under the default profile. `semanticEditabilityCoverage` is reported
+  for evidence but is disabled as a default gate.
+- Treat `nativeCoverage` in reports as a deprecated, equal-valued alias of
+  `nativeObjectCoverage`.
+- Under `replica-strict`, require the additional semantic and component visual
+  thresholds documented above; a missing key component is unavailable and
+  fails the strict gate.
 - Treat every `fallback-ledger.json` entry as a visible editability limitation.
 - Treat mobile findings as diagnostics for the source HTML; desktop conversion
   geometry remains the PPTX baseline.
@@ -136,9 +161,13 @@ A passed run contains:
 - `output-manifest.json` with hashes and byte counts;
 - `deck.manifest.json` and `layout-measurements.json`;
 - `qa-report.json` and `qa-report.md`;
-- `editable-report.json` and `editable-report.md`;
 - `compatibility-report.json`, `fallback-ledger.json`, and `font-report.json`;
-- HTML, layout, PPTX geometry, and visual-comparison reports;
+- `editable-report.json` version `2.0.0` with native-object/semantic coverage
+  and per-page classification evidence;
+- `structure-fidelity-report.json` bound to the manifest and PPTX hashes;
+- HTML, layout, PPTX geometry, and version `2.0.0` visual-comparison reports;
+- strict runs additionally publish `component-regions.json`,
+  `component-comparison.json`, `component-diff/`, and `components/summary.json`;
 - source screenshots, candidate evidence, final previews, and visual diffs.
 
 Do not edit generated reports to make a failed result appear passed. Fix the

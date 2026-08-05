@@ -116,6 +116,11 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
         slideIndex: Number.isInteger(element.slideIndex) ? element.slideIndex : null,
         tagName: element.tagName ?? null,
         selector: element.selector ?? `[data-pptx-id="${element.id}"]`,
+        ...(element.generated ? { generated: true } : {}),
+        ...(element.dataPptxGenerated ? { dataPptxGenerated: true } : {}),
+        ...(element.generatedBy ? { generatedBy: String(element.generatedBy) } : {}),
+        ...(element.pseudo ? { pseudo: String(element.pseudo) } : {}),
+        ...(element.pseudoOwnerId ? { pseudoOwnerId: String(element.pseudoOwnerId) } : {}),
         x: inches.x,
         y: inches.y,
         w: inches.w,
@@ -126,6 +131,9 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
         ...(Array.isArray(element.stackingContextPath) ? { stackingContextPath: [...element.stackingContextPath] } : {}),
         text: element.text ?? "",
         visibleText: typeof element.visibleText === "string" ? element.visibleText : null,
+        ...(Array.isArray(element.renderedLines) ? { renderedLines: [...element.renderedLines] } : {}),
+        ...(Array.isArray(element.lineBreakOffsets) ? { lineBreakOffsets: [...element.lineBreakOffsets] } : {}),
+        ...(Number.isInteger(element.renderedLineCount) ? { renderedLineCount: element.renderedLineCount } : {}),
         ...(Array.isArray(element.runs) ? { runs: element.runs.map((run) => ({ ...run })) } : {}),
         ...(element.table ? { table: normalizeTableMetadata(element.table, viewport, slideSize) } : {}),
         ...(element.svg && typeof element.svg === "object" ? {
@@ -139,6 +147,7 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
             } : {})
           }
         } : {}),
+        ...(element.shapeOverride ? { shapeOverride: String(element.shapeOverride) } : {}),
         src: element.src ?? null,
         href: element.href ?? null,
         hyperlinkTooltip: element.hyperlinkTooltip ?? null,

@@ -8,6 +8,111 @@ import { convertHtmlToManifest } from "../scripts/lib/html-to-manifest-core.mjs"
 const browserIt = process.env.PLAYWRIGHT_RUN === "1" ? it : it.skip;
 
 describe("real Chromium rich text and table measurements", () => {
+  browserIt("covers explicit structural groups without adding replica paint or dropped entries", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pptx-group-measurement-"));
+    const input = join(root, "index.html");
+    const html = `<!doctype html>
+      <html><head><style>
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body, .pptx-slide { margin: 0; width: 1280px; height: 720px; }
+        .pptx-slide { position: relative; overflow: hidden; background: #FFFFFF; }
+        #group { position: absolute; left: 80px; top: 60px; width: 600px; height: 220px; }
+        #shape { position: absolute; left: 0; top: 0; width: 240px; height: 100px; background: #DDEAFE; }
+        #text { position: absolute; left: 280px; top: 20px; width: 280px; font: 24px/1.25 Arial, sans-serif; }
+      </style></head><body>
+        <section class="pptx-slide" data-slide-id="slide-001">
+          <div id="group" data-pptx-id="group-001" data-pptx-kind="group">
+            <div id="shape" data-pptx-id="shape-001" data-pptx-kind="shape"></div>
+            <p id="text" data-pptx-id="text-001" data-pptx-kind="text">Grouped text</p>
+          </div>
+        </section>
+      </body></html>`;
+    await writeFile(input, html, "utf8");
+    try {
+      const measurements = await measureHtmlFile(input, { replica: true, totalTimeoutMs: 90_000 });
+      expect(measurements.elements.find((element) => element.id === "group-001")).toMatchObject({ kind: "group" });
+      const manifest = convertHtmlToManifest(html, {
+        measurements,
+        designMode: "replica",
+        designSystemSource: resolve("design-systems/business-neutral/DESIGN.md")
+      });
+      expect(manifest.slides[0].elements[0]).toMatchObject({ type: "group", id: "group-001", children: ["shape-001", "text-001"] });
+      expect(manifest.metadata.replicaSource.coverage).toMatchObject({
+        coverage: 1,
+        droppedElements: expect.not.arrayContaining([expect.objectContaining({ elementId: "group-001" })])
+      });
+      expect(manifest.metadata.replicaSource.coverage.slides[0].droppedElements).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ elementId: "group-001", kind: "group" })
+      ]));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  browserIt("materializes simple pseudo text/dots and keeps unsupported fallback ownership on pseudo bounds", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pptx-pseudo-measurement-"));
+    const input = join(root, "index.html");
+    const html = `<!doctype html>
+      <html><head><style>
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body, .pptx-slide { margin: 0; width: 1280px; height: 720px; }
+        .pptx-slide { position: relative; overflow: hidden; background: #FFFFFF; }
+        #card, #unsupported { position: absolute; width: 280px; height: 140px; background: #F8FAFC; }
+        #card { left: 80px; top: 70px; }
+        #card-child { position: absolute; left: 90px; top: 54px; font: 14px/18px Arial, sans-serif; color: #0F172A; }
+        #card::before { content: "PRE"; position: absolute; left: 12px; top: 10px; width: 56px; height: 22px; color: #2457E6; font: 16px/22px Arial, sans-serif; }
+        #card::after { content: ""; position: absolute; right: 14px; top: 14px; width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #2457E6, #F59E0B); box-shadow: 0 2px 4px rgba(0, 0, 0, .25); }
+        #unsupported { left: 420px; top: 70px; }
+        #unsupported::before { content: "BLUR"; position: absolute; left: 12px; top: 14px; background: #EF4444; font: 16px/20px Arial, sans-serif; filter: blur(3px); }
+      </style></head><body>
+        <section class="pptx-slide" data-slide-id="slide-001">
+          <div id="card" data-pptx-id="card" data-pptx-kind="shape"><span id="card-child" data-pptx-id="card-child" data-pptx-kind="text">child</span></div>
+          <div id="unsupported" data-pptx-id="unsupported" data-pptx-kind="shape"></div>
+        </section>
+      </body></html>`;
+    await writeFile(input, html, "utf8");
+    try {
+      const measurements = await measureHtmlFile(input, { replica: true, totalTimeoutMs: 90_000 });
+      const byId = new Map(measurements.elements.map((element) => [element.id, element]));
+      expect(byId.get("card-before")).toMatchObject({
+        generated: true,
+        dataPptxGenerated: true,
+        generatedBy: "card",
+        pseudo: "before",
+        kind: "text",
+        text: "PRE",
+        semantics: { semanticParentId: "card" }
+      });
+      expect(byId.get("card-before").px.w).toBeGreaterThan(0);
+      expect(byId.get("card-after")).toMatchObject({
+        generated: true,
+        pseudo: "after",
+        kind: "shape",
+        style: { backgroundImage: expect.stringContaining("linear-gradient") }
+      });
+      expect(byId.get("unsupported-before")).toMatchObject({
+        generated: true,
+        pseudo: "before",
+        replica: { unsupportedVisual: "pseudo-unsupported-filter", hasUnsupportedEffects: true }
+      });
+      expect(byId.get("unsupported").replica.unsupportedVisual).toBeNull();
+      expect(byId.get("unsupported-before").px).toMatchObject({ x: 432, y: 84 });
+      expect(byId.get("unsupported-before").px.w).toBeLessThan(byId.get("unsupported").px.w);
+      expect(byId.get("unsupported-before").px.h).toBeLessThan(byId.get("unsupported").px.h);
+      const manifest = convertHtmlToManifest(html, {
+        measurements,
+        designMode: "replica",
+        designSystemSource: resolve("design-systems/business-neutral/DESIGN.md")
+      });
+      const ids = manifest.slides[0].elements.map((element) => element.id);
+      expect(ids.indexOf("card")).toBeLessThan(ids.indexOf("card-before"));
+      expect(ids.indexOf("card-before")).toBeLessThan(ids.indexOf("card-child"));
+      expect(ids.indexOf("card-child")).toBeLessThan(ids.indexOf("card-after-background-gradient-001"));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   browserIt("persists nested rich runs and table structure into the manifest", async () => {
     const root = await mkdtemp(join(tmpdir(), "pptx-rich-measurement-"));
     const input = join(root, "index.html");

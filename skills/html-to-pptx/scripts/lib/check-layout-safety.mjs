@@ -54,6 +54,7 @@
 
 import { expandChartElement } from "./chart-renderer.mjs";
 import { expandDiagramElement } from "./diagram-compiler.mjs";
+import { validateGroupManifest } from "./group-renderer.mjs";
 import { measureTextElement } from "./text-fit.mjs";
 import {
   boundaryAnchor,
@@ -1349,9 +1350,19 @@ export function preflightLayout(manifest, options = {}) {
     ?? {};
   const slides = Array.isArray(safeManifest.slides) ? safeManifest.slides : [];
 
+  // Groups are structural OOXML containers, not an additional paint/layout
+  // object. Validate their flat declarations once, then preflight only the
+  // final rendered children so bounds/overlap/editability checks cannot
+  // double-count the group wrapper.
+  validateGroupManifest(safeManifest);
+
   const checks = [];
   for (const slide of slides) {
+    const slideGroups = (slide.elements ?? []).filter((element) => element?.type === "group");
+    const explicitGrid = slideGroups.some((group) => group.backgroundKind === "grid"
+      && String(group.role ?? "").toLowerCase() === "background");
     const expandedElements = (slide.elements ?? []).flatMap((element) => {
+      if (element?.type === "group") return [];
       if (element?.type === "chart") return expandChartElement(element);
       if (element?.type === "diagram") return expandDiagramElement(element);
       return [element];
@@ -1361,7 +1372,7 @@ export function preflightLayout(manifest, options = {}) {
       creativeFontFloors: options.creativeFontFloors
         ?? (options.mode !== "replica" && safeManifest.metadata?.inputType === "html"),
       inputType: options.inputType ?? safeManifest.metadata?.inputType,
-      visibleGrid: safeManifest.metadata?.designIntent?.visibleGrid === true
+      visibleGrid: safeManifest.metadata?.designIntent?.visibleGrid === true || explicitGrid
     });
     for (const check of slideChecks) {
       checks.push({ slideId: slide.id, ...check });
