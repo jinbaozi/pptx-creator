@@ -590,6 +590,8 @@ function resolveFaceEntry(entries, request, text = "", allowFallback = true) {
   if (familyMatches.length > 0 && !familyMatches.some(complete) && allowFallback) {
     pool = entries.filter(complete);
     if (pool.length === 0) pool = entries;
+    const preferred = pool.filter((entry) => preferredFallbackRank(entry) < PREFERRED_FALLBACKS.length);
+    if (preferred.length > 0) pool = preferred;
   } else if (familyMatches.length === 0 && allowFallback) {
     const completeEntries = entries.filter(complete);
     pool = completeEntries.length > 0 ? completeEntries : entries;
@@ -637,6 +639,7 @@ function catalogUnavailable() {
     hasFont: () => false,
     resolveFontFace: () => null,
     resolveFontFamily: () => null,
+    resolveFontSegments: () => [],
     measureText: () => null
   };
 }
@@ -679,6 +682,34 @@ export async function createFontMetricsCatalog(options = {}) {
     resolveFontFamily(fontFamily, text = "") {
       const face = resolveEntry(fontFamily, text, true);
       return face?.familyName ?? face?.postscriptName ?? null;
+    },
+    resolveFontSegments(request, text = "") {
+      const source = String(text ?? "");
+      if (!source) return [];
+      const graphemes = typeof Intl?.Segmenter === "function"
+        ? [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(source)].map((entry) => entry.segment)
+        : [...source];
+      const segments = [];
+      let currentEntry = null;
+      for (const grapheme of graphemes) {
+        const entry = /\s/u.test(grapheme) && currentEntry
+          ? currentEntry
+          : resolveEntry(request, grapheme, true);
+        if (!entry) continue;
+        const family = entry.familyName ?? entry.postscriptName ?? null;
+        const previous = segments.at(-1);
+        if (previous && previous.fontFamily === family && previous.postscriptName === entry.postscriptName) {
+          previous.text += grapheme;
+        } else {
+          segments.push({
+            text: grapheme,
+            fontFamily: family,
+            postscriptName: entry.postscriptName ?? null
+          });
+        }
+        currentEntry = entry;
+      }
+      return segments;
     },
     measureText(text, fontSize, font = {}) {
       const entry = resolveEntry(font, text, font.allowFallback === true);
@@ -756,16 +787,61 @@ export function collectReferencedFontRequests(manifest, tokens) {
   };
   visitTokens(designTokens);
 
+  const chartText = (element) => [
+    element?.title,
+    element?.style?.title,
+    ...(element?.data ?? []).flatMap((point) => [
+      point?.label,
+      ...Object.keys(point?.series && typeof point.series === "object" ? point.series : {})
+    ])
+  ].filter((value) => value !== null && value !== undefined).join(" ");
+
   for (const [slideIndex, slide] of (Array.isArray(manifest.slides) ? manifest.slides : []).entries()) {
     addFontRequest(requests, slide?.style, designTokens, "", { slideIndex });
     for (const [elementIndex, element] of (Array.isArray(slide?.elements) ? slide.elements : []).entries()) {
       if (!element || typeof element !== "object") continue;
-      addFontRequest(requests, element.style, designTokens, element.text ?? "", {
+      const elementText = element.type === "chart" ? chartText(element) : element.text ?? "";
+      addFontRequest(requests, element.style, designTokens, elementText, {
         slideId: slide.id,
         elementId: element.id,
         slideIndex,
         elementIndex
       });
+      for (const [runIndex, run] of (Array.isArray(element.runs) ? element.runs : []).entries()) {
+        addFontRequest(requests, { ...(element.style ?? {}), ...(run ?? {}), ...(run?.style ?? {}) }, designTokens, run?.text ?? "", {
+          slideId: slide.id, elementId: element.id, slideIndex, elementIndex, runIndex
+        });
+      }
+      for (const [sectionIndex, section] of (Array.isArray(element.sections) ? element.sections : []).entries()) {
+        for (const [rowIndex, row] of (Array.isArray(section?.rows) ? section.rows : []).entries()) {
+          for (const [cellIndex, cell] of (Array.isArray(row?.cells) ? row.cells : []).entries()) {
+            const cellStyle = { ...(element.style ?? {}), ...(cell?.style ?? {}) };
+            addFontRequest(requests, cellStyle, designTokens, cell?.text ?? "", {
+              slideId: slide.id, elementId: element.id, slideIndex, elementIndex, sectionIndex, rowIndex, cellIndex
+            });
+            for (const [runIndex, run] of (Array.isArray(cell?.runs) ? cell.runs : []).entries()) {
+              addFontRequest(requests, { ...cellStyle, ...(run ?? {}), ...(run?.style ?? {}) }, designTokens, run?.text ?? "", {
+                slideId: slide.id, elementId: element.id, slideIndex, elementIndex, sectionIndex, rowIndex, cellIndex, runIndex
+              });
+            }
+          }
+        }
+      }
+      if (element.caption) {
+        addFontRequest(requests, { ...(element.style ?? {}), ...(element.captionStyle ?? {}) }, designTokens, element.caption, {
+          slideId: slide.id, elementId: element.id, slideIndex, elementIndex, scope: "caption"
+        });
+      }
+      for (const [runIndex, run] of (Array.isArray(element.captionRuns) ? element.captionRuns : []).entries()) {
+        addFontRequest(requests, {
+          ...(element.style ?? {}),
+          ...(element.captionStyle ?? {}),
+          ...(run ?? {}),
+          ...(run?.style ?? {})
+        }, designTokens, run?.text ?? "", {
+          slideId: slide.id, elementId: element.id, slideIndex, elementIndex, scope: "caption", runIndex
+        });
+      }
     }
   }
   const seen = new Set();
@@ -907,7 +983,7 @@ export function collectReferencedFonts(manifest, tokens) {
     collectFontsFromValue(slide?.style, designTokens, fonts);
     const elements = Array.isArray(slide?.elements) ? slide.elements : [];
     for (const element of elements) {
-      collectFontsFromValue(element?.style, designTokens, fonts);
+      collectFontsFromValue(element, designTokens, fonts);
     }
   }
   return fonts;

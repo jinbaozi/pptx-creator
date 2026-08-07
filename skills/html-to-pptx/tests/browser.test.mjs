@@ -193,6 +193,17 @@ describe("real Chromium source validation", () => {
         transformOrigin: { raw: expect.any(String) }
       });
       expect(nativeTransform.style.transformData.flipV).toBe(true);
+      expect(nativeTransform.layoutPx.x).toBeCloseTo(600, 2);
+      expect(nativeTransform.layoutPx.y).toBeCloseTo(120, 2);
+      expect(nativeTransform.layoutPx.w).toBeCloseTo(120, 2);
+      expect(nativeTransform.layoutPx.h).toBeCloseTo(80, 2);
+      expect(nativeTransform.transformBoxPx.w).toBeCloseTo(120, 2);
+      expect(nativeTransform.transformBoxPx.h).toBeCloseTo(64, 2);
+      expect(nativeTransform.transformBoxPx.x + nativeTransform.transformBoxPx.w / 2)
+        .toBeCloseTo(nativeTransform.px.x + nativeTransform.px.w / 2, 2);
+      expect(nativeTransform.transformBoxPx.y + nativeTransform.transformBoxPx.h / 2)
+        .toBeCloseTo(nativeTransform.px.y + nativeTransform.px.h / 2, 2);
+      expect(measured.runtime).toMatchObject({ browser: "chromium", chromiumVersion: expect.any(String) });
 
       const unsupportedTransform = byId.get("unsupported-transform");
       expect(unsupportedTransform.replica).toMatchObject({
@@ -210,9 +221,10 @@ describe("real Chromium source validation", () => {
       });
       const ids = manifest.slides[0].elements.map((element) => element.id);
       expect(ids.indexOf("stack-back")).toBeLessThan(ids.indexOf("stack-front"));
-      expect(manifest.slides[0].elements.find((element) => element.id === "native-transform")).toMatchObject({
-        transform: { supported: true, flipV: true }
-      });
+      const nativeTransformElement = manifest.slides[0].elements.find((element) => element.id === "native-transform");
+      expect(nativeTransformElement).toMatchObject({ transform: { supported: true, flipV: true } });
+      expect(nativeTransformElement.w).toBeCloseTo(1.25, 2);
+      expect(nativeTransformElement.h).toBeCloseTo(0.667, 2);
       expect(manifest.slides[0].replicaUnsupportedEffects).toEqual(expect.arrayContaining([
         expect.objectContaining({
           elementId: "unsupported-compositing",

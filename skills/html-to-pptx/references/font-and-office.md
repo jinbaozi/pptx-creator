@@ -7,8 +7,8 @@ The browser and PowerPoint may measure the same font differently. The converter:
 1. waits for browser fonts before geometry capture;
 2. records requested font families;
 3. checks the host font catalog;
-4. applies deterministic substitutions when a requested family is unavailable;
-5. writes the chosen font names into native text objects;
+4. resolves each Unicode grapheme to a deterministic face when one family does not cover the full string;
+5. writes explicit font runs into native text, table cells/captions, and chart labels;
 6. renders the PPTX again before acceptance.
 
 Inspect `font-report.json` for missing families, substitutions, and the metrics
@@ -18,6 +18,11 @@ each text request, and the OpenType `OS/2.fsType` embedding decision. A
 restricted (`fsType & 0x0002`) face is never reported as embeddable. Keep fonts
 local and licensed. This Skill does not download commercial fonts or embed them
 without explicit rights.
+
+`layout-measurements.json` records the Chromium and Node versions used for DOM
+geometry. Accepted preview evidence records Python, LibreOffice, Poppler, and
+Pillow versions, and the same payload is copied into `qa-report.json` and
+`compatibility-report.json`.
 
 Set the Python interpreter explicitly when needed:
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectReferencedFontRequests,
   createFontMetricsCatalog,
   embeddingLicenseFromFsType,
   preflightFonts,
@@ -18,6 +19,7 @@ import {
   validateFontEmbeddingReport,
   verifyOfficeMatrix
 } from "../scripts/verify-office-matrix.mjs";
+import { materializeTextFonts } from "../scripts/lib/text-fit.mjs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -96,6 +98,69 @@ describe("font face matching and license evidence", () => {
       mode: "preview-print",
       noSubsetting: true
     });
+  });
+
+  it("materializes glyph-aware fallback runs in text, tables, captions, and charts", async () => {
+    const latin = fakeFace({ familyName: "Latin Sans", postscriptName: "LatinSans-Regular", fullName: "Latin Sans Regular", chars: "AB " });
+    const cjk = fakeFace({ familyName: "Noto Sans CJK SC", postscriptName: "NotoSansCJKsc-Regular", fullName: "Noto Sans CJK SC", chars: "中表题AB " });
+    const incidental = fakeFace({ familyName: ".Incidental UI", postscriptName: "IncidentalUI-Regular", fullName: "Incidental UI", chars: "中表题AB " });
+    const catalog = await createFontMetricsCatalog({
+      files: ["latin.ttf", "incidental.ttf", "cjk.ttf"],
+      loadFontkit: async () => ({ openSync: (path) => ({
+        fonts: [path.includes("latin") ? latin : path.includes("incidental") ? incidental : cjk]
+      }) })
+    });
+    const input = { slides: [{ id: "slide-1", elements: [
+      { id: "mixed", type: "text", text: "A中B", style: { fontFamily: "Latin Sans" } },
+      { id: "table", type: "table", sections: [{ type: "tbody", rows: [{ cells: [{ text: "表A", style: { fontFamily: "Latin Sans" } }] }] }], caption: "题A", captionRuns: [{ text: "题A", fontFamily: "Latin Sans" }] },
+      { id: "chart", type: "chart", kind: "horizontalBar", data: [{ label: "中A", value: 1 }], style: { fontFamily: "Latin Sans" } }
+    ] }] };
+    const output = materializeTextFonts(input, {}, catalog);
+    expect(output.manifest.slides[0].elements[0].runs.map((run) => [run.text, run.fontFamily])).toEqual([
+      ["A", "Latin Sans"], ["中", "Noto Sans CJK SC"], ["B", "Latin Sans"]
+    ]);
+    expect(output.manifest.slides[0].elements[1].sections[0].rows[0].cells[0].runs.map((run) => run.fontFamily))
+      .toEqual(["Noto Sans CJK SC", "Latin Sans"]);
+    expect(output.manifest.slides[0].elements[1].captionRuns.map((run) => run.fontFamily))
+      .toEqual(["Noto Sans CJK SC", "Latin Sans"]);
+    expect(output.manifest.slides[0].elements[2].style.fontFamily).toBe("Noto Sans CJK SC");
+    expect(output.substitutions.some((entry) => entry.elementId === "mixed" && entry.scope === "run")).toBe(true);
+  });
+
+  it("preserves source runs when the host font catalog is unavailable", async () => {
+    const input = { slides: [{ id: "slide-1", elements: [{
+      id: "rich",
+      type: "text",
+      text: "Alpha bold",
+      style: { fontFamily: "Missing Sans" },
+      runs: [{ text: "Alpha " }, { text: "bold", fontWeight: 700 }]
+    }] }] };
+    const output = materializeTextFonts(input, {}, {
+      resolveFontSegments: () => [],
+      resolveFontFamily: () => null
+    });
+    expect(output.manifest.slides[0].elements[0].runs).toEqual(input.slides[0].elements[0].runs);
+    expect(output.manifest.slides[0].elements[0].text).toBe("Alpha bold");
+  });
+
+  it("collects inherited font coverage text from runs, table cells, captions, and charts", () => {
+    const requests = collectReferencedFontRequests({ slides: [{ id: "slide-1", elements: [
+      { id: "rich", type: "text", text: "Alpha bold", style: { fontFamily: "Latin Sans" }, runs: [
+        { text: "Alpha " }, { text: "bold", style: { fontWeight: 700 } }
+      ] },
+      { id: "table", type: "table", style: { fontFamily: "Latin Sans" }, sections: [{ rows: [{ cells: [
+        { text: "表A", runs: [{ text: "表" }, { text: "A" }] }
+      ] }] }], caption: "题A", captionRuns: [{ text: "题" }, { text: "A" }] },
+      { id: "chart", type: "chart", title: "趋势", style: { fontFamily: "Latin Sans" }, data: [
+        { label: "中A", series: { Sales: 1 } }
+      ] }
+    ] }] }, {});
+    expect(requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ elementId: "rich", text: "bold", family: "Latin Sans", weight: 700 }),
+      expect.objectContaining({ elementId: "table", text: "表A", family: "Latin Sans" }),
+      expect.objectContaining({ elementId: "table", text: "题A", family: "Latin Sans", scope: "caption" }),
+      expect.objectContaining({ elementId: "chart", text: "趋势 中A Sales", family: "Latin Sans" })
+    ]));
   });
 
   it.each([

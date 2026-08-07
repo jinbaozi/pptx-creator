@@ -117,9 +117,9 @@ The command performs this fixed sequence:
 7. Preflight fonts, resources, manifest structure, layout, and object geometry.
 8. Render the candidate PPTX with LibreOffice and compare every slide with the
    HTML screenshot.
-9. When strict profile is selected, crop deterministic key-component regions,
-   write component diffs and a component summary, and include that result in
-   the visual gate.
+9. In the default profile, crop detected high-risk object regions when present;
+   in the strict profile, crop all explicit key and risk regions. Write
+   component diffs and include the result in the visual gate.
 10. Apply only bounded deterministic layout repairs, then render and compare
    again.
 11. Publish `final.pptx` and the versioned delivery package only after all

@@ -78,8 +78,9 @@ const QUALITY_PROFILES = Object.freeze({
     minimumSemanticEditabilityCoverage: null,
     minimumSsim: DEFAULT_SSIM_THRESHOLD,
     maximumNormalizedMae: DEFAULT_NORMALIZED_MAE_THRESHOLD,
-    minimumComponentSsim: null,
-    maximumComponentNormalizedMae: null,
+    minimumComponentSsim: DEFAULT_SSIM_THRESHOLD,
+    maximumComponentNormalizedMae: DEFAULT_NORMALIZED_MAE_THRESHOLD,
+    componentSelection: "risk",
     requireComponents: false
   }),
   "replica-strict": Object.freeze({
@@ -91,6 +92,7 @@ const QUALITY_PROFILES = Object.freeze({
     maximumNormalizedMae: 0.05,
     minimumComponentSsim: 0.94,
     maximumComponentNormalizedMae: 0.05,
+    componentSelection: "all",
     requireComponents: true
   })
 });
@@ -657,28 +659,16 @@ export function suppressNativeChartDescendants(html, manifest, measurements) {
       .find(({ element }) => element.type === "chart" && element.id === chartId);
     if (!chartElement) continue;
     const slideIndex = manifest.slides.indexOf(chartElement.slide);
-    const chartMeasurement = (measurements.elements ?? []).find(
-      (measurement) => measurement.slideIndex === slideIndex && measurement.id === chartId
-    );
-    const contains = (outer, inner) => {
-      const tolerance = 0.02;
-      return Number(inner.x) >= Number(outer.x) - tolerance
-        && Number(inner.y) >= Number(outer.y) - tolerance
-        && Number(inner.x) + Number(inner.w) <= Number(outer.x) + Number(outer.w) + tolerance
-        && Number(inner.y) + Number(inner.h) <= Number(outer.y) + Number(outer.h) + tolerance;
-    };
     const descendantIds = new Set(
-      node.querySelectorAll("[data-pptx-id]")
-        .map((child) => child.getAttribute("data-pptx-id"))
+      node.querySelectorAll("[data-pptx-id], [data-id], [id]")
+        .map((child) => child.getAttribute("data-pptx-id") ?? child.getAttribute("data-id") ?? child.id)
         .filter(Boolean)
     );
-    if (chartMeasurement) {
-      for (const measurement of measurements.elements ?? []) {
-        if (measurement.slideIndex === slideIndex
-          && measurement.id !== chartId
-          && contains(chartMeasurement, measurement)) {
-          descendantIds.add(measurement.id);
-        }
+    for (const measurement of measurements.elements ?? []) {
+      if (measurement.slideIndex !== slideIndex || measurement.id === chartId) continue;
+      if (measurement.semantics?.semanticParentId === chartId
+        || String(measurement.id).startsWith(`${chartId}__chart__`)) {
+        descendantIds.add(measurement.id);
       }
     }
     const existingIds = new Set((chartElement.slide.elements ?? []).map((element) => element.id));
@@ -1329,7 +1319,8 @@ function compatibilityReport(
   fallbacks,
   fontReport,
   tableDescendantSuppressions,
-  nestedTextSuppressions
+  nestedTextSuppressions,
+  runtimeEvidence
 ) {
   return {
     version: "1.0.0",
@@ -1354,6 +1345,7 @@ function compatibilityReport(
     officeRendering: {
       browser: "Chromium",
       comparisonRenderer: "LibreOffice headless",
+      runtimeEvidence,
       note: "PowerPoint and WPS may use different font metrics; inspect the reports before release."
     }
   };
@@ -2034,7 +2026,12 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       "utf8"
     );
     const fallbackCoverage = calculateEditabilityCoverage({ manifest, fallbacks });
-    const componentRegions = buildComponentRegions({ html: sourceHtml, measurements, manifest });
+    const componentRegions = buildComponentRegions({
+      html: sourceHtml,
+      measurements,
+      manifest,
+      riskOnly: qualityProfile.componentSelection === "risk"
+    });
     const componentRegionsPath = join(outputDir, "component-regions.json");
     await writeFile(componentRegionsPath, `${JSON.stringify(componentRegions, null, 2)}\n`, "utf8");
     await writeFile(
@@ -2106,7 +2103,7 @@ export async function runConversion(inputPath, outputPath, options = {}) {
         join(attemptDir, "visual-comparison.json"),
         {
           threshold: effectiveOptions.visualThreshold,
-          ...(qualityProfile.name === "replica-strict"
+          ...(qualityProfile.requireComponents || componentRegions.components.length > 0
             ? {
               ssimThreshold: qualityProfile.minimumSsim,
               normalizedMaeThreshold: qualityProfile.maximumNormalizedMae,
@@ -2231,13 +2228,18 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       recursive: true,
       force: true
     });
+    const runtimeEvidence = {
+      browser: measurements.runtime ?? { browser: "chromium", chromiumVersion: "unknown" },
+      preview: success.preview.environment ?? null
+    };
     const compatibility = compatibilityReport(
       manifest,
       chartConversions,
       fallbacks,
       fontReport,
       tableDescendantSuppressions,
-      nestedTextSuppressions
+      nestedTextSuppressions,
+      runtimeEvidence
     );
     await writeFile(
       join(outputDir, "compatibility-report.json"),
@@ -2275,6 +2277,7 @@ export async function runConversion(inputPath, outputPath, options = {}) {
       repairAttempts: success.attempt,
       maxRepairAttempts: effectiveOptions.maxRepairAttempts,
       browserTimeoutMs: effectiveOptions.browserTimeoutMs,
+      runtimeEvidence,
       gates: {
         htmlLayout: htmlLayout.summary,
         mobileHtmlDiagnostic: mobileLayout.summary,

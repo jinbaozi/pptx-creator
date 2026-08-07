@@ -80,7 +80,10 @@ export function getMeasurementBox(lookup, id, fallback = null) {
   if (!lookup || !id) return fallback;
   const measured = lookup.get(id);
   if (!measured) return fallback;
-  const { x, y, w, h } = measured;
+  const source = measured.style?.transformData?.supported !== false && measured.transformBox
+    ? measured.transformBox
+    : measured;
+  const { x, y, w, h } = source;
   if ([x, y, w, h].every((value) => Number.isFinite(value))) {
     return { x, y, w, h };
   }
@@ -109,6 +112,8 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
     .filter((element) => element?.id && element?.kind)
     .map((element) => {
       const inches = element.inches ?? convertMeasurementPxToInches(element.px, viewport, slideSize);
+      const layoutBox = element.layoutPx ? convertMeasurementPxToInches(element.layoutPx, viewport, slideSize) : null;
+      const transformBox = element.transformBoxPx ? convertMeasurementPxToInches(element.transformBoxPx, viewport, slideSize) : null;
       return {
         id: element.id,
         ...(element.slideId ? { slideId: element.slideId } : {}),
@@ -126,6 +131,12 @@ export function normalizeMeasuredElements(rawElements, viewport, slideSize = SLI
         w: inches.w,
         h: inches.h,
         px: element.px,
+        pixelScale: {
+          x: slideSize.width / viewport.width,
+          y: slideSize.height / viewport.height
+        },
+        ...(layoutBox ? { layoutBox, layoutPx: element.layoutPx } : {}),
+        ...(transformBox ? { transformBox, transformBoxPx: element.transformBoxPx } : {}),
         ...(Number.isFinite(Number(element.paintOrder)) ? { paintOrder: Number(element.paintOrder) } : {}),
         ...(element.stackingContext !== undefined ? { stackingContext: Boolean(element.stackingContext) } : {}),
         ...(Array.isArray(element.stackingContextPath) ? { stackingContextPath: [...element.stackingContextPath] } : {}),
@@ -179,6 +190,7 @@ export function buildMeasurementsDocument({
   slideSize = SLIDE_SIZE,
   elements,
   slides = [],
+  runtime = null,
   measuredAt = new Date().toISOString()
 }) {
   return {
@@ -192,6 +204,7 @@ export function buildMeasurementsDocument({
       unit: slideSize.unit ?? "in"
     },
     viewport: { ...viewport },
+    ...(runtime && typeof runtime === "object" ? { runtime: { ...runtime } } : {}),
     slides: normalizeMeasuredSlides(slides),
     elements: normalizeMeasuredElements(elements, viewport, slideSize)
   };

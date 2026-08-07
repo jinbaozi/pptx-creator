@@ -114,7 +114,10 @@ function pushText(elements, parent, semanticPath, text, x, y, w, h, style) {
     w,
     h,
     text,
-    style
+    style: {
+      ...(parent.style?.fontFamily ? { fontFamily: parent.style.fontFamily } : {}),
+      ...style
+    }
   });
 }
 
@@ -493,6 +496,12 @@ export function nativeChartSpec(element, designTokens = {}) {
     showLegend: style.showLegend !== false,
     showValue: style.showValues !== false,
     ...(style.showTitle ? { showTitle: true, title: String(style.title ?? element.title ?? "") } : {}),
+    ...(style.fontFamily ? {
+      catAxisLabelFontFace: String(style.fontFamily),
+      valAxisLabelFontFace: String(style.fontFamily),
+      legendFontFace: String(style.fontFamily),
+      titleFontFace: String(style.fontFamily)
+    } : {}),
     ...(style.catAxisLabelFontSize ? { catAxisLabelFontSize: Number(style.catAxisLabelFontSize) } : {}),
     ...(style.valAxisLabelFontSize ? { valAxisLabelFontSize: Number(style.valAxisLabelFontSize) } : {})
   };

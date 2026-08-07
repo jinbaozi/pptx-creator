@@ -57,19 +57,133 @@ function resolvedFont(element, tokens) {
 export function materializeTextFonts(manifest, designTokens = {}, fontCatalog = {}) {
   const next = structuredClone(manifest);
   const substitutions = [];
+  const defaultFamily = designTokens.typography?.body?.fontFamily;
+
+  const requestedFrom = (style, fallback) => style?.fontFamily ?? fallback ?? defaultFamily;
+  const fontRequest = (style, family) => ({
+    family,
+    fontWeight: style?.fontWeight ?? style?.weight,
+    fontStyle: style?.fontStyle ?? style?.style,
+    italic: style?.italic,
+    fontStretch: style?.fontStretch ?? style?.stretch,
+    variationAxes: style?.variationAxes ?? style?.axes
+  });
+  const withFamily = (source, family, postscriptName = null) => {
+    if (source?.style && typeof source.style === "object") {
+      return {
+        ...source,
+        style: { ...source.style, fontFamily: family },
+        fontFamily: family,
+        ...(postscriptName ? { resolvedPostscriptName: postscriptName } : {})
+      };
+    }
+    return {
+      ...source,
+      fontFamily: family,
+      ...(postscriptName ? { resolvedPostscriptName: postscriptName } : {})
+    };
+  };
+  const segmentsFor = (text, style, requested) => {
+    if (!requested) return [];
+    const source = String(text ?? "");
+    if (typeof fontCatalog.resolveFontSegments === "function") {
+      const segments = fontCatalog.resolveFontSegments(fontRequest(style, requested), source);
+      if (Array.isArray(segments) && segments.length > 0
+        && segments.map((segment) => String(segment?.text ?? "")).join("") === source) {
+        return segments;
+      }
+    }
+    if (typeof fontCatalog.resolveFontFamily !== "function") return [];
+    const family = fontCatalog.resolveFontFamily(fontRequest(style, requested), source);
+    return family ? [{ text: source, fontFamily: family, postscriptName: null }] : [];
+  };
+  const recordSubstitution = (context, requested, segment, scope) => {
+    const requestedFamilies = String(requested ?? "").split(",")
+      .map((family) => family.trim().replace(/^['"]|['"]$/g, "").toLowerCase())
+      .filter(Boolean);
+    if (!segment?.fontFamily || requestedFamilies.includes(String(segment.fontFamily).toLowerCase())) return;
+    substitutions.push({ ...context, scope, requested, resolved: segment.fontFamily, text: segment.text });
+  };
+  const materializeRuns = (runs, inheritedStyle, inheritedFamily, context, scope) => {
+    const result = [];
+    for (const [runIndex, rawRun] of runs.entries()) {
+      const run = typeof rawRun === "string" ? { text: rawRun } : rawRun ?? { text: "" };
+      const style = { ...inheritedStyle, ...run, ...(run.style ?? {}) };
+      const requested = requestedFrom(style, inheritedFamily);
+      const segments = segmentsFor(run.text ?? "", style, requested);
+      if (segments.length === 0) {
+        result.push({ ...run });
+        continue;
+      }
+      for (const segment of segments) {
+        result.push(withFamily({ ...run, text: segment.text }, segment.fontFamily, segment.postscriptName));
+        recordSubstitution({ ...context, runIndex }, requested, segment, scope);
+      }
+    }
+    return result;
+  };
+  const materializeTextOwner = (owner, inheritedStyle, inheritedFamily, context, scope, textKey = "text", runsKey = "runs") => {
+    const style = { ...inheritedStyle, ...(owner?.style ?? {}) };
+    const rawRuns = Array.isArray(owner?.[runsKey]) ? owner[runsKey] : [];
+    const runFamily = rawRuns.find((run) => run && typeof run === "object" && (run.fontFamily || run.style?.fontFamily));
+    const requested = requestedFrom(style, inheritedFamily ?? runFamily?.fontFamily ?? runFamily?.style?.fontFamily);
+    if (!requested) return;
+    const runs = rawRuns.length > 0
+      ? materializeRuns(rawRuns, style, requested, context, scope)
+      : segmentsFor(owner?.[textKey] ?? "", style, requested).map((segment, runIndex) => {
+        recordSubstitution({ ...context, runIndex }, requested, segment, scope);
+        return withFamily({ text: segment.text }, segment.fontFamily, segment.postscriptName);
+      });
+    const families = new Set(runs.map((run) => run.fontFamily).filter(Boolean));
+    if (runs.length > 1 || rawRuns.length > 0) owner[runsKey] = runs;
+    const resolved = families.size === 1 ? [...families][0] : requested;
+    if (owner.style && typeof owner.style === "object") owner.style = { ...owner.style, fontFamily: resolved };
+    else owner.fontFamily = resolved;
+  };
+
   for (const slide of next.slides ?? []) {
     for (const element of slide.elements ?? []) {
-      if (element?.type !== "text") continue;
+      if (!element || typeof element !== "object") continue;
       const typography = resolvedTypography(element, designTokens);
-      const requested = element.style?.fontFamily
-        ?? typography.fontFamily
-        ?? designTokens.typography?.body?.fontFamily;
-      if (!requested || typeof fontCatalog.resolveFontFamily !== "function") continue;
-      const resolved = fontCatalog.resolveFontFamily(requested, element.text ?? "");
-      if (!resolved) continue;
-      element.style = { ...(element.style ?? {}), fontFamily: resolved };
-      if (resolved !== requested) {
-        substitutions.push({ slideId: slide.id, elementId: element.id, requested, resolved });
+      const inheritedStyle = { ...typography, ...(element.style ?? {}) };
+      const inheritedFamily = requestedFrom(inheritedStyle, defaultFamily);
+      const context = { slideId: slide.id, elementId: element.id };
+      if (element.type === "text") {
+        element.style = { ...(element.style ?? {}) };
+        materializeTextOwner(element, typography, inheritedFamily, context, "run");
+      } else if (element.type === "table") {
+        for (const [sectionIndex, section] of (element.sections ?? []).entries()) {
+          for (const [rowIndex, row] of (section.rows ?? []).entries()) {
+            for (const [cellIndex, cell] of (row.cells ?? []).entries()) {
+              if (!cell || typeof cell !== "object") continue;
+              materializeTextOwner(cell, inheritedStyle, inheritedFamily, {
+                ...context, sectionIndex, rowIndex, cellIndex
+              }, "table-cell");
+            }
+          }
+        }
+        if (element.caption) {
+          const captionOwner = { text: element.caption, runs: element.captionRuns ?? [], style: element.captionStyle ?? {} };
+          materializeTextOwner(captionOwner, inheritedStyle, inheritedFamily, context, "table-caption");
+          element.captionRuns = captionOwner.runs;
+        }
+      } else if (element.type === "chart") {
+        const chartText = (element.data ?? []).flatMap((point) => [
+          point?.label,
+          ...Object.keys(point?.series && typeof point.series === "object" ? point.series : {})
+        ]).filter((value) => value !== null && value !== undefined).join(" ");
+        const requested = inheritedFamily;
+        const resolved = typeof fontCatalog.resolveFontFamily === "function"
+          ? fontCatalog.resolveFontFamily(fontRequest(inheritedStyle, requested), chartText)
+          : null;
+        if (resolved) {
+          element.style = { ...(element.style ?? {}), fontFamily: resolved };
+          const requestedFamilies = String(requested ?? "").split(",")
+            .map((family) => family.trim().replace(/^['"]|['"]$/g, "").toLowerCase());
+          if (!requestedFamilies.includes(String(resolved).toLowerCase())) {
+            substitutions.push({ ...context, scope: "chart", requested, resolved, text: chartText });
+          }
+        }
       }
     }
   }

@@ -15,8 +15,10 @@ from xml.sax.saxutils import escape
 
 try:
     from PIL import Image, ImageChops, ImageStat
+    from PIL import __version__ as PILLOW_VERSION
 except ImportError:  # pragma: no cover
     Image = ImageChops = ImageStat = None  # type: ignore[misc, assignment]
+    PILLOW_VERSION = None
 
 PREVIEW_VERSION = "0.2.0"
 
@@ -131,6 +133,19 @@ def find_libreoffice() -> str | None:
     return None
 
 
+def _command_version(binary: str | None, *args: str) -> str:
+    if not binary:
+        return "unavailable"
+    try:
+        result = subprocess.run(
+            [binary, *args], capture_output=True, text=True, check=False, timeout=15
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    output = (result.stdout or result.stderr or "").strip().splitlines()
+    return output[0] if output else "unknown"
+
+
 def libreoffice_status() -> dict[str, Any]:
     binary = find_libreoffice()
     if not binary:
@@ -226,12 +241,15 @@ def render_pptx_preview(pptx_path: Path, output_dir: Path) -> dict[str, Any]:
         "source": pptx_path.name,
         "renderer": lo,
         "environment": {
+            "reportVersion": PREVIEW_VERSION,
             "renderer": "libreoffice",
             "suite": "libreoffice",
             "platform": platform.system().lower(),
             "architecture": platform.machine().lower() or "unknown",
             "libreOfficeVersion": lo.get("version", "unknown"),
+            "popplerVersion": _command_version(converter, "-v"),
             "pythonVersion": platform.python_version(),
+            "libraries": {"Pillow": PILLOW_VERSION or "unavailable"},
             "commandIdentity": "libreoffice-headless-pdf+pdftoppm-png-96dpi",
             "settings": {"dpi": 96, "colorMode": "RGB", "timestampFree": True, **font_settings},
         },

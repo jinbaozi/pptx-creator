@@ -8,14 +8,14 @@ model, so support is intentionally bounded and every fallback is explicit.
 
 | HTML or CSS surface | PowerPoint result | Notes |
 |---|---|---|
-| Headings, paragraphs, spans, lists | Native text boxes | Font family, size, weight, style, color, alignment, line height, transform, opacity, and measured wrapping are materialized |
+| Headings, paragraphs, spans, lists | Native text boxes | Font family, glyph-aware fallback runs, size, weight, style, color, alignment, line height, transform, opacity, and measured wrapping are materialized |
 | Solid backgrounds | Native shapes | Rectangles, rounded rectangles, and ellipses are inferred from measured geometry |
 | Borders and outlines | Native shape borders or native lines | Per-side borders are emitted as separate lines when needed |
 | Layered backgrounds | Ordered native layers | Solid base plus parser-supported linear/radial gradients, alpha, local URL images, per-side borders, and one outer shadow retain CSS paint order; non-centred radial gradients also emit a bounded glow ellipse |
 | Supported linear and radial gradients | Native gradient fill | Only parser-supported stop and direction forms are native; multiple layers are emitted independently |
 | Single outer `box-shadow` | Native shape shadow | Unsupported multi-shadow syntax is a local fallback |
 | Single `drop-shadow(...)` filter | Native shadow | Other filter functions are not native |
-| `<img>` and CSS background images | Native image objects | `cover`, `contain`, object position, crop, opacity, and local assets are supported |
+| `<img>` and CSS background images | Native image objects | `cover`, `contain`, crop, opacity, local assets, and object positions using keywords, unclamped percentages, pixels, edge offsets, or `calc(% +/- px)` are supported |
 | SVG Tier A: ungrouped simple primitives | Native editable shapes, lines, and text | `rect`, `circle`, `ellipse`, `line`, stroke-only `polyline`/`polygon`, simple paths, and `text` with safe transforms/paint |
 | SVG Tier B: explicitly grouped simple primitives | Native editable `<p:grpSp>` with stable direct children | Declare a stable group ID and stable drawable IDs; child order and connector ownership are preserved |
 | SVG Tier C: filled/curved or otherwise complex self-contained SVG | SVG vector image (`ppt/media/*.svg`) | Safe vector media is preserved as one asset; filters, masks, clipping/compositing, scripts, external references, or traversal are localized to a bounded raster crop |
@@ -84,7 +84,11 @@ Opt a stable key region into deterministic local visual comparison with
 eligible; `pre`/`code` blocks are eligible when they have stable IDs. The
 converter writes `component-regions.json`, crops source and LibreOffice images
 without resizing, and emits `component-diff/` plus `components/summary.json`.
-The `replica-strict` profile requires every key component to pass SSIM `>= 0.94`
+The default profile automatically selects high-risk transformed, cropped-image,
+chart, table, group, SVG, rich-text, and localized-fallback regions and requires
+SSIM `>= 0.85` plus normalized MAE `<= 12/255` when at least one such region
+exists. The `replica-strict` profile requires every key and risk component to
+pass SSIM `>= 0.94`
 and normalized MAE `<= 0.05`; missing keys, illegal IDs/paths, duplicate IDs,
 invalid slide indices, and fully out-of-bounds boxes fail the component gate.
 
@@ -109,6 +113,9 @@ delivery.
   crop of the pseudo bounds; the owner remains native and editable.
 - Browser font metrics and Office font metrics can differ. Read
   `font-and-office.md` and inspect `font-report.json`.
+- Supported orthogonal 2D transforms preserve a layout box, browser rendered
+  bounds, and a pre-rotation PowerPoint box. Skew, perspective, and other 3D
+  matrices remain localized-fallback cases.
 - PowerPoint has no direct equivalent for arbitrary DOM clipping, CSS
   compositing, or responsive reflow.
 - The converter preserves the measured desktop layout. It does not translate

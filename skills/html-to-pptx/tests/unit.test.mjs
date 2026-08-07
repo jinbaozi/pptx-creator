@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { parse } from "node-html-parser";
 import { mergeSlideAuditResults } from "../scripts/lib/html-layout-audit.mjs";
 import {
+  coverImageSizingForBox,
   convertHtmlToManifest,
   measureContentCoverage,
+  parseObjectPosition,
   planReplicaElementBackgroundLayers,
   planReplicaSlideBackground
 } from "../scripts/lib/html-to-manifest-core.mjs";
@@ -31,6 +33,7 @@ import { preflightLayout } from "../scripts/lib/check-layout-safety.mjs";
 import { validatePresentationPackage } from "../scripts/validate-presentation-package.mjs";
 import { calculateEditabilityCoverage, unionArea } from "../scripts/lib/editability-coverage.mjs";
 import { buildComponentRegions } from "../scripts/lib/component-regions.mjs";
+import { buildMeasurementsDocument } from "../scripts/lib/html-measurement-core.mjs";
 
 function manifest() {
   return {
@@ -172,6 +175,54 @@ describe("public argument and safety contracts", () => {
     expect(() => parseArgs(["input.html", "output", "--quality-profile"])).toThrow(/requires default\|replica-strict/);
   });
 
+  it("uses the transform-aware logical box while preserving rendered bounds and runtime evidence", () => {
+    const measurements = buildMeasurementsDocument({
+      source: "/tmp/source.html",
+      viewport: { width: 1280, height: 720 },
+      elements: [{
+        id: "transformed",
+        kind: "shape",
+        slideIndex: 0,
+        px: { x: 590, y: 100, w: 150, h: 120 },
+        layoutPx: { x: 600, y: 120, w: 120, h: 80 },
+        transformBoxPx: { x: 605, y: 128, w: 120, h: 64 },
+        style: {
+          backgroundColor: "#34D399",
+          backgroundTransparency: 0,
+          transformData: { supported: true, rotate: 30, flipV: true, matrix: [0.866, 0.5, 0.4, -0.693, 12, 8] }
+        },
+        replica: {}
+      }],
+      runtime: { browser: "chromium", chromiumVersion: "test-version" }
+    });
+    expect(measurements.runtime).toEqual({ browser: "chromium", chromiumVersion: "test-version" });
+    expect(measurements.elements[0]).toMatchObject({
+      x: 6.146,
+      y: 1.042,
+      w: 1.562,
+      h: 1.25,
+      transformBox: { x: 6.302, y: 1.333, w: 1.25, h: 0.667 }
+    });
+    const converted = convertHtmlToManifest(`<section class="pptx-slide"><div id="transformed" data-pptx-kind="shape"></div></section>`, {
+      measurements,
+      designMode: "replica"
+    });
+    expect(converted.slides[0].elements.find((element) => element.id === "transformed")).toMatchObject({
+      x: 6.302,
+      y: 1.333,
+      w: 1.25,
+      h: 0.667,
+      transform: {
+        supported: true,
+        geometry: {
+          layoutBox: { x: 6.25, y: 1.25, w: 1.25, h: 0.833 },
+          transformBox: { x: 6.302, y: 1.333, w: 1.25, h: 0.667 },
+          renderedBounds: { x: 6.146, y: 1.042, w: 1.562, h: 1.25 }
+        }
+      }
+    });
+  });
+
   it("builds deterministic component regions from key markers and native group/chart candidates", () => {
     const html = `<section class="pptx-slide" data-slide-id="slide-001">
       <div data-pptx-visual-key="true" data-pptx-id="key-z"></div>
@@ -204,6 +255,81 @@ describe("public argument and safety contracts", () => {
     ]));
     expect(regions.components.some((component) => component.id === "code-id")).toBe(true);
     expect(regions.components.some((component) => component.id === "without-id")).toBe(false);
+  });
+
+  it("selects only high-risk native regions for the default component gate", () => {
+    const html = `<section class="pptx-slide" data-slide-id="slide-001">
+      <div id="ordinary"></div><div id="uniform-runs"></div><div id="mixed-runs"></div><div id="generated-fallback"></div>
+      <div id="transformed"></div><img id="cropped" />
+    </section>`;
+    const measurements = {
+      elements: [
+        { id: "ordinary", slideIndex: 0, kind: "shape", px: { x: 10, y: 10, w: 80, h: 30 }, style: {} },
+        { id: "uniform-runs", slideIndex: 0, kind: "text", px: { x: 10, y: 50, w: 80, h: 30 }, style: {}, runs: [
+          { text: "same ", fontFamily: "Arial", fontWeight: 400 },
+          { text: "style", fontFamily: "Arial", fontWeight: 400 }
+        ] },
+        { id: "mixed-runs", slideIndex: 0, kind: "text", px: { x: 10, y: 90, w: 80, h: 30 }, style: {}, runs: [
+          { text: "Latin", fontFamily: "Arial", fontWeight: 400 },
+          { text: "中文", fontFamily: "Noto Sans CJK SC", fontWeight: 400 }
+        ] },
+        { id: "generated-fallback", slideIndex: 0, kind: "text", px: { x: 10, y: 130, w: 80, h: 30 }, style: {}, runs: null },
+        { id: "transformed", slideIndex: 0, kind: "shape", px: { x: 100, y: 10, w: 80, h: 30 }, style: { transformData: { supported: true, rotate: 15 } } },
+        { id: "cropped", slideIndex: 0, kind: "image", px: { x: 200, y: 10, w: 80, h: 30 }, style: { objectFit: "cover", objectPosition: "right 12px bottom 8px" } },
+        { id: "table-id", slideIndex: 0, kind: "table", px: { x: 300, y: 10, w: 120, h: 60 }, style: {} }
+      ]
+    };
+    const manifest = { slides: [{ id: "slide-001", elements: [
+      { id: "ordinary", type: "shape" },
+      { id: "uniform-runs", type: "text", runs: [
+        { text: "same ", fontFamily: "Arial", fontWeight: 400 },
+        { text: "style", fontFamily: "Arial", fontWeight: 400 }
+      ] },
+      { id: "mixed-runs", type: "text", runs: [
+        { text: "Latin", fontFamily: "Arial", fontWeight: 400 },
+        { text: "中文", fontFamily: "Noto Sans CJK SC", fontWeight: 400 }
+      ] },
+      { id: "generated-fallback", type: "text", runs: [
+        { text: "中文", fontFamily: "Noto Sans CJK SC", fontWeight: 400 },
+        { text: "fallback", fontFamily: "Arial", fontWeight: 400 }
+      ] },
+      { id: "transformed", type: "shape", transform: { supported: true, rotate: 15 } },
+      { id: "cropped", type: "image", sizing: { type: "crop" } },
+      { id: "table-id", type: "table" }
+    ] }] };
+    const regions = buildComponentRegions({ html, measurements, manifest, riskOnly: true });
+    expect(regions).toMatchObject({ selectionMode: "risk" });
+    expect(regions.components.map((component) => component.id)).toEqual(["cropped", "mixed-runs", "table-id", "transformed"]);
+    expect(regions.components.find((component) => component.id === "mixed-runs")?.riskReasons).toContain("rich-text-runs");
+    expect(regions.components.some((component) => component.id === "uniform-runs")).toBe(false);
+    expect(regions.components.some((component) => component.id === "generated-fallback")).toBe(false);
+    expect(regions.components.every((component) => component.risk === true && component.riskReasons.length > 0)).toBe(true);
+  });
+
+  it("preserves CSS object-position edge offsets, calc lengths, and unclamped percentages", () => {
+    expect(parseObjectPosition("right 20px bottom 10px", { x: 0.01, y: 0.02 })).toEqual({
+      x: { percent: 1, length: -0.2 },
+      y: { percent: 1, length: -0.2 }
+    });
+    expect(parseObjectPosition("calc(25% + 12px) -10%", { x: 0.01, y: 0.02 })).toEqual({
+      x: { percent: 0.25, length: 0.12 },
+      y: { percent: -0.1, length: 0 }
+    });
+    expect(parseObjectPosition("top center")).toEqual({
+      x: { percent: 0.5, length: 0 },
+      y: { percent: 0, length: 0 }
+    });
+    expect(parseObjectPosition("center left")).toEqual({
+      x: { percent: 0, length: 0 },
+      y: { percent: 0.5, length: 0 }
+    });
+    expect(coverImageSizingForBox(200, 100, { w: 4, h: 4 }, "right 20px bottom 10px", { x: 0.01, y: 0.02 })).toMatchObject({
+      type: "crop",
+      sourceW: 8,
+      sourceH: 4,
+      x: 4.2,
+      y: 0.2
+    });
   });
 
   it("materializes only explicitly marked groups and preserves stable child paint order", () => {
@@ -765,6 +891,28 @@ describe("public argument and safety contracts", () => {
     });
     expect(suppressions).toEqual([{ slideId: "slide-001", chartId: "chart-001", elementIds: ["chart-001-label"] }]);
     expect(value.slides[0].elements.map((element) => element.id)).not.toContain("chart-001-label");
+  });
+
+  it("preserves independent sibling overlays that merely intersect a native chart box", () => {
+    const value = manifest();
+    value.slides[0].elements.push(
+      { type: "chart", id: "chart-001", kind: "horizontalBar", x: 1, y: 1, w: 4, h: 3, data: [{ label: "A", value: 1 }] },
+      { type: "text", id: "chart-001-label", text: "A", x: 1, y: 2, w: 1, h: 0.2 },
+      { type: "text", id: "independent-note", text: "Source: audited", x: 1.2, y: 3.4, w: 2, h: 0.2 }
+    );
+    const html = `<section>
+      <div data-pptx-id="chart-001" data-pptx-chart='{"kind":"horizontalBar","renderMode":"native","data":[{"label":"A","value":1}]}'><span data-id="chart-001-label">A</span></div>
+      <p id="independent-note">Source: audited</p>
+    </section>`;
+    const suppressions = suppressNativeChartDescendants(html, value, {
+      elements: [
+        { id: "chart-001", slideIndex: 0, x: 1, y: 1, w: 4, h: 3 },
+        { id: "chart-001-label", slideIndex: 0, x: 1, y: 2, w: 1, h: 0.2, semantics: { semanticParentId: "chart-001" } },
+        { id: "independent-note", slideIndex: 0, x: 1.2, y: 3.4, w: 2, h: 0.2 }
+      ]
+    });
+    expect(suppressions).toEqual([{ slideId: "slide-001", chartId: "chart-001", elementIds: ["chart-001-label"] }]);
+    expect(value.slides[0].elements.map((element) => element.id)).toContain("independent-note");
   });
 
   it("suppresses preview descendants for legacy fidelity-first chart markers", () => {

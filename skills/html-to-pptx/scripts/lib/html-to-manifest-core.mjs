@@ -536,6 +536,16 @@ function lineElement(id, box, preserveHeight = false, node = null) {
 }
 
 function measuredBox(measurement) {
+  const transform = measurement?.style?.transformData;
+  if (transform?.supported !== false && measurement?.transformBox
+    && ["x", "y", "w", "h"].every((key) => Number.isFinite(Number(measurement.transformBox[key])))) {
+    return {
+      x: Number(measurement.transformBox.x),
+      y: Number(measurement.transformBox.y),
+      w: Number(measurement.transformBox.w),
+      h: Number(measurement.transformBox.h)
+    };
+  }
   return {
     x: measurement.x,
     y: measurement.y,
@@ -647,7 +657,7 @@ function replicaRotate(style) {
   return Math.round(value * 100) / 100;
 }
 
-function applyReplicaRotation(element, style) {
+function applyReplicaRotation(element, style, measurement = null) {
   const transformData = style?.transformData;
   if (transformData && typeof transformData === "object") {
     // Keep the complete browser matrix/origin in the manifest for audit and
@@ -659,7 +669,19 @@ function applyReplicaRotation(element, style) {
       ...(Array.isArray(transformData.matrix) ? { matrix: [...transformData.matrix] } : {}),
       ...(transformData.transformOrigin && typeof transformData.transformOrigin === "object"
         ? { transformOrigin: { ...transformData.transformOrigin } }
-        : {})
+        : {}),
+      ...(measurement?.layoutBox && measurement?.transformBox ? {
+        geometry: {
+          layoutBox: { ...measurement.layoutBox },
+          transformBox: { ...measurement.transformBox },
+          renderedBounds: {
+            x: Number(measurement.x),
+            y: Number(measurement.y),
+            w: Number(measurement.w),
+            h: Number(measurement.h)
+          }
+        }
+      } : {})
     };
     if (transformData.supported !== false) {
       const rotate = Number(transformData.rotate);
@@ -692,36 +714,112 @@ function cssCombinedTransparency(style, ...transparencyKeys) {
   return result > 0 ? result : null;
 }
 
-function parseObjectPositionAxis(value, axis) {
+function objectPositionValue(value, axis, unitScale) {
   const token = String(value ?? "").trim().toLowerCase();
-  if (!token) return 0.5;
-  if ((axis === "x" && token === "left") || (axis === "y" && token === "top")) return 0;
-  if (token === "center") return 0.5;
-  if ((axis === "x" && token === "right") || (axis === "y" && token === "bottom")) return 1;
+  const start = axis === "x" ? "left" : "top";
+  const end = axis === "x" ? "right" : "bottom";
+  if (!token || token === "center") return { percent: 0.5, length: 0 };
+  if (token === start) return { percent: 0, length: 0 };
+  if (token === end) return { percent: 1, length: 0 };
   const percent = token.match(/^(-?\d+(?:\.\d+)?)%$/);
-  if (percent) return clamp01(Number(percent[1]) / 100);
-  return 0.5;
-}
-
-function parseObjectPosition(value) {
-  const parts = String(value ?? "50% 50%").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 1) {
+  if (percent) return { percent: Number(percent[1]) / 100, length: 0 };
+  const px = token.match(/^(-?\d+(?:\.\d+)?)px$/);
+  if (px) return { percent: 0, length: Number(px[1]) * unitScale };
+  const calc = token.match(/^calc\(\s*(-?\d+(?:\.\d+)?)%\s*([+-])\s*(-?\d+(?:\.\d+)?)px\s*\)$/);
+  if (calc) {
     return {
-      x: parseObjectPositionAxis(parts[0], "x"),
-      y: 0.5
+      percent: Number(calc[1]) / 100,
+      length: Number(calc[3]) * unitScale * (calc[2] === "+" ? 1 : -1)
     };
   }
-  return {
-    x: parseObjectPositionAxis(parts[0], "x"),
-    y: parseObjectPositionAxis(parts[1], "y")
-  };
+  return null;
 }
 
-function coverImageSizingForBox(sourceWidth, sourceHeight, box, objectPosition) {
+function objectPositionEdgeValue(edge, offset, axis, unitScale) {
+  const parsed = objectPositionValue(offset, axis, unitScale);
+  if (!parsed) return null;
+  const start = axis === "x" ? "left" : "top";
+  if (edge === start) return parsed;
+  return { percent: 1 - parsed.percent, length: -parsed.length };
+}
+
+function objectPositionAxisForEdge(value) {
+  if (["left", "right"].includes(value)) return "x";
+  if (["top", "bottom"].includes(value)) return "y";
+  return null;
+}
+
+export function parseObjectPosition(value, unitScale = {}) {
+  const scale = {
+    x: Number.isFinite(Number(unitScale.x)) ? Number(unitScale.x) : 1 / 96,
+    y: Number.isFinite(Number(unitScale.y)) ? Number(unitScale.y) : 1 / 96
+  };
+  const parts = splitCssWhitespaceList(value ?? "50% 50%");
+  const centered = () => ({ percent: 0.5, length: 0 });
+  if (parts.length === 0) return { x: centered(), y: centered() };
+
+  if (parts.length === 1) {
+    const axis = objectPositionAxisForEdge(parts[0]) ?? "x";
+    const parsed = objectPositionValue(parts[0], axis, scale[axis]) ?? centered();
+    return axis === "x" ? { x: parsed, y: centered() } : { x: centered(), y: parsed };
+  }
+
+  if (parts.length === 2 && objectPositionAxisForEdge(parts[0])
+    && !objectPositionAxisForEdge(parts[1]) && parts[1] !== "center") {
+    const axis = objectPositionAxisForEdge(parts[0]);
+    const parsed = objectPositionEdgeValue(parts[0], parts[1], axis, scale[axis]) ?? centered();
+    return axis === "x" ? { x: parsed, y: centered() } : { x: centered(), y: parsed };
+  }
+
+  if (parts.length === 2) {
+    const firstAxis = objectPositionAxisForEdge(parts[0]);
+    const secondAxis = objectPositionAxisForEdge(parts[1]);
+    if (firstAxis && secondAxis && firstAxis !== secondAxis) {
+      return {
+        x: objectPositionValue(firstAxis === "x" ? parts[0] : parts[1], "x", scale.x) ?? centered(),
+        y: objectPositionValue(firstAxis === "y" ? parts[0] : parts[1], "y", scale.y) ?? centered()
+      };
+    }
+    if (firstAxis && parts[1] === "center") {
+      const parsed = objectPositionValue(parts[0], firstAxis, scale[firstAxis]) ?? centered();
+      return firstAxis === "x" ? { x: parsed, y: centered() } : { x: centered(), y: parsed };
+    }
+    if (parts[0] === "center" && secondAxis) {
+      const parsed = objectPositionValue(parts[1], secondAxis, scale[secondAxis]) ?? centered();
+      return secondAxis === "x" ? { x: parsed, y: centered() } : { x: centered(), y: parsed };
+    }
+    return {
+      x: objectPositionValue(parts[0], "x", scale.x) ?? centered(),
+      y: objectPositionValue(parts[1], "y", scale.y) ?? centered()
+    };
+  }
+
+  const resolved = { x: null, y: null };
+  const singles = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const edge = parts[index];
+    const axis = objectPositionAxisForEdge(edge);
+    const next = parts[index + 1];
+    if (axis && next && !objectPositionAxisForEdge(next) && next !== "center") {
+      resolved[axis] = objectPositionEdgeValue(edge, next, axis, scale[axis]);
+      index += 1;
+    } else {
+      singles.push(edge);
+    }
+  }
+  for (const token of singles) {
+    const axis = objectPositionAxisForEdge(token)
+      ?? (resolved.x === null ? "x" : resolved.y === null ? "y" : null);
+    if (axis && resolved[axis] === null) resolved[axis] = objectPositionValue(token, axis, scale[axis]);
+  }
+  return { x: resolved.x ?? centered(), y: resolved.y ?? centered() };
+}
+
+export function coverImageSizingForBox(sourceWidth, sourceHeight, box, objectPosition, unitScale = {}) {
   if (!(sourceWidth > 0 && sourceHeight > 0)) return null;
   const imageRatio = sourceHeight / sourceWidth;
   const boxRatio = box.h / box.w;
-  const position = parseObjectPosition(objectPosition);
+  const position = parseObjectPosition(objectPosition, unitScale);
   let sourceW = box.w;
   let sourceH = box.h;
   let x = 0;
@@ -729,12 +827,12 @@ function coverImageSizingForBox(sourceWidth, sourceHeight, box, objectPosition) 
   if (boxRatio > imageRatio) {
     sourceH = box.h;
     sourceW = box.h / imageRatio;
-    x = Math.max(0, sourceW - box.w) * position.x;
   } else if (boxRatio < imageRatio) {
     sourceW = box.w;
     sourceH = box.w * imageRatio;
-    y = Math.max(0, sourceH - box.h) * position.y;
   }
+  x = Math.max(0, sourceW - box.w) * position.x.percent - position.x.length;
+  y = Math.max(0, sourceH - box.h) * position.y.percent - position.y.length;
   const sizing = {
     type: Math.abs(x) > 0.001 || Math.abs(y) > 0.001 ? "crop" : "cover",
     w: box.w,
@@ -750,7 +848,13 @@ function coverImageSizingForBox(sourceWidth, sourceHeight, box, objectPosition) 
 }
 
 function replicaCoverImageSizing(measurement, box, style) {
-  return coverImageSizingForBox(Number(measurement.naturalWidth), Number(measurement.naturalHeight), box, style.objectPosition);
+  return coverImageSizingForBox(
+    Number(measurement.naturalWidth),
+    Number(measurement.naturalHeight),
+    box,
+    style.objectPosition,
+    measurement.pixelScale
+  );
 }
 
 function replicaImageSizing(measurement, style, box) {
@@ -768,7 +872,7 @@ function replicaImageSizing(measurement, style, box) {
 
 function replicaImageElement(measurement, box) {
   const style = cssStyle(measurement);
-  const element = applyReplicaRotation({ type: "image", id: measurement.id, src: measurement.src, ...box }, style);
+  const element = applyReplicaRotation({ type: "image", id: measurement.id, src: measurement.src, ...box }, style, measurement);
   const hyperlink = measurementHyperlink(measurement);
   if (hyperlink) element.hyperlink = hyperlink;
   const shapeKind = replicaShapeKind(measurement);
@@ -1122,7 +1226,7 @@ function replicaBackgroundImageElements(id, measurement) {
       if (shapeKind === "ellipse") element.rounding = true;
       else if (shapeKind === "roundRect") element.imageShape = "roundRect";
       if (plan.sizing && plan.sizing.type !== "stretch") element.sizing = plan.sizing;
-      return applyReplicaRotation(element, style);
+      return applyReplicaRotation(element, style, measurement);
     });
 }
 
@@ -1708,7 +1812,7 @@ function replicaShapeElement(id, measurement) {
   if (shadow) element.style.shadow = shadow;
   const filterShadow = parseCssDropShadowFilter(measurement.replica?.filter);
   if (filterShadow) element.style.shadow = filterShadow;
-  return applyReplicaRotation(element, style);
+  return applyReplicaRotation(element, style, measurement);
 }
 
 function replicaBackgroundGradientElement(id, measurement, gradient, suffix) {
@@ -1972,7 +2076,7 @@ function replicaTextElement(id, measurement, options = {}) {
   if (filterShadow) element.style.shadow = filterShadow;
   const transparency = cssCombinedTransparency(style, "colorTransparency", "webkitTextFillTransparency");
   if (transparency !== null) element.style.transparency = transparency;
-  return applyReplicaRotation(element, style);
+  return applyReplicaRotation(element, style, measurement);
 }
 
 function replicaTextBullet(style) {
@@ -3350,7 +3454,7 @@ function convertReplicaSlide(slideNode, measurements, slideIndex, slideId) {
       }
     } else if (kind === "line") {
       const lineNode = findNodeByMeasurementId(slideNode, measurement.id);
-      const line = applyReplicaRotation(lineElement(measurement.id, box, true, lineNode), style);
+      const line = applyReplicaRotation(lineElement(measurement.id, box, true, lineNode), style, measurement);
       line.style = {
         ...line.style,
         color: line.style?.color ?? style.borderColor ?? style.backgroundColor ?? style.color ?? "{colors.border}",

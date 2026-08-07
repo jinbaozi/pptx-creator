@@ -1,28 +1,36 @@
 # text-to-html
 
-将已审核的文本、Markdown 或大纲制作成离线 HTML 演示文稿包。输出可在浏览器中查看，也可作为后续 `html-to-pptx` 的可选输入。
+将自然语言需求、Markdown、长文本或结构化大纲整理为经过审核的 Plan 2.0，并生成可离线浏览的 HTML 演示文稿包。本 Skill 不生成 PPTX；输出的 `presentation-package.json` 可选择是否交给后续 Skill，不构成运行时依赖。
 
-## 快速使用
+## 输入与环境
+
+- Node.js 20 或更高版本，并安装 Playwright Chromium。
+- 正式流水线只接受 `version: "2.0.0"` 的 `presentation-plan.json`。内容、叙事、设计意图、来源、资产权属和必需审核必须完整。
+- 只有 Markdown 或纯文本时，可先用 `scripts/scaffold-plan.mjs` 生成草稿；草稿不会自动获得事实、设计、权属或交付审批。
+
+完整字段和责任边界见 [SKILL.md](SKILL.md) 与 [Plan 2.0 契约](references/plan-contract.md)。
+
+## 快速开始
 
 在本 Skill 目录执行：
 
 ```bash
 npm ci
+npx playwright install chromium
 node scripts/run-pipeline.mjs presentation-plan.json ./output
 ```
 
-输入必须是 Plan 2.0 的 `presentation-plan.json`。先完成内容、受众、分页、设计意图、来源和资产权属，再运行流水线。详细字段见 [SKILL.md](SKILL.md) 和 [references/plan-contract.md](references/plan-contract.md)。
-
-输出包括 HTML、预览图、来源与资产记录、QA 证据，以及可选的 `presentation-package.json`。`qa-report.json` 必须为 `passed`；若 `visual-scorecard.json` 为 `attention-required`，还须由 Host 提供逐项决策并通过 `host-final-review.mjs`。需要 PPTX 时，再将通过这些门禁的演示包交给 `html-to-pptx`。
+输出包含离线 HTML、全尺寸预览、来源与资产证据、QA 报告；质量与验收通过后还可生成协议 `1.0.0` 的互操作包。
 
 ## 推荐提示词
 
 ```text
-使用 $text-to-html 将【来源或文件】制作成 16:9 离线 HTML 演示文稿，面向【受众】，用于【目的】，风格为【风格】。严格执行 SKILL.md 和 Plan 2.0，事实、来源、资产与审批必须可追溯且不得编造；运行 node scripts/run-pipeline.mjs presentation-plan.json 【目录】，仅在 qa-report.json 为 passed，且所有 attention-required 项已由 Host 复核通过后交付。
+使用 $text-to-html 将【来源文件或文本】制作成面向【受众】、用于【目的】的 16:9 离线 HTML 演示文稿，输出到【目录】。先完成并审核 Plan 2.0；不得编造事实、来源、资产权属或审批。运行完整浏览器 QA，仅在 qa-report.json 为 passed，且所有 attention-required 项均已由 Host 复核后交付。
 ```
 
-## 约束
+## 交付边界
 
-- 不直接生成 PPTX，不替 Host 编造事实、来源、品牌或审批。
-- 资产必须本地化并保留权属信息；拒绝绝对路径、遍历路径、符号链接和缺失资源。
-- 脚本离线、确定性运行，不调用 LLM。
+- `qa-report.json` 和 `presentation-package.json.validation.status` 都必须为 `passed`。
+- `visual-scorecard.json` 为 `attention-required` 时，必须由 Host 提供与当前证据绑定的逐项决策；脚本不会代替 Host 审批。
+- 所有运行资产必须本地化并保留来源与权属记录；拒绝绝对路径、目录遍历、符号链接和缺失资源。
+- 脚本确定性运行，不调用 LLM，也不补写事实、品牌、来源或审批。Plan 1.x 会以 `E_PLAN_VERSION` 拒绝。

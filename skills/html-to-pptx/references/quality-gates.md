@@ -21,7 +21,7 @@ package or output manifest remains.
 | Structure fidelity | `structure-fidelity-report.json` | Text SHA-256, code whitespace, key-heading lines, shape geometry, border sides, native chart object/relationship/type/count, and explicit-group child/order/transform checks must have zero critical findings; manifest/PPTX bindings must match |
 | Target-office render | `evidence/attempt-N/render/preview-report.json` | LibreOffice must render one preview for every slide |
 | Visual comparison | `visual-comparison.json` | Version 2.0.0 full-page dimensions, SSIM, normalized MAE, and deterministic tile evidence must pass |
-| Component visual comparison | `component-comparison.json`, `components/summary.json` | Strict only: every explicit key component must pass SSIM >= 0.94 and normalized MAE <= 0.05; missing keys are unavailable and fail |
+| Component visual comparison | `component-comparison.json`, `components/summary.json` | Default: every detected high-risk region must pass SSIM >= 0.85 and normalized MAE <= 12/255; strict: every explicit/risk component must pass SSIM >= 0.94 and normalized MAE <= 0.05; strict missing keys fail |
 
 The default visual threshold is `48` on a `0..255` RGB-channel scale. The report
 also records mean difference, minimum similarity, image sizes, source/candidate
@@ -31,8 +31,11 @@ all gates must pass.
 ## Quality profiles
 
 `--quality-profile default` preserves the normal level-3/native-object-coverage
-gate. Its semantic threshold is `null` (reported but not blocking), and it does
-not require component regions. `--quality-profile replica-strict` raises the
+gate. Its semantic threshold is `null` (reported but not blocking). When the
+manifest contains transformed, cropped-image, chart, table, group, SVG,
+rich-text, or localized-fallback objects, those risk regions are compared and
+can block the default profile; a deck with no risk regions does not invent a
+component requirement. `--quality-profile replica-strict` raises the
 editability gate to level 4, requires native-object and semantic coverage at
 least `0.90`, whole-slide SSIM at least `0.90`, whole-slide normalized MAE at
 most `0.05`, component SSIM at least `0.94`, component normalized MAE at most
@@ -78,7 +81,7 @@ qa-report.gates.structureFidelity.criticalCount == 0
 qa-report.gates.visual.passed == true
 qa-report.gates.editability.passed == true
 qa-report.gates.fullSlideRaster.violations == 0
-# For replica-strict, also require qa-report.gates.visual.components.passed == true
+# When component status is enabled, also require qa-report.gates.visual.components.passed == true
 ```
 
 Then inspect:

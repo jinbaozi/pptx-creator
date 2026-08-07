@@ -116,6 +116,33 @@ function baseManifest(elements) {
 }
 
 describe("rich text, table fidelity, and native chart modes", () => {
+  it("renders supported CSS transforms from the logical pre-rotation box exactly once", async () => {
+    const root = await mkdtemp(join(tmpdir(), "transform-logical-box-"));
+    try {
+      const zip = await renderManifest(root, "transform", baseManifest([{
+          id: "transformed-shape",
+          type: "shape",
+          shape: "rect",
+          x: 6.302,
+          y: 1.333,
+          w: 1.25,
+          h: 0.667,
+          transform: { supported: true, rotate: 30, flipV: true },
+          rotate: 30,
+          flipV: true,
+          style: { backgroundColor: "#34D399", borderWidth: 0 }
+        }]));
+      const xml = await zip.file("ppt/slides/slide1.xml").async("string");
+      const block = xml.match(/<p:sp>[\s\S]*?name="transformed-shape"[\s\S]*?<\/p:sp>/)?.[0] ?? "";
+      expect(block).toMatch(/<a:xfrm[^>]*\brot="1800000"/);
+      expect(block).toMatch(/<a:xfrm[^>]*\bflipV="1"/);
+      expect(block).toContain(`<a:off x="${Math.round(6.302 * 914400)}" y="${Math.round(1.333 * 914400)}"/>`);
+      expect(block).toContain(`<a:ext cx="${Math.round(1.25 * 914400)}" cy="${Math.round(0.667 * 914400)}"/>`);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("emits native pill geometry and preserves independent border lines", async () => {
     const root = await mkdtemp(join(tmpdir(), "pptx-structure-geometry-"));
     try {

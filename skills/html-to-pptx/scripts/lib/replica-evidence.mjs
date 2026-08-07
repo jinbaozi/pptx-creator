@@ -236,14 +236,17 @@ async function inspectPptxObjects(pptxPath, manifest, measurements) {
     const drifts = []; const geometryAdjustments=[]; let fontTotal = 0; let fontMapped = 0; let colorTotal = 0; let colorMapped = 0; let nativeTotal=0; let nativeMapped=0; let textTotal=0; let textMapped=0;
     for (const item of source) {
       const target = objects.get(item.id) ?? objects.get(`${item.id}-box`) ?? objects.get(`${item.id}-localized-fallback`);
+      const expectedBox = item.style?.transformData?.supported !== false && item.transformBoxPx
+        ? item.transformBoxPx
+        : item.px;
       nativeTotal += 1;
       let drift=Infinity;
       if (!target) {
         drifts.push(Math.max(viewport.width, viewport.height));
       } else {
         const actual = { x: target.x / 914400 / size.width * viewport.width, y: target.y / 914400 / size.height * viewport.height, w: target.w / 914400 / size.width * viewport.width, h: target.h / 914400 / size.height * viewport.height };
-        drift=Math.max(...["x", "y", "w", "h"].map((key) => Math.abs(Number(item.px[key]) - actual[key]))); drifts.push(drift);
-        geometryAdjustments.push({id:item.id,slideIndex,dx:Number(item.px.x)-actual.x,dy:Number(item.px.y)-actual.y,dw:Number(item.px.w)-actual.w,dh:Number(item.px.h)-actual.h});
+        drift=Math.max(...["x", "y", "w", "h"].map((key) => Math.abs(Number(expectedBox[key]) - actual[key]))); drifts.push(drift);
+        geometryAdjustments.push({id:item.id,slideIndex,dx:Number(expectedBox.x)-actual.x,dy:Number(expectedBox.y)-actual.y,dw:Number(expectedBox.w)-actual.w,dh:Number(expectedBox.h)-actual.h});
         nativeMapped+=1;
       }
       if(item.kind==="text") { textTotal+=1; const xmlText=[...(target?.block??"").matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match)=>xmlDecode(match[1])).join(""); const invisible=/<a:(?:rPr|defRPr)\b[^>]*>[\s\S]*?(?:<a:alpha\b[^>]*val="0"|<a:noFill\s*\/>)[\s\S]*?<\/a:(?:rPr|defRPr)>/i.test(target?.block??""); if(target&&!invisible&&xmlText===item.text) textMapped+=1; }

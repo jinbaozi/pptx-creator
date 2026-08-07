@@ -307,6 +307,62 @@ export async function measureHtmlFile(inputPath, options = {}) {
         }
       }
 
+      function cssBorderBoxSize(node, style, transformedRect) {
+        let width = Number.parseFloat(style.width);
+        let height = Number.parseFloat(style.height);
+        if (style.boxSizing !== "border-box") {
+          width += [style.paddingLeft, style.paddingRight, style.borderLeftWidth, style.borderRightWidth]
+            .reduce((sum, value) => sum + (Number.parseFloat(value) || 0), 0);
+          height += [style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth]
+            .reduce((sum, value) => sum + (Number.parseFloat(value) || 0), 0);
+        }
+        if (!(width > 0)) width = Number(node.offsetWidth);
+        if (!(height > 0)) height = Number(node.offsetHeight);
+        if (!(width > 0) || !(height > 0)) {
+          return { width: transformedRect.width, height: transformedRect.height };
+        }
+        return { width, height };
+      }
+
+      function transformGeometryFor(node, style, rect, slideRect) {
+        const transform = cssTransformData(style);
+        if (!transform?.supported || !Array.isArray(transform.matrix) || transform.matrix.length < 6) return null;
+        const [a, b, c, d, e, f] = transform.matrix.map(Number);
+        if (![a, b, c, d, e, f].every(Number.isFinite)) return null;
+        const borderBox = cssBorderBoxSize(node, style, rect);
+        const originX = Number(transform.transformOrigin?.x ?? borderBox.width / 2);
+        const originY = Number(transform.transformOrigin?.y ?? borderBox.height / 2);
+        const localCenterX = borderBox.width / 2;
+        const localCenterY = borderBox.height / 2;
+        const transformedCenterOffsetX = originX
+          + a * (localCenterX - originX)
+          + c * (localCenterY - originY)
+          + e;
+        const transformedCenterOffsetY = originY
+          + b * (localCenterX - originX)
+          + d * (localCenterY - originY)
+          + f;
+        const finalCenterX = rect.left - slideRect.left + rect.width / 2;
+        const finalCenterY = rect.top - slideRect.top + rect.height / 2;
+        const logicalWidth = borderBox.width * Math.abs(Number(transform.scaleX ?? 1));
+        const logicalHeight = borderBox.height * Math.abs(Number(transform.scaleY ?? 1));
+        const roundBox = (box) => Object.fromEntries(Object.entries(box).map(([key, value]) => [key, roundNumber(value, 4)]));
+        return {
+          layoutPx: roundBox({
+            x: finalCenterX - transformedCenterOffsetX,
+            y: finalCenterY - transformedCenterOffsetY,
+            w: borderBox.width,
+            h: borderBox.height
+          }),
+          transformBoxPx: roundBox({
+            x: finalCenterX - logicalWidth / 2,
+            y: finalCenterY - logicalHeight / 2,
+            w: logicalWidth,
+            h: logicalHeight
+          })
+        };
+      }
+
       function effectiveOpacityFor(node) {
         let alpha = 1;
         let cursor = node;
@@ -1438,6 +1494,7 @@ export async function measureHtmlFile(inputPath, options = {}) {
           if (!isVisible(node)) return;
           const style = window.getComputedStyle(node);
           const rect = node.getBoundingClientRect();
+          const transformGeometry = transformGeometryFor(node, style, rect, slideRect);
           const generatedId = `html-${String(slideIndex + 1).padStart(3, "0")}-${String(nodeIndex + 1).padStart(3, "0")}`;
           const id = node.getAttribute("data-pptx-id") || node.getAttribute("data-id") || node.id || generatedId;
           const tagName = node.tagName.toLowerCase();
@@ -1604,7 +1661,8 @@ export async function measureHtmlFile(inputPath, options = {}) {
               stackingContextPath: nodeMeta.stackingContextPath ?? []
             } : {}),
 	            style: computedStyleFor(style, rect, effectiveOpacityFor(node)),
-            replica: replicaEffects(style, unsupportedVisual, node),
+	            replica: replicaEffects(style, unsupportedVisual, node),
+            ...(transformGeometry ?? {}),
             px: {
               x: rect.left - slideRect.left,
               y: rect.top - slideRect.top,
@@ -1655,7 +1713,12 @@ export async function measureHtmlFile(inputPath, options = {}) {
       viewport,
       slideSize,
       elements,
-      slides: rawSlides
+      slides: rawSlides,
+      runtime: {
+        browser: "chromium",
+        chromiumVersion: page.context().browser()?.version() ?? "unknown",
+        nodeVersion: process.version
+      }
     });
   });
 }

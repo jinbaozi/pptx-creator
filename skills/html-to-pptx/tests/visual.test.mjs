@@ -153,6 +153,22 @@ describe("HTML -> editable PPTX visual proof", () => {
     expect(qa.gates.editability.perSlide).toHaveLength(slides);
     expect(qa.gates.editability.perSlide.every((slide) => slide.passed)).toBe(true);
     expect(qa.gates.fullSlideRaster.violations).toBe(0);
+    expect(qa.runtimeEvidence.browser).toMatchObject({
+      browser: "chromium",
+      chromiumVersion: expect.stringMatching(/^\d+\./),
+      nodeVersion: expect.stringMatching(/^v\d+/)
+    });
+    expect(qa.runtimeEvidence.preview).toMatchObject({
+      reportVersion: "0.2.0",
+      libreOfficeVersion: expect.stringMatching(/libreoffice/i),
+      popplerVersion: expect.stringMatching(/pdftoppm version/i),
+      pythonVersion: expect.stringMatching(/^\d+\./),
+      libraries: { Pillow: expect.stringMatching(/^\d+\./) }
+    });
+    const measurements = JSON.parse(await readFile(join(output, "layout-measurements.json"), "utf8"));
+    const compatibility = JSON.parse(await readFile(join(output, "compatibility-report.json"), "utf8"));
+    expect(measurements.runtime).toEqual(qa.runtimeEvidence.browser);
+    expect(compatibility.officeRendering.runtimeEvidence).toEqual(qa.runtimeEvidence);
   });
 
   visualIt("runs a strict replica profile with an opted-in key component", async () => {
