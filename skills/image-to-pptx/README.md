@@ -18,7 +18,7 @@ node scripts/image-to-pptx.mjs build --output ./output slide-01.png slide-02.png
 ## 推荐提示词
 
 ```text
-使用 $image-to-pptx 按顺序将【图片路径】重建为可编辑 PPTX；仅还原可见内容，不猜测低置信 OCR、模糊文字或图表数据；文字、形状、线条和可靠表格优先使用原生对象，复杂区域只允许局部裁剪；通过 QA 后输出【目录】/final.pptx，并保留置信度与降级报告。
+使用 $image-to-pptx 按顺序将【图片路径】重建为可编辑 PPTX。严格执行 SKILL.md，先运行 node scripts/image-to-pptx.mjs doctor，再运行 node scripts/image-to-pptx.mjs build --output 【目录】 【图片路径】；仅还原可确认内容，不猜测低置信文字、图表数据或品牌，禁止整页背景图。仅在 qa-report.json 为 passed、final.pptx 与本次输入的回渲证据一致时交付。
 ```
 
 ## 交付标准

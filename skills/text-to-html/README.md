@@ -18,7 +18,7 @@ node scripts/run-pipeline.mjs presentation-plan.json ./output
 ## 推荐提示词
 
 ```text
-使用 $text-to-html 将【来源或文件】制作成 16:9 离线 HTML 演示文稿；受众是【受众】，目的为【目的】，风格为【风格】。所有事实、来源和资产必须可追溯，不得编造；生成 Plan 2.0，并仅在 qa-report.json 为 passed 后输出到【目录】。
+使用 $text-to-html 将【来源或文件】制作成 16:9 离线 HTML 演示文稿，面向【受众】，用于【目的】，风格为【风格】。严格执行 SKILL.md 和 Plan 2.0，事实、来源、资产与审批必须可追溯且不得编造；运行 node scripts/run-pipeline.mjs presentation-plan.json 【目录】，仅在 qa-report.json 为 passed，且所有 attention-required 项已由 Host 复核通过后交付。
 ```
 
 ## 约束

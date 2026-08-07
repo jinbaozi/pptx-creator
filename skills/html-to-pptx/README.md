@@ -24,7 +24,7 @@ node scripts/convert.mjs ./input.html ./output --quality-profile replica-strict
 ## 推荐提示词
 
 ```text
-使用 $html-to-pptx 将【HTML 文件、目录或 presentation-package.json】转换为可编辑 PPTX；保持内容和版式一致，优先使用原生文字、形状、图片、表格和可恢复图表，禁止整页截图；默认仅在 qa-report.json 为 passed、可编辑性等级至少为 3 且原生对象覆盖率至少为 0.90 时输出【目录】/final.pptx；需要严格复刻时加 --quality-profile replica-strict。
+使用 $html-to-pptx 将【HTML 文件、目录或 presentation-package.json】转换为可编辑 PPTX。严格执行 SKILL.md 和正式命令 node scripts/convert.mjs 【输入】 【目录】，保持内容与版式一致并禁止整页截图；需要严格复刻时加 --quality-profile replica-strict。仅在 qa-report.json 为 passed、final.pptx 已生成且不存在 failure-report.json 时交付。
 ```
 
 ## 交付标准
