@@ -32,7 +32,14 @@ All command-line failures write one JSON object to stderr with `status`, `code`,
 | `E_ASSET_NETWORK` / `E_REMOTE_ASSET` / `E_ASSET_FALLBACK` | Remote asset conflicts with network policy or cannot be safely localized | Host/environment |
 | `E_OUTPUT_PATH` / `E_OUTPUT_SYMLINK` / `E_OUTPUT_ARTIFACT` / `E_OUTPUT_STALE` | Output target or existing package evidence is unsafe, malformed, or stale | Caller/Host |
 | `E_BROWSER_UNAVAILABLE` / `E_BROWSER_TIMEOUT` | Chromium cannot launch or settle within the 90-second minimum | Environment/source |
+| `E_COMPONENT_METADATA` | A rendered component lacks its stable ID, kind, typography tier, or QA region | Renderer |
+| `E_SAFE_AREA` / `E_FOOTER_COLLISION` | Content escapes the content safe area or intersects the reserved footer/navigation region | Renderer/plan author |
+| `E_TYPE_FLOOR` / `E_TITLE_LINE_COUNT` / `E_SOURCE_TRUNCATION` | Rendered type is below its semantic floor, a title exceeds its line budget, or source text is visually lost | Renderer/plan author |
 | `E_QA_REPORT_SCHEMA` / `E_QA_ATTEMPT` / `E_QA_FAILED` | QA evidence is malformed, cannot be recorded, or leaves blockers | Host/environment |
+| `E_RUNTIME_PROVENANCE` | Package, generation evidence, or emitted runtime assets do not match the installed Skill runtime | Environment/producer |
+| `E_RUNTIME_OVERRIDE` | A caller attempted to replace the official renderer, browser QA, or finalizer outside a Node test worker | Caller |
+| `E_VISUAL_REVIEW_READ` / `E_VISUAL_REVIEW_SCHEMA` / `E_VISUAL_REVIEW_EVIDENCE` | External Host visual-review evidence is unreadable, malformed, or references unsafe preview evidence | Host/caller |
+| `E_VISUAL_REVIEW_REQUIRED` / `E_VISUAL_REVIEW_STALE` / `E_VISUAL_REVIEW_REJECTED` / `E_VISUAL_REVIEW_DECISIONS` | Visual warnings lack a complete current Host decision, or the Host explicitly rejected them | Host |
 | `E_REPORT_WRITE` / `E_PACKAGE_WRITE` / `E_OUTPUT_MANIFEST` / `E_FINALIZATION_*` | Final delivery evidence cannot be safely written or finalized | Environment/Host |
 | `E_PROTOCOL_ID` / `E_PROTOCOL_VERSION` | Core presentation-package protocol is unsupported | Caller |
 | `E_PROTOCOL_*` | Core protocol structure, path, reference, or validation state is invalid | Producer |

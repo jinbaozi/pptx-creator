@@ -5,10 +5,12 @@ import { basename, join } from "node:path";
 import test from "node:test";
 import { validatePlan } from "../../scripts/lib/plan.mjs";
 import { buildDeck } from "../../scripts/lib/render.mjs";
+import { assertTestRuntimeOverrides } from "../../scripts/lib/runtime-provenance.mjs";
 import { sha256Text, writeJson } from "../../scripts/lib/utils.mjs";
 import { validatePresentationPackage } from "../../scripts/validate-presentation-package.mjs";
 import { runPipeline } from "../../scripts/run-pipeline.mjs";
 import { runQaDeck } from "../../scripts/qa-deck.mjs";
+import { reviewDeck } from "../../scripts/review-deck.mjs";
 import { examplePlan } from "../helpers.mjs";
 
 function qaReport(slideCount, status = "passed") {
@@ -30,6 +32,20 @@ function qaReport(slideCount, status = "passed") {
     summary: { passed, errorCount: passed ? 0 : 1, screenshotCount: 0 }
   };
 }
+
+test("runtime overrides are rejected outside Node test workers", () => {
+  const testContext = process.env.NODE_TEST_CONTEXT;
+  delete process.env.NODE_TEST_CONTEXT;
+  try {
+    assert.throws(
+      () => assertTestRuntimeOverrides({ runBrowserQa: async () => ({}) }, "runPipeline"),
+      (error) => error.code === "E_RUNTIME_OVERRIDE"
+    );
+  } finally {
+    if (testContext === undefined) delete process.env.NODE_TEST_CONTEXT;
+    else process.env.NODE_TEST_CONTEXT = testContext;
+  }
+});
 
 async function tempOutput(t) {
   const output = await mkdtemp(join(tmpdir(), "text-to-html-finalization-"));
@@ -112,6 +128,81 @@ test("pipeline records failed QA evidence and never leaves a passed package", as
   assert.equal(manifest.rootDigest, sha256Text(JSON.stringify(manifest.artifacts)));
   assert.ok(manifest.artifacts.some((artifact) => artifact.path === "qa/attempt-01.json"));
   assert.ok(manifest.artifacts.some((artifact) => artifact.path === "generation-report.json"));
+  const generation = await readJson(join(output, "generation-report.json"));
+  assert.equal(generation.runtime.kind, "text-to-html.runtime-provenance");
+  assert.match(generation.runtime.rootDigest, /^[a-f0-9]{64}$/);
+});
+
+test("standalone QA rejects emitted runtime assets that drift from the installed Skill", async (t) => {
+  const { path, plan } = await examplePlan("minimal");
+  const output = await tempOutput(t);
+  await buildDeck(plan, path, output);
+  await writeFile(join(output, "assets", "deck.css"), "/* tampered runtime fixture */\n", "utf8");
+  let browserCalled = false;
+  await assert.rejects(
+    () => runQaDeck(output, {}, {
+      runBrowserQa: async () => {
+        browserCalled = true;
+        return qaReport(plan.slides.length);
+      }
+    }),
+    (error) => error.code === "E_RUNTIME_PROVENANCE"
+  );
+  assert.equal(browserCalled, false);
+  const failure = await readJson(join(output, "failure-report.json"));
+  const packageRecord = await readJson(join(output, "presentation-package.json"));
+  assert.equal(failure.error.code, "E_RUNTIME_PROVENANCE");
+  assert.equal(packageRecord.validation.status, "failed");
+});
+
+test("visual warnings require a current Host-authored decision before final review passes", async (t) => {
+  const { path, plan } = await examplePlan("minimal");
+  const output = await tempOutput(t);
+  const reviewRoot = await mkdtemp(join(tmpdir(), "text-to-html-host-review-"));
+  t.after(() => rm(reviewRoot, { recursive: true, force: true }));
+  await buildDeck(plan, path, output);
+  const report = qaReport(plan.slides.length);
+  report.visualProbes = {
+    probes: [{
+      passed: false,
+      code: "W_TITLE_ORPHAN",
+      severity: "warning",
+      dimension: "visual",
+      scope: "slide:slide-cover",
+      measured: { titleOrphanCount: 1 },
+      expected: { titleOrphanCount: 0 },
+      repairClass: "title-wrap",
+      owner: "renderer"
+    }]
+  };
+  await runQaDeck(output, {}, { runBrowserQa: async () => report });
+
+  const awaiting = await reviewDeck(output);
+  assert.equal(awaiting.status, "awaiting-host-review");
+  assert.ok(awaiting.errors.some((error) => error.code === "E_VISUAL_REVIEW_REQUIRED"));
+  const [warning] = awaiting.warnings;
+  const visualReviewPath = join(reviewRoot, "visual-review.json");
+  await writeJson(visualReviewPath, {
+    version: "1.0.0",
+    kind: "text-to-html.visual-review",
+    status: "approved",
+    reviewedAt: "2026-08-07T00:00:00.000Z",
+    bindings: awaiting.visualReview.expectedBindings,
+    decisions: [{
+      ...warning,
+      resolution: "waived",
+      reason: "Host inspected the full-size preview and accepted this balanced title wrap."
+    }]
+  });
+  const accepted = await reviewDeck(output, { visualReviewPath });
+  assert.equal(accepted.status, "passed");
+  assert.equal(accepted.visualReview.status, "approved");
+  const staleDecision = await readJson(visualReviewPath);
+  staleDecision.bindings.previewDigest = "0".repeat(64);
+  await writeJson(visualReviewPath, staleDecision);
+  const stale = await reviewDeck(output, { visualReviewPath });
+  assert.equal(stale.status, "awaiting-host-review");
+  assert.ok(stale.errors.some((error) => error.code === "E_VISUAL_REVIEW_STALE"));
 });
 
 test("standalone QA failure replaces stale accepted evidence with a failed package", async (t) => {

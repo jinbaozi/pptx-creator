@@ -167,7 +167,14 @@ blockquote {
   font-size: var(--title-size);
   font-weight: 760;
   letter-spacing: -0.025em;
+  line-break: strict;
   line-height: 1.1;
+}
+
+@supports (text-wrap: balance) {
+  .slide-title {
+    text-wrap: balance;
+  }
 }
 
 .slide-kicker {
@@ -199,10 +206,13 @@ blockquote {
 }
 
 .source-list {
+  display: -webkit-box;
   max-width: 460px;
+  overflow-wrap: anywhere;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .folio {
@@ -229,6 +239,7 @@ blockquote {
 
 .card p,
 .card li,
+.bullet-item p,
 .body-copy {
   font-size: var(--body-size);
   line-height: 1.35;
@@ -303,9 +314,9 @@ blockquote {
   text-align: left;
 }
 
-.statement-text {
+.card .statement-text {
   max-width: 980px;
-  font-size: calc(var(--title-size) - 2px);
+  font-size: var(--title-size);
   font-weight: 720;
   letter-spacing: -0.018em;
   line-height: 1.16;
@@ -390,7 +401,7 @@ blockquote {
 .metric-detail {
   margin-top: 10px;
   color: var(--color-muted);
-  font-size: 19px;
+  font-size: var(--body-size);
   line-height: 1.3;
 }
 
@@ -496,13 +507,13 @@ blockquote {
 
 .milestone h3 {
   margin-top: 9px;
-  font-size: 23px;
+  font-size: var(--section-size);
 }
 
 .milestone p {
   margin-top: 10px;
   color: var(--color-muted);
-  font-size: 18px;
+  font-size: var(--body-size);
   line-height: 1.3;
 }
 
@@ -521,7 +532,7 @@ blockquote {
   line-height: 0.7;
 }
 
-.quote-text {
+.card .quote-text {
   max-width: 1010px;
   font-family: Georgia, serif;
   font-size: 38px;
@@ -803,7 +814,16 @@ blockquote {
 }
 
 .variant-focus-right .comparison-card.is-highlight {
-  transform: translateY(calc(var(--space-small) * -1));
+  border-width: 2px;
+}
+
+.variant-focus-right .cards-grid.cols-2 {
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+}
+
+.variant-flat-compare .cards-grid.cols-2 {
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: calc(var(--gap) * 0.75);
 }
 
 .variant-metrics-rail .metrics-grid {
@@ -823,9 +843,51 @@ blockquote {
   text-align: center;
 }
 
+.variant-process-staggered .process-grid {
+  align-items: center;
+}
+
+.variant-process-staggered .process-card:nth-child(odd) {
+  transform: translateY(calc(var(--space-small) * -1.25));
+}
+
+.variant-process-staggered .process-card:nth-child(even) {
+  transform: translateY(calc(var(--space-small) * 1.75));
+}
+
+.variant-process-rail .process-wrap::before {
+  position: absolute;
+  z-index: 0;
+  right: 0;
+  left: 0;
+  height: 76px;
+  border-radius: var(--radius-card);
+  background: var(--color-primary-soft);
+  content: "";
+}
+
+.variant-process-rail .process-card {
+  min-height: 190px;
+  border-top: 6px solid var(--color-primary);
+  box-shadow: none;
+}
+
+.variant-timeline-alternating .milestone:nth-child(odd) {
+  transform: translateY(calc(var(--space-small) * -1.25));
+}
+
+.variant-timeline-alternating .milestone:nth-child(even) {
+  transform: translateY(calc(var(--space-small) * 1.75));
+}
+
 .variant-section-break .statement-panel {
   border-top: 8px solid var(--color-accent);
   border-left: 0;
+}
+
+.closing-slide .compact-list li {
+  font-size: var(--body-size);
+  line-height: 1.35;
 }
 
 .deck-controls button {

@@ -55,6 +55,18 @@ Text-to-HTML may place the following optional extension inside the core protocol
         "canonicalInputSha256": "<sha256>",
         "reviewStatus": "approved"
       },
+      "runtime": {
+        "version": "1.0.0",
+        "kind": "text-to-html.runtime-provenance",
+        "components": {
+          "packageJson": { "path": "package.json", "sha256": "<sha256>" },
+          "renderer": { "path": "scripts/lib/render.mjs", "sha256": "<sha256>" },
+          "browserQa": { "path": "scripts/lib/qa.mjs", "sha256": "<sha256>" },
+          "deckCss": { "path": "assets/deck.css", "sha256": "<sha256>" },
+          "deckJs": { "path": "assets/deck.js", "sha256": "<sha256>" }
+        },
+        "rootDigest": "<sha256>"
+      },
       "reports": {
         "sourcePlan": { "path": "presentation-plan.source.json", "sha256": "<sha256>" }
       }
@@ -66,6 +78,8 @@ Text-to-HTML may place the following optional extension inside the core protocol
 The extension is optional and does not alter any core 1.0 field or validation rule. A core-only consumer may validate and consume the 1.0 package while ignoring this extension. An extension-aware consumer opts in to the additional Text-to-HTML evidence checks.
 
 `plan` records the accepted Plan 2.0 version, the canonical-input SHA-256, and the current review status. The canonical-input digest is a content binding, not permission to rewrite a plan after approval.
+
+`runtime` binds the package to the installed Skill version, renderer, browser QA implementation, and emitted CSS/JavaScript assets. `qa-deck.mjs` recomputes these hashes and rejects stale package, generation-report, or emitted-asset bindings with `E_RUNTIME_PROVENANCE` before it publishes passed QA evidence. These hashes provide deterministic traceability and drift detection; they are not cryptographic proof that an untrusted process executed the named files. A fresh successful official QA run remains the measurement authority.
 
 Each `reports` value has a package-relative `path` and SHA-256. The emitted extension names these immutable evidence artifacts:
 
@@ -83,6 +97,6 @@ Each `reports` value has a package-relative `path` and SHA-256. The emitted exte
 | `visualScorecard` | `visual-scorecard.json` |
 | `notice` | `NOTICE` |
 
-The deterministic visual scorecard evaluates the QA, narrative, pagination, and provenance reports; it is extension evidence, not a replacement for Host visual acceptance. An extension-aware consumer must verify each declared relative path and hash before relying on its plan, review, asset, rights, provenance, or scorecard claims. It must preserve the reports as immutable evidence and must not use an extension to promote a pending or failed core package to accepted status.
+The deterministic visual scorecard evaluates the QA, narrative, pagination, and provenance reports; it is extension evidence, not a replacement for Host visual acceptance. If it contains non-hard visual warnings, the Host must supply a separately stored, schema-valid `text-to-html.visual-review` record bound to the exact scorecard and preview digest. Generated scripts validate but never author that approval, its reasons, or its timestamp. An extension-aware consumer must verify each declared relative path and hash before relying on its plan, review, asset, rights, provenance, or scorecard claims. It must preserve the reports as immutable evidence and must not use an extension to promote a pending or failed core package to accepted status.
 
 Unknown extension names remain isolated inside `extensions`; they do not license unknown top-level fields or an unsupported core protocol version.

@@ -5,9 +5,11 @@ import { pathToFileURL } from "node:url";
 import { SkillError, runCli } from "./lib/errors.mjs";
 import { beginQaFinalization, finalizeQaRun, recordQaFailure } from "./lib/finalization.mjs";
 import { runBrowserQa } from "./lib/qa.mjs";
+import { assertTestRuntimeOverrides, verifyOutputRuntimeProvenance } from "./lib/runtime-provenance.mjs";
 import { assertSafeOutputDir, parseOptions } from "./lib/utils.mjs";
 
 export async function runQaDeck(outputDir, options = {}, runtime = {}) {
+  assertTestRuntimeOverrides(runtime, "runQaDeck");
   const timeoutMs = Number(options.timeoutMs ?? 90_000);
   if (!Number.isFinite(timeoutMs) || timeoutMs < 90_000) {
     const error = new Error("--timeout-ms must be at least 90000");
@@ -20,7 +22,8 @@ export async function runQaDeck(outputDir, options = {}, runtime = {}) {
   const finalizationOptions = runtime.finalization ?? {};
   let finalization;
   try {
-    await beginQaFinalization(resolvedOutput, finalizationOptions);
+    const state = await beginQaFinalization(resolvedOutput, finalizationOptions);
+    await verifyOutputRuntimeProvenance(resolvedOutput, { packageRecord: state.packageRecord });
     const qaReport = await runQa(resolvedOutput, { timeoutMs });
     finalization = await finalizeQaRun(resolvedOutput, { qaReport }, finalizationOptions);
   } catch (error) {

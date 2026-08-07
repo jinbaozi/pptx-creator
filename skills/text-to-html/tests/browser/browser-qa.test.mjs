@@ -48,6 +48,34 @@ test("browser gate blocks source-level text clipping", { timeout: 180_000 }, asy
   assert.ok(report.findings.some((finding) => finding.code === "E_TEXT_OVERFLOW"));
 });
 
+test("browser gate enforces metadata, safe areas, typography, title lines, and source visibility", { timeout: 180_000 }, async () => {
+  const { path, plan } = await examplePlan("minimal");
+  const output = await mkdtemp(join(tmpdir(), "text-to-html-semantic-gates-"));
+  await buildDeck(plan, path, output);
+  const htmlPath = join(output, "index.html");
+  const html = (await readFile(htmlPath, "utf8"))
+    .replace(' data-type-tier="display"', "")
+    .replace("</head>", `<style>
+      .slide-title{width:80px!important}
+      [data-type-tier="body"]{font-size:10px!important}
+      .slide-body{transform:translateY(96px)!important}
+      .slide-footer{position:absolute!important;top:300px!important;right:0!important;left:0!important}
+      .source-list{width:44px!important;max-height:12px!important}
+    </style></head>`);
+  await writeFile(htmlPath, html, "utf8");
+  const report = await runBrowserQa(output, { timeoutMs: 90_000 });
+  const codes = new Set(report.findings.map((finding) => finding.code));
+  assert.equal(report.status, "failed");
+  for (const code of [
+    "E_COMPONENT_METADATA",
+    "E_SAFE_AREA",
+    "E_FOOTER_COLLISION",
+    "E_TYPE_FLOOR",
+    "E_TITLE_LINE_COUNT",
+    "E_SOURCE_TRUNCATION"
+  ]) assert.ok(codes.has(code), `${code} should block the deck`);
+});
+
 test("browser QA closes Chromium after a navigation failure", async () => {
   const output = await mkdtemp(join(tmpdir(), "text-to-html-browser-close-"));
   let closed = false;

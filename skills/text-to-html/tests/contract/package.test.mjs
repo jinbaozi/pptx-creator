@@ -6,6 +6,7 @@ import test from "node:test";
 import { validatePresentationPackage } from "../../scripts/validate-presentation-package.mjs";
 import { buildDesignLock, buildReviewArtifactHashes } from "../../scripts/lib/plan.mjs";
 import { buildDeck } from "../../scripts/lib/render.mjs";
+import { buildRuntimeProvenance } from "../../scripts/lib/runtime-provenance.mjs";
 import { loadTheme } from "../../scripts/lib/themes.mjs";
 import { examplePlan, skillRoot } from "../helpers.mjs";
 
@@ -62,6 +63,8 @@ test("build emits the complete pending offline contract without sibling dependen
   assert.equal(extension.version, "2.0.0");
   assert.equal(extension.plan.version, "2.0.0");
   assert.equal(extension.plan.reviewStatus, "approved");
+  assert.deepEqual(extension.runtime, await buildRuntimeProvenance());
+  assert.match(extension.runtime.rootDigest, /^[a-f0-9]{64}$/);
   assert.match(extension.reports.review.sha256, /^[a-f0-9]{64}$/);
   assert.match(extension.reports.visualScorecard.sha256, /^[a-f0-9]{64}$/);
 });

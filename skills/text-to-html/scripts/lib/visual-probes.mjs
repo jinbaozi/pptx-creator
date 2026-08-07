@@ -11,14 +11,15 @@ function probe({ passed, code, scope, measured, expected, severity = "warning", 
     owner: "renderer"
   };
 }
-function longestFamilyRun(slides) {
+function longestRun(slides, key) {
   let longest = 0;
-  let currentFamily = null;
+  let currentValue = null;
   let current = 0;
   for (const slide of slides) {
-    if (slide.family === currentFamily) current += 1;
+    const value = slide[key] ?? slide.family ?? "unknown";
+    if (value === currentValue) current += 1;
     else {
-      currentFamily = slide.family;
+      currentValue = value;
       current = 1;
     }
     longest = Math.max(longest, current);
@@ -38,13 +39,22 @@ export function buildVisualProbes(slides = [], policy = {}) {
   const decorationRatio = snapshots.length === 0 ? 0 : decoratedSlides / snapshots.length;
   const nestedCardCount = snapshots.reduce((total, slide) => total + (slide.nestedCardCount ?? 0), 0);
   const sourceTruncationCount = snapshots.filter((slide) => slide.sourceTruncated).length;
-  const familyRun = longestFamilyRun(snapshots);
+  const titleOrphanCount = snapshots.filter((slide) => slide.titleOrphan).length;
+  const familyRun = longestRun(snapshots, "family");
+  const silhouetteRun = longestRun(snapshots, "silhouette");
   const probes = [
     probe({
       passed: familyRun <= maxConsecutiveFamily,
       code: "W_LAYOUT_FAMILY_STREAK",
       scope: "deck",
       measured: { longestRun: familyRun },
+      expected: { maximum: maxConsecutiveFamily }
+    }),
+    probe({
+      passed: silhouetteRun <= maxConsecutiveFamily,
+      code: "W_LAYOUT_SILHOUETTE_STREAK",
+      scope: "deck",
+      measured: { longestRun: silhouetteRun },
       expected: { maximum: maxConsecutiveFamily }
     }),
     probe({
@@ -62,17 +72,17 @@ export function buildVisualProbes(slides = [], policy = {}) {
       expected: { nestedCardCount: 0 }
     }),
     probe({
-      passed: sourceTruncationCount === 0,
-      code: "W_SOURCE_TRUNCATION",
+      passed: titleOrphanCount === 0,
+      code: "W_TITLE_ORPHAN",
       scope: "deck",
-      measured: { sourceTruncationCount },
-      expected: { sourceTruncationCount: 0 },
-      repairClass: "source-wrap"
+      measured: { titleOrphanCount },
+      expected: { titleOrphanCount: 0 },
+      repairClass: "title-wrap"
     })
   ];
   return {
     version: "1.0.0",
-    metrics: { decoratedSlides, decorationRatio, nestedCardCount, sourceTruncationCount, familyRun },
+    metrics: { decoratedSlides, decorationRatio, nestedCardCount, sourceTruncationCount, titleOrphanCount, familyRun, silhouetteRun },
     probes
   };
 }

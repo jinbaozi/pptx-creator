@@ -41,6 +41,11 @@ The standard viewport is the canonical component geometry for the optional prese
 
 The report blocks:
 
+- missing component type-tier/QA-region metadata, a missing content root/footer marker, or an invalid semantic tier;
+- content outside its declared safe root or content/header collision with the footer safe band;
+- computed text below the declared display/title/section/body/label/source floor;
+- a title above its declared rendered-line maximum;
+- source evidence that remains truncated after the bounded two-line footer wrap;
 - page or deck horizontal scrolling;
 - text scroll overflow, clipping, canvas escape, or hidden required content;
 - unapproved top-level module overlap;
@@ -52,7 +57,7 @@ The report blocks:
 - keyboard navigation or direct page-jump failure;
 - print mode that hides a slide, changes its canonical size, shows notes/controls, or omits page breaks.
 
-The report also records non-blocking visual probes for layout-family repetition, decoration saturation, nested cards, and source truncation. These probes are measured evidence for the Host; they do not replace the Host's full-size visual acceptance decision.
+The report also records non-blocking visual probes for layout-family or silhouette repetition, decoration saturation, nested cards, and title orphans. These probes are measured evidence for the Host; deterministic content loss such as source truncation is never waivable.
 
 Intentional overlap is pair-scoped with `data-allow-overlap-with`. It never exempts clipping, bounds, text fit, or connector errors.
 
@@ -67,4 +72,4 @@ Scripts never change claims, sources, slide count, hierarchy, layout type, or me
 
 ## Manual acceptance
 
-Automated success is necessary, not sufficient. Inspect every standard and mobile preview at full size for hierarchy, rhythm, page-to-page consistency, meaningful whitespace, useful visuals, and source-label legibility. Record a Host rejection by keeping the package out of delivery; do not edit the QA report to manufacture a pass.
+Automated success is necessary, not sufficient. Inspect every standard and mobile preview at full size for hierarchy, rhythm, page-to-page consistency, meaningful whitespace, useful visuals, and source-label legibility. If the scorecard is `attention-required`, author `visual-review.json` outside the generated package, bind it to the reported scorecard SHA-256 and preview digest, and provide one `resolved` or `waived` decision with a reason for every current warning. Run `node scripts/host-final-review.mjs output visual-review.json`. Scripts validate this file but never create its approval, reason, or timestamp. Record a Host rejection by keeping the package out of delivery; do not edit the QA report to manufacture a pass.

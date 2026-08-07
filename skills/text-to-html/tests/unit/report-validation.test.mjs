@@ -5,6 +5,7 @@ import {
   validateProvenanceRecord,
   validateReportArtifact,
   validateReviewReport,
+  validateVisualReview,
   validateVisualScorecard
 } from "../../scripts/lib/report-validation.mjs";
 import { buildVisualScorecard } from "../../scripts/lib/scorecard.mjs";
@@ -98,6 +99,23 @@ function scorecard() {
   });
 }
 
+function visualReview() {
+  return {
+    version: "1.0.0",
+    kind: "text-to-html.visual-review",
+    status: "approved",
+    reviewedAt: "2026-08-07T00:00:00.000Z",
+    bindings: { scorecardSha256: sha("a"), previewDigest: sha("b") },
+    decisions: [{
+      code: "W_TITLE_ORPHAN",
+      scope: "slide:slide-cover",
+      source: "probe",
+      resolution: "waived",
+      reason: "Host accepted the measured title balance after full-size inspection."
+    }]
+  };
+}
+
 test("runtime report validators accept current-shaped records without mutation", () => {
   const intent = designIntent();
   const review = reviewReport();
@@ -108,6 +126,7 @@ test("runtime report validators accept current-shaped records without mutation",
   assert.equal(validateReviewReport(review), review);
   assert.equal(validateProvenanceRecord(record), record);
   assert.equal(validateVisualScorecard(visual), visual);
+  assert.equal(validateVisualReview(visualReview()).status, "approved");
   assert.equal(validateReportArtifact("reviewReport", review), review);
 });
 
@@ -148,6 +167,7 @@ test("runtime report validators reject malformed locks and bindings with stable 
       && error.details.keyword === "pattern"
   );
   assert.equal(validateReportArtifact("visualScorecard", scorecard()).status, "passed");
+  assert.equal(validateReportArtifact("visualReview", visualReview()).status, "approved");
 });
 
 test("runtime report validators reject undeclared data and unknown artifact kinds", () => {
@@ -157,6 +177,15 @@ test("runtime report validators reject undeclared data and unknown artifact kind
     () => validateReviewReport(invalidReview),
     (error) => error.code === "E_REVIEW_REPORT_SCHEMA"
       && error.path === "$.approvals.content.autoApproved"
+      && error.details.keyword === "additionalProperties"
+  );
+
+  const invalidVisualReview = visualReview();
+  invalidVisualReview.decisions[0].autoApproved = true;
+  assert.throws(
+    () => validateVisualReview(invalidVisualReview),
+    (error) => error.code === "E_VISUAL_REVIEW_SCHEMA"
+      && error.path === "$.decisions[0].autoApproved"
       && error.details.keyword === "additionalProperties"
   );
 

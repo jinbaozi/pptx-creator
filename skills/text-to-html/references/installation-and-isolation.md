@@ -12,6 +12,8 @@
 
 Requirements: Node.js 20 or newer and a Chromium binary installed by Playwright.
 
+For reproducible visual-golden execution, CI pins Ubuntu 24.04, Playwright/Chromium from this Skill's lockfile, `zh_CN.UTF-8`, `Asia/Shanghai`, device scale factor 1, Liberation fonts, and Noto CJK fonts. Local runs use the same browser locale, timezone, viewport, and scale settings; small platform rasterization differences are compared through bounded perceptual hashes and color-grid distance rather than byte-identical screenshots.
+
 From this Skill directory:
 
 ```bash
@@ -22,6 +24,8 @@ npm test
 npm run test:browser
 npm run test:visual
 ```
+
+The visual suite compares six persistent framework fixtures covering long titles, footer safety, five-step process layout, dense timelines, mobile-reader behavior, and source wrapping. Updating `tests/visual/goldens/framework-fixtures.json` is a reviewed baseline change, not an automatic side effect of a normal test run.
 
 Run a deck:
 

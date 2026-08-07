@@ -13,7 +13,7 @@ node scripts/run-pipeline.mjs presentation-plan.json ./output
 
 输入必须是 Plan 2.0 的 `presentation-plan.json`。先完成内容、受众、分页、设计意图、来源和资产权属，再运行流水线。详细字段见 [SKILL.md](SKILL.md) 和 [references/plan-contract.md](references/plan-contract.md)。
 
-输出包括 HTML、预览图、来源与资产记录、QA 证据，以及可选的 `presentation-package.json`。只有 `qa-report.json` 的状态为 `passed` 时才算交付完成；需要 PPTX 时，再将通过 QA 的演示包交给 `html-to-pptx`。
+输出包括 HTML、预览图、来源与资产记录、QA 证据，以及可选的 `presentation-package.json`。`qa-report.json` 必须为 `passed`；若 `visual-scorecard.json` 为 `attention-required`，还须由 Host 提供逐项决策并通过 `host-final-review.mjs`。需要 PPTX 时，再将通过这些门禁的演示包交给 `html-to-pptx`。
 
 ## 推荐提示词
 

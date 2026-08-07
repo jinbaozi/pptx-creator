@@ -49,7 +49,8 @@ The Host selects the visual proposition, reference signals, theme, imagery strat
 - Preserve one stable margin/grid system and a footer-safe band.
 - Prefer flex/grid; reserve absolute positioning for the canvas, bounded decorations, and connector SVG.
 - Keep images proportional with `object-fit: contain|cover` and explicit focal position.
-- Give each major editable element `data-pptx-id` and `data-pptx-kind`.
+- Give each major editable element `data-pptx-id`, `data-pptx-kind`, `data-type-tier`, and `data-qa-region`.
+- Mark the single semantic content root with `data-qa-content-root` and the footer safe band with `data-qa-footer`.
 - Mark top-level collision modules with `data-qa-box`.
 - Use only local relative resources.
 - Keep notes in hidden `<aside class="speaker-notes">`.
@@ -60,6 +61,7 @@ Mobile is a scaled reading surface, not a content reorder. It must preserve slid
 
 The bounded repair levels never cross:
 
+- display/hero text: 38px;
 - slide title: 38px (about 28.5pt);
 - card/section title: 24px (18pt);
 - body/list: 22px (about 16.5pt);
@@ -67,6 +69,10 @@ The bounded repair levels never cross:
 - source: 12px (9pt).
 
 When these floors cannot fit, return to the Host: shorten, split, change the visual form, or move secondary detail to notes.
+
+Titles use strict CJK line breaking and may use supported balanced wrapping. Browser QA measures actual rendered line boxes and blocks a title above its declared two-line maximum. A very short final title line remains a visual warning for Host judgment rather than an automatic content rewrite.
+
+Layout variants declare a real `data-layout-silhouette`. Process, timeline, and comparison slides use deterministic finite candidate scoring based on their reviewed slot counts and adjacent silhouettes. The selector never changes content and does not perform a global optimization pass.
 
 ## Connectors and media
 

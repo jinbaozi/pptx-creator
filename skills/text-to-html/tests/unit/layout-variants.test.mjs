@@ -27,3 +27,24 @@ test("variant selection is stable and avoids repetitive adjacent families", () =
   assert.notEqual(first.get("s1").family, first.get("s2").family);
   assert.match(first.get("s2").id, /split|flat/);
 });
+
+test("finite scoring selects real silhouettes for dense process, timeline, and comparison slides", () => {
+  const slides = [
+    { id: "process", order: 1, type: "process", layoutArchetype: "process-flow", content: { steps: Array.from({ length: 5 }, () => ({})) } },
+    { id: "timeline", order: 2, type: "timeline", layoutArchetype: "timeline-roadmap", content: { milestones: Array.from({ length: 5 }, () => ({})) } },
+    {
+      id: "comparison",
+      order: 3,
+      type: "comparison",
+      layoutArchetype: "comparison-matrix",
+      content: { left: { points: [{}] }, right: { points: [{}, {}, {}] } }
+    }
+  ];
+  const plan = buildLayoutVariantPlan(slides, { renderControls: { variantPool: 3, maxConsecutiveFamily: 2 } });
+  assert.equal(plan.get("process").id, "process-staggered");
+  assert.equal(plan.get("process").silhouette, "process-staggered");
+  assert.equal(plan.get("timeline").id, "timeline-alternating");
+  assert.equal(plan.get("timeline").silhouette, "timeline-alternating");
+  assert.equal(plan.get("comparison").id, "focus-right");
+  assert.equal(plan.get("comparison").silhouette, "comparison-right-emphasis");
+});

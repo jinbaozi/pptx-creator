@@ -13,6 +13,7 @@ import {
   validateVisualScorecard
 } from "./report-validation.mjs";
 import { buildProvenanceRecord } from "./review.mjs";
+import { buildRuntimeProvenance } from "./runtime-provenance.mjs";
 import { buildVisualScorecard } from "./scorecard.mjs";
 import { buildLayoutVariantPlan } from "./layout-variants.mjs";
 import { renderSlotBody } from "./slot-renderers.mjs";
@@ -80,8 +81,8 @@ function slideHeader(slide, variant = {}) {
   return `
     <header>
       ${variant.showEyebrow === false ? "" : `<div class="eyebrow">${escapeHtml(slide.type)}</div>`}
-      <h1 class="slide-title" ${componentAttrs(`${slide.id}-title`, "text", 'data-max-lines="2"')}>${escapeHtml(slide.title)}</h1>
-      <p class="slide-kicker" ${componentAttrs(`${slide.id}-message`, "text")}>${escapeHtml(slide.coreMessage)}</p>
+      <h1 class="slide-title" ${componentAttrs(`${slide.id}-title`, "text", 'data-max-lines="2"', { typeTier: "title", qaRegion: "header" })}>${escapeHtml(slide.title)}</h1>
+      <p class="slide-kicker" ${componentAttrs(`${slide.id}-message`, "text", "", { typeTier: "body", qaRegion: "header" })}>${escapeHtml(slide.coreMessage)}</p>
     </header>`;
 }
 
@@ -89,12 +90,12 @@ function coverBody(plan, slide) {
   const subtitle = slide.content.subtitle ?? plan.positioning.statement;
   return `
     <div class="eyebrow">${escapeHtml(plan.positioning.goal)}</div>
-    <h1 class="slide-title" ${componentAttrs(`${slide.id}-title`, "text", 'data-max-lines="2"')}>${escapeHtml(slide.title)}</h1>
+    <h1 class="slide-title" ${componentAttrs(`${slide.id}-title`, "text", 'data-max-lines="2"', { typeTier: "display" })}>${escapeHtml(slide.title)}</h1>
     <p class="slide-kicker" ${componentAttrs(`${slide.id}-subtitle`, "text")}>${escapeHtml(subtitle)}</p>
     <div class="cover-meta" data-qa-box ${componentAttrs(`${slide.id}-meta`, "shape")}>
-      <span class="meta-pill" ${componentAttrs(`${slide.id}-audience`, "text")}>${escapeHtml(plan.positioning.audience)}</span>
-      <span class="meta-pill" ${componentAttrs(`${slide.id}-duration`, "text")}>${escapeHtml(`${plan.positioning.durationMinutes} 分钟`)}</span>
-      <span class="meta-pill" ${componentAttrs(`${slide.id}-mode`, "text")}>${escapeHtml(plan.positioning.deliveryMode)}</span>
+      <span class="meta-pill" ${componentAttrs(`${slide.id}-audience`, "text", "", { typeTier: "label" })}>${escapeHtml(plan.positioning.audience)}</span>
+      <span class="meta-pill" ${componentAttrs(`${slide.id}-duration`, "text", "", { typeTier: "label" })}>${escapeHtml(`${plan.positioning.durationMinutes} 分钟`)}</span>
+      <span class="meta-pill" ${componentAttrs(`${slide.id}-mode`, "text", "", { typeTier: "label" })}>${escapeHtml(plan.positioning.deliveryMode)}</span>
     </div>`;
 }
 
@@ -102,14 +103,14 @@ function statementBody(slide) {
   const claim = slide.content.statement;
   return `
     <article class="card statement-panel" data-qa-box ${componentAttrs(`${slide.id}-statement-card`, "shape")}>
-      <p class="statement-text fact-line" ${componentAttrs(`${slide.id}-statement`, "text", claimAttrs(claim))}>${claimText(claim)}</p>
+      <p class="statement-text fact-line" ${componentAttrs(`${slide.id}-statement`, "text", claimAttrs(claim), { typeTier: "title" })}>${claimText(claim)}</p>
     </article>`;
 }
 
 function bulletsBody(slide) {
   return `<ol class="bullet-list">${slide.content.points.map((claim, index) => `
     <li class="bullet-item" data-qa-box ${componentAttrs(`${slide.id}-point-card-${index + 1}`, "shape")}>
-      <span class="bullet-number" ${componentAttrs(`${slide.id}-point-number-${index + 1}`, "text")}>${index + 1}</span>
+      <span class="bullet-number" ${componentAttrs(`${slide.id}-point-number-${index + 1}`, "text", "", { typeTier: "label" })}>${index + 1}</span>
       <p class="fact-line" ${componentAttrs(`${slide.id}-point-${index + 1}`, "text", claimAttrs(claim))}>${claimText(claim)}</p>
     </li>`).join("")}</ol>`;
 }
@@ -117,7 +118,7 @@ function bulletsBody(slide) {
 function comparisonGroup(slide, side, group, highlight) {
   return `
     <article class="card comparison-card${highlight ? " is-highlight" : ""}" data-qa-box ${componentAttrs(`${slide.id}-${side}-card`, "shape")}>
-      <h2 ${componentAttrs(`${slide.id}-${side}-label`, "text")}>${escapeHtml(group.label)}</h2>
+      <h2 ${componentAttrs(`${slide.id}-${side}-label`, "text", "", { typeTier: "section" })}>${escapeHtml(group.label)}</h2>
       <ul class="compact-list">${group.points.map((claim, index) => `
         <li class="fact-line" ${componentAttrs(`${slide.id}-${side}-point-${index + 1}`, "text", claimAttrs(claim))}>${claimText(claim)}</li>`).join("")}
       </ul>
@@ -136,8 +137,8 @@ function metricsBody(slide) {
   return `<div class="cards-grid ${count === 2 ? "cols-2" : "cols-3"} metrics-grid">${slide.content.metrics.map((metric, index) => `
     <article class="card metric-card" data-qa-box ${componentAttrs(`${slide.id}-metric-card-${index + 1}`, "shape")}>
       <div>
-        <div class="metric-value" data-layout-role="metric" ${componentAttrs(`${slide.id}-metric-value-${index + 1}`, "text", claimAttrs(metric.claim))}>${claimText(metric.claim, metric.value)}</div>
-        <div class="metric-label" ${componentAttrs(`${slide.id}-metric-label-${index + 1}`, "text")}>${escapeHtml(metric.label)}</div>
+        <div class="metric-value" data-layout-role="metric" ${componentAttrs(`${slide.id}-metric-value-${index + 1}`, "text", claimAttrs(metric.claim), { typeTier: "display" })}>${claimText(metric.claim, metric.value)}</div>
+        <div class="metric-label" ${componentAttrs(`${slide.id}-metric-label-${index + 1}`, "text", "", { typeTier: "section" })}>${escapeHtml(metric.label)}</div>
       </div>
       ${metric.detail ? `<p class="metric-detail" ${componentAttrs(`${slide.id}-metric-detail-${index + 1}`, "text")}>${escapeHtml(metric.detail)}</p>` : ""}
     </article>`).join("")}</div>`;
@@ -146,8 +147,8 @@ function metricsBody(slide) {
 function processBody(slide, layout) {
   const cards = slide.content.steps.map((step, index) => `
     <article class="card process-card" data-qa-box ${componentAttrs(`${slide.id}-step-${index + 1}`, "shape")}>
-      <span class="process-index" ${componentAttrs(`${slide.id}-step-index-${index + 1}`, "text")}>${index + 1}</span>
-      <h2 ${componentAttrs(`${slide.id}-step-label-${index + 1}`, "text")}>${escapeHtml(step.label)}</h2>
+      <span class="process-index" ${componentAttrs(`${slide.id}-step-index-${index + 1}`, "text", "", { typeTier: "label" })}>${index + 1}</span>
+      <h2 ${componentAttrs(`${slide.id}-step-label-${index + 1}`, "text", "", { typeTier: "section" })}>${escapeHtml(step.label)}</h2>
       <p class="fact-line" ${componentAttrs(`${slide.id}-step-copy-${index + 1}`, "text", claimAttrs(step.claim))}>${claimText(step.claim)}</p>
     </article>`).join("");
   const connectorGeometry = processConnectorGeometry(slide.content.steps.length, layout);
@@ -173,8 +174,8 @@ function timelineBody(slide) {
   return `<div class="timeline" style="--milestone-count:${slide.content.milestones.length}">${slide.content.milestones.map((milestone, index) => `
     <article class="milestone" data-qa-box ${componentAttrs(`${slide.id}-milestone-${index + 1}`, "shape")}>
       <span class="milestone-dot" ${componentAttrs(`${slide.id}-milestone-dot-${index + 1}`, "shape")}></span>
-      <div class="milestone-label" ${componentAttrs(`${slide.id}-milestone-when-${index + 1}`, "text")}>${escapeHtml(milestone.when)}</div>
-      <h3 ${componentAttrs(`${slide.id}-milestone-label-${index + 1}`, "text")}>${escapeHtml(milestone.label)}</h3>
+      <div class="milestone-label" ${componentAttrs(`${slide.id}-milestone-when-${index + 1}`, "text", "", { typeTier: "label" })}>${escapeHtml(milestone.when)}</div>
+      <h3 ${componentAttrs(`${slide.id}-milestone-label-${index + 1}`, "text", "", { typeTier: "section" })}>${escapeHtml(milestone.label)}</h3>
       <p class="fact-line" ${componentAttrs(`${slide.id}-milestone-copy-${index + 1}`, "text", claimAttrs(milestone.claim))}>${claimText(milestone.claim)}</p>
     </article>`).join("")}</div>`;
 }
@@ -182,8 +183,8 @@ function timelineBody(slide) {
 function quoteBody(slide) {
   return `<blockquote class="card quote-card" data-qa-box ${componentAttrs(`${slide.id}-quote-card`, "shape")}>
     <span class="quote-mark" aria-hidden="true">“</span>
-    <p class="quote-text fact-line" ${componentAttrs(`${slide.id}-quote`, "text", claimAttrs(slide.content.quote))}>${claimText(slide.content.quote)}</p>
-    <footer class="quote-attribution" ${componentAttrs(`${slide.id}-attribution`, "text")}>— ${escapeHtml(slide.content.attribution)}</footer>
+    <p class="quote-text fact-line" ${componentAttrs(`${slide.id}-quote`, "text", claimAttrs(slide.content.quote), { typeTier: "title" })}>${claimText(slide.content.quote)}</p>
+    <footer class="quote-attribution" ${componentAttrs(`${slide.id}-attribution`, "text", "", { typeTier: "label" })}>— ${escapeHtml(slide.content.attribution)}</footer>
   </blockquote>`;
 }
 
@@ -197,7 +198,7 @@ function imageBody(slide, assetById) {
       <img src="${escapeHtml(asset.outputPath)}" alt="${escapeHtml(asset.alt)}" data-object-fit="${escapeHtml(asset.objectFit ?? "contain")}" data-object-position="${escapeHtml(objectPosition)}" style="object-fit:${escapeHtml(asset.objectFit ?? "contain")};object-position:${escapeHtml(objectPosition)}" ${componentAttrs(`${slide.id}-image`, "image")}>
     </figure>
     <article class="card caption-card" data-qa-box ${componentAttrs(`${slide.id}-caption-card`, "shape")}>
-      <h2 ${componentAttrs(`${slide.id}-caption-title`, "text")}>观察要点</h2>
+      <h2 ${componentAttrs(`${slide.id}-caption-title`, "text", "", { typeTier: "section" })}>观察要点</h2>
       <p class="fact-line" ${componentAttrs(`${slide.id}-caption`, "text", claimAttrs(slide.content.caption))}>${claimText(slide.content.caption)}</p>
     </article>
   </div>`;
@@ -205,7 +206,7 @@ function imageBody(slide, assetById) {
 
 function structuredCaption(slide) {
   return `<article class="card caption-card structured-caption" data-qa-box ${componentAttrs(`${slide.id}-caption-card`, "shape")}>
-      <h2 ${componentAttrs(`${slide.id}-caption-title`, "text")}>观察要点</h2>
+      <h2 ${componentAttrs(`${slide.id}-caption-title`, "text", "", { typeTier: "section" })}>观察要点</h2>
       <p class="fact-line" ${componentAttrs(`${slide.id}-caption`, "text", claimAttrs(slide.content.caption))}>${claimText(slide.content.caption)}</p>
     </article>`;
 }
@@ -255,12 +256,12 @@ function chartBody(slide) {
         ${chart.data.map((point, index) => {
           const width = Math.max(0, Math.min(100, (values[index] / maximum) * 100));
           return `<div class="chart-preview-row">
-            <span class="chart-preview-label" ${componentAttrs(`${slide.id}-chart-label-${index + 1}`, "text")}>${escapeHtml(point.label)}</span>
+            <span class="chart-preview-label" ${componentAttrs(`${slide.id}-chart-label-${index + 1}`, "text", "", { typeTier: "label" })}>${escapeHtml(point.label)}</span>
             <span class="chart-preview-bar-track"><span class="chart-preview-bar" style="width:${width.toFixed(2)}%" ${componentAttrs(`${slide.id}-chart-bar-${index + 1}`, "shape")}></span></span>
-            <span class="chart-preview-value" ${componentAttrs(`${slide.id}-chart-value-${index + 1}`, "text")}>${escapeHtml(String(point.value))}</span>
+            <span class="chart-preview-value" ${componentAttrs(`${slide.id}-chart-value-${index + 1}`, "text", "", { typeTier: "label" })}>${escapeHtml(String(point.value))}</span>
           </div>`;
         }).join("")}
-        <span class="chart-preview-axis" ${componentAttrs(`${slide.id}-chart-axis`, "text")}>0　5　10　15　20　25　30　35　40　45</span>
+        <span class="chart-preview-axis" ${componentAttrs(`${slide.id}-chart-axis`, "text", "", { typeTier: "source" })}>0　5　10　15　20　25　30　35　40　45</span>
       </div>`
     : "";
   return `<div class="structured-visual-layout chart-visual-layout">
@@ -278,7 +279,7 @@ function visualBody(slide, assetById) {
 }
 
 function closingBody(slide) {
-  return `<div class="closing-action fact-line" ${componentAttrs(`${slide.id}-action`, "text", claimAttrs(slide.content.action))}>${claimText(slide.content.action)}</div>
+  return `<div class="closing-action fact-line" ${componentAttrs(`${slide.id}-action`, "text", claimAttrs(slide.content.action), { typeTier: "display" })}>${claimText(slide.content.action)}</div>
     ${slide.content.summary?.length ? `<ul class="compact-list" style="margin-top:30px">${slide.content.summary.map((claim, index) => `
       <li class="fact-line" ${componentAttrs(`${slide.id}-summary-${index + 1}`, "text", claimAttrs(claim))}>${claimText(claim)}</li>`).join("")}</ul>` : ""}`;
 }
@@ -305,26 +306,26 @@ function renderSlide(plan, slide, assetById, layout, variant = {}) {
   const header = slide.type === "cover" ? "" : slideHeader(slide, variant);
   const decorations = [
     ...(slide.type === "cover" || slide.type === "closing" || variant.ambientDecoration
-      ? [`<div class="slide-decoration slide-decor-orb" ${componentAttrs(`${slide.id}-decor-orb`, "shape", 'data-layout-role="decoration" aria-hidden="true"')}></div>`]
+      ? [`<div class="slide-decoration slide-decor-orb" ${componentAttrs(`${slide.id}-decor-orb`, "shape", 'data-layout-role="decoration" aria-hidden="true"', { qaRegion: "decoration" })}></div>`]
       : []),
     ...(slide.type === "cover"
-      ? [`<div class="slide-decoration slide-decor-rule" ${componentAttrs(`${slide.id}-decor-rule`, "shape", 'data-layout-role="decoration" aria-hidden="true"')}></div>`]
+      ? [`<div class="slide-decoration slide-decor-rule" ${componentAttrs(`${slide.id}-decor-rule`, "shape", 'data-layout-role="decoration" aria-hidden="true"', { qaRegion: "decoration" })}></div>`]
       : []),
     ...(slide.type === "closing"
-      ? [`<div class="slide-decoration slide-decor-band" ${componentAttrs(`${slide.id}-decor-band`, "shape", 'data-layout-role="decoration" aria-hidden="true"')}></div>`]
+      ? [`<div class="slide-decoration slide-decor-band" ${componentAttrs(`${slide.id}-decor-band`, "shape", 'data-layout-role="decoration" aria-hidden="true"', { qaRegion: "decoration" })}></div>`]
       : [])
   ].join("\n    ");
   return `
-  <section class="pptx-slide ${className}" id="${escapeHtml(slide.id)}" data-slide-id="${escapeHtml(slide.id)}" data-slide-order="${slide.order}" data-slide-type="${escapeHtml(slide.type)}" data-layout-archetype="${escapeHtml(slide.layoutArchetype ?? slide.type)}" data-layout-variant="${escapeHtml(variant.id ?? slide.type)}" data-layout-family="${escapeHtml(variant.family ?? slide.type)}" aria-hidden="${slide.order === 1 ? "false" : "true"}">
+  <section class="pptx-slide ${className}" id="${escapeHtml(slide.id)}" data-slide-id="${escapeHtml(slide.id)}" data-slide-order="${slide.order}" data-slide-type="${escapeHtml(slide.type)}" data-layout-archetype="${escapeHtml(slide.layoutArchetype ?? slide.type)}" data-layout-variant="${escapeHtml(variant.id ?? slide.type)}" data-layout-family="${escapeHtml(variant.family ?? slide.type)}" data-layout-silhouette="${escapeHtml(variant.silhouette ?? variant.id ?? slide.type)}" aria-hidden="${slide.order === 1 ? "false" : "true"}">
     ${decorations}
     <div class="slide-shell">
       ${header}
-      <main class="${slide.type === "cover" ? "" : "slide-body"}">
+      <main class="${slide.type === "cover" ? "" : "slide-body"}" data-qa-content-root>
         ${renderBody(plan, slide, assetById, layout)}
       </main>
-      <footer class="slide-footer">
-        <span class="source-list" ${componentAttrs(`${slide.id}-sources`, "text", 'data-layout-role="source"')}>${footer ? `来源：${footer}` : ""}</span>
-        <span class="folio" ${componentAttrs(`${slide.id}-folio`, "text", 'data-layout-role="slide-number"')}>${slide.order} / ${plan.slides.length}</span>
+      <footer class="slide-footer" data-qa-footer>
+        <span class="source-list" ${componentAttrs(`${slide.id}-sources`, "text", 'data-layout-role="source"', { typeTier: "source", qaRegion: "footer" })}>${footer ? `来源：${footer}` : ""}</span>
+        <span class="folio" ${componentAttrs(`${slide.id}-folio`, "text", 'data-layout-role="slide-number"', { typeTier: "source", qaRegion: "footer" })}>${slide.order} / ${plan.slides.length}</span>
       </footer>
       <aside class="speaker-notes" aria-hidden="true">${escapeHtml(slide.notes)}</aside>
     </div>
@@ -425,6 +426,7 @@ async function extensionRecord(outputDir, plan, review) {
   }
   return {
     version: "2.0.0",
+    runtime: await buildRuntimeProvenance(),
     plan: {
       version: plan.version,
       canonicalInputSha256: canonicalPlanInputSha256(plan),

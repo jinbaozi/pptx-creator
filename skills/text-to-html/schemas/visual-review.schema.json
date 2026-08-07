@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jinbaozi/pptx-creator/skills/text-to-html/schemas/visual-review/1.0.0",
+  "title": "Text to HTML Host visual review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "kind", "status", "reviewedAt", "bindings", "decisions"],
+  "properties": {
+    "version": { "const": "1.0.0" },
+    "kind": { "const": "text-to-html.visual-review" },
+    "status": { "enum": ["approved", "rejected"] },
+    "reviewedAt": { "type": "string", "format": "date-time" },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scorecardSha256", "previewDigest"],
+      "properties": {
+        "scorecardSha256": { "$ref": "#/$defs/sha256" },
+        "previewDigest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/decision" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "shortText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "scope", "source", "resolution", "reason"],
+      "properties": {
+        "code": { "$ref": "#/$defs/shortText" },
+        "scope": { "$ref": "#/$defs/shortText" },
+        "source": { "$ref": "#/$defs/shortText" },
+        "resolution": { "enum": ["resolved", "waived"] },
+        "reason": { "$ref": "#/$defs/shortText" }
+      }
+    }
+  }
+}

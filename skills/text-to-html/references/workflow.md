@@ -80,6 +80,14 @@ Select the mode deliberately:
 
 The timeout floor is 90 seconds. Attempts may only tighten spacing and typography within documented floors. A claim, layout meaning, source mapping, or slide boundary is never rewritten automatically. Inspect every preview at full size after the command passes.
 
+If `visual-scorecard.json` is `attention-required`, use the warnings and `review-deck.mjs`'s `expectedBindings` to author a separate `visual-review.json`, then run:
+
+```bash
+node scripts/host-final-review.mjs output visual-review.json
+```
+
+Do not place an unvalidated Host file into the generated directory or edit `output-manifest.json`; the verifier reads the Host decision separately and checks its scorecard and preview bindings.
+
 See [review-and-delivery.md](review-and-delivery.md) for approval bindings, output evidence, and final acceptance.
 
 ## Deliver
@@ -116,3 +124,5 @@ output-manifest.json
 ```
 
 `presentation-plan.source.json` preserves the exact supplied input bytes. `presentation-plan.json` preserves the validated Plan 2.0; `design-profile.json` records the deterministic renderer controls compiled from its finite design dials and explicitly labels free-text direction as Host-owned advisory metadata. Localized media paths and integrity records belong in `assets/media/`, `asset-ledger.json`, and `license-report.json` rather than rewriting the approved asset locators.
+
+`tests/visual/goldens/framework-fixtures.json` is the persistent framework visual baseline for long titles, footer safety, five-step process, dense timeline, mobile reading, and source wrapping. CI fixes Ubuntu 24.04, Chromium through the pinned Playwright package, Noto CJK/Liberation fonts, `zh-CN`, and device scale factor 1. The comparator uses a bounded average-hash distance and coarse color-grid error; the same-run screenshot hash test remains a separate determinism check.

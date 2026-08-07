@@ -28,6 +28,10 @@ const reports = Object.freeze({
   visualScorecard: {
     code: "E_VISUAL_SCORECARD_SCHEMA",
     validate: ajv.compile(loadSchema("visual-scorecard.schema.json"))
+  },
+  visualReview: {
+    code: "E_VISUAL_REVIEW_SCHEMA",
+    validate: ajv.compile(loadSchema("visual-review.schema.json"))
   }
 });
 
@@ -89,6 +93,13 @@ export function validateProvenanceRecord(value) {
  */
 export function validateVisualScorecard(value) {
   return validateArtifact("visualScorecard", value);
+}
+
+/**
+ * Validates a Host-authored decision over current visual warnings.
+ */
+export function validateVisualReview(value) {
+  return validateArtifact("visualReview", value);
 }
 
 /**

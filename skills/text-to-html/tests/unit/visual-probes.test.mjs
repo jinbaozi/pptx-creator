@@ -12,13 +12,15 @@ test("visual probes pass a varied, low-decoration deck", () => {
   assert.ok(Math.abs(report.metrics.decorationRatio - (1 / 3)) < 1e-9);
 });
 
-test("visual probes expose repetition, nested cards, and source truncation", () => {
+test("visual probes expose repetition, nested cards, and title orphans", () => {
   const report = buildVisualProbes([
-    { family: "metrics", decorationCount: 1, nestedCardCount: 1, sourceTruncated: true },
+    { family: "metrics", decorationCount: 1, nestedCardCount: 1, sourceTruncated: true, titleOrphan: true },
     { family: "metrics", decorationCount: 1, nestedCardCount: 0, sourceTruncated: false },
     { family: "metrics", decorationCount: 1, nestedCardCount: 0, sourceTruncated: false }
   ], { renderControls: { maxConsecutiveFamily: 2 } });
   assert.equal(report.probes.find((item) => item.code === "W_LAYOUT_FAMILY_STREAK").passed, false);
+  assert.equal(report.probes.find((item) => item.code === "W_LAYOUT_SILHOUETTE_STREAK").passed, false);
   assert.equal(report.probes.find((item) => item.code === "W_NESTED_CARD").passed, false);
-  assert.equal(report.probes.find((item) => item.code === "W_SOURCE_TRUNCATION").passed, false);
+  assert.equal(report.probes.find((item) => item.code === "W_TITLE_ORPHAN").passed, false);
+  assert.equal(report.metrics.sourceTruncationCount, 1);
 });

@@ -6,6 +6,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { SkillError, errorRecord } from "./errors.mjs";
 import { buildVisualScorecard } from "./scorecard.mjs";
+import { buildRuntimeProvenance, verifyOutputRuntimeProvenance } from "./runtime-provenance.mjs";
 import { validateVisualScorecard } from "./report-validation.mjs";
 import { validatePresentationPackage } from "../validate-presentation-package.mjs";
 import { assertSafeOutputDir, inside, readJson, sha256File, sha256Text, writeJson } from "./utils.mjs";
@@ -281,6 +282,7 @@ async function writeGenerationReport(outputDir, configured, context, io, options
   const report = structuredClone(base);
   report.status = context.status;
   report.attempts = context.attempts ?? [];
+  report.runtime = context.runtimeProvenance ?? await buildRuntimeProvenance();
   delete report.qaReport;
   delete report.presentationPackage;
   delete report.outputManifest;
@@ -454,6 +456,15 @@ export async function finalizeQaRun(outputDir, input, options = {}) {
   const attempts = input.attempts ?? input.qaReport?.attempts ?? [];
   let qaReport = { ...input.qaReport, attempts };
   validateQaReport(qaReport);
+  let packageRecord = await readOptionalJson(resolvedOutput, PACKAGE_PATH, io);
+  if (packageRecord === null) {
+    throw new SkillError("E_FINALIZATION_PACKAGE", "QA finalization requires presentation-package.json");
+  }
+  const existingGenerationReport = await readOptionalJson(resolvedOutput, GENERATION_REPORT_PATH, io);
+  const runtimeProvenance = await verifyOutputRuntimeProvenance(resolvedOutput, {
+    packageRecord,
+    generationReport: existingGenerationReport
+  });
   let scorecard = await writeVisualScorecard(resolvedOutput, qaReport, io);
   qaReport = withScorecardFailure(qaReport, scorecard);
   if (qaReport.status === "failed" && scorecard.accepted) {
@@ -462,7 +473,6 @@ export async function finalizeQaRun(outputDir, input, options = {}) {
   validateQaReport(qaReport);
   await writeArtifact(resolvedOutput, QA_REPORT_PATH, qaReport, io);
 
-  let packageRecord = await readOptionalJson(resolvedOutput, PACKAGE_PATH, io);
   const attemptReports = await existingReportPaths(resolvedOutput, attemptReportPaths(attempts), io);
   const reports = [QA_REPORT_PATH, ...attemptReports];
   if (packageRecord !== null) {
@@ -473,6 +483,7 @@ export async function finalizeQaRun(outputDir, input, options = {}) {
   const generationReport = await writeGenerationReport(resolvedOutput, input.generation, {
     status: qaReport.status,
     attempts,
+    runtimeProvenance,
     qaReportPath: QA_REPORT_PATH,
     packagePath: packageRecord ? PACKAGE_PATH : null
   }, io);

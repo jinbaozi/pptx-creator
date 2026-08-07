@@ -47,6 +47,48 @@ async function settlePage(page, timeoutMs) {
   }, null, { timeout: timeoutMs });
 }
 
+async function visualFingerprint(page, screenshot) {
+  return page.evaluate(async (source) => {
+    const image = new Image();
+    image.src = source;
+    await image.decode();
+    const width = 16;
+    const height = 9;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0, width, height);
+    const pixels = context.getImageData(0, 0, width, height).data;
+    const luminance = [];
+    for (let index = 0; index < pixels.length; index += 4) {
+      luminance.push(0.2126 * pixels[index] + 0.7152 * pixels[index + 1] + 0.0722 * pixels[index + 2]);
+    }
+    const average = luminance.reduce((total, value) => total + value, 0) / luminance.length;
+    const bits = luminance.map((value) => value >= average ? "1" : "0").join("");
+    let averageHash = "";
+    for (let index = 0; index < bits.length; index += 4) averageHash += Number.parseInt(bits.slice(index, index + 4), 2).toString(16);
+    const colorGrid = [];
+    for (let gridY = 0; gridY < 3; gridY += 1) {
+      for (let gridX = 0; gridX < 4; gridX += 1) {
+        const totals = [0, 0, 0];
+        let count = 0;
+        for (let y = gridY * 3; y < (gridY + 1) * 3; y += 1) {
+          for (let x = gridX * 4; x < (gridX + 1) * 4; x += 1) {
+            const offset = (y * width + x) * 4;
+            totals[0] += pixels[offset];
+            totals[1] += pixels[offset + 1];
+            totals[2] += pixels[offset + 2];
+            count += 1;
+          }
+        }
+        colorGrid.push(...totals.map((value) => Math.round(value / count)));
+      }
+    }
+    return { version: "1.0.0", width, height, averageHash, colorGrid };
+  }, `data:image/png;base64,${screenshot.toString("base64")}`);
+}
+
 async function inspectActiveSlide(page) {
   return page.evaluate(() => {
     const slide = document.querySelector(".pptx-slide.is-active");
@@ -72,10 +114,34 @@ async function inspectActiveSlide(page) {
     const ids = new Set();
     const components = [];
     const kindMap = { line: "connector", text: "text", shape: "shape", image: "image", svg: "svg", table: "table", chart: "chart" };
-    for (const [z, element] of [...slide.querySelectorAll("[data-pptx-id]")].entries()) {
+    const typeFloors = { display: 38, title: 38, section: 24, body: 22, label: 15, source: 12 };
+    const validRegions = new Set(["header", "content", "footer", "decoration"]);
+    const componentElements = [...slide.querySelectorAll("[data-pptx-id]")];
+    const contentRoots = [...slide.querySelectorAll("[data-qa-content-root]")];
+    const footers = [...slide.querySelectorAll("[data-qa-footer]")];
+    if (contentRoots.length !== 1 || footers.length !== 1) {
+      findings.push({
+        code: "E_COMPONENT_METADATA",
+        message: `${slideId} must declare exactly one content root and one footer`,
+        details: { contentRootCount: contentRoots.length, footerCount: footers.length }
+      });
+    }
+    for (const [z, element] of componentElements.entries()) {
       const id = element.dataset.pptxId;
       if (ids.has(id)) findings.push({ code: "E_DUPLICATE_COMPONENT", message: `Duplicate component id ${id}`, componentId: id });
       ids.add(id);
+      const kind = element.dataset.pptxKind;
+      const typeTier = element.dataset.typeTier;
+      const qaRegion = element.dataset.qaRegion;
+      const tierValid = kind === "text" ? Object.hasOwn(typeFloors, typeTier) : typeTier === "none";
+      if (!kind || !tierValid || !validRegions.has(qaRegion)) {
+        findings.push({
+          code: "E_COMPONENT_METADATA",
+          message: `${id || "unnamed component"} has incomplete semantic QA metadata`,
+          componentId: id,
+          details: { kind: kind ?? null, typeTier: typeTier ?? null, qaRegion: qaRegion ?? null }
+        });
+      }
       if (!visible(element)) continue;
       const rect = element.getBoundingClientRect();
       const box = normalizeRect(rect);
@@ -103,7 +169,75 @@ async function inspectActiveSlide(page) {
       }
     }
 
+    const contentRoot = contentRoots[0];
+    const footer = footers[0];
+    const shell = slide.querySelector(".slide-shell");
+    if (contentRoot && footer && shell) {
+      const tolerance = 1.5 * scale;
+      const rootRect = contentRoot.getBoundingClientRect();
+      const footerRect = footer.getBoundingClientRect();
+      const shellRect = shell.getBoundingClientRect();
+      if (rootRect.left < shellRect.left - tolerance || rootRect.top < shellRect.top - tolerance
+        || rootRect.right > shellRect.right + tolerance || rootRect.bottom > shellRect.bottom + tolerance) {
+        findings.push({ code: "E_SAFE_AREA", message: `${slideId} content root escapes the slide safe area` });
+      }
+      const rootFooterWidth = Math.max(0, Math.min(footerRect.right, rootRect.right) - Math.max(footerRect.left, rootRect.left));
+      const rootFooterHeight = Math.max(0, Math.min(footerRect.bottom, rootRect.bottom) - Math.max(footerRect.top, rootRect.top));
+      if (rootFooterWidth * rootFooterHeight > scale * scale) {
+        findings.push({
+          code: "E_FOOTER_COLLISION",
+          message: `${slideId} content root collides with the footer safe band`,
+          overlapArea: Number((rootFooterWidth * rootFooterHeight / (scale * scale)).toFixed(3))
+        });
+      }
+      for (const element of componentElements.filter(visible)) {
+        const region = element.dataset.qaRegion;
+        const rect = element.getBoundingClientRect();
+        if (region === "content" && (!contentRoot.contains(element)
+          || rect.left < rootRect.left - tolerance || rect.top < rootRect.top - tolerance
+          || rect.right > rootRect.right + tolerance || rect.bottom > rootRect.bottom + tolerance)) {
+          findings.push({
+            code: "E_SAFE_AREA",
+            message: `${element.dataset.pptxId} escapes the declared content safe area`,
+            componentId: element.dataset.pptxId
+          });
+        }
+        if (!["footer", "decoration"].includes(region)) {
+          const width = Math.max(0, Math.min(footerRect.right, rect.right) - Math.max(footerRect.left, rect.left));
+          const height = Math.max(0, Math.min(footerRect.bottom, rect.bottom) - Math.max(footerRect.top, rect.top));
+          if (width * height > scale * scale) {
+            findings.push({
+              code: "E_FOOTER_COLLISION",
+              message: `${element.dataset.pptxId} collides with the footer safe band`,
+              componentId: element.dataset.pptxId,
+              overlapArea: Number((width * height / (scale * scale)).toFixed(3))
+            });
+          }
+        }
+      }
+    }
+
     const textNodes = [...slide.querySelectorAll("[data-pptx-kind='text']")].filter(visible);
+    let titleOrphan = false;
+    let titleLineCount = 0;
+    const renderedLineRects = (element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rects = [...range.getClientRects()]
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+        .sort((left, right) => left.top - right.top || left.left - right.left);
+      const lines = [];
+      for (const rect of rects) {
+        const line = lines.find((entry) => Math.abs(entry.top - rect.top) <= 1);
+        if (line) {
+          line.left = Math.min(line.left, rect.left);
+          line.right = Math.max(line.right, rect.right);
+        } else {
+          lines.push({ top: rect.top, left: rect.left, right: rect.right });
+        }
+      }
+      return lines.map((line) => ({ ...line, width: line.right - line.left }));
+    };
     const rgb = (value) => {
       const match = value?.match(/rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\)/);
       return match ? { r: Number(match[1]), g: Number(match[2]), b: Number(match[3]), a: match[4] === undefined ? 1 : Number(match[4]) } : null;
@@ -126,6 +260,35 @@ async function inspectActiveSlide(page) {
     };
     for (const element of textNodes) {
       const id = element.dataset.pptxId;
+      const style = getComputedStyle(element);
+      const typeTier = element.dataset.typeTier;
+      const floor = typeFloors[typeTier];
+      const fontSize = Number.parseFloat(style.fontSize);
+      if (Number.isFinite(floor) && fontSize + 0.01 < floor) {
+        findings.push({
+          code: "E_TYPE_FLOOR",
+          message: `${id} uses ${fontSize}px below the ${typeTier} floor of ${floor}px`,
+          componentId: id,
+          metrics: { typeTier, fontSize, minimum: floor }
+        });
+      }
+      const maxLines = Number(element.dataset.maxLines);
+      if (Number.isInteger(maxLines) && maxLines > 0) {
+        const lines = renderedLineRects(element);
+        titleLineCount = Math.max(titleLineCount, lines.length);
+        if (lines.length > maxLines) {
+          findings.push({
+            code: "E_TITLE_LINE_COUNT",
+            message: `${id} renders on ${lines.length} lines; maximum is ${maxLines}`,
+            componentId: id,
+            metrics: { lineCount: lines.length, maximum: maxLines }
+          });
+        }
+        if (lines.length > 1) {
+          const widest = Math.max(...lines.map((line) => line.width));
+          titleOrphan ||= lines.at(-1).width < widest * 0.28;
+        }
+      }
       if (element.scrollWidth > element.clientWidth + 2 || element.scrollHeight > element.clientHeight + 2) {
         findings.push({
           code: "E_TEXT_OVERFLOW",
@@ -145,7 +308,6 @@ async function inspectActiveSlide(page) {
         const high = Math.max(luminance(foreground), luminance(background));
         const low = Math.min(luminance(foreground), luminance(background));
         const ratio = (high + 0.05) / (low + 0.05);
-        const style = getComputedStyle(element);
         const large = Number.parseFloat(style.fontSize) >= 24 || (Number.parseFloat(style.fontSize) >= 18.66 && Number(style.fontWeight) >= 700);
         const required = large ? 3 : 4.5;
         if (ratio + 0.01 < required) {
@@ -198,6 +360,14 @@ async function inspectActiveSlide(page) {
 
     const source = slide.querySelector(".source-list");
     const sourceTruncated = Boolean(source && (source.scrollWidth > source.clientWidth + 1 || source.scrollHeight > source.clientHeight + 1));
+    const sourceLineCount = source ? renderedLineRects(source).length : 0;
+    if (sourceTruncated) {
+      findings.push({
+        code: "E_SOURCE_TRUNCATION",
+        message: `${source.dataset.pptxId} truncates source evidence`,
+        componentId: source.dataset.pptxId
+      });
+    }
     const cards = [...slide.querySelectorAll(".card")];
     const nestedCardCount = cards.filter((card) => card.parentElement?.closest(".card")).length;
 
@@ -320,11 +490,15 @@ async function inspectActiveSlide(page) {
         slideId,
         order,
         family: slide.dataset.layoutFamily ?? slide.dataset.slideType ?? "unknown",
+        silhouette: slide.dataset.layoutSilhouette ?? slide.dataset.layoutVariant ?? "unknown",
         variant: slide.dataset.layoutVariant ?? "unknown",
         decorationCount: slide.querySelectorAll('[data-layout-role="decoration"]').length,
         cardCount: cards.length,
         nestedCardCount,
-        sourceTruncated
+        sourceTruncated,
+        sourceLineCount,
+        titleOrphan,
+        titleLineCount
       }
     };
   });
@@ -401,7 +575,12 @@ export async function runBrowserQa(outputDir, options = {}) {
     } catch (error) {
       throw new SkillError("E_BROWSER_UNAVAILABLE", `Cannot launch Chromium: ${error.message}`, { cause: error });
     }
-    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    const page = await browser.newPage({
+      viewport: { width: 1280, height: 720 },
+      deviceScaleFactor: 1,
+      locale: "zh-CN",
+      timezoneId: "Asia/Shanghai"
+    });
     page.setDefaultTimeout(timeoutMs);
     page.setDefaultNavigationTimeout(timeoutMs);
     const remoteRequests = [];
@@ -440,12 +619,16 @@ export async function runBrowserQa(outputDir, options = {}) {
         }));
       }
       const imagePath = screenshotPath(resolvedOutput, viewport.name, inspected.order);
-      await page.screenshot({ path: imagePath, fullPage: false });
+      const screenshot = await page.screenshot({ path: imagePath, fullPage: false });
       slideResults.push({
         slideId: inspected.slideId,
         order: inspected.order,
         screenshot: relative(resolvedOutput, imagePath).replaceAll("\\", "/"),
-        componentCount: inspected.components.length
+        componentCount: inspected.components.length,
+        silhouette: inspected.visualProbe.silhouette,
+        titleLineCount: inspected.visualProbe.titleLineCount,
+        sourceLineCount: inspected.visualProbe.sourceLineCount,
+        visualFingerprint: await visualFingerprint(page, screenshot)
       });
       if (viewport.name === "standard") canonicalSlides.push(inspected);
     }

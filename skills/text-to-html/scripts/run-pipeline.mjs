@@ -6,6 +6,7 @@ import { beginQaFinalization, finalizeQaRun, recordQaFailure, writeQaAttempt } f
 import { validatePlanFile } from "./lib/plan.mjs";
 import { runBrowserQa } from "./lib/qa.mjs";
 import { buildDeck } from "./lib/render.mjs";
+import { assertTestRuntimeOverrides } from "./lib/runtime-provenance.mjs";
 import { assertSafeOutputDir, parseOptions } from "./lib/utils.mjs";
 
 const REPAIRABLE_CODES = new Set([
@@ -28,6 +29,7 @@ function generationPlan(plan, mode) {
 }
 
 export async function runPipeline(planPath, outputDir, options = {}, runtime = {}) {
+  assertTestRuntimeOverrides(runtime, "runPipeline");
   const mode = options.mode ?? "quality";
   if (!["quality", "balanced", "draft"].includes(mode)) {
     const error = new Error("--mode must be quality, balanced, or draft");

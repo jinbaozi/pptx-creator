@@ -16,7 +16,7 @@ Produce HTML, not PPTX. Keep Host judgment separate from deterministic execution
    node scripts/run-pipeline.mjs presentation-plan.json output
    ```
 
-5. Read [browser-quality-gate.md](references/browser-quality-gate.md). Inspect every full-size preview and `qa-report.json`; a pending or failed QA result is not a complete package.
+5. Read [browser-quality-gate.md](references/browser-quality-gate.md). Inspect every full-size preview and `qa-report.json`; a pending or failed QA result is not a complete package. When `visual-scorecard.json` is `attention-required`, supply a current Host-authored `visual-review.json` to `review-deck.mjs` or `host-final-review.mjs` and decide every warning.
 
 Plan 2.0 is the only accepted plan contract. A Plan 1.x input is rejected with `E_PLAN_VERSION`; do not send it to the pipeline.
 
@@ -24,7 +24,7 @@ The command writes an offline 1280×720 deck, local CSS/JS/assets, notes, source
 
 Use `scripts/scaffold-plan.mjs` only to preserve structure from Markdown or plain text. It creates a Plan 2.0 draft with all review approvals still required. Use `node scripts/run-pipeline.mjs draft-plan.json preview --mode draft` only for a pending local preview; it never runs final QA or emits an accepted manifest. The Host must complete and approve the brief, narrative, design intent, rights, and slide semantics before quality or balanced mode can publish a package.
 
-Use `scripts/localize-assets.mjs` to materialize selected assets. Remote acquisition requires an explicit `--allow-host` list; `prefer` may use only a plan-declared local fallback, while `require` blocks if the selected resource cannot be fetched safely. Use `scripts/plan-check.mjs`, `scripts/review-deck.mjs`, and `scripts/host-final-review.mjs` to inspect diagnostics and verify evidence; none of them invents or writes a Host approval.
+Use `scripts/localize-assets.mjs` to materialize selected assets. Remote acquisition requires an explicit `--allow-host` list; `prefer` may use only a plan-declared local fallback, while `require` blocks if the selected resource cannot be fetched safely. Use `scripts/plan-check.mjs`, `scripts/review-deck.mjs`, and `scripts/host-final-review.mjs` to inspect diagnostics and verify evidence; none of them invents or writes a Host approval. Pass a Host file explicitly with `node scripts/host-final-review.mjs output visual-review.json` when visual warnings remain.
 
 For installation, isolated execution, and publishing, read [installation-and-isolation.md](references/installation-and-isolation.md). For protocol consumers, read [presentation-package-protocol.md](references/presentation-package-protocol.md). For failures, read [errors.md](references/errors.md).
 
