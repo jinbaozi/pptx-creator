@@ -22,6 +22,10 @@ Rebuild only what is visible. Never invent unreadable text, chart data, brands, 
    node scripts/image-to-pptx.mjs doctor
    ```
 
+   The doctor also imports the required Python measurement and font stack
+   (Pillow, pytesseract, NumPy, scikit-image, and version-bounded fontTools) and prints
+   its versions.
+
 3. Reconstruct one image or an ordered set:
 
    ```bash
@@ -32,12 +36,16 @@ The command copies source files, performs OCR, scene, mask, and layer analysis, 
 
 ## Decisions
 
-- Use `--langs eng` or another locally installed Tesseract language. Do not substitute a different language silently.
+- Use `--langs eng`, `--langs chi_sim+eng`, or `--langs auto`. Explicit language requests must be installed; `auto` requires OSD script evidence before resolving to `chi_sim+eng` or `eng`. Missing packs or missing/unsupported script evidence fail deterministically; no language is silently substituted.
 - Use the default OCR confidence threshold `0.70`. Lowering it increases editable text but also increases factual risk; record any user-requested override.
 - Keep text whose confidence is below the threshold as a labeled local crop and in the low-confidence report. Never guess its content.
 - Rebuild flat fills, borders, simple lines, and reliable tables as native objects. Rebuild visible chart geometry as native shapes unless original numeric data is actually recoverable.
 - Preserve OCR polygons, direction/script evidence, reading order, rich text, object rotation/transparency, masks, and inferred z-order in the scene analysis. Treat these as evidence, not permission to invent missing content.
+- Emit a deterministic five-class pixel ownership report for every slide. Claim final OCR lines, native shapes/connectors, and structured candidates before extracting residual connected components; residuals are tight transparent crops with auditable mask/source/asset digests and never replace a whole slide.
+- `analysis.json` includes a deterministic `pageProfile` and layout-group `regionProfiles` (with evidence-bound singleton regions when needed) with density, complexity evidence, member/object refs, confidence, and candidate reconstruction strategies. Regional Tesseract OCR routes prioritized observed lines through bounded PSM 6/7/8/10/13 candidates under a fixed page call budget and records the single selected result in `ocr-report.json`; deferred lines retain page-pass evidence.
+- `analysis.json` also carries a versioned `reconstructionPlan`: every owned region has complete executable `native-all`, `native-plus-local-assets`, and `bounded-raster` candidates with object/asset refs, ownership masks, z-range, provenance digests, editability, deterministic loss, and hard-gate results. The selected refs are rendered exclusively; the independent `reports/reconstruction-plan.json` report and digest must agree before QA can pass. No eligible route or incomplete object/asset coverage fails closed. `reports/visual-report.json` measures each RegionProfile from independent source/preview crops, ranks `impact=areaShare*(1-regionSSIM)*severityWeight`, and drives a deterministic top-five beam for at most three outer repair rounds. Unavailable metrics/routes remain explicit diagnostics, and every applied geometry/z/route/asset/object action regenerates and validates the plan/ref/digest.
 - Emit a native chart only when `recoverability.sourceData` is true, `sourceRef` resolves to an analysis source, `sourceSha256` matches that source record, and every category/value is finite. Otherwise keep editable visible geometry or a bounded crop.
+- Build the offline `reports/font-inventory.json` before solving text. Keep candidate families capped at six, preserve face/path/weight/glyph evidence, cluster text into stable Display Title/Section Title/Card Title/Body/Caption/Footnote/Badge tiers, and retain measured `font-fit-v1` evidence on each editable text object. A missing glyph or fontTools runtime is a blocking diagnostic, never a silent substitute.
 - Use a bounded local raster crop only when a region cannot be decomposed reliably. Fail if the only credible fallback would cover essentially the whole slide.
 - Preserve all failure artifacts. Do not rename a failed candidate to `final.pptx`.
 

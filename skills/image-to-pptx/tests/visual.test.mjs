@@ -29,6 +29,13 @@ test("replica-golden calibration clears the unchanged 0.90 bbox IoU gate", { ski
   assert.equal(qa.editability.wholeSlideRasterCount, 0);
   assert.equal(qa.degradations.length, 1);
   assert.equal((await validateOutput(output)).deliveryStatus, "passed");
+  const qaPath = result.qaReport;
+  const originalQa = await readFile(qaPath, "utf8");
+  const tamperedQa = JSON.parse(originalQa);
+  tamperedQa.repairHistory.at(-1).candidateRef.sha256 = "f".repeat(64);
+  await writeFile(qaPath, JSON.stringify(tamperedQa));
+  await assert.rejects(validateOutput(output), (error) => error.code === "E_REPAIR_HISTORY");
+  await writeFile(qaPath, originalQa);
   const analysisPath = join(output, "analysis.json");
   const originalAnalysis = await readFile(analysisPath, "utf8");
   const unknownAnalysis = JSON.parse(originalAnalysis);

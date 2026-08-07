@@ -35,7 +35,7 @@ function percentage(value, fallback = 0) {
   return clamp(number, 0, 100);
 }
 
-function resolveFont(value, fallback = "Arial", text = "") {
+function resolveFont(value, fallback = "Noto Sans", text = "") {
   const candidates = String(value ?? "")
     .split(",")
     .map((entry) => entry.trim().replace(/^['"]|['"]$/g, ""))
@@ -158,12 +158,15 @@ function shadowOptions(value) {
 
 function textStyle(object, style = {}) {
   const source = style && typeof style === "object" ? style : {};
+  const explicitLineSpacing = source.lineSpacingPt ?? object.lineSpacingPt;
+  const selectedLineHeight = source.lineHeightPt ?? object.lineHeightPt;
+  const exactLineSpacing = explicitLineSpacing !== undefined ? explicitLineSpacing : selectedLineHeight;
   const fontSize = Number(source.fontSizePt ?? source.fontSize ?? object.fontSizePt ?? 12);
   const colorValue = source.color ?? object.color ?? "172033";
   const color = colorParts(colorValue, "172033");
   const transparency = source.transparency ?? object.transparency ?? color.transparency;
   const options = {
-    fontFace: resolveFont(source.fontFamily ?? source.fontFace ?? object.fontFamily, "Arial", object.text),
+    fontFace: resolveFont(source.fontFamily ?? source.fontFace ?? object.fontFamily, "Noto Sans", object.text),
     fontSize: Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 12,
     color: color.hex,
     ...(transparency !== undefined ? { transparency: percentage(transparency) } : {}),
@@ -177,8 +180,8 @@ function textStyle(object, style = {}) {
     margin: source.margin ?? object.margin ?? 0,
     wrap: source.wrap !== false && object.wrap !== false,
     ...(source.fit ? { fit: source.fit } : {}),
-    ...(source.lineSpacingPt !== undefined ? { lineSpacing: Number(source.lineSpacingPt) } : {}),
-    ...(source.lineSpacingMultiple !== undefined ? { lineSpacingMultiple: Number(source.lineSpacingMultiple) } : {}),
+    ...(Number.isFinite(Number(exactLineSpacing)) && Number(exactLineSpacing) > 0 ? { lineSpacing: Number(exactLineSpacing) } : {}),
+    ...(explicitLineSpacing === undefined && exactLineSpacing === undefined && source.lineSpacingMultiple !== undefined ? { lineSpacingMultiple: Number(source.lineSpacingMultiple) } : {}),
     ...(source.paraSpaceAfterPt !== undefined ? { paraSpaceAfter: Number(source.paraSpaceAfterPt) } : {}),
     ...(source.paraSpaceBeforePt !== undefined ? { paraSpaceBefore: Number(source.paraSpaceBeforePt) } : {}),
     ...(source.indentLevel !== undefined ? { indentLevel: Number(source.indentLevel) } : {}),
@@ -234,6 +237,20 @@ function richTextPayload(object) {
       });
     });
     return payload;
+  }
+  const layout = object.layout ?? object.fontSolver?.layout;
+  const plainRuns = Array.isArray(object.runs) ? object.runs : null;
+  if (layout && Array.isArray(layout.lineBreaks) && layout.lineBreaks.length > 0
+      && (!plainRuns || plainRuns.length === 0 || plainRuns.length === 1)) {
+    const lines = layout.lineBreaks.map((line) => String(line));
+    const baseRun = plainRuns?.length === 1 ? plainRuns[0] : {};
+    return lines.map((line, index) => ({
+      text: line,
+      options: {
+        ...runOptions(baseRun, object, style),
+        breakLine: index < lines.length - 1
+      }
+    }));
   }
   if (Array.isArray(object.runs) && object.runs.length > 0) {
     return object.runs.map((run) => ({
@@ -446,7 +463,7 @@ function tableCell(cell, object, sectionStyle = {}) {
     ...(source.options && typeof source.options === "object" ? source.options : {}),
     text: undefined,
     color: color.hex,
-    ...(style.fontFamily || object.fontFamily ? { fontFace: resolveFont(style.fontFamily ?? object.fontFamily, "Arial", source.text) } : {}),
+    ...(style.fontFamily || object.fontFamily ? { fontFace: resolveFont(style.fontFamily ?? object.fontFamily, "Noto Sans", source.text) } : {}),
     ...(style.fontSizePt || style.fontSize ? { fontSize: Number(style.fontSizePt ?? style.fontSize) } : object.fontSizePt ? { fontSize: Number(object.fontSizePt) } : {}),
     ...(style.bold !== undefined ? { bold: Boolean(style.bold) } : {}),
     ...(style.fontWeight !== undefined ? { bold: Number(style.fontWeight) >= 700 } : {}),
@@ -561,6 +578,11 @@ function addObject(slide, object, size, packageRoot, context = {}) {
       });
     }
     const source = object.asset ?? object.src ?? object.path;
+    const routeSizing = !imageSizing(object) && object.reconstructionRoute === "bounded-raster"
+      ? { type: "contain" }
+      : !imageSizing(object) && object.reconstructionRoute === "native-plus-local-assets"
+        ? { type: "cover" }
+        : null;
     const imageOptions = applyTransform({
       path: safeAssetPath(packageRoot, source),
       ...target,
@@ -571,7 +593,7 @@ function addObject(slide, object, size, packageRoot, context = {}) {
         : {}),
       ...(object.rounding !== undefined ? { rounding: Boolean(object.rounding) } : object.imageShape === "ellipse" ? { rounding: true } : {}),
       ...(object.shadow || object.style?.shadow ? { shadow: shadowOptions(object.shadow ?? object.style.shadow) } : {}),
-      ...(imageSizing(object) ? { sizing: imageSizing(object) } : {})
+      ...(imageSizing(object) ? { sizing: imageSizing(object) } : routeSizing ? { sizing: routeSizing } : {})
     }, object);
     slide.addImage(imageOptions);
     return "image";
@@ -587,7 +609,7 @@ function addObject(slide, object, size, packageRoot, context = {}) {
       border: { type: style.borderStyle === "none" ? "none" : "solid", color: borderColor.hex, pt: Number(style.borderWidthPt ?? style.borderWidth ?? 1) },
       fill: { color: hex(style.fill ?? object.fillColor ?? "FFFFFF"), transparency: percentage(style.transparency ?? 0) },
       color: hex(style.color ?? object.textColor ?? "172033"),
-      fontFace: resolveFont(style.fontFamily ?? object.fontFamily, "Arial"),
+      fontFace: resolveFont(style.fontFamily ?? object.fontFamily, "Noto Sans"),
       fontSize: Number(style.fontSizePt ?? object.fontSizePt ?? 12),
       margin: style.margin ?? object.margin ?? 0.04,
       ...(Array.isArray(object.colW) ? { colW: object.colW } : {}),
@@ -886,8 +908,31 @@ function patchGroupsXml(xml, groups) {
 }
 
 function collectPlanObjects(plan, size) {
-  const direct = Array.isArray(plan.objects) ? plan.objects : [];
-  const byId = new Map(direct.filter((item) => item?.id).map((item) => [item.id, item]));
+  const reconstructionPlan = plan?.reconstructionPlan;
+  if (!reconstructionPlan || !Array.isArray(reconstructionPlan.selectedObjectRefs)) {
+    throw Object.assign(new Error(`${plan?.id ?? "slide"} reconstruction plan is missing selectedObjectRefs`), { code: "E_RECONSTRUCTION_PLAN" });
+  }
+  const selectedRefs = reconstructionPlan.selectedObjectRefs.map(String);
+  if (new Set(selectedRefs).size !== selectedRefs.length) {
+    throw Object.assign(new Error(`${plan?.id ?? "slide"} reconstruction plan has duplicate selected object refs`), { code: "E_RECONSTRUCTION_PLAN" });
+  }
+  const allDirect = Array.isArray(plan.objects) ? plan.objects : [];
+  const allById = new Map();
+  const indexObject = (item) => {
+    if (!item || typeof item !== "object") return;
+    if (item.id) allById.set(String(item.id), item);
+    for (const child of item.children ?? []) {
+      if (typeof child === "object") indexObject(child);
+    }
+  };
+  allDirect.forEach(indexObject);
+  const allIds = new Set(allById.keys());
+  for (const ref of selectedRefs) {
+    if (!allIds.has(ref)) throw Object.assign(new Error(`${plan?.id ?? "slide"} reconstruction plan references missing object ${ref}`), { code: "E_RECONSTRUCTION_PLAN" });
+  }
+  const selected = new Set(selectedRefs);
+  const direct = allDirect.filter((item) => item?.id && selected.has(String(item.id)));
+  const byId = allById;
   const flattened = [];
   const groups = [];
   const groupedIds = new Set();
@@ -899,6 +944,9 @@ function collectPlanObjects(plan, size) {
     for (const value of children) {
       const child = typeof value === "string" ? byId.get(value) : value;
       if (!child || typeof child !== "object") throw Object.assign(new Error(`${group.id ?? "group"} references a missing child`), { code: "E_GROUP_CHILD" });
+      if (child.id && !selected.has(String(child.id))) {
+        throw Object.assign(new Error(`${group.id ?? "group"} reconstruction plan omits child ${child.id}`), { code: "E_RECONSTRUCTION_PLAN" });
+      }
       if (!child.id) child.id = `${group.id ?? "group"}__child-${++generated}`;
       byId.set(child.id, child);
       groupedIds.add(child.id);
@@ -1084,9 +1132,11 @@ export async function renderPptx(analysisPath, outputPath, editabilityPath, pack
   pptx.title = analysis.deck.title;
   pptx.company = "";
   pptx.lang = "en-US";
+  const typography = analysis.designTokens?.typography ?? {};
+  const primaryFont = resolveFont(typography.primary, "Noto Sans");
   pptx.theme = {
-    headFontFace: "Arial",
-    bodyFontFace: "Arial",
+    headFontFace: primaryFont,
+    bodyFontFace: primaryFont,
     lang: "en-US"
   };
   const typeCounts = {};
@@ -1100,6 +1150,18 @@ export async function renderPptx(analysisPath, outputPath, editabilityPath, pack
     const backgroundColor = backgroundGradient?.stops?.[0]?.color ?? background?.color ?? plan.background;
     slide.background = { color: hex(backgroundColor, "FFFFFF") };
     const prepared = collectPlanObjects(plan, size);
+    const routeOverrides = plan.reconstructionPlan?.routeOverrides ?? {};
+    const routeByObject = new Map(
+      (plan.reconstructionPlan?.regions ?? []).flatMap((region) => {
+        const winner = (region.candidates ?? []).find((item) => String(item.id) === String(region.winnerId));
+        const strategy = routeOverrides[String(region.id)] ?? winner?.strategy;
+        if (!strategy) return [];
+        return (region.assignedObjectRefs ?? []).map((ref) => [String(ref), String(strategy)]);
+      })
+    );
+    prepared.objects = prepared.objects.map((item) => routeByObject.has(String(item.id))
+      ? { ...item, reconstructionRoute: routeByObject.get(String(item.id)) }
+      : item);
     renderPlans.push(prepared);
     const gradients = [];
     for (const object of prepared.objects) {

@@ -12,8 +12,15 @@
     "slideCount",
     "attemptsUsed",
     "maxRepairAttempts",
+    "reconstructionPlanRef",
+    "render",
     "visual",
+    "runtime",
+    "fonts",
+    "fontInventory",
     "editability",
+    "ownership",
+    "repairSafety",
     "repairHistory",
     "degradations",
     "findings",
@@ -27,11 +34,375 @@
     "slideCount": { "type": "integer", "minimum": 1 },
     "attemptsUsed": { "type": "integer", "minimum": 0, "maximum": 3 },
     "maxRepairAttempts": { "type": "integer", "minimum": 0, "maximum": 3 },
-    "visual": { "type": "object" },
+    "reconstructionPlanRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+      }
+    },
+    "render": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "requestedSize", "report"],
+      "properties": {
+        "engine": { "const": "libreoffice+pdftoppm" },
+        "requestedSize": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height", "unit"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "unit": { "const": "px" }
+          }
+        },
+        "report": { "type": "string", "minLength": 1 }
+      }
+    },
+    "visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "aggregate", "ssim", "report"],
+      "properties": {
+        "status": { "enum": ["passed", "failed"] },
+        "aggregate": { "type": "object" },
+        "ssim": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metric", "version", "configuration"],
+          "properties": {
+            "metric": { "const": "pptx-creator-ssim" },
+            "version": { "const": "2.0" },
+            "configuration": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "implementation",
+                "dataRange",
+                "gaussianWeights",
+                "sigma",
+                "useSampleCovariance",
+                "channelAxis"
+              ],
+              "properties": {
+                "implementation": { "const": "skimage.structural_similarity" },
+                "dataRange": { "const": 255 },
+                "gaussianWeights": { "const": true },
+                "sigma": { "const": 1.5 },
+                "useSampleCovariance": { "const": false },
+                "channelAxis": { "const": 2 }
+              }
+            }
+          }
+        },
+        "report": { "type": "string", "minLength": 1 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["renderer", "libreoffice", "poppler", "tesseract", "python", "libraries"],
+      "properties": {
+        "renderer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version", "engine"],
+          "properties": {
+            "name": { "const": "render_preview" },
+            "version": { "const": "2.0" },
+            "engine": { "const": "libreoffice+pdftoppm" }
+          }
+        },
+        "libreoffice": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "status", "version"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1 },
+            "status": { "const": "available" },
+            "version": { "type": "string", "minLength": 1 },
+            "detail": { "type": "string" }
+          }
+        },
+        "poppler": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "status", "version"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1 },
+            "status": { "const": "available" },
+            "version": { "type": "string", "minLength": 1 },
+            "detail": { "type": "string" }
+          }
+        },
+        "tesseract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "status", "version"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1 },
+            "status": { "const": "available" },
+            "version": { "type": "string", "minLength": 1 },
+            "detail": { "type": "string" }
+          }
+        },
+        "python": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "executable", "version"],
+          "properties": {
+            "status": { "const": "available" },
+            "executable": { "type": "string", "minLength": 1 },
+            "version": { "type": "string", "minLength": 1 }
+          }
+        },
+        "libraries": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["Pillow", "pytesseract", "numpy", "scikit-image", "fontTools"],
+          "properties": {
+            "Pillow": { "$ref": "#/$defs/libraryVersion" },
+            "pytesseract": { "$ref": "#/$defs/libraryVersion" },
+            "numpy": { "$ref": "#/$defs/libraryVersion" },
+            "scikit-image": { "$ref": "#/$defs/libraryVersion" }
+            ,"fontTools": { "$ref": "#/$defs/libraryVersion" }
+          }
+        }
+      }
+    },
+    "fonts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requested", "status", "matched"],
+        "properties": {
+          "requested": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["available", "substituted", "unavailable"] },
+          "matched": { "type": ["string", "null"] },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "fontInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+      }
+    },
     "editability": { "type": "object" },
-    "repairHistory": { "type": "array", "minItems": 1, "maxItems": 4 },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "report", "conflictPixels", "rasterNativeOverlapPixels", "duplicateVisibleContent", "unassignedPixels"],
+      "properties": {
+        "status": { "enum": ["passed", "failed"] },
+        "report": { "type": "string", "minLength": 1 },
+        "conflictPixels": { "type": "integer", "minimum": 0 },
+        "rasterNativeOverlapPixels": { "type": "integer", "minimum": 0 },
+        "duplicateVisibleContent": { "type": "integer", "minimum": 0 },
+        "unassignedPixels": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "repairSafety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "report", "pages"],
+      "properties": {
+        "status": { "enum": ["passed", "failed"] },
+        "report": { "const": "analysis.json" },
+        "pages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slideId", "status", "outOfBoundsObjectRefs", "rasterNativeOverlapObjectRefs", "duplicateRouteClaims", "ownershipConflict", "checkedObjectCount", "checkedAssetCount"],
+            "properties": {
+              "slideId": { "type": "string", "minLength": 1 },
+              "status": { "enum": ["passed", "failed"] },
+              "outOfBoundsObjectRefs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+              "rasterNativeOverlapObjectRefs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+              "duplicateRouteClaims": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+              "ownershipConflict": { "type": "boolean" },
+              "checkedObjectCount": { "type": "integer", "minimum": 0 },
+              "checkedAssetCount": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "repairHistory": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["round", "iteration", "actions", "stepAccepted", "selectedForNextRound", "finalQualityPassed", "accepted", "rejectionReason", "candidateRef", "analysisRef", "visualReportRef", "renderReportRef", "editabilityReportRef", "reconstructionPlanRef", "score", "editabilityLevel", "status", "beamEvaluations"],
+        "properties": {
+          "round": { "type": "integer", "minimum": 0, "maximum": 3 },
+          "iteration": { "type": "integer", "minimum": 0, "maximum": 3 },
+          "regionId": { "type": ["string", "null"] },
+          "action": { "type": "string" },
+          "actions": { "type": "array", "items": { "$ref": "#/$defs/repairAction" } },
+          "beforeStrategy": { "type": ["string", "null"] },
+          "afterStrategy": { "type": ["string", "null"] },
+          "beforeMetrics": { "anyOf": [{ "$ref": "#/$defs/repairMetricSnapshot" }, { "type": "null" }] },
+          "afterMetrics": { "anyOf": [{ "$ref": "#/$defs/repairMetricSnapshot" }, { "type": "null" }] },
+          "deltaMetrics": { "$ref": "#/$defs/repairMetricDelta" },
+          "rasterDelta": { "type": ["number", "null"] },
+          "stepAccepted": { "type": "boolean" },
+          "selectedForNextRound": { "type": "boolean" },
+          "finalQualityPassed": { "type": "boolean" },
+          "accepted": { "type": "boolean" },
+          "rejectionReason": { "type": ["string", "null"] },
+          "candidateRef": { "$ref": "#/$defs/artifactRef" },
+          "analysisRef": { "$ref": "#/$defs/artifactRef" },
+          "visualReportRef": { "$ref": "#/$defs/artifactRef" },
+          "renderReportRef": { "$ref": "#/$defs/artifactRef" },
+          "editabilityReportRef": { "$ref": "#/$defs/artifactRef" },
+          "candidateDigest": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+          "reconstructionPlanRef": {
+            "$ref": "#/$defs/artifactRef"
+          },
+          "candidatePlanDigest": { "type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$" },
+          "score": { "type": "number" },
+          "visualStatus": { "type": "string" },
+          "editabilityLevel": { "type": "number" },
+          "status": { "enum": ["baseline", "applied"] },
+          "beamEvaluations": { "type": "array", "items": { "$ref": "#/$defs/beamEvaluation" } }
+        }
+      }
+    },
     "degradations": { "type": "array" },
     "findings": { "type": "array" },
     "artifacts": { "type": "object" }
+  },
+  "$defs": {
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+      }
+    },
+    "repairMetricSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regionId", "measurement", "metricStatus", "impactStatus", "impact", "regionSSIM", "ocrCER", "bboxIoU", "normalizedMAE", "paletteDeltaE2000P95", "sourceCropDigest", "renderCropDigest"],
+      "properties": {
+        "regionId": { "type": "string", "minLength": 1 },
+        "measurement": { "const": "source-render-crop" },
+        "metricStatus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["regionSSIM", "ocrCER", "bboxIoU", "normalizedMAE", "paletteDeltaE2000P95", "impact"],
+          "properties": {
+            "regionSSIM": { "$ref": "#/$defs/metricAvailability" },
+            "ocrCER": { "$ref": "#/$defs/metricAvailability" },
+            "bboxIoU": { "$ref": "#/$defs/metricAvailability" },
+            "normalizedMAE": { "$ref": "#/$defs/metricAvailability" },
+            "paletteDeltaE2000P95": { "$ref": "#/$defs/metricAvailability" },
+            "impact": { "$ref": "#/$defs/metricAvailability" }
+          }
+        },
+        "impactStatus": { "$ref": "#/$defs/metricAvailability" },
+        "impact": { "type": ["number", "null"] },
+        "regionSSIM": { "type": ["number", "null"] },
+        "ocrCER": { "type": ["number", "null"] },
+        "bboxIoU": { "type": ["number", "null"] },
+        "normalizedMAE": { "type": ["number", "null"] },
+        "paletteDeltaE2000P95": { "type": ["number", "null"] },
+        "sourceCropDigest": { "type": ["string", "null"], "pattern": "^(?:[0-9a-fA-F]{64})?$" },
+        "renderCropDigest": { "type": ["string", "null"], "pattern": "^(?:[0-9a-fA-F]{64})?$" }
+      }
+    },
+    "repairMetricDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "regionSSIM": { "type": "number" },
+        "ocrCER": { "type": "number" },
+        "bboxIoU": { "type": "number" },
+        "normalizedMAE": { "type": "number" },
+        "paletteDeltaE2000P95": { "type": "number" }
+      }
+    },
+    "metricAvailability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["measured", "unavailable"] },
+        "method": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "metric": { "type": "string", "minLength": 1 },
+        "formula": { "type": "string", "minLength": 1 },
+        "sourceText": { "type": "string" },
+        "renderText": { "type": "string" },
+        "missingMembers": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "measuredCount": { "type": "integer", "minimum": 0 },
+        "memberCount": { "type": "integer", "minimum": 0 },
+        "sampleStride": { "type": "integer", "minimum": 1 },
+        "sourceColors": { "type": "array", "items": { "type": "string" } },
+        "renderColors": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "repairAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slideId", "regionId", "action", "id", "category", "targetStrategy", "beforeStrategy", "afterStrategy", "sourceBound", "beforeMetrics", "afterMetrics", "deltaMetrics"],
+      "properties": {
+        "slideId": { "type": "string", "minLength": 1 },
+        "regionId": { "type": ["string", "null"] },
+        "action": { "type": "string", "minLength": 1 },
+        "id": { "type": ["string", "null"] },
+        "category": { "type": ["string", "null"] },
+        "targetStrategy": { "type": ["string", "null"] },
+        "beforeStrategy": { "type": ["string", "null"] },
+        "afterStrategy": { "type": ["string", "null"] },
+        "sourceBound": { "type": "boolean" },
+        "beforeMetrics": { "anyOf": [{ "$ref": "#/$defs/repairMetricSnapshot" }, { "type": "null" }] },
+        "afterMetrics": { "anyOf": [{ "$ref": "#/$defs/repairMetricSnapshot" }, { "type": "null" }] },
+        "deltaMetrics": { "$ref": "#/$defs/repairMetricDelta" }
+      }
+    },
+    "beamEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateId", "regionId", "action", "accepted", "stepAccepted", "selectedForNextRound", "finalQualityPassed", "rejectionReason", "candidateRef", "reconstructionPlanRef"],
+      "properties": {
+        "candidateId": { "type": ["string", "null"] },
+        "regionId": { "type": ["string", "null"] },
+        "action": { "type": ["string", "null"] },
+        "accepted": { "type": "boolean" },
+        "stepAccepted": { "type": "boolean" },
+        "selectedForNextRound": { "type": "boolean" },
+        "finalQualityPassed": { "type": "boolean" },
+        "rejectionReason": { "type": ["string", "null"] },
+        "candidateDigest": { "type": ["string", "null"], "pattern": "^(?:[0-9a-fA-F]{64})?$" },
+        "candidateRef": { "anyOf": [{ "$ref": "#/$defs/artifactRef" }, { "type": "null" }] },
+        "reconstructionPlanRef": { "anyOf": [{ "$ref": "#/$defs/artifactRef" }, { "type": "null" }] }
+      }
+    },
+    "libraryVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "version"],
+      "properties": {
+        "status": { "const": "available" },
+        "version": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string" }
+      }
+    }
   }
 }

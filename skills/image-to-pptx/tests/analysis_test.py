@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,9 +12,26 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[1]
 ANALYZE = ROOT / "scripts" / "analyze_images.py"
 MINIMAL = ROOT / "examples" / "minimal" / "input.png"
+sys.path.insert(0, str(ROOT / "scripts"))
+import analyze_images
 
 
 class AnalysisTest(unittest.TestCase):
+    def test_ocr_runtime_bounds_openmp_without_overriding_explicit_value(self):
+        previous = os.environ.get("OMP_THREAD_LIMIT")
+        try:
+            os.environ.pop("OMP_THREAD_LIMIT", None)
+            analyze_images.configure_ocr_runtime()
+            self.assertEqual(os.environ.get("OMP_THREAD_LIMIT"), "1")
+            os.environ["OMP_THREAD_LIMIT"] = "7"
+            analyze_images.configure_ocr_runtime()
+            self.assertEqual(os.environ.get("OMP_THREAD_LIMIT"), "7")
+        finally:
+            if previous is None:
+                os.environ.pop("OMP_THREAD_LIMIT", None)
+            else:
+                os.environ["OMP_THREAD_LIMIT"] = previous
+
     def run_analysis(self, images, threshold=0.70):
         temporary = tempfile.TemporaryDirectory()
         root = Path(temporary.name)
@@ -91,6 +109,10 @@ class AnalysisTest(unittest.TestCase):
         self.assertIn(slide["orientation"]["status"], {"ok", "unavailable"})
         self.assertEqual(slide["languageMetadata"]["requested"], ["eng"])
         lines = report["slides"][0]["lines"]
+        self.assertIn("pageDetectionWords", report["slides"][0])
+        self.assertEqual(report["slides"][0]["wordEvidenceStage"], "page-detection")
+        self.assertEqual(report["slides"][0]["lineEvidenceStage"], "region-selected-or-page-detection-budget-deferred")
+        self.assertEqual(report["slides"][0]["finalLines"], lines)
         self.assertGreater(len(lines), 1)
         self.assertEqual(
             [line["readingOrder"] for line in lines],

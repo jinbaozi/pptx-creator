@@ -10,6 +10,23 @@ import { renderPptx } from "../scripts/render_pptx.mjs";
 
 const execFileAsync = promisify(execFile);
 
+function refreshPlan(value) {
+  const refs = [];
+  const visit = (object) => {
+    if (!object || typeof object !== "object") return;
+    if (object.id) refs.push(String(object.id));
+    for (const child of object.children ?? []) if (typeof child === "object") visit(child);
+  };
+  for (const object of value.slides?.[0]?.objects ?? []) visit(object);
+  value.slides[0].reconstructionPlan = { selectedObjectRefs: refs };
+  return value;
+}
+
+async function writeAnalysis(path, value) {
+  refreshPlan(value);
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
 function analysis() {
   const sourceDigest = "a".repeat(64);
   return {
@@ -80,7 +97,7 @@ test("renderer creates native editable text and shapes without a raster", async 
   const source = join(directory, "analysis.json");
   const output = join(directory, "deck.pptx");
   const report = join(directory, "editability.json");
-  await writeFile(source, `${JSON.stringify(analysis(), null, 2)}\n`);
+  await writeAnalysis(source, analysis());
   const result = await renderPptx(source, output, report, directory);
   assert.equal(result.editability.status, "passed");
   assert.equal(result.editability.level, 5);
@@ -90,6 +107,69 @@ test("renderer creates native editable text and shapes without a raster", async 
   const xml = await zip.file("ppt/slides/slide1.xml").async("string");
   assert.match(xml, /UNIT TEST/);
   assert.doesNotMatch(xml, /<p:pic\b/);
+});
+
+test("renderer emits only objects selected by the reconstruction plan", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "image-to-pptx-plan-filter-"));
+  const source = join(directory, "analysis.json");
+  const output = join(directory, "deck.pptx");
+  const value = analysis();
+  value.slides[0].objects.push({
+    id: "unselected-shape",
+    type: "shape",
+    shape: "ellipse",
+    fill: true,
+    color: "#FF0000",
+    pixelBox: { x: 400, y: 180, w: 120, h: 80 },
+    z: 2
+  });
+  refreshPlan(value);
+  value.slides[0].reconstructionPlan.selectedObjectRefs = ["shape-001", "text-001"];
+  await writeFile(source, `${JSON.stringify(value, null, 2)}\n`);
+  await renderPptx(source, output, null, directory);
+  const zip = await JSZip.loadAsync(await readFile(output));
+  const xml = await zip.file("ppt/slides/slide1.xml").async("string");
+  assert.match(xml, /name="shape-001"/);
+  assert.match(xml, /name="text-001"/);
+  assert.doesNotMatch(xml, /unselected-shape/);
+});
+
+test("renderer writes selected line spacing and deterministic layout breaks to OOXML", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "image-to-pptx-layout-"));
+  const source = join(directory, "analysis.json");
+  const output = join(directory, "deck.pptx");
+  const value = analysis();
+  value.slides[0].objects = [
+    value.slides[0].objects[0],
+    {
+      id: "layout-text",
+      type: "text",
+      text: "first second third",
+      pixelBox: { x: 64, y: 180, w: 240, h: 40 },
+      renderBox: { x: 64, y: 170, w: 240, h: 100 },
+      style: { fontFamily: "Arial", fontSizePt: 18, lineHeightPt: 31, charSpacingPt: 0, wrap: true, color: "#111111" },
+      fontSolver: {
+        layout: {
+          renderedLineCount: 3,
+          lineBreaks: ["first", "second", "third"],
+          textBoxWidthPx: 240,
+          lineHeightPt: 31,
+          provenance: "selected-font-layout"
+        }
+      },
+      z: 1
+    }
+  ];
+  await writeAnalysis(source, value);
+  await renderPptx(source, output, null, directory);
+  const zip = await JSZip.loadAsync(await readFile(output));
+  const xml = await zip.file("ppt/slides/slide1.xml").async("string");
+  const textBody = xml.match(/<p:txBody>[\s\S]*?<\/p:txBody>/)?.[0] ?? "";
+  assert.match(textBody, /<a:lnSpc><a:spcPts val="3100"\/>/);
+  assert.match(textBody, /<a:t>first<\/a:t>/);
+  assert.match(textBody, /<a:t>second<\/a:t>/);
+  assert.match(textBody, /<a:t>third<\/a:t>/);
+  assert.equal((textBody.match(/<a:p>/g) ?? []).length, 3);
 });
 
 test("renderer preserves rich runs, paragraph alignment, gradients, crop, rotation, and transparency", async () => {
@@ -153,7 +233,7 @@ test("renderer preserves rich runs, paragraph alignment, gradients, crop, rotati
   const source = join(directory, "analysis.json");
   const output = join(directory, "deck.pptx");
   const report = join(directory, "editability.json");
-  await writeFile(source, `${JSON.stringify(value, null, 2)}\n`);
+  await writeAnalysis(source, value);
   const result = await renderPptx(source, output, report, directory);
   assert.equal(result.editability.status, "passed");
   const zip = await JSZip.loadAsync(await readFile(output));
@@ -173,7 +253,7 @@ test("renderer creates native charts only from explicitly recoverable finite sou
   const output = join(directory, "deck.pptx");
   const rejected = analysis();
   rejected.slides[0].objects = [{ id: "chart", type: "chart", pixelBox: { x: 20, y: 120, w: 420, h: 260 }, data: [{ name: "A", labels: ["One"], values: [1] }], z: 0 }];
-  await writeFile(source, JSON.stringify(rejected));
+  await writeAnalysis(source, rejected);
   await assert.rejects(renderPptx(source, output, null, directory), (error) => error.code === "E_CHART_TRACEABILITY");
 
   const unbound = analysis();
@@ -187,12 +267,12 @@ test("renderer creates native charts only from explicitly recoverable finite sou
     pixelBox: { x: 20, y: 120, w: 420, h: 260 },
     z: 0
   }];
-  await writeFile(source, JSON.stringify(unbound));
+  await writeAnalysis(source, unbound);
   await assert.rejects(renderPptx(source, output, null, directory), (error) => error.code === "E_CHART_TRACEABILITY");
 
   unbound.slides[0].objects[0].sourceRef = "missing-source";
   unbound.slides[0].objects[0].sourceSha256 = "a".repeat(64);
-  await writeFile(source, JSON.stringify(unbound));
+  await writeAnalysis(source, unbound);
   await assert.rejects(renderPptx(source, output, null, directory), (error) => error.code === "E_CHART_TRACEABILITY");
 
   const accepted = analysis();
@@ -208,7 +288,7 @@ test("renderer creates native charts only from explicitly recoverable finite sou
     pixelBox: { x: 20, y: 120, w: 420, h: 260 },
     z: 0
   }];
-  await writeFile(source, JSON.stringify(accepted));
+  await writeAnalysis(source, accepted);
   const result = await renderPptx(source, output, null, directory);
   assert.equal(result.editability.status, "passed");
   const zip = await JSZip.loadAsync(await readFile(output));
@@ -233,7 +313,7 @@ test("renderer wraps declared group children into a native OOXML group and keeps
     },
     { id: "top-shape", type: "shape", shape: "rect", fill: true, color: "#102A43", pixelBox: { x: 40, y: 40, w: 80, h: 40 }, z: 0 }
   ];
-  await writeFile(source, JSON.stringify(value));
+  await writeAnalysis(source, value);
   const result = await renderPptx(source, output, null, directory);
   assert.equal(result.editability.status, "passed");
   const zip = await JSZip.loadAsync(await readFile(output));

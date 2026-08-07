@@ -26,6 +26,17 @@ word/line polygons, paragraph IDs, reading order, requested languages, and the
 recognition pass so downstream calibration can distinguish observation from
 inference.
 
+Regional OCR is intentionally bounded: prioritized observed lines are routed by
+their geometry to PSM 6 (body), 7 (title), 8 (label), 10 (number), or 13
+(caption), with no more than two deterministic preprocessing candidates and a
+fixed page-wide call budget. Selection uses content agreement, confidence, and
+box stability; selected, no-result, and budget-deferred status remain in the OCR
+report. `pageDetectionWords`/compatibility `words` are preliminary whole-page
+evidence, while `finalLines`/compatibility `lines` are the lines consumed by
+object reconstruction. `pageProfile` and layout-group `regionProfiles` describe
+observed density/complexity and recommended native or bounded-raster
+strategies; they do not authorize invented content.
+
 ## Charts and tables
 
 - Rebuild a table as a native table only when a closed grid and cell assignment are both reliable.

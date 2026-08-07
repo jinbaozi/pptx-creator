@@ -6,9 +6,10 @@
   "scripts": {
     "doctor": "node scripts/image-to-pptx.mjs doctor",
     "test": "node --test tests/*.test.mjs",
-    "test:unit": "node --test tests/unit.test.mjs tests/contract.test.mjs tests/error.test.mjs",
+    "test:unit": "node --test tests/unit.test.mjs tests/contract.test.mjs tests/error.test.mjs tests/qa_contract.test.mjs tests/font_contract.test.mjs",
     "test:py": "python3 -m unittest discover -s tests -p \"*_test.py\"",
     "test:visual": "IMAGE_TO_PPTX_VISUAL=1 node --test tests/visual.test.mjs",
+    "test:visual-matrix": "node --test tests/visual_benchmark_matrix_runner.test.mjs",
     "test:isolation": "IMAGE_TO_PPTX_ISOLATION=1 node --test tests/isolation.test.mjs",
     "example:min": "node scripts/run_minimal_example.mjs"
   },
